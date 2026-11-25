@@ -1,5 +1,6 @@
 package com.dippie.catalog.importing;
 
+import com.dippie.assistant.search.LocalIndexPublisher;
 import com.dippie.catalog.query.CatalogReadModelCache;
 import com.dippie.security.JwtService;
 import com.dippie.security.Role;
@@ -15,6 +16,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.web.servlet.MockMvc;
@@ -33,9 +35,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "dippie.ai.base-url=")
+@SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 class RecommendationHttpTest {
 
@@ -65,10 +68,10 @@ class RecommendationHttpTest {
 
     @Test
     void recommendsImportedEpisodesAnonymouslyAndPersonalizesForFavorites() throws Exception {
-        assertThat(indexPublisher).isInstanceOf(NoopCatalogIndexPublisher.class);
+        assertThat(indexPublisher).isInstanceOf(LocalIndexPublisher.class);
         String admin = token("recommend-admin", Role.ROLE_ADMIN);
         submitCatalog(admin, CatalogHttpTest.jadooFixture()).andExpect(status().isOk())
-                .andExpect(jsonPath("$.indexStatus").value("SYNC_FAILED"));
+                .andExpect(jsonPath("$.indexStatus").value("READY"));
 
         Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
         boolean previouslyEnabled = statistics.isStatisticsEnabled();

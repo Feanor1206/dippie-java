@@ -7,11 +7,11 @@ import com.dippie.security.Viewer;
 import org.springframework.stereotype.Component;
 
 @Component
-public class PlaybackAccess {
+class PlaybackAccess {
 
     private static final String MEDIA_NOT_FOUND_PREFIX = "Không tìm thấy tài nguyên media: ";
 
-    public MediaAsset authorizeForGrant(
+    MediaAsset authorizeForGrant(
             String assetId,
             MediaAsset asset,
             CatalogMediaAsset catalogAsset,
@@ -20,7 +20,7 @@ public class PlaybackAccess {
         return authorize(assetId, asset, catalogAsset, viewer, null);
     }
 
-    public MediaAsset authorizeForStream(
+    MediaAsset authorizeForStream(
             String assetId,
             MediaAsset asset,
             CatalogMediaAsset catalogAsset,
@@ -47,15 +47,8 @@ public class PlaybackAccess {
         if (catalogAsset != null && !catalogAsset.isAccessibleBy(authenticated, admin)) {
             throw mediaNotFound(assetId);
         }
-        if (!asset.isPublic()) {
-            if (!authenticated) {
-                throw mediaNotFound(assetId);
-            }
-            if (catalogAsset != null
-                    && "private".equalsIgnoreCase(catalogAsset.getAccessPolicy())
-                    && !admin) {
-                throw mediaNotFound(assetId);
-            }
+        if (!asset.isPublic() && !authenticated) {
+            throw mediaNotFound(assetId);
         }
         return asset;
     }

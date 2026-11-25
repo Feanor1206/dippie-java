@@ -9,6 +9,4 @@ public interface CatalogEpisodeRepository extends JpaRepository<CatalogEpisode, 
     List<CatalogEpisode> findBySeriesIdOrderByNumberAsc(String seriesId);
 
     List<CatalogEpisode> findBySeriesIdAndPublicationStatusOrderByNumberAsc(String seriesId, String publicationStatus);
-
-    List<CatalogEpisode> findByPublicationStatus(String publicationStatus);
 }

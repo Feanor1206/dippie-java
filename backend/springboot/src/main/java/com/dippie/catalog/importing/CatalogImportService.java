@@ -19,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.SQLException;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
@@ -61,9 +60,9 @@ public class CatalogImportService {
         return withLock(() -> {
             CatalogImportTransaction.Commit commit = write(input);
             if (!commit.unchanged()) {
+                snapshots.synchronize(commit.snapshot());
                 events.publishEvent(new CatalogImportedEvent(commit.identity().id(), commit.identity().revision(),
                         commit.snapshot().getSnapshotVersion(), commit.snapshot().getId(), username, commit.importedAt()));
-                snapshots.synchronize(commit.snapshot());
             }
             return commit.response();
         });
@@ -79,10 +78,6 @@ public class CatalogImportService {
 
     public CatalogSnapshotView retrySnapshot(String id) {
         return withLock(() -> snapshots.retry(id));
-    }
-
-    public Optional<IndexSyncOutcome> publishCurrentIndex() {
-        return withLock(snapshots::publishCurrent);
     }
 
     private CatalogImportTransaction.Commit write(CatalogDocument input) {

@@ -1,6 +1,5 @@
 package com.dippie.admin;
 
-import com.dippie.common.error.InvalidRequestException;
 import com.dippie.security.CurrentViewer;
 import com.dippie.security.Viewer;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -10,20 +9,18 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Map;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class AdminAuditService {
+class AdminAuditService {
 
-    public static final String ACTION_USER_ROLE_CHANGED = "USER_ROLE_CHANGED";
-    public static final String ACTION_USER_DISABLED = "USER_DISABLED";
-    public static final String ACTION_USER_ENABLED = "USER_ENABLED";
-    public static final String ACTION_CATALOG_IMPORTED = "CATALOG_IMPORTED";
+    static final String ACTION_USER_ROLE_CHANGED = "USER_ROLE_CHANGED";
+    static final String ACTION_USER_DISABLED = "USER_DISABLED";
+    static final String ACTION_USER_ENABLED = "USER_ENABLED";
+    static final String ACTION_CATALOG_IMPORTED = "CATALOG_IMPORTED";
 
     private static final int MAX_USERNAME_LENGTH = 50;
-    private static final int MAX_PAGE_SIZE = 100;
     private static final String SYSTEM_ACTOR = "system";
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
@@ -33,7 +30,7 @@ public class AdminAuditService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
-    public AdminAuditService(
+    AdminAuditService(
             AdminAuditEventRepository auditEventRepository,
             CurrentViewer currentViewer,
             ObjectMapper objectMapper,
@@ -46,7 +43,7 @@ public class AdminAuditService {
     }
 
     @Transactional
-    public AdminAuditEvent record(
+    public void record(
             Viewer actor,
             String action,
             String targetType,
@@ -55,11 +52,11 @@ public class AdminAuditService {
     ) {
         Long actorUserId = actor == null ? null : actor.userId();
         String actorUsername = actor == null ? SYSTEM_ACTOR : actor.username();
-        return recordForActor(actorUserId, actorUsername, action, targetType, targetId, details);
+        recordForActor(actorUserId, actorUsername, action, targetType, targetId, details);
     }
 
     @Transactional
-    public AdminAuditEvent recordForActor(
+    public void recordForActor(
             Long actorUserId,
             String actorUsername,
             String action,
@@ -78,15 +75,14 @@ public class AdminAuditService {
                 serializedDetails,
                 LocalDateTime.now(clock)
         );
-        return auditEventRepository.saveAndFlush(event);
+        auditEventRepository.saveAndFlush(event);
     }
 
     @Transactional(readOnly = true)
     public AdminPageResponse<AdminAuditEventView> listEvents(int page, int size) {
         currentViewer.requireAdmin();
-        validatePaging(page, size);
         Page<AdminAuditEventView> result = auditEventRepository
-                .findAllByOrderByCreatedAtDescIdDesc(PageRequest.of(page, size))
+                .findAllByOrderByCreatedAtDescIdDesc(AdminPageResponse.pageRequest(page, size))
                 .map(this::toView);
         return AdminPageResponse.of(result);
     }
@@ -130,11 +126,5 @@ public class AdminAuditService {
         }
         String trimmed = rawUsername.trim();
         return trimmed.length() > MAX_USERNAME_LENGTH ? trimmed.substring(0, MAX_USERNAME_LENGTH) : trimmed;
-    }
-
-    private static void validatePaging(int page, int size) {
-        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
-            throw new InvalidRequestException("Tham số phân trang không hợp lệ.");
-        }
     }
 }

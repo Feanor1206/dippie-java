@@ -4,6 +4,7 @@ import com.dippie.catalog.domain.CatalogPackage;
 import com.dippie.catalog.domain.CatalogSnapshot;
 import com.dippie.catalog.domain.CatalogSnapshotRepository;
 import com.dippie.common.error.ConflictException;
+import com.dippie.common.json.JsonText;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Repository;
@@ -11,7 +12,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -51,7 +51,7 @@ class CatalogImportTransaction {
             }
         }
 
-        LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS);
+        LocalDateTime now = CatalogDates.now(clock);
         savePackage(document.path("package"), identity, hash, changes.existingPackage(), now);
         writer.write(document, changes, identity.revision(), now);
         CatalogSnapshot snapshot = saveSnapshot(identity.id(), hash, counts, now);
@@ -89,7 +89,7 @@ class CatalogImportTransaction {
     }
 
     private static String metadataText(JsonNode value, String fallback) {
-        if (!CatalogJson.truthy(value)) {
+        if (!JsonText.isTruthy(value)) {
             return fallback;
         }
         return value.isBoolean() ? "True" : scalarText(value);

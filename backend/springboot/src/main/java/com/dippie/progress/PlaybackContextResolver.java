@@ -18,7 +18,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 @Component
-public class PlaybackContextResolver {
+class PlaybackContextResolver {
 
     private final CatalogEpisodeRepository episodeRepository;
     private final CatalogSeriesRepository seriesRepository;
@@ -87,7 +87,7 @@ public class PlaybackContextResolver {
         if (mediaAsset == null || !mediaAsset.isAvailable() || !lowercase(mediaAsset.getMimeType()).startsWith("video/")) {
             return Optional.empty();
         }
-        return Optional.of(new PlaybackContext(episode, series, season, catalogAsset, mediaAsset));
+        return Optional.of(new PlaybackContext(episode, series, season, catalogAsset));
     }
 
     private static String lowercase(String value) {

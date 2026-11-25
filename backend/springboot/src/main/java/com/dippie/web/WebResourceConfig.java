@@ -8,11 +8,11 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
-public class WebResourceConfig implements WebMvcConfigurer {
+class WebResourceConfig implements WebMvcConfigurer {
 
     private final WebProperties webProperties;
 
-    public WebResourceConfig(WebProperties webProperties) {
+    WebResourceConfig(WebProperties webProperties) {
         this.webProperties = webProperties;
     }
 
@@ -28,7 +28,7 @@ public class WebResourceConfig implements WebMvcConfigurer {
     }
 
     private String toDirectoryLocation(Path directory) {
-        String uri = directory.toAbsolutePath().normalize().toUri().toString();
+        String uri = directory.toUri().toString();
         return uri.endsWith("/") ? uri : uri + "/";
     }
 }

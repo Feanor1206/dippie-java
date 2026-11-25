@@ -3,6 +3,7 @@ package com.dippie.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.security.SecureRandom;
@@ -44,6 +45,7 @@ public class JwtService {
     );
 
     private final SecretKey signingKey;
+    private final JwtParser jwtParser;
     private final Duration expiration;
     private final Duration playbackGrantValidity;
     private final Clock clock;
@@ -53,6 +55,10 @@ public class JwtService {
         this.expiration = properties.expiration();
         this.playbackGrantValidity = properties.playbackGrantValidity();
         this.clock = clock;
+        this.jwtParser = Jwts.parser()
+                .verifyWith(this.signingKey)
+                .clock(() -> Date.from(this.clock.instant()))
+                .build();
     }
 
     public record LoginToken(String username, long tokenVersion) {
@@ -99,7 +105,7 @@ public class JwtService {
         return Optional.of(new LoginToken(subject, version));
     }
 
-    public Optional<String> loginSubject(String token) {
+    Optional<String> loginSubject(String token) {
         return parseLoginToken(token).map(LoginToken::username);
     }
 
@@ -145,11 +151,7 @@ public class JwtService {
             return Optional.empty();
         }
         try {
-            Jws<Claims> jws = Jwts.parser()
-                    .verifyWith(signingKey)
-                    .clock(() -> Date.from(clock.instant()))
-                    .build()
-                    .parseSignedClaims(token);
+            Jws<Claims> jws = jwtParser.parseSignedClaims(token);
             if (!ALGORITHM_HS256.equals(jws.getHeader().getAlgorithm())) {
                 return Optional.empty();
             }

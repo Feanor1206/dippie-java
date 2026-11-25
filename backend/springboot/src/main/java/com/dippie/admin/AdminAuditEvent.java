@@ -88,10 +88,6 @@ public class AdminAuditEvent {
         return id;
     }
 
-    public Long getActorUserId() {
-        return actorUserId;
-    }
-
     public String getActorUsername() {
         return actorUsername;
     }

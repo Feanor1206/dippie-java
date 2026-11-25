@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class AdminStatsService {
+class AdminStatsService {
 
     private static final int TOP_LIMIT = 10;
     private static final int NEW_USER_DAYS = 7;
@@ -20,7 +20,7 @@ public class AdminStatsService {
     private final AdminStatsQuery adminStatsQuery;
     private final Clock clock;
 
-    public AdminStatsService(CurrentViewer currentViewer, AdminStatsQuery adminStatsQuery, Clock clock) {
+    AdminStatsService(CurrentViewer currentViewer, AdminStatsQuery adminStatsQuery, Clock clock) {
         this.currentViewer = currentViewer;
         this.adminStatsQuery = adminStatsQuery;
         this.clock = clock;
@@ -29,8 +29,7 @@ public class AdminStatsService {
     @Transactional(readOnly = true)
     public AdminStatsResponse collectStats() {
         currentViewer.requireAdmin();
-        long totalUsers = adminStatsQuery.countTotalUsers();
-        long activeUsers = adminStatsQuery.countActiveUsers();
+        AdminStatsQuery.UserCounts users = adminStatsQuery.countUsers(LocalDateTime.now(clock).minusDays(NEW_USER_DAYS));
         long totalMovies = adminStatsQuery.countTotalMovies();
         long publishedEpisodes = adminStatsQuery.countPublishedEpisodes();
         long totalWatchSessions = adminStatsQuery.countTotalWatchSessions();
@@ -38,11 +37,10 @@ public class AdminStatsService {
         double completionRate = computeCompletionRate(completedWatchSessions, totalWatchSessions);
         List<TopWatchedEpisodeView> topWatchedEpisodes = adminStatsQuery.findTopWatchedEpisodes(TOP_LIMIT);
         List<TopRatedMovieView> topRatedMovies = adminStatsQuery.findTopRatedMovies(TOP_LIMIT);
-        long newUsersLast7Days = adminStatsQuery.countNewUsersSince(LocalDateTime.now(clock).minusDays(NEW_USER_DAYS));
 
         return new AdminStatsResponse(
-                totalUsers,
-                activeUsers,
+                users.total(),
+                users.active(),
                 totalMovies,
                 publishedEpisodes,
                 totalWatchSessions,
@@ -50,7 +48,7 @@ public class AdminStatsService {
                 completionRate,
                 topWatchedEpisodes,
                 topRatedMovies,
-                newUsersLast7Days
+                users.recent()
         );
     }
 

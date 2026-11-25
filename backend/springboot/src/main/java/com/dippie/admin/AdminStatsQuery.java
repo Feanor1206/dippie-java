@@ -6,7 +6,7 @@ import java.util.List;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public class AdminStatsQuery {
+class AdminStatsQuery {
 
     private static final String EFFECTIVE_DURATION =
             "(case "
@@ -38,19 +38,23 @@ public class AdminStatsQuery {
         this.entityManager = entityManager;
     }
 
-    public long countTotalUsers() {
-        return entityManager.createQuery("select count(u) from User u", Long.class).getSingleResult();
-    }
-
-    public long countActiveUsers() {
-        return entityManager.createQuery("select count(u) from User u where u.enabled = true", Long.class)
-                .getSingleResult();
-    }
-
-    public long countNewUsersSince(LocalDateTime since) {
-        return entityManager.createQuery("select count(u) from User u where u.createdAt >= :since", Long.class)
+    UserCounts countUsers(LocalDateTime since) {
+        Object[] row = entityManager.createQuery("""
+                        select count(u),
+                               coalesce(sum(case when u.enabled = true then 1L else 0L end), 0L),
+                               coalesce(sum(case when u.createdAt >= :since then 1L else 0L end), 0L)
+                        from User u
+                        """, Object[].class)
                 .setParameter("since", since)
                 .getSingleResult();
+        return new UserCounts(
+                ((Number) row[0]).longValue(),
+                ((Number) row[1]).longValue(),
+                ((Number) row[2]).longValue()
+        );
+    }
+
+    record UserCounts(long total, long active, long recent) {
     }
 
     public long countTotalMovies() {

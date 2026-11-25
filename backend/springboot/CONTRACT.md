@@ -1,14 +1,7 @@
 # HTTP Contract (frozen)
 
-The Java backend must be a drop-in replacement for the Python endpoints. The **source of truth** is the Python code
-on this repository; when this file and the Python code disagree, the Python code wins. Python references:
-
-- `backend/fastapi/routers/core_api.py` — every endpoint below (status codes, messages, branching).
-- `backend/fastapi/services/database.py` — entity `to_dict()` / `to_response()` / `to_dto()` shapes, catalog
-  validation (`validate_catalog_input`, line ~1242), diff (`catalog_diff`, ~1438), import (`import_catalog_package`,
-  ~1572), export (`export_eligible_catalog`, ~2026), tokens (~853-930), publication (~1152).
-- `backend/fastapi/services/recommendations.py`, `backend/fastapi/schemas.py` — recommendation request/response.
-- `backend/fastapi/tests/*.py` — expected behaviour; port the relevant cases to MockMvc tests.
+This document defines the HTTP contract served by the Dippie Spring Boot backend. Field names, envelopes vs raw bodies,
+status codes, and Vietnamese messages are frozen because the React frontend depends on them.
 
 ## 1. Response bodies
 
@@ -39,6 +32,7 @@ Errors always use the envelope with `success:false`, `data:null`, produced by th
 | `POST /api/admin/catalog/snapshots/{id}/retry` | snapshot |
 | `GET /api/admin/catalog/export` | catalog package document |
 | `POST /api/recommend` | `{"recommendedMovies":[…], "reasoning":"…"}` |
+| `POST /v1/search`, `POST /v1/discover` | `{"structuredIntent":…, "explanation":…, "results":[…], "followUps":[…], "pipelineStages":…}` |
 
 ### 1.3 Field naming
 
@@ -78,8 +72,12 @@ Timestamps are UTC ISO-8601 local date-times without offset (`LocalDateTime`), a
 | POST | `/api/media/grant/{assetId}` · GET/HEAD `/api/media/stream/{assetId}` | media |
 | POST/GET | `/api/admin/catalog/{validate,import,history,snapshots,snapshots/{id}/retry,export}` | catalog.importing |
 | POST | `/api/recommend` | recommendation |
-| POST | `/api/chat` (SSE pass-through to Python) | ai |
+| POST | `/api/chat` (SSE: `metadata`, `token`, `done`, `error`) | assistant.chat |
+| POST | `/v1/search`, `/v1/discover` (raw JSON) | assistant.search |
+| GET | `/api/assistant/status` | assistant |
 | GET | `/`, `/search`, `/profile`, `/admin/import`, `/movies/{id}`, `/series/{id}`, `/assets/**`, `/illustrations/**` | web |
+
+`/api/chat` (`LocalChatController`), `/v1/search`, and `/v1/discover` (`LocalDiscoverController`) are served directly by Java with raw JSON / SSE responses and validation detail payloads.
 
 ## 4. Key business rules (must be modelled in domain code)
 
@@ -121,6 +119,7 @@ Endpoints in the following table wrap their success payload in the standard `Api
 | `GET` | `/api/admin/audit-events` | `ROLE_ADMIN` (`403` otherwise) | `com.dippie.admin.AdminAuditController` | `AdminPageResponse<AdminAuditEventView>`: `{"items": [{"id": long, "actorUsername": string, "action": string, "targetType": string, "targetId": string, "details": object, "createdAt": LocalDateTime}], "page": int, "size": int, "totalElements": long, "totalPages": int, "hasNext": boolean, "hasPrevious": boolean}`. Query params: `page` (default `0`), `size` (default `20`, max `100`). Ordered by `createdAt` desc, `id` desc. |
 | `GET` | `/api/admin/stats` | `ROLE_ADMIN` (`403` otherwise) | `com.dippie.admin.AdminStatsController` | `AdminStatsResponse`: `{"totalUsers": long, "activeUsers": long, "totalMovies": long, "publishedEpisodes": long, "totalWatchSessions": long, "completedWatchSessions": long, "completionRate": double, "topWatchedEpisodes": [{"episodeId": string, "title": string, "viewers": long}], "topRatedMovies": [{"movieId": string, "title": string, "averageRating": double, "ratingCount": long}], "newUsersLast7Days": long}`. |
 | `GET` | `/api/users/next-episode` | Authenticated user (`401` if anonymous) | `com.dippie.progress.NextEpisodeController` | `NextEpisodeService.NextEpisodeView`: `{"seriesId": string, "episodeId": string, "episodeTitle": string, "seasonNumber": int\|null, "episodeNumber": int\|null, "resumePositionMs": long, "reason": "RESUME" \| "NEXT_UNWATCHED"}`, or `data: null` with `message: "Bạn đã xem hết bộ phim này."` when every published episode of the series is completed. Required query param: `seriesId` (`404` if series is missing or unpublished). |
+| `GET` | `/api/assistant/status` | Public | `com.dippie.assistant.AssistantStatusController` | `AssistantStatusController.AssistantStatus`: `{"searchReady": boolean, "documents": int, "llmProvider": string}` (standard `ApiResponse` envelope with `message: "Thành công"`). |
 
 ### 5.1 Series cards
 

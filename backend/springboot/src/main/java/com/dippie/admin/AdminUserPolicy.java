@@ -9,13 +9,13 @@ import java.util.Objects;
 import org.springframework.stereotype.Component;
 
 @Component
-public class AdminUserPolicy {
+class AdminUserPolicy {
 
-    public static final String SELF_CHANGE_MESSAGE = "Không thể tự thay đổi quyền hoặc trạng thái của chính mình.";
-    public static final String LAST_ADMIN_MESSAGE = "Hệ thống phải còn ít nhất một quản trị viên đang hoạt động.";
-    public static final String INVALID_ROLE_MESSAGE = "Vai trò không hợp lệ.";
+    static final String SELF_CHANGE_MESSAGE = "Không thể tự thay đổi quyền hoặc trạng thái của chính mình.";
+    static final String LAST_ADMIN_MESSAGE = "Hệ thống phải còn ít nhất một quản trị viên đang hoạt động.";
+    private static final String INVALID_ROLE_MESSAGE = "Vai trò không hợp lệ.";
 
-    public Role parseRole(String rawRole) {
+    Role parseRole(String rawRole) {
         if (rawRole == null || rawRole.isBlank()) {
             throw new InvalidRequestException(INVALID_ROLE_MESSAGE);
         }

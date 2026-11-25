@@ -6,6 +6,7 @@ import com.dippie.catalog.domain.CatalogEpisodeCharacter;
 import com.dippie.catalog.domain.CatalogEpisodeGenre;
 import com.dippie.catalog.domain.CatalogSeriesCharacter;
 import com.dippie.catalog.domain.CatalogSeriesGenre;
+import com.dippie.common.json.JsonText;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Repository;
@@ -75,7 +76,7 @@ class CatalogLinks {
 
     private static Set<String> referenceIds(JsonNode nodes) {
         Set<String> ids = new LinkedHashSet<>();
-        if (!CatalogJson.truthy(nodes)) {
+        if (!JsonText.isTruthy(nodes)) {
             return ids;
         }
         if (nodes.isTextual()) {

@@ -1,8 +1,12 @@
 services:
-  fastapi:
-    build: ../backend/fastapi
+  app:
+    build:
+      context: ..
+      dockerfile: infrastructure/Dockerfile
     restart: unless-stopped
     environment:
+      SPRING_PROFILES_ACTIVE: mysql
+      PORT: '3000'
       DIPPIE_WEB_DIST: /app/web
       MYSQL_HOST: mysql
       MYSQL_PORT: '3306'
@@ -10,25 +14,15 @@ services:
       MYSQL_USER: ${MYSQL_USER:-dippie_app}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD required for dippie_app}
       APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET required}
-      APP_DEMO_MODE: ${APP_DEMO_MODE:-false}
       APP_BOOTSTRAP_ADMIN_USERNAME: ${APP_BOOTSTRAP_ADMIN_USERNAME:-}
       APP_BOOTSTRAP_ADMIN_EMAIL: ${APP_BOOTSTRAP_ADMIN_EMAIL:-}
       APP_BOOTSTRAP_ADMIN_PASSWORD: ${APP_BOOTSTRAP_ADMIN_PASSWORD:-}
-      MODEL_MODE: ${MODEL_MODE:-light}
-      TEXT_ENCODER_PATH: ${TEXT_ENCODER_PATH:-}
-      RERANKER_MODEL_PATH: ${RERANKER_MODEL_PATH:-}
-      SCORE_CALIBRATION_PATH: ${SCORE_CALIBRATION_PATH:-}
+      DIPPIE_LLM_PROVIDER: ${DIPPIE_LLM_PROVIDER:-template}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      CATALOG_SYNC_TOKEN: ${CATALOG_SYNC_TOKEN:-}
     ports:
-      - "127.0.0.1:${DIPPIE_PORT:-3000}:8000"
-    volumes:
-      - ../frontend/dist:/app/web:ro
-      - ../ai/models:/app/models:ro
-      - ../data/indices:/app/data/indices
-      - ../data/catalog.jadoo_all.json:/app/data/catalog.jadoo_all.json:ro
+      - "127.0.0.1:${DIPPIE_PORT:-3000}:3000"
     depends_on:
       mysql:
         condition: service_healthy

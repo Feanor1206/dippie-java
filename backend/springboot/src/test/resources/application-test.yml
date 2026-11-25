@@ -11,7 +11,8 @@ dippie:
   seed-demo-data: false
   jwt:
     secret: ZGlwcGllLXRlc3Qtc2VjcmV0LWtleS0zMi1ieXRlcy1sb25nLWVub3VnaCE=
-  ai:
-    base-url: http://127.0.0.1:1
+  assistant:
+    llm:
+      provider: template
   web:
     dist: target/no-web-dist

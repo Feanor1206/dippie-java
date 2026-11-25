@@ -161,11 +161,11 @@ class JwtServiceTest {
         return bytes;
     }
 
-    private static final class MutableClock extends Clock {
+    static final class MutableClock extends Clock {
 
         private Instant current;
 
-        private MutableClock(Instant initial) {
+        MutableClock(Instant initial) {
             this.current = initial;
         }
 

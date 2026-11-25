@@ -2,5 +2,9 @@ package com.dippie.recommendation;
 
 import java.util.List;
 
-public record RecommendationResult(List<RecommendedItem> recommendedMovies, String reasoning) {
+record RecommendationResult(List<RecommendedItem> recommendedMovies, String reasoning) {
+
+    RecommendationResult {
+        recommendedMovies = recommendedMovies == null ? List.of() : List.copyOf(recommendedMovies);
+    }
 }

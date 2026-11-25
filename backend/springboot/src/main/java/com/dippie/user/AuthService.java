@@ -17,12 +17,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
-public class AuthService {
+class AuthService {
 
     private static final int MIN_USERNAME_LENGTH = 3;
     private static final int MAX_USERNAME_LENGTH = 50;
-    private static final int MAX_EMAIL_LENGTH = 100;
-    private static final int MAX_FULL_NAME_LENGTH = 100;
     private static final String RATE_LIMIT_MESSAGE = "Bạn đã thử đăng nhập quá nhiều lần. Vui lòng chờ một phút.";
     private static final String INVALID_CREDENTIALS_MESSAGE = "Sai tên đăng nhập hoặc mật khẩu";
     private static final String ACCOUNT_DISABLED_MESSAGE = "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.";
@@ -83,19 +81,13 @@ public class AuthService {
         enforceRateLimit(clientIp, rawUsername);
 
         String username = rawUsername.trim();
-        String email = payload.rawEmail().trim();
         String password = payload.rawPassword();
-        String rawFullName = payload.fullName();
 
         if (username.length() < MIN_USERNAME_LENGTH || username.length() > MAX_USERNAME_LENGTH) {
             throw new InvalidRequestException("Tên đăng nhập phải từ 3 đến 50 ký tự");
         }
-        if (!email.contains("@") || email.length() > MAX_EMAIL_LENGTH) {
-            throw new InvalidRequestException("Định dạng email không hợp lệ");
-        }
-        if (rawFullName != null && rawFullName.length() > MAX_FULL_NAME_LENGTH) {
-            throw new InvalidRequestException("Họ tên tối đa 100 ký tự");
-        }
+        String email = User.validateEmail(payload.rawEmail());
+        String resolvedFullName = User.resolveFullName(payload.fullName(), username);
         PasswordPolicy.DEFAULT.validateForRegistration(password);
 
         if (userRepository.existsByUsername(username)) {
@@ -105,9 +97,6 @@ public class AuthService {
             throw new InvalidRequestException("Email đã được sử dụng!");
         }
 
-        String resolvedFullName = (rawFullName == null || rawFullName.trim().isEmpty())
-                ? username
-                : rawFullName.trim();
         User user = new User(
                 username,
                 email,

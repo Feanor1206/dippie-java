@@ -129,7 +129,7 @@ class CatalogReadModelLoader {
                 .map(row -> SeriesCard.from(row, seriesEpisodes.getOrDefault(row.getId(), List.of()), genresById))
                 .sorted(Comparator.comparing(SeriesCard::title).thenComparing(SeriesCard::id)).toList();
         return new CatalogReadModel(seriesRows.stream().map(CatalogSeriesView::from).toList(), visibleSeries,
-                seasonParents, visibleEpisodes, hiddenMovies, search, candidates, seriesEpisodes, cards, visibleEpisodeRows);
+                visibleEpisodes, hiddenMovies, search, candidates, seriesEpisodes, cards, visibleEpisodeRows);
     }
 
     private void addChildSearchRows(List<SearchRow> search, Map<String, CatalogSeries> seriesById,

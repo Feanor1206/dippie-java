@@ -1,5 +1,6 @@
 package com.dippie.user;
 
+import com.dippie.common.error.InvalidRequestException;
 import com.dippie.security.Role;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -16,6 +17,9 @@ import org.hibernate.annotations.ColumnDefault;
 @Entity
 @Table(name = "users")
 public class User {
+
+    private static final int MAX_EMAIL_LENGTH = 100;
+    private static final int MAX_FULL_NAME_LENGTH = 100;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -109,8 +113,19 @@ public class User {
         return createdAt;
     }
 
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
+    public static String validateEmail(String rawEmail) {
+        String email = rawEmail == null ? "" : rawEmail.trim();
+        if (!email.contains("@") || email.length() > MAX_EMAIL_LENGTH) {
+            throw new InvalidRequestException("Định dạng email không hợp lệ");
+        }
+        return email;
+    }
+
+    public static String resolveFullName(String rawFullName, String fallbackUsername) {
+        if (rawFullName != null && rawFullName.length() > MAX_FULL_NAME_LENGTH) {
+            throw new InvalidRequestException("Họ tên tối đa 100 ký tự");
+        }
+        return (rawFullName == null || rawFullName.trim().isEmpty()) ? fallbackUsername : rawFullName.trim();
     }
 
     public boolean isAdmin() {

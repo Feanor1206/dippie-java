@@ -111,20 +111,12 @@ public class MediaAsset {
         return id;
     }
 
-    public String getMovieId() {
-        return movieId;
-    }
-
     public String getKind() {
         return kind;
     }
 
     public String getStorageProvider() {
         return storageProvider;
-    }
-
-    public String getStorageKey() {
-        return storageKey;
     }
 
     public String getRelativePath() {
@@ -153,14 +145,6 @@ public class MediaAsset {
 
     public boolean isAvailable() {
         return available;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
     }
 
     public void applyCatalogImport(MediaAsset imported) {

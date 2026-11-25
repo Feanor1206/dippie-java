@@ -16,6 +16,10 @@ public record SeriesCard(String id, String title, String originalTitle, String s
         Integer releaseYearEnd, List<Genre> genres, int seasonCount, int episodeCount, String posterUrl,
         String backdropUrl) {
 
+    public SeriesCard {
+        genres = genres == null ? List.of() : List.copyOf(genres);
+    }
+
     private static final Comparator<Integer> NUMBER_ORDER = Comparator.nullsLast(Comparator.naturalOrder());
     private static final Comparator<SeriesEpisode> EPISODE_ORDER = Comparator
             .comparing(SeriesEpisode::seasonNumber, NUMBER_ORDER)

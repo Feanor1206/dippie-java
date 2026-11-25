@@ -3,9 +3,11 @@ package com.dippie.catalog.importing;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.MissingNode;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -18,6 +20,10 @@ final class CatalogDates {
             + "(Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])?");
 
     private CatalogDates() {
+    }
+
+    static LocalDateTime now(Clock clock) {
+        return LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS);
     }
 
     static LocalDate releaseDate(JsonNode item, boolean episode) {

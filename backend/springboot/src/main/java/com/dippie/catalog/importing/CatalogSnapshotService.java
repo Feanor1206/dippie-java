@@ -12,9 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 class CatalogSnapshotService {
@@ -75,12 +73,6 @@ class CatalogSnapshotService {
         snapshots.save(snapshot);
     }
 
-    Optional<IndexSyncOutcome> publishCurrent() {
-        return snapshots.findFirstByOrderBySnapshotVersionDesc()
-                .map(latest -> publisher.publish(latest.getSnapshotVersion(), latest.getId(),
-                        export.exportForIndex(), false));
-    }
-
     private IndexSyncOutcome publish(CatalogSnapshot snapshot, boolean retry) {
         try {
             IndexSyncOutcome outcome = publisher.publish(snapshot.getSnapshotVersion(), snapshot.getId(),
@@ -94,6 +86,6 @@ class CatalogSnapshotService {
     }
 
     private LocalDateTime now() {
-        return LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS);
+        return CatalogDates.now(clock);
     }
 }
