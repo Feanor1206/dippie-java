@@ -33,11 +33,11 @@ Tài khoản mẫu có sẵn trong chế độ `demo` (mật khẩu chung `passw
 
 ### Nhập danh mục phim mẫu
 
-Sau khi ứng dụng khởi động, đăng nhập tài khoản `admin` và nhập 8 gói danh mục trong `data/catalog-by-series/` tại trang [Nhập dữ liệu](http://localhost:3000/admin/import), hoặc nhập hàng loạt bằng PowerShell:
+Sau khi ứng dụng khởi động, đăng nhập tài khoản `admin` và nhập 6 gói danh mục trong `data/catalog-by-series/` tại trang [Nhập dữ liệu](http://localhost:3000/admin/import), hoặc nhập hàng loạt bằng PowerShell:
 
 ```powershell
 $password = ConvertTo-SecureString 'password123' -AsPlainText -Force
-$catalogs = @('jadoo', 'larva', 'ori', 'doraemon', 'trang_quynh', 'pokemon', 'mr_bean_animated', 'peppa_pig')
+$catalogs = @('jadoo', 'larva', 'ori', 'doraemon', 'trang_quynh', 'peppa_pig')
 foreach ($catalog in $catalogs) {
     .\scripts\import_preview_catalog.ps1 `
         -CatalogPath "data/catalog-by-series/catalog.$catalog.json" `
