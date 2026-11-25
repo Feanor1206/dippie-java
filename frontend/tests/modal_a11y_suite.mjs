@@ -1,0 +1,107 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const root = path.resolve(__dirname, '..');
+
+const authModalSource = fs.readFileSync(path.join(root, 'features/auth/components/AuthModal.tsx'), 'utf8');
+const movieDetailSource = fs.readFileSync(path.join(root, 'features/movies/components/MovieDetail.tsx'), 'utf8');
+const cinebotSource = fs.readFileSync(path.join(root, 'features/chat/components/CineBot.tsx'), 'utf8');
+
+test('1. AuthModal: Accessibility attributes, focus trapping, opener restoration, and >=44px touch targets', () => {
+  assert.ok(authModalSource.includes('role="dialog"'), 'AuthModal must declare role="dialog"');
+  assert.ok(authModalSource.includes('aria-modal="true"'), 'AuthModal must declare aria-modal="true"');
+  assert.ok(authModalSource.includes('aria-labelledby="auth-modal-title"'), 'AuthModal must have aria-labelledby');
+
+  assert.ok(authModalSource.includes('firstInputRef.current?.focus()'), 'AuthModal must auto-focus first input');
+
+  assert.ok(
+    authModalSource.includes('!modalRef.current.contains(document.activeElement)'),
+    'AuthModal must guard opener capture against internal elements'
+  );
+
+  assert.ok(authModalSource.includes("e.key === 'Tab'"), 'AuthModal must intercept Tab key');
+  assert.ok(authModalSource.includes('e.shiftKey'), 'AuthModal must handle Shift+Tab reverse cycle');
+  assert.ok(authModalSource.includes('lastElement.focus()'), 'AuthModal must wrap to lastElement on Shift+Tab');
+  assert.ok(authModalSource.includes('firstElement.focus()'), 'AuthModal must wrap to firstElement on Tab');
+
+  assert.ok(authModalSource.includes("e.key === 'Escape'"), 'AuthModal must close on Escape key');
+  assert.ok(authModalSource.includes('openerRef.current?.focus()'), 'AuthModal must restore focus to opener on unmount/close');
+
+  assert.ok(
+    authModalSource.includes('min-h-[44px]') && authModalSource.includes('min-w-[44px]'),
+    'AuthModal close button must specify >= 44x44px touch target'
+  );
+});
+
+test('2. MovieDetail Video Player Modal: Accessibility, initial focus, Tab trapping, opener restore, and touch targets', () => {
+  assert.ok(movieDetailSource.includes('role="dialog"'), 'Video player modal must declare role="dialog"');
+  assert.ok(movieDetailSource.includes('aria-modal="true"'), 'Video player modal must declare aria-modal="true"');
+
+  assert.ok(
+    movieDetailSource.includes('focusable[0].focus()'),
+    'Video player modal must set initial focus inside modal'
+  );
+
+  assert.ok(movieDetailSource.includes("e.key === 'Tab'"), 'Video player must intercept Tab key');
+  assert.ok(
+    movieDetailSource.includes('!videoModalRef.current.contains(document.activeElement)'),
+    'Video player must trap focus if focus is outside modal'
+  );
+
+  assert.ok(movieDetailSource.includes("e.key === 'Escape'"), 'Video player must close on Escape');
+  assert.ok(
+    movieDetailSource.includes('playerOpenerRef.current') && movieDetailSource.includes('?.focus()'),
+    'Video player must restore focus to opener on close'
+  );
+
+  assert.ok(
+    movieDetailSource.includes('aria-label="Đóng trình phát"') &&
+    movieDetailSource.includes('min-h-[44px]') &&
+    movieDetailSource.includes('min-w-[44px]'),
+    'Video player close button must be >= 44x44px'
+  );
+
+  assert.ok(
+    movieDetailSource.includes('btn-primary min-h-[44px]'),
+    'Xem trailer button must declare min-h-[44px]'
+  );
+});
+
+test('3. CineBot Shell: Reduced motion JS policy, focus trap, opener restoration, and touch targets', () => {
+  assert.ok(cinebotSource.includes('role="dialog"'), 'CineBot must declare role="dialog"');
+  assert.ok(cinebotSource.includes('aria-modal="true"'), 'CineBot must declare aria-modal="true"');
+
+  assert.ok(
+    cinebotSource.includes('(prefers-reduced-motion: reduce)'),
+    'CineBot must query prefers-reduced-motion in JS'
+  );
+  assert.ok(
+    cinebotSource.includes("behavior: isReduced ? 'auto' : 'smooth'"),
+    'CineBot scrollToBottom must switch to auto when reduced motion is preferred'
+  );
+
+  assert.ok(cinebotSource.includes('inputRef.current?.focus()'), 'CineBot must focus input on open');
+  assert.ok(cinebotSource.includes('openerRef.current?.focus()'), 'CineBot must restore opener focus on close');
+
+  assert.ok(cinebotSource.includes("e.key === 'Tab'"), 'CineBot must intercept Tab key');
+  assert.ok(
+    cinebotSource.includes('!cinebotRef.current.contains(document.activeElement)'),
+    'CineBot must keep focus trapped inside dialog'
+  );
+
+  assert.ok(
+    cinebotSource.includes('aria-label="Đóng CineBot"') &&
+    cinebotSource.includes('min-h-[44px]') &&
+    cinebotSource.includes('min-w-[44px]'),
+    'CineBot close button must be >= 44x44px'
+  );
+
+  const navbar = fs.readFileSync(path.resolve(root, 'components/layout/Navbar.tsx'), 'utf8');
+  assert.match(navbar, /onClick=\{openChat\}\s+className="min-h-\[44px\] min-w-\[44px\][^"]*"\s*>\s*Hỏi CineBot/);
+  assert.match(navbar, /openChat\(\);\s*\}\}\s+className="btn-primary min-h-\[44px\] w-full[^"]*"\s*>\s*Hỏi CineBot/);
+});

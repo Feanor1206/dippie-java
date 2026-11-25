@@ -1,0 +1,1410 @@
+import { labels } from './labels_fixture.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+import ts from 'typescript';
+import { fileURLToPath } from 'node:url';
+
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const root = path.resolve(__dirname, '..');
+
+const homeFilePath = path.join(root, 'app/page.tsx');
+const detailPageFilePath = path.join(root, 'app/movies/[id]/page.tsx');
+const movieDetailCompFilePath = path.join(root, 'features/movies/components/MovieDetail.tsx');
+const profileOverviewFilePath = path.join(root, 'features/profile/components/ProfileOverview.tsx');
+const editorialHeroCompFilePath = path.join(root, 'features/home/components/EditorialHero.tsx');
+const watchlistProviderFilePath = path.join(root, 'lib/context/WatchlistContext.tsx');
+const filmShelfFilePath = path.join(root, 'features/movies/components/FilmShelf.tsx');
+const mediaRoutingFilePath = path.join(root, 'lib/services/mediaRouting.ts');
+
+const transpileOptions = {
+  compilerOptions: {
+    module: ts.ModuleKind.CommonJS,
+    jsx: ts.JsxEmit.React,
+    esModuleInterop: true,
+    target: ts.ScriptTarget.ES2022,
+  },
+};
+
+const homeTranspiled = ts.transpileModule(fs.readFileSync(homeFilePath, 'utf8'), transpileOptions).outputText;
+const detailPageTranspiled = ts.transpileModule(fs.readFileSync(detailPageFilePath, 'utf8'), transpileOptions).outputText;
+const movieDetailCompTranspiled = ts.transpileModule(fs.readFileSync(movieDetailCompFilePath, 'utf8'), transpileOptions).outputText;
+const profileOverviewTranspiled = ts.transpileModule(fs.readFileSync(profileOverviewFilePath, 'utf8'), transpileOptions).outputText;
+const editorialHeroTranspiled = ts.transpileModule(fs.readFileSync(editorialHeroCompFilePath, 'utf8'), transpileOptions).outputText;
+const watchlistProviderTranspiled = ts.transpileModule(fs.readFileSync(watchlistProviderFilePath, 'utf8'), transpileOptions).outputText;
+const filmShelfTranspiled = ts.transpileModule(fs.readFileSync(filmShelfFilePath, 'utf8'), transpileOptions).outputText;
+const mediaRoutingTranspiled = ts.transpileModule(fs.readFileSync(mediaRoutingFilePath, 'utf8'), transpileOptions).outputText;
+const mediaRoutingContext = { exports: {}, module: { exports: {} }, URLSearchParams, encodeURIComponent, decodeURIComponent, String, Number, Boolean, console };
+vm.runInNewContext(mediaRoutingTranspiled, mediaRoutingContext);
+const mediaRouting = mediaRoutingContext.module.exports.buildMediaItemHref ? mediaRoutingContext.module.exports : mediaRoutingContext.exports;
+
+const moviesFilePath = path.join(root, 'lib/data/movies.ts');
+
+export const SYNTHETIC_MOVIE_ID = 'm2-synthetic-anim-001';
+assert.equal(
+  fs.existsSync(moviesFilePath),
+  false,
+  'Unused demo dataset frontend/lib/data/movies.ts must be deleted'
+);
+
+const turn = () => new Promise((resolve) => setImmediate(resolve));
+
+function sampleMovie(overrides = {}) {
+  return {
+    id: overrides.id || 'anim-totoro',
+    title: overrides.title || 'My Neighbor Totoro',
+    overview: overrides.overview || 'Two girls move to the country and discover friendly spirits',
+    description: overrides.description || overrides.overview || 'Two girls move to the country and discover friendly spirits',
+    poster: overrides.poster !== undefined ? overrides.poster : 'https://image.example.com/totoro.jpg',
+    backdrop: overrides.backdrop !== undefined ? overrides.backdrop : 'https://image.example.com/totoro-backdrop.jpg',
+    year: overrides.year || 1988,
+    rating: overrides.rating || 8.2,
+    genres: overrides.genres || ['Animation', 'Family', 'Fantasy'],
+    runtime: overrides.runtime || '86 min',
+    videoUrl: overrides.videoUrl !== undefined ? overrides.videoUrl : 'https://video.example.com/trailer.mp4',
+    isAnimation: true,
+    ...overrides,
+  };
+}
+
+function findNodes(node, pred, out = []) {
+  if (!node) return out;
+  if (Array.isArray(node)) {
+    for (const child of node) findNodes(child, pred, out);
+    return out;
+  }
+  if (typeof node === 'object') {
+    if (pred(node)) out.push(node);
+    findNodes(node.props?.children, pred, out);
+  }
+  return out;
+}
+
+function getText(node) {
+  function collect(n) {
+    if (Array.isArray(n)) return n.map(collect).join(' ');
+    if (n && typeof n === 'object') return collect(n.props?.children);
+    return typeof n === 'string' || typeof n === 'number' ? String(n) : '';
+  }
+  return collect(node).replace(/\s+/g, ' ').trim();
+}
+
+function createHomeHarness(moviesMock, auth = { status: 'guest', token: null }) {
+  let slots = [];
+  let hookIndex = 0;
+  let effects = [];
+  let dirty = false;
+  let tree = null;
+  const sameDeps = (a, b) => a && b && a.length === b.length && a.every((x, j) => Object.is(x, b[j]));
+
+  const hooks = {
+    useState(initial) {
+      const idx = hookIndex++;
+      if (!slots[idx]) slots[idx] = { v: typeof initial === 'function' ? initial() : initial };
+      return [
+        slots[idx].v,
+        (updater) => {
+          slots[idx].v = typeof updater === 'function' ? updater(slots[idx].v) : updater;
+          dirty = true;
+        },
+      ];
+    },
+    useRef(initial) {
+      const idx = hookIndex++;
+      if (!slots[idx]) slots[idx] = { current: initial };
+      return slots[idx];
+    },
+    useMemo(factory, deps) {
+      const idx = hookIndex++;
+      if (!slots[idx] || !sameDeps(slots[idx].deps, deps)) slots[idx] = { v: factory(), deps };
+      return slots[idx].v;
+    },
+    useCallback(fn, deps) {
+      return hooks.useMemo(() => fn, deps);
+    },
+    useEffect(fn, deps) {
+      const idx = hookIndex++;
+      if (!slots[idx] || !sameDeps(slots[idx].deps, deps)) {
+        const old = slots[idx];
+        slots[idx] = { deps, cleanup: old?.cleanup };
+        effects.push(() => {
+          if (typeof slots[idx].cleanup === 'function') slots[idx].cleanup();
+          slots[idx].cleanup = fn();
+        });
+      }
+    },
+    createElement(type, props, ...children) {
+      const flat = children.length === 1 ? children[0] : children.length > 1 ? children : undefined;
+      return { type, props: { ...props, ...(flat !== undefined ? { children: flat } : {}) } };
+    },
+  };
+
+  const moduleObj = { exports: {} };
+  const context = {
+    module: moduleObj,
+    exports: moduleObj.exports,
+    console,
+    AbortController,
+    require: (mod) => {
+      if (mod === '@/lib/labels') return labels;
+      if (mod === 'react') return { __esModule: true, default: hooks, ...hooks };
+      if (mod === 'react-router') return { Link: 'route-link' };
+
+      if (mod === 'lucide-react') return new Proxy({}, { get: (_, k) => k });
+      if (mod.includes('Navbar') || mod.includes('Footer')) {
+        return { Navbar: () => ({ type: 'Navbar' }), Footer: () => ({ type: 'Footer' }) };
+      }
+      if (mod.includes('EditorialHero')) {
+        return {
+          EditorialHero: 'EditorialHero',
+        };
+      }
+      if (mod.includes('FilmShelf')) {
+        return { FilmShelf: 'FilmShelf' };
+      }
+      if (mod.includes('movieProgress')) {
+        return { listMovieProgress: () => [{ movieId: 'local-film', positionMs: 1000 }] };
+      }
+      if (mod.includes('watchProgressService')) {
+        return { getGuestWatchProgress: () => [{ episodeId: 'local-episode', positionMs: 2000 }] };
+      }
+      if (mod.includes('recommendationService')) {
+        return { getRecommendations: async (...args) => ({
+          movies: await moviesMock(...args), reasoning: 'Gợi ý từ kho phim.',
+        }) };
+      }
+      if (mod.includes('AuthContext')) return { useAuth: () => auth };
+      return {};
+    },
+  };
+
+  vm.runInNewContext(homeTranspiled, context, { filename: homeFilePath });
+
+  function render() {
+    hookIndex = 0;
+    dirty = false;
+    tree = moduleObj.exports.default();
+    const pending = effects;
+    effects = [];
+    for (const ef of pending) ef();
+    return tree;
+  }
+
+  async function settle(maxPasses = 8) {
+    for (let pass = 0; pass < maxPasses; pass++) {
+      await turn();
+      if (dirty || pass === 0) render();
+    }
+    return tree;
+  }
+
+  return { render, settle, get tree() { return tree; } };
+}
+
+function createDetailHarness(requestedId, getCatalogMovieByIdMock, browseCatalogMock) {
+  let slots = [];
+  let hookIndex = 0;
+  let effects = [];
+  let dirty = false;
+  let tree = null;
+  const sameDeps = (a, b) => a && b && a.length === b.length && a.every((x, j) => Object.is(x, b[j]));
+
+  const hooks = {
+    useState(initial) {
+      const idx = hookIndex++;
+      if (!slots[idx]) slots[idx] = { v: typeof initial === 'function' ? initial() : initial };
+      return [
+        slots[idx].v,
+        (updater) => {
+          slots[idx].v = typeof updater === 'function' ? updater(slots[idx].v) : updater;
+          dirty = true;
+        },
+      ];
+    },
+    useRef(initial) {
+      const idx = hookIndex++;
+      if (!slots[idx]) slots[idx] = { current: initial };
+      return slots[idx];
+    },
+    useMemo(factory, deps) {
+      const idx = hookIndex++;
+      if (!slots[idx] || !sameDeps(slots[idx].deps, deps)) slots[idx] = { v: factory(), deps };
+      return slots[idx].v;
+    },
+    useCallback(fn, deps) {
+      return hooks.useMemo(() => fn, deps);
+    },
+    useEffect(fn, deps) {
+      const idx = hookIndex++;
+      if (!slots[idx] || !sameDeps(slots[idx].deps, deps)) {
+        const old = slots[idx];
+        slots[idx] = { deps, cleanup: old?.cleanup };
+        effects.push(() => {
+          if (typeof slots[idx].cleanup === 'function') slots[idx].cleanup();
+          slots[idx].cleanup = fn();
+        });
+      }
+    },
+    createElement(type, props, ...children) {
+      const flat = children.length === 1 ? children[0] : children.length > 1 ? children : undefined;
+      return { type, props: { ...props, ...(flat !== undefined ? { children: flat } : {}) } };
+    },
+  };
+
+  const moduleObj = { exports: {} };
+  const context = {
+    module: moduleObj,
+    exports: moduleObj.exports,
+    console,
+    AbortController,
+    require: (mod) => {
+      if (mod === '@/lib/labels') return labels;
+      if (mod === 'react') return { __esModule: true, default: hooks, ...hooks };
+      if (mod === 'react-router') return { Link: 'route-link', useParams: () => ({ id: requestedId }) };
+
+      if (mod === 'lucide-react') return new Proxy({}, { get: (_, k) => k });
+      if (mod.includes('Navbar') || mod.includes('Footer')) {
+        return { Navbar: () => ({ type: 'Navbar' }), Footer: () => ({ type: 'Footer' }) };
+      }
+      if (mod.includes('MovieDetail')) {
+        return {
+          MovieDetail: 'MovieDetail',
+        };
+      }
+      if (mod.includes('catalogService')) {
+        return {
+          getCatalogMovieById: getCatalogMovieByIdMock,
+          browseCatalog: browseCatalogMock || (async () => ({ items: [] })),
+        };
+      }
+      return {};
+    },
+  };
+
+  vm.runInNewContext(detailPageTranspiled, context, { filename: detailPageFilePath });
+
+  function render() {
+    hookIndex = 0;
+    dirty = false;
+    tree = moduleObj.exports.default();
+    const pending = effects;
+    effects = [];
+    for (const ef of pending) ef();
+    return tree;
+  }
+
+  async function settle(maxPasses = 8) {
+    for (let pass = 0; pass < maxPasses; pass++) {
+      await turn();
+      if (dirty || pass === 0) render();
+    }
+    return tree;
+  }
+
+  return { render, settle, get tree() { return tree; } };
+}
+
+function renderMovieDetail(movie, similarMovies = [], watchlistContext = {}) {
+  let slots = [];
+  let hookIndex = 0;
+  const hooks = {
+    useState(initial) {
+      const idx = hookIndex++;
+      if (!slots[idx]) slots[idx] = { v: typeof initial === 'function' ? initial() : initial };
+      return [slots[idx].v, (val) => { slots[idx].v = val; }];
+    },
+    useRef(initial) {
+      const idx = hookIndex++;
+      if (!slots[idx]) slots[idx] = { current: initial };
+      return slots[idx];
+    },
+    useEffect(fn, deps) {
+    },
+    createElement(type, props, ...children) {
+      const flat = children.length === 1 ? children[0] : children.length > 1 ? children : undefined;
+      return { type, props: { ...props, ...(flat !== undefined ? { children: flat } : {}) } };
+    },
+  };
+
+  const defaultWatchlist = {
+    isWatchlisted: () => false,
+    toggleWatchlist: () => {},
+    isFavorite: () => false,
+    toggleFavorite: () => {},
+    getRating: () => null,
+    rateMovie: () => {},
+    removeRating: () => {},
+    isActionPending: () => false,
+    isActionUnconfirmed: () => false,
+    getActionIntent: () => null,
+    getUnconfirmedRating: () => undefined,
+    openChat: () => {},
+    ...watchlistContext,
+  };
+
+  const moduleObj = { exports: {} };
+  const context = {
+    module: moduleObj,
+    exports: moduleObj.exports,
+    console,
+    require: (mod) => {
+      if (mod === '@/lib/labels') return labels;
+      if (mod === 'react') return { __esModule: true, default: hooks, ...hooks };
+
+      if (mod === 'react-router') return { Link: 'route-link' };
+      if (mod === 'lucide-react') return new Proxy({}, { get: (_, k) => k });
+      if (mod.includes('WatchlistContext')) return { useWatchlist: () => defaultWatchlist };
+      return {};
+    },
+  };
+
+  vm.runInNewContext(movieDetailCompTranspiled, context, { filename: movieDetailCompFilePath });
+  hookIndex = 0;
+  return moduleObj.exports.MovieDetail({ movie, similarMovies });
+}
+
+function renderEditorialHero(movie, watchlistContext = {}) {
+  let slots = [];
+  let hookIndex = 0;
+  const hooks = {
+    useState(initial) {
+      const idx = hookIndex++;
+      if (!slots[idx]) slots[idx] = { v: typeof initial === 'function' ? initial() : initial };
+      return [slots[idx].v, (val) => { slots[idx].v = val; }];
+    },
+    useRef(initial) {
+      const idx = hookIndex++;
+      if (!slots[idx]) slots[idx] = { current: initial };
+      return slots[idx];
+    },
+    createElement(type, props, ...children) {
+      const flat = children.length === 1 ? children[0] : children.length > 1 ? children : undefined;
+      return { type, props: { ...props, ...(flat !== undefined ? { children: flat } : {}) } };
+    },
+  };
+
+  const defaultWatchlist = {
+    isWatchlisted: () => false,
+    toggleWatchlist: () => {},
+    openChat: () => {},
+    isActionPending: () => false,
+    isActionUnconfirmed: () => false,
+    getActionIntent: () => null,
+    getUnconfirmedRating: () => undefined,
+    ...watchlistContext,
+  };
+
+  const moduleObj = { exports: {} };
+  const context = {
+    module: moduleObj,
+    exports: moduleObj.exports,
+    console,
+    require: (mod) => {
+      if (mod === '@/lib/labels') return labels;
+      if (mod === 'react') return { __esModule: true, default: hooks, ...hooks };
+
+      if (mod === 'react-router') return { Link: 'route-link' };
+      if (mod === 'lucide-react') return new Proxy({}, { get: (_, k) => k });
+      if (mod.includes('WatchlistContext')) return { useWatchlist: () => defaultWatchlist };
+      return {};
+    },
+  };
+
+  vm.runInNewContext(editorialHeroTranspiled, context, { filename: editorialHeroCompFilePath });
+  hookIndex = 0;
+  return moduleObj.exports.EditorialHero({ movie });
+}
+
+function createProfileHarness(initialLibrary, getCatalogMovieByIdMock, customClock = null) {
+  let slots = [];
+  let hookIndex = 0;
+  let effects = [];
+  let dirty = false;
+  let tree = null;
+  const sameDeps = (a, b) => a && b && a.length === b.length && a.every((x, j) => Object.is(x, b[j]));
+
+  const hooks = {
+    useState(initial) {
+      const idx = hookIndex++;
+      if (!slots[idx]) slots[idx] = { v: typeof initial === 'function' ? initial() : initial };
+      return [
+        slots[idx].v,
+        (updater) => {
+          slots[idx].v = typeof updater === 'function' ? updater(slots[idx].v) : updater;
+          dirty = true;
+        },
+      ];
+    },
+    useRef(initial) {
+      const idx = hookIndex++;
+      if (!slots[idx]) slots[idx] = { current: initial };
+      return slots[idx];
+    },
+    useMemo(factory, deps) {
+      const idx = hookIndex++;
+      if (!slots[idx] || !sameDeps(slots[idx].deps, deps)) slots[idx] = { v: factory(), deps };
+      return slots[idx].v;
+    },
+    useCallback(fn, deps) {
+      return hooks.useMemo(() => fn, deps);
+    },
+    useEffect(fn, deps) {
+      const idx = hookIndex++;
+      if (!slots[idx] || !sameDeps(slots[idx].deps, deps)) {
+        const old = slots[idx];
+        slots[idx] = { deps, cleanup: old?.cleanup };
+        effects.push(() => {
+          if (typeof slots[idx].cleanup === 'function') slots[idx].cleanup();
+          slots[idx].cleanup = fn();
+        });
+      }
+    },
+    createElement(type, props, ...children) {
+      const flat = children.length === 1 ? children[0] : children.length > 1 ? children : undefined;
+      return { type, props: { ...props, ...(flat !== undefined ? { children: flat } : {}) } };
+    },
+  };
+
+  const currentLibrary = {
+    watchlist: initialLibrary.watchlist || [],
+    favorites: initialLibrary.favorites || [],
+    ratings: initialLibrary.ratings || {},
+    openChat: () => {},
+    isLibraryLoading: false,
+    libraryError: null,
+    refetchLibrary: () => {},
+    isGuestMode: false,
+    toggleWatchlist: () => {},
+    toggleFavorite: () => {},
+    rateMovie: () => {},
+    removeRating: () => {},
+    isActionPending: () => false,
+    isActionUnconfirmed: () => false,
+    getActionIntent: () => null,
+    getUnconfirmedRating: () => undefined,
+    showToast: () => {},
+    ...initialLibrary.watchlistContext,
+  };
+
+  const defaultAuth = {
+    user: { id: 'user-1', email: 'test@example.com' },
+    status: 'authenticated',
+    openAuthModal: () => {},
+    retryVerify: () => {},
+  };
+
+  const moduleObj = { exports: {} };
+  const context = {
+    module: moduleObj,
+    exports: moduleObj.exports,
+    console,
+    AbortController,
+    ...(customClock ? { Date: customClock } : {}),
+    require: (mod) => {
+      if (mod === '@/lib/labels') return labels;
+      if (mod === 'react') return { __esModule: true, default: hooks, ...hooks };
+      if (mod === 'react-router') return { Link: 'route-link' };
+
+      if (mod === 'lucide-react') return new Proxy({}, { get: (_, k) => k });
+      if (mod.includes('MovieCard')) return { MovieCard: 'MovieCard' };
+      if (mod.includes('WatchlistContext')) return { useWatchlist: () => currentLibrary };
+      if (mod.includes('AuthContext')) return { useAuth: () => defaultAuth };
+      if (mod.includes('catalogService')) {
+        return {
+          getCatalogMovieById: getCatalogMovieByIdMock,
+        };
+      }
+      return {};
+    },
+  };
+
+  vm.runInNewContext(profileOverviewTranspiled, context, { filename: profileOverviewFilePath });
+
+  if (typeof moduleObj.exports.clearProfileMetadataCache === 'function') {
+    moduleObj.exports.clearProfileMetadataCache();
+  }
+
+  function render() {
+    hookIndex = 0;
+    dirty = false;
+    tree = moduleObj.exports.ProfileOverview();
+    const pending = effects;
+    effects = [];
+    for (const ef of pending) ef();
+    return tree;
+  }
+
+  async function settle(maxPasses = 8) {
+    for (let pass = 0; pass < maxPasses; pass++) {
+      await turn();
+      if (dirty || pass === 0) render();
+    }
+    return tree;
+  }
+
+  function setLibrary(next) {
+    Object.assign(currentLibrary, next);
+    dirty = true;
+    render();
+  }
+
+  return { render, settle, setLibrary, get tree() { return tree; } };
+}
+
+function mountProductionProvider(fetcher, customAuth = {}) {
+  let slots = [];
+  let hookIndex = 0;
+  let effects = [];
+  let changed = false;
+  let value = null;
+  const same = (a, b) => a && b && a.length === b.length && a.every((x, i) => Object.is(x, b[i]));
+
+  const hooks = {
+    createContext: () => ({ Provider: 'Provider' }),
+    useContext: () => null,
+    useState(initial) {
+      const i = hookIndex++;
+      if (!slots[i]) slots[i] = { v: typeof initial === 'function' ? initial() : initial };
+      return [
+        slots[i].v,
+        (v) => {
+          slots[i].v = typeof v === 'function' ? v(slots[i].v) : v;
+          changed = true;
+        },
+      ];
+    },
+    useRef(initial) {
+      const i = hookIndex++;
+      if (!slots[i]) slots[i] = { current: initial };
+      return slots[i];
+    },
+    useCallback(fn, deps) {
+      const i = hookIndex++;
+      if (!slots[i] || !same(slots[i].deps, deps)) slots[i] = { v: fn, deps };
+      return slots[i].v;
+    },
+    useEffect(fn, deps) {
+      const i = hookIndex++;
+      if (!slots[i] || !same(slots[i].deps, deps)) {
+        const prev = slots[i];
+        slots[i] = { deps, cleanup: prev?.cleanup };
+        effects.push(() => {
+          prev?.cleanup?.();
+          slots[i].cleanup = fn();
+        });
+      }
+    },
+    useMemo(fn, deps) {
+      const i = hookIndex++;
+      if (!slots[i] || !same(slots[i].deps, deps)) slots[i] = { v: fn(), deps };
+      return slots[i].v;
+    },
+    createElement(type, props, ...children) {
+      return { type, props: { ...props, children } };
+    },
+  };
+
+  const moduleObj = { exports: {} };
+  const storage = new Map();
+  const stableUser = { id: 'user-journey-1', username: 'animator' };
+  const stableAuth = {
+    isAuthenticated: true,
+    token: 'jwt-test-token',
+    user: stableUser,
+    status: 'authenticated',
+    handleSessionExpired: () => {},
+    ...customAuth,
+  };
+  const context = {
+    module: moduleObj,
+    exports: moduleObj.exports,
+    process: { env: {} },
+    console,
+    AbortController,
+    DOMException,
+    fetch: fetcher,
+    window: {},
+    localStorage: {
+      getItem: (k) => storage.get(k) || null,
+      setItem: (k, v) => storage.set(k, String(v)),
+      removeItem: (k) => storage.delete(k),
+    },
+    setTimeout: (fn) => setTimeout(fn, 0),
+    clearTimeout: (id) => clearTimeout(id),
+    require: (name) => {
+      if (name === '@/lib/labels') return labels;
+
+      if (name === 'react') return { __esModule: true, default: hooks, ...hooks, lazy: () => () => null };
+      if (name.includes('AuthContext')) {
+        return {
+          useAuth: () => stableAuth,
+        };
+      }
+      if (name.includes('AuthModal')) return { AuthModal: () => null };
+      if (name.includes('CineBot')) return { CineBot: () => null, CineBotFloatingTrigger: () => null };
+      if (name === 'lucide-react') return new Proxy({}, { get: () => () => null });
+      return {};
+    },
+  };
+
+  vm.runInNewContext(watchlistProviderTranspiled, context, { filename: watchlistProviderFilePath });
+
+  function render() {
+    hookIndex = 0;
+    changed = false;
+    const res = moduleObj.exports.WatchlistProvider({ children: null });
+    value = res.props.value;
+    const pending = effects;
+    effects = [];
+    for (const ef of pending) ef();
+    return value;
+  }
+
+  async function settle(maxPasses = 10) {
+    for (let pass = 0; pass < maxPasses; pass++) {
+      await turn();
+      if (changed || pass === 0) render();
+    }
+    return value;
+  }
+
+  render();
+  return { render, settle, get value() { return value; } };
+}
+
+
+test('1. Home: Loads suggestions once and preserves loading, empty, error, retry, and cover states', async () => {
+  let listCalls = 0;
+  const jadooFilm = {
+    id: 'jadoo',
+    title: 'Jadoo',
+    description: 'A real catalog synopsis.',
+    year: 2000,
+  };
+  const h = createHomeHarness(async (token, _signal, watched) => {
+    listCalls++;
+    assert.equal(token, null);
+    assert.deepEqual(Array.from(watched), ['local-film', 'local-episode']);
+    return [jadooFilm];
+  });
+  h.render();
+  await h.settle();
+
+  assert.equal(listCalls, 1, 'Home requests suggestions once');
+  const shelf = findNodes(h.tree, (n) => n.type === 'FilmShelf')[0];
+  assert.ok(shelf, 'Home renders the film shelf');
+  assert.equal(shelf.props.movies[0].id, 'jadoo');
+  assert.equal(shelf.props.movies[0].description, 'A real catalog synopsis.');
+  assert.ok(findNodes(h.tree, (n) => n.type === 'h1').length, 'The illustrated cover remains visible');
+
+  const emptyHarness = createHomeHarness(async () => []);
+  emptyHarness.render();
+  await emptyHarness.settle();
+
+  const emptyShelf = findNodes(emptyHarness.tree, (n) => n.type === 'FilmShelf')[0];
+  assert.ok(emptyShelf, 'An empty catalog still renders the shelf container');
+  assert.deepEqual(emptyShelf.props.movies, []);
+  assert.ok(findNodes(emptyHarness.tree, (n) => n.type === 'h1').length, 'The cover stays visible for an empty catalog');
+
+  let retryTriggered = false;
+  const errorHarness = createHomeHarness(async () => {
+    if (retryTriggered) {
+      return [{ id: 'retry-film', title: 'Retry Animation' }];
+    }
+    throw new Error('Máy chủ danh mục không phản hồi');
+  });
+  errorHarness.render();
+  await errorHarness.settle();
+
+  const errorShelf = findNodes(errorHarness.tree, (n) => n.type === 'FilmShelf')[0];
+  const errorTree = renderFilmShelf(errorShelf.props.movies, errorShelf.props);
+  const errorText = getText(errorTree);
+  assert.ok(
+    errorText.includes('Không thể tải gợi ý.'),
+    'Must render error state when the recommendation service is down'
+  );
+
+  const retryBtn = findNodes(errorTree, (n) => n.type === 'button' && getText(n).includes('Thử lại'))[0];
+  assert.ok(retryBtn, 'Retry button must be provided');
+  retryTriggered = true;
+  retryBtn.props.onClick();
+  await errorHarness.settle();
+
+  assert.equal(findNodes(errorHarness.tree, (n) => n.type === 'FilmShelf')[0].props.movies[0].id, 'retry-film', 'Retry restores real film records');
+});
+
+test('2. Detail: Canonical ID lookup, real 404 vs server error, and deterministic similar rail (D1 decoupled)', async () => {
+  let similarDeferredResolve;
+  const pendingSimilarPromise = new Promise((resolve) => {
+    similarDeferredResolve = resolve;
+  });
+
+  let mainLookupResolved = false;
+  let similarQuery = null;
+  const mockBrowse = async (options) => {
+    similarQuery = options;
+    return pendingSimilarPromise;
+  };
+
+  const validHarness = createDetailHarness(
+    'spirited-away',
+    async (id) => {
+      mainLookupResolved = true;
+      return sampleMovie({ id: 'spirited-away', title: 'Spirited Away', genres: ['Animation', 'Fantasy'] });
+    },
+    mockBrowse
+  );
+  validHarness.render();
+  await validHarness.settle();
+
+  assert.equal(mainLookupResolved, true, 'Main lookup resolved');
+  const immediateDetailNodes = findNodes(validHarness.tree, (n) => n.type === 'MovieDetail');
+  assert.equal(immediateDetailNodes.length, 1, 'D1: MovieDetail must be visible immediately while similar rail is pending');
+  assert.equal(immediateDetailNodes[0].props.movie.id, 'spirited-away');
+
+  similarDeferredResolve({
+    items: [sampleMovie({ id: 'kaguya', title: 'The Tale of Princess Kaguya' })],
+    page: 0,
+    size: 6,
+    totalElements: 1,
+    totalPages: 1,
+  });
+  await validHarness.settle();
+
+  const finalDetailNodes = findNodes(validHarness.tree, (n) => n.type === 'MovieDetail');
+  assert.equal(finalDetailNodes.length, 1);
+  assert.equal(finalDetailNodes[0].props.movie.id, 'spirited-away');
+  assert.equal(similarQuery?.animationOnly, true, 'Similar rail query must enforce animationOnly');
+
+  const failureSimilarHarness = createDetailHarness(
+    'spirited-away',
+    async (id) => sampleMovie({ id: 'spirited-away', title: 'Spirited Away' }),
+    async () => {
+      throw new Error('Similar service timeout');
+    }
+  );
+  failureSimilarHarness.render();
+  await failureSimilarHarness.settle();
+
+  const afterFailureNodes = findNodes(failureSimilarHarness.tree, (n) => n.type === 'MovieDetail');
+  assert.equal(afterFailureNodes.length, 1, 'Main detail must remain visible when similar rail throws');
+  assert.equal(getText(failureSimilarHarness.tree).includes('Không thể kết nối'), false, 'Similar failure must not trigger page error banner');
+
+  const notFoundHarness = createDetailHarness('nonexistent-id', async () => null);
+  notFoundHarness.render();
+  await notFoundHarness.settle();
+
+  const notFoundText = getText(notFoundHarness.tree);
+  assert.ok(notFoundText.includes('Không tìm thấy phim hoạt hình'), 'Must render dedicated 404 message');
+  assert.ok(notFoundText.includes('nonexistent-id'), 'Must display requested canonical ID in 404 view');
+
+  let detailRetryTriggered = false;
+  const errorDetailHarness = createDetailHarness('failing-movie', async () => {
+    if (detailRetryTriggered) {
+      return sampleMovie({ id: 'failing-movie', title: 'Recovered Movie' });
+    }
+    throw new Error('Lỗi kết nối máy chủ 500');
+  });
+  errorDetailHarness.render();
+  await errorDetailHarness.settle();
+
+  const detailErrorText = getText(errorDetailHarness.tree);
+  assert.ok(detailErrorText.includes('Không thể kết nối đến máy chủ'), 'Must show server connection error banner');
+  assert.equal(detailErrorText.includes('Không tìm thấy phim hoạt hình'), false, 'Server error must NOT be masked as 404');
+
+  const detailRetryBtn = findNodes(errorDetailHarness.tree, (n) => n.type === 'button' && getText(n).includes('Thử kết nối lại'))[0];
+  assert.ok(detailRetryBtn, 'Must render retry button on server error');
+  detailRetryTriggered = true;
+  detailRetryBtn.props.onClick();
+  await errorDetailHarness.settle();
+
+  assert.equal(findNodes(errorDetailHarness.tree, (n) => n.type === 'MovieDetail').length, 1);
+});
+
+test('3. MovieDetail: Safe media fallbacks (missing backdrop, missing poster, and video playback capability)', () => {
+  const minimalMovie = sampleMovie({
+    id: 'minimal-movie',
+    title: 'Minimal Anime',
+    backdrop: '',
+    poster: '',
+    videoUrl: '',
+  });
+
+  const nodeMinimal = renderMovieDetail(minimalMovie);
+
+  const images = findNodes(nodeMinimal, (n) => n.type === 'img');
+  assert.equal(images.length, 0, 'Must not render an image with empty poster or backdrop');
+
+  const filmIcons = findNodes(nodeMinimal, (n) => n.type === 'Film');
+  assert.ok(filmIcons.length > 0, 'Must render Film placeholder icon when poster is empty');
+
+  const playButtons = findNodes(nodeMinimal, (n) => n.type === 'button' && getText(n).includes('Xem đoạn giới thiệu'));
+  assert.equal(playButtons.length, 0, 'Must NOT render play trailer button when videoUrl is empty');
+
+  const fullMovie = sampleMovie({
+    id: 'full-movie',
+    title: 'Full Anime',
+    backdrop: 'https://img.com/backdrop.jpg',
+    poster: 'https://img.com/poster.jpg',
+    videoUrl: 'https://video.com/trailer.mp4',
+  });
+
+  const nodeFull = renderMovieDetail(fullMovie);
+  const fullImages = findNodes(nodeFull, (n) => n.type === 'img');
+  assert.equal(fullImages.length, 2, 'Must render backdrop and poster images when valid');
+  assert.equal(fullImages[0].props.src, 'https://img.com/backdrop.jpg');
+  assert.equal(fullImages[1].props.src, 'https://img.com/poster.jpg');
+
+  const fullPlayButtons = findNodes(nodeFull, (n) => n.type === 'button' && getText(n).includes('Xem đoạn giới thiệu'));
+  assert.equal(fullPlayButtons.length, 1, 'Trailer play button rendered when videoUrl exists');
+});
+
+test('4. EditorialHero: Preserves M1 pending feedback and uncertain retry intent (D2)', () => {
+  const heroMovie = sampleMovie({ id: 'hero-anim', title: 'Hero Animation' });
+  let toggleCalledWith = null;
+
+  const heroAddNode = renderEditorialHero(heroMovie, {
+    isWatchlisted: () => true,
+    isActionPending: () => false,
+    isActionUnconfirmed: (id, act) => id === 'hero-anim' && (!act || act === 'watchlist'),
+    getActionIntent: (id, act) => (id === 'hero-anim' && (!act || act === 'watchlist') ? 'add' : null),
+    toggleWatchlist: (id, title, poster) => { toggleCalledWith = { id, title, poster }; },
+  });
+
+  const addButton = findNodes(heroAddNode, (n) => n.type === 'button' && n.props['aria-label'])[0];
+  assert.ok(addButton, 'Must render watchlist button');
+  assert.ok(addButton.props['aria-label'].includes('Thử lưu lại'), 'Aria label must preserve ADD intent');
+  assert.equal(addButton.props['aria-label'].includes('Xóa khỏi danh sách xem'), false, 'Must NOT show remove label on add retry');
+  assert.ok(getText(addButton).includes('Thử lưu lại'), 'Button text must show Thử lưu lại');
+
+  const addBadge = findNodes(heroAddNode, (n) => n.props?.['data-testid'] === 'hero-unconfirmed-badge')[0];
+  assert.ok(addBadge, 'Must render unconfirmed badge');
+
+  addButton.props.onClick();
+  assert.equal(toggleCalledWith?.id, 'hero-anim', 'Clicking button calls toggleWatchlist');
+
+  toggleCalledWith = null;
+  const heroRemoveNode = renderEditorialHero(heroMovie, {
+    isWatchlisted: () => false,
+    isActionPending: () => false,
+    isActionUnconfirmed: (id, act) => id === 'hero-anim' && (!act || act === 'watchlist'),
+    getActionIntent: (id, act) => (id === 'hero-anim' && (!act || act === 'watchlist') ? 'remove' : null),
+    toggleWatchlist: (id, title, poster) => { toggleCalledWith = { id, title, poster }; },
+  });
+
+  const removeButton = findNodes(heroRemoveNode, (n) => n.type === 'button' && n.props['aria-label'])[0];
+  assert.ok(removeButton.props['aria-label'].includes('Thử xóa lại'), 'Aria label must preserve REMOVE intent');
+  assert.equal(removeButton.props['aria-label'].includes('Thêm vào danh sách xem'), false, 'Must NOT show add label on remove retry');
+  assert.ok(getText(removeButton).includes('Thử xóa lại'), 'Button text must show Thử xóa lại');
+
+  removeButton.props.onClick();
+  assert.equal(toggleCalledWith?.id, 'hero-anim', 'Clicking button calls toggleWatchlist to retry remove');
+
+  const heroPendingNode = renderEditorialHero(heroMovie, {
+    isWatchlisted: () => false,
+    isActionPending: () => true,
+    isActionUnconfirmed: () => false,
+    getActionIntent: () => null,
+  });
+
+  const pendingButton = findNodes(heroPendingNode, (n) => n.type === 'button' && n.props['aria-label'])[0];
+  assert.equal(pendingButton.props.disabled, true, 'Pending button must be disabled to prevent duplicate submissions');
+  assert.ok(getText(pendingButton).includes('Đang cập nhật'), 'Pending button must display in-flight loading text');
+
+  const heroConfirmedNode = renderEditorialHero(heroMovie, {
+    isWatchlisted: () => true,
+    isActionPending: () => false,
+    isActionUnconfirmed: () => false,
+    getActionIntent: () => null,
+  });
+  const confirmedButton = findNodes(heroConfirmedNode, (n) => n.type === 'button' && n.props['aria-label'])[0];
+  assert.equal(confirmedButton.props['aria-label'], 'Xóa khỏi danh sách xem');
+  assert.ok(getText(confirmedButton).includes('Đã lưu vào danh sách xem'));
+});
+
+test('5. Profile: Enforces 5-min TTL, clears stale IDs on library update, and preserves items on network error (D3)', async () => {
+  let fakeNow = Date.now();
+  class TestDate extends Date {
+    static now() { return fakeNow; }
+  }
+
+  let calls = 0;
+  const mockApi = async (id) => {
+    calls++;
+    if (calls === 1) return sampleMovie({ id, title: 'Old Title V1' });
+    if (calls === 2) return null;
+    throw new Error('Network error 503');
+  };
+
+  const p = createProfileHarness({ watchlist: ['movie-x'], favorites: [], ratings: {} }, mockApi, TestDate);
+  p.render();
+  await p.settle();
+
+  assert.equal(calls, 1, 'Initial fetch of movie-x');
+  const card1 = findNodes(p.tree, (n) => n.type === 'MovieCard')[0];
+  assert.equal(card1?.props.movie.title, 'Old Title V1');
+
+  fakeNow += 6 * 60 * 1000;
+
+  p.setLibrary({ watchlist: [] });
+  await p.settle();
+
+  p.setLibrary({ watchlist: ['movie-x'] });
+  await p.settle();
+
+  assert.equal(calls, 2, 'D3: Re-adding item after TTL expiry must trigger fresh API fetch');
+
+  const cardAfter404 = findNodes(p.tree, (n) => n.type === 'MovieCard')[0];
+  assert.equal(cardAfter404, undefined, 'Orphan 404 item must NOT render valid MovieCard');
+  assert.ok(getText(p.tree).includes('Không có trong catalog (404)'), 'Must render orphan 404 message');
+
+  calls = 2;
+  fakeNow += 6 * 60 * 1000;
+  p.setLibrary({ watchlist: [] });
+  await p.settle();
+  p.setLibrary({ watchlist: ['movie-x'] });
+  await p.settle();
+
+  assert.ok(getText(p.tree).includes('Không thể kết nối máy chủ để tải thông tin phim'), 'Network error marked as connection error');
+  assert.ok(getText(p.tree).includes('Thử tải lại'), 'Network error provides retry button');
+});
+
+test('6. Browsing, recommendations and profile preserve canonical film IDs', async () => {
+  const canonicalMovie = sampleMovie({
+    id: 'totoro',
+    title: 'My Neighbor Totoro',
+    year: 1988,
+    rating: 8.2,
+    genres: ['Animation', 'Family'],
+  });
+
+  const home = createHomeHarness(async () => ([canonicalMovie]));
+  home.render();
+  await home.settle();
+
+  const shelf = findNodes(home.tree, (n) => n.type === 'FilmShelf')[0];
+  assert.ok(shelf, 'Home must render a film shelf');
+  assert.equal(shelf.props.movies[0].id, 'totoro');
+  assert.equal(shelf.props.movies[0].year, 1988);
+
+  const detail = createDetailHarness('totoro', async () => canonicalMovie);
+  detail.render();
+  await detail.settle();
+
+  const movieDetail = findNodes(detail.tree, (n) => n.type === 'MovieDetail')[0];
+  assert.ok(movieDetail, 'Detail must render MovieDetail');
+  assert.equal(movieDetail.props.movie.id, 'totoro');
+  assert.equal(movieDetail.props.movie.title, 'My Neighbor Totoro');
+
+  const profile = createProfileHarness(
+    { watchlist: ['totoro'], favorites: [], ratings: {} },
+    async (id) => (id === 'totoro' ? canonicalMovie : null)
+  );
+  profile.render();
+  await profile.settle();
+
+  const profileCard = findNodes(profile.tree, (n) => n.type === 'MovieCard')[0];
+  assert.ok(profileCard, 'Profile must render MovieCard for totoro');
+  assert.equal(profileCard.props.movie.id, 'totoro');
+  assert.equal(profileCard.props.movie.title, 'My Neighbor Totoro');
+});
+
+test('7. End-to-End M2 User Journey: Home -> Save/Rate -> Provider Persist -> Reload Profile (Cross-surface integration)', async () => {
+  const persistedWatchlist = new Set();
+  const persistedRatings = new Map();
+  const capturedRequests = [];
+
+  const canonicalMovie = sampleMovie({
+    id: SYNTHETIC_MOVIE_ID,
+    title: 'The Quantum Garden',
+    year: 2026,
+    rating: 9.1,
+    runtime: '1h 45m',
+    genres: ['Animation', 'Sci-Fi'],
+    poster: 'https://images.unsplash.com/photo-synthetic-anim-001',
+  });
+
+  const persistedFetcher = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    const parsedUrl = new URL(url, 'http://localhost');
+    const pathname = parsedUrl.pathname;
+
+    if (pathname.includes('/users/watchlist') && method === 'GET') {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: Array.from(persistedWatchlist).map((id) => ({ movieId: id })),
+        }),
+      };
+    }
+    if (pathname.includes('/users/watchlist') && method === 'POST') {
+      const body = JSON.parse(options.body || '{}');
+      capturedRequests.push({ method: 'POST', endpoint: 'watchlist', body });
+      persistedWatchlist.add(body.movieId);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { movieId: body.movieId, movieTitle: body.movieTitle } }),
+      };
+    }
+    if (pathname.includes('/users/watchlist/') && method === 'DELETE') {
+      const parts = pathname.split('/');
+      const id = decodeURIComponent(parts[parts.length - 1]);
+      capturedRequests.push({ method: 'DELETE', endpoint: 'watchlist', id });
+      persistedWatchlist.delete(id);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: true }),
+      };
+    }
+    if (pathname.includes('/users/ratings') && method === 'GET') {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: Array.from(persistedRatings.entries()).map(([movieId, rating]) => ({ movieId, rating })),
+        }),
+      };
+    }
+    if (pathname.includes('/users/ratings') && method === 'POST') {
+      const body = JSON.parse(options.body || '{}');
+      capturedRequests.push({ method: 'POST', endpoint: 'ratings', body });
+      persistedRatings.set(body.movieId, body.rating);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { movieId: body.movieId, rating: body.rating } }),
+      };
+    }
+    if (pathname.includes('/users/favorites') && method === 'GET') {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: [] }),
+      };
+    }
+
+    return {
+      ok: false,
+      status: 404,
+      json: async () => ({ success: false, message: 'Not found' }),
+    };
+  };
+
+  const session1 = mountProductionProvider(persistedFetcher);
+  await session1.settle();
+
+  const heroTree1 = renderEditorialHero(canonicalMovie, session1.value);
+  const saveBtn = findNodes(
+    heroTree1,
+    (n) => n.type === 'button' && (getText(n).includes('Thêm vào danh sách xem') || n.props?.['aria-label']?.includes('Thêm vào danh sách'))
+  )[0];
+  assert.ok(saveBtn, 'EditorialHero must render interactive save button');
+
+  await saveBtn.props.onClick();
+  await session1.settle();
+
+  assert.ok(persistedWatchlist.has(SYNTHETIC_MOVIE_ID), 'Persisted transport must record synthetic movie in watchlist');
+  const postWatchlist = capturedRequests.find((r) => r.endpoint === 'watchlist' && r.method === 'POST');
+  assert.ok(postWatchlist, 'Must issue POST /users/watchlist upon hero button click');
+  assert.equal(postWatchlist.body.movieId, SYNTHETIC_MOVIE_ID, 'POST body must contain canonical synthetic movieId');
+
+  const heroTreeAfterSave = renderEditorialHero(canonicalMovie, session1.value);
+  const savedHeroBtn = findNodes(heroTreeAfterSave, (n) => n.type === 'button' && getText(n).includes('Đã lưu vào danh sách xem'))[0];
+  assert.ok(savedHeroBtn, 'Hero component must update to display "Đã lưu vào danh sách xem"');
+
+  const detailTree = renderMovieDetail(canonicalMovie, [], session1.value);
+  const star9Btn = findNodes(
+    detailTree,
+    (n) => n.type === 'button' && n.props?.['aria-label'] === 'Chấm 9 trên 10 sao'
+  )[0];
+  assert.ok(star9Btn, 'MovieDetail must render interactive rating button for star 9');
+
+  await star9Btn.props.onClick();
+  await session1.settle();
+
+  assert.equal(persistedRatings.get(SYNTHETIC_MOVIE_ID), 9, 'Persisted transport must record rating 9 for synthetic movie');
+  const postRating = capturedRequests.find((r) => r.endpoint === 'ratings' && r.method === 'POST');
+  assert.ok(postRating, 'Must issue POST /users/ratings upon star rating button click');
+  assert.equal(postRating.body.movieId, SYNTHETIC_MOVIE_ID, 'Rating POST body must have canonical synthetic movieId');
+  assert.equal(postRating.body.rating, 9, 'Rating POST body must have rating value 9');
+
+  const session2 = mountProductionProvider(persistedFetcher);
+  await session2.settle();
+
+  assert.equal(session2.value.isWatchlisted(SYNTHETIC_MOVIE_ID), true, 'Reloaded provider must restore watchlist from backend');
+  assert.equal(session2.value.getRating(SYNTHETIC_MOVIE_ID), 9, 'Reloaded provider must restore rating 9 from backend');
+
+  const profileHarness = createProfileHarness(
+    {
+      watchlist: session2.value.watchlist,
+      favorites: session2.value.favorites,
+      ratings: session2.value.ratings,
+      watchlistContext: session2.value,
+    },
+    async (id) => (id === SYNTHETIC_MOVIE_ID ? canonicalMovie : null)
+  );
+
+  profileHarness.render();
+  await profileHarness.settle();
+
+  const profileCards = findNodes(profileHarness.tree, (n) => n.type === 'MovieCard');
+  assert.equal(profileCards.length, 1, 'Profile must render MovieCard for the persisted item');
+  assert.equal(profileCards[0].props.movie.id, SYNTHETIC_MOVIE_ID, 'Profile card must use synthetic canonical ID');
+  assert.equal(profileCards[0].props.movie.title, 'The Quantum Garden', 'Profile card title must match');
+  assert.equal(profileCards[0].props.movie.year, 2026, 'Profile card year must match');
+
+  const ratingsTabBtn = findNodes(
+    profileHarness.tree,
+    (n) => n.type === 'button' && (getText(n).includes('Đã chấm điểm') || getText(n).includes('ratings'))
+  )[0];
+  assert.ok(ratingsTabBtn, 'Profile must render "Đã chấm điểm" tab button');
+
+  await ratingsTabBtn.props.onClick();
+  await profileHarness.settle();
+
+  const ratingScoreElements = findNodes(
+    profileHarness.tree,
+    (n) => /9\s*\/10/.test(getText(n))
+  );
+  assert.ok(ratingScoreElements.length > 0, 'Profile ratings tab must render score 9/10 for the synthetic movie');
+
+  const ratedCard = findNodes(profileHarness.tree, (n) => n.type === 'MovieCard')[0];
+  assert.ok(ratedCard, 'Profile ratings tab must render MovieCard for synthetic movie');
+  assert.equal(ratedCard.props.movie.id, SYNTHETIC_MOVIE_ID, 'Rated movie card must have synthetic ID');
+});
+
+test('8. Hero uncertain ADD/DELETE retry integration with production provider (commit response drop, reconcile error, retry recovery)', async () => {
+  const persistedWatchlist = new Set();
+  let dropWatchlistResponse = false;
+  let reconcileFails = false;
+  const requestsLog = [];
+
+  const transportFetcher = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    const parsedUrl = new URL(url, 'http://localhost');
+    const pathname = parsedUrl.pathname;
+
+    if (pathname.includes('/users/watchlist') && method === 'GET') {
+      if (reconcileFails) {
+        return {
+          ok: false,
+          status: 500,
+          json: async () => ({ success: false, message: 'Server unavailable during reconcile' }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: Array.from(persistedWatchlist).map((id) => ({ movieId: id })),
+        }),
+      };
+    }
+
+    if (pathname.includes('/users/watchlist') && method === 'POST') {
+      const body = JSON.parse(options.body || '{}');
+      requestsLog.push({ method: 'POST', body });
+      if (dropWatchlistResponse) {
+        persistedWatchlist.add(body.movieId);
+        throw new TypeError('Network error: connection dropped after write');
+      }
+      persistedWatchlist.add(body.movieId);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { movieId: body.movieId, movieTitle: body.movieTitle } }),
+      };
+    }
+
+    if (pathname.includes('/users/watchlist/') && method === 'DELETE') {
+      const parts = pathname.split('/');
+      const id = decodeURIComponent(parts[parts.length - 1]);
+      requestsLog.push({ method: 'DELETE', id });
+      if (dropWatchlistResponse) {
+        persistedWatchlist.delete(id);
+        throw new TypeError('Network error: connection dropped after delete');
+      }
+      persistedWatchlist.delete(id);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: true }),
+      };
+    }
+
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, data: [] }),
+    };
+  };
+
+  const canonicalMovie = sampleMovie({
+    id: SYNTHETIC_MOVIE_ID,
+    title: 'The Quantum Garden',
+    year: 2026,
+  });
+
+  const session = mountProductionProvider(transportFetcher);
+  await session.settle();
+
+  let heroTree = renderEditorialHero(canonicalMovie, session.value);
+  let btn = findNodes(heroTree, (n) => n.type === 'button' && getText(n).includes('Thêm vào danh sách xem'))[0];
+  assert.ok(btn, 'Initial Hero must show "+ Thêm vào danh sách xem"');
+
+  dropWatchlistResponse = true;
+  reconcileFails = true;
+
+  await btn.props.onClick();
+  await session.settle();
+
+  assert.equal(session.value.isActionUnconfirmed(SYNTHETIC_MOVIE_ID, 'watchlist'), true, 'Action must be marked uncertain');
+  assert.equal(session.value.getActionIntent(SYNTHETIC_MOVIE_ID, 'watchlist'), 'add', 'Desired intent must be add');
+
+  heroTree = renderEditorialHero(canonicalMovie, session.value);
+  const unconfirmedBadge = findNodes(heroTree, (n) => n.props?.['data-testid'] === 'hero-unconfirmed-badge')[0];
+  assert.ok(unconfirmedBadge, 'Hero must display "Chưa xác nhận" badge');
+
+  let retryAddBtn = findNodes(heroTree, (n) => n.type === 'button' && getText(n).includes('Thử lưu lại'))[0];
+  assert.ok(retryAddBtn, 'Hero button must display "Thử lưu lại" for uncertain add intent');
+  assert.equal(retryAddBtn.props['aria-label'], `Chưa xác nhận lưu • Thử lưu lại ${canonicalMovie.title} vào danh sách xem`);
+
+  dropWatchlistResponse = false;
+  reconcileFails = false;
+
+  await retryAddBtn.props.onClick();
+  await session.settle();
+
+  assert.equal(session.value.isActionUnconfirmed(SYNTHETIC_MOVIE_ID, 'watchlist'), false, 'Action is confirmed');
+  assert.equal(session.value.isWatchlisted(SYNTHETIC_MOVIE_ID), true, 'Watchlist is confirmed');
+
+  heroTree = renderEditorialHero(canonicalMovie, session.value);
+  const badgeAfterAddConfirm = findNodes(heroTree, (n) => n.props?.['data-testid'] === 'hero-unconfirmed-badge')[0];
+  assert.equal(badgeAfterAddConfirm, undefined, 'Unconfirmed badge must disappear after successful retry');
+  let confirmedSavedBtn = findNodes(heroTree, (n) => n.type === 'button' && getText(n).includes('Đã lưu vào danh sách xem'))[0];
+  assert.ok(confirmedSavedBtn, 'Hero must display "Đã lưu vào danh sách xem" upon confirmed retry');
+
+  dropWatchlistResponse = true;
+  reconcileFails = true;
+
+  await confirmedSavedBtn.props.onClick();
+  await session.settle();
+
+  assert.equal(session.value.isActionUnconfirmed(SYNTHETIC_MOVIE_ID, 'watchlist'), true, 'Action must be marked uncertain for remove');
+  assert.equal(session.value.getActionIntent(SYNTHETIC_MOVIE_ID, 'watchlist'), 'remove', 'Desired intent must be remove');
+
+  heroTree = renderEditorialHero(canonicalMovie, session.value);
+  const unconfirmedDeleteBadge = findNodes(heroTree, (n) => n.props?.['data-testid'] === 'hero-unconfirmed-badge')[0];
+  assert.ok(unconfirmedDeleteBadge, 'Hero must display "Chưa xác nhận" badge on delete failure');
+
+  let retryDeleteBtn = findNodes(heroTree, (n) => n.type === 'button' && getText(n).includes('Thử xóa lại'))[0];
+  assert.ok(retryDeleteBtn, 'Hero button must display "Thử xóa lại" for uncertain remove intent');
+  assert.equal(retryDeleteBtn.props['aria-label'], `Chưa xác nhận xóa • Thử xóa lại ${canonicalMovie.title} khỏi danh sách xem`);
+
+  dropWatchlistResponse = false;
+  reconcileFails = false;
+
+  await retryDeleteBtn.props.onClick();
+  await session.settle();
+
+  assert.equal(session.value.isActionUnconfirmed(SYNTHETIC_MOVIE_ID, 'watchlist'), false, 'Action is confirmed');
+  assert.equal(session.value.isWatchlisted(SYNTHETIC_MOVIE_ID), false, 'Watchlist item is confirmed removed');
+
+  heroTree = renderEditorialHero(canonicalMovie, session.value);
+  const badgeAfterDeleteConfirm = findNodes(heroTree, (n) => n.props?.['data-testid'] === 'hero-unconfirmed-badge')[0];
+  assert.equal(badgeAfterDeleteConfirm, undefined, 'Unconfirmed badge must disappear');
+  let finalAddBtn = findNodes(heroTree, (n) => n.type === 'button' && getText(n).includes('Thêm vào danh sách xem'))[0];
+  assert.ok(finalAddBtn, 'Hero must return to "+ Thêm vào danh sách xem"');
+});
+
+function renderFilmShelf(movies, options = {}) {
+  const moduleObj = { exports: {} };
+  const react = {
+    createElement(type, props, ...children) {
+      if (type === moduleObj.exports.FilmGrid) return type(props);
+      const flat = children.flat().filter((c) => c != null && c !== false);
+      return { type, props: { ...props, children: flat.length === 1 ? flat[0] : flat } };
+    },
+  };
+  const context = {
+    module: moduleObj,
+    exports: moduleObj.exports,
+    console,
+    React: react,
+    require: (mod) => {
+      if (mod === '@/lib/labels') return labels;
+      if (mod === 'react-router') return { Link: 'route-link' };
+      if (mod.includes('mediaRouting')) return mediaRouting;
+      return {};
+    },
+  };
+  vm.runInNewContext(filmShelfTranspiled, context, { filename: filmShelfFilePath });
+  return moduleObj.exports.FilmShelf({ movies, ...options });
+}
+
+test('Home film shelf opens films, series and episodes on the correct routes', async () => {
+  const standaloneMovie = sampleMovie({
+    id: 'totoro',
+    title: 'My Neighbor Totoro',
+    year: 1988,
+    item_type: 'movie',
+  });
+  const seriesItem = sampleMovie({
+    id: 'ser_jadoo',
+    title: 'Xin Chào Jadoo',
+    item_type: 'series',
+  });
+  const episodeItem = sampleMovie({
+    id: 'ep_jadoo_s01_0001',
+    title: 'vì sức khỏe cả nhà',
+    item_type: 'episode',
+    series_id: 'ser_jadoo',
+    primary_media_asset_id: 'asset_jadoo_v1',
+  });
+
+  const shelfNode = renderFilmShelf([standaloneMovie, seriesItem, episodeItem]);
+  const cards = findNodes(shelfNode, (n) => n.props?.['data-testid'] === 'film-card');
+  assert.equal(cards.length, 3, 'Film shelf must render 3 film cards');
+
+  assert.equal(cards[0].props.to, '/movies/totoro', 'Standalone film routes to /movies/[id]');
+  assert.equal(cards[0].props['data-movie-id'], 'totoro');
+
+  assert.equal(cards[1].props.to, '/series/ser_jadoo', 'Series item routes to /series/[id]');
+  assert.equal(cards[1].props['data-movie-id'], 'ser_jadoo');
+
+  assert.equal(
+    cards[2].props.to,
+    '/series/ser_jadoo?episode=ep_jadoo_s01_0001&asset=asset_jadoo_v1',
+    'Episode item routes to /series/[seriesId]?episode=[episodeId]&asset=[assetId]'
+  );
+  assert.equal(cards[2].props['data-movie-id'], 'ep_jadoo_s01_0001');
+  assert.equal(findNodes(cards[2], (node) => node.type === 'h3')[0].props.children, 'Vì sức khỏe cả nhà');
+
+  const home = createHomeHarness(async () => [episodeItem]);
+  home.render();
+  await home.settle();
+
+  const homeShelf = findNodes(home.tree, (n) => n.type === 'FilmShelf')[0];
+  assert.ok(homeShelf, 'Home renders FilmShelf with catalog items');
+  assert.equal(homeShelf.props.movies[0].id, 'ep_jadoo_s01_0001');
+
+  const renderedHomeCards = findNodes(
+    renderFilmShelf(homeShelf.props.movies),
+    (n) => n.props?.['data-testid'] === 'film-card'
+  );
+  assert.equal(
+    renderedHomeCards[0].props.to,
+    '/series/ser_jadoo?episode=ep_jadoo_s01_0001&asset=asset_jadoo_v1',
+    'Episode on home page links directly to episode playback URL'
+  );
+});

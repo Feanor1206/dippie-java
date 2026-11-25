@@ -1,0 +1,409 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router';
+import { sendChatMessage, ChatMessage, ChatServiceResponse } from '@/lib/services/chatService';
+import { useWatchlist } from '@/lib/context/WatchlistContext';
+import { useAuth } from '@/lib/context/AuthContext';
+import { buildMediaItemHref } from '@/lib/services/mediaRouting';
+import { chatGenres, chatTitle, formatRuntime } from '@/lib/labels';
+
+const QUICK_PROMPTS = [
+  'Jadoo sợ tăng cân',
+  'Larva mùa 1 tập 1',
+  'Công chúa Ori mùa 1 tập 1',
+];
+
+const BTN_HEAD = 'flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md px-3 text-xs text-muted hover:bg-surface-elevated hover:text-ink cursor-pointer';
+const TIME_FORMAT = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+function newConversationId() {
+  return globalThis.crypto?.randomUUID?.() ?? `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export function CineBot({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { status, user, token } = useAuth();
+  const actorKey = status === 'authenticated' && user && token ? `user:${user.id}:${token}` : `status:${status}`;
+  return <CineBotConversation key={actorKey} isOpen={isOpen} onClose={onClose} />;
+}
+
+function CineBotConversation({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { isWatchlisted, toggleWatchlist } = useWatchlist();
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: 'welcome',
+      sender: 'bot',
+      text: 'Bạn muốn tìm phim nào? Nhập tên phim, nhân vật hoặc cảnh bạn nhớ.',
+      timestamp: 'Vừa xong',
+      followUps: QUICK_PROMPTS.slice(0, 3),
+    },
+  ]);
+  const [input, setInput] = useState('');
+  const [inputError, setInputError] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const cinebotRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const conversationRef = useRef(0);
+  const sessionIdRef = useRef('');
+  const requestRef = useRef<AbortController | null>(null);
+  if (!sessionIdRef.current) sessionIdRef.current = newConversationId();
+
+  useEffect(() => () => {
+    conversationRef.current += 1;
+    requestRef.current?.abort();
+  }, []);
+
+  const scrollToBottom = () => {
+    const isReduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    messagesEndRef.current?.scrollIntoView({ behavior: isReduced ? 'auto' : 'smooth' });
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      scrollToBottom();
+    }
+  }, [messages, isOpen]);
+  useEffect(() => {
+    if (!isOpen) return;
+    if (document.activeElement && (!cinebotRef.current || !cinebotRef.current.contains(document.activeElement))) {
+      openerRef.current = document.activeElement as HTMLElement | null;
+    }
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (e.key === 'Tab' && cinebotRef.current) {
+        const focusable = cinebotRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (!cinebotRef.current.contains(document.activeElement)) {
+          e.preventDefault();
+          if (e.shiftKey) last.focus();
+          else first.focus();
+          return;
+        }
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      clearTimeout(timer);
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+      openerRef.current?.focus();
+    };
+  }, [isOpen, onClose]);
+
+  const handleSend = async (textToSend?: string) => {
+    const text = (textToSend || input).trim();
+    if (!text || requestRef.current) return;
+    if (text.length > 4000) {
+      setInputError('Tin nhắn không được vượt quá 4000 ký tự.');
+      return;
+    }
+    setInputError('');
+    const conversation = conversationRef.current;
+    const controller = new AbortController();
+    requestRef.current = controller;
+
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      sender: 'user',
+      text: text,
+      timestamp: TIME_FORMAT.format(new Date()),
+    };
+
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
+    setInput('');
+    setInputError('');
+    setIsTyping(true);
+
+    const botId = `bot-${userMessage.id}`;
+    const updateBot = (result: ChatServiceResponse) => {
+      if (conversation !== conversationRef.current) return;
+      const botMessage: ChatMessage = {
+        id: botId,
+        sender: 'bot',
+        text: result.text,
+        timestamp: TIME_FORMAT.format(new Date()),
+        movies: result.recommendedMovies,
+        followUps: result.followUps,
+        structuredIntent: result.structuredIntent,
+        pipelineStages: result.pipelineStages,
+      };
+      setMessages((prev) => prev.some((item) => item.id === botId)
+        ? prev.map((item) => item.id === botId ? botMessage : item)
+        : [...prev, botMessage]);
+    };
+
+    try {
+      const result = await sendChatMessage(text, nextMessages, {
+        sessionId: sessionIdRef.current, signal: controller.signal, onUpdate: updateBot,
+      });
+      if (conversation !== conversationRef.current) return;
+      updateBot(result);
+    } catch (err: any) {
+      if (conversation !== conversationRef.current) return;
+      console.error('Lỗi nhận phản hồi:', err);
+      const errorMsg: ChatMessage = {
+        id: `bot-err-${Date.now()}`,
+        sender: 'bot',
+        text: err?.message || 'Không thể kết nối CineBot. Vui lòng thử lại.',
+        timestamp: TIME_FORMAT.format(new Date()),
+      };
+      setMessages((prev) => [...prev.filter((item) => item.id !== botId), errorMsg]);
+    } finally {
+      if (conversation === conversationRef.current) {
+        requestRef.current = null;
+        setIsTyping(false);
+      }
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const resetChat = () => {
+    conversationRef.current += 1;
+    requestRef.current?.abort();
+    requestRef.current = null;
+    sessionIdRef.current = newConversationId();
+    setIsTyping(false);
+    setInput('');
+    setInputError('');
+    setMessages([
+      {
+        id: `welcome-${Date.now()}`,
+        sender: 'bot',
+        text: 'Bạn muốn tìm phim nào?',
+        timestamp: 'Vừa xong',
+        followUps: QUICK_PROMPTS.slice(0, 3),
+      },
+    ]);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      ref={cinebotRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cinebot-dialog-title"
+      className="fixed inset-0 z-50 flex items-end justify-end p-0 sm:p-6 bg-black/60 backdrop-blur-sm animate-fade-in pointer-events-auto"
+    >
+      <div className="flex h-full w-full flex-col overflow-hidden bg-surface border-0 sm:border-2 sm:border-surface-border sm:rounded-none sm:h-[620px] sm:w-[440px] sm:shadow-2xl">
+
+        <div className="flex items-center justify-between border-b border-surface-border bg-surface-muted px-4 py-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 id="cinebot-dialog-title" className="comic-heading text-xl font-bold text-ink">
+                CineBot
+              </h2>
+            </div>
+            <p className="text-[11px] text-muted">Gợi ý phim hoạt hình</p>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={resetChat}
+              title="Làm mới"
+              aria-label="Làm mới cuộc trò chuyện"
+              className={BTN_HEAD}
+            >
+              Làm mới
+            </button>
+            <button
+              onClick={onClose}
+              title="Đóng"
+              aria-label="Đóng CineBot"
+              className={BTN_HEAD}
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
+            >
+
+              <div
+                className={`max-w-[88%] rounded-2xl px-4 py-2.5 text-xs sm:text-sm leading-relaxed shadow-sm ${
+                  msg.sender === 'user'
+                    ? 'bg-brand text-zinc-950 font-medium rounded-br-sm'
+                    : 'bg-surface-elevated text-ink border border-surface-border rounded-bl-sm'
+                }`}
+              >
+                <p>{msg.text.split(/(\*\*[^*]+\*\*)/g).map((part, i) => part.startsWith('**') && part.endsWith('**') ? <strong key={i}>{part.slice(2, -2)}</strong> : part)}</p>
+                <span
+                  className={`mt-1 block text-[10px] ${
+                    msg.sender === 'user' ? 'text-zinc-950/70 text-right font-medium' : 'text-muted'
+                  }`}
+                >
+                  {msg.timestamp}
+                </span>
+              </div>
+
+
+              {msg.movies && msg.movies.length > 0 && (
+                <div className="mt-2.5 w-full space-y-2">
+                  {msg.movies.map((movie) => {
+                    const inWatchlist = isWatchlisted(movie.id);
+                    const mediaHref = buildMediaItemHref(movie);
+                    const hasPoster = Boolean(movie.poster && movie.poster.trim());
+                    return (
+                      <div
+                        key={movie.id}
+                        className="flex gap-3 rounded-lg border border-surface-border bg-surface-muted p-2.5 transition-colors hover:border-ink/30"
+                      >
+
+                        {hasPoster && (
+                          <img
+                            src={movie.poster}
+                            alt={movie.title}
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                            className="h-20 w-14 shrink-0 rounded border border-surface-border object-cover"
+                          />
+                        )}
+                        <div className="flex flex-col justify-between flex-1 min-w-0">
+                          <div>
+                            <div className="flex items-center justify-between gap-1">
+                              <Link
+                                to={mediaHref}
+                                onClick={onClose}
+                                className="line-clamp-2 break-words text-sm font-semibold text-ink hover:text-brand-dark"
+                              >
+                                {chatTitle(movie.title)}
+                              </Link>
+                            </div>
+                            <p className="mt-1 text-xs text-muted">
+                              {[movie.year || '', formatRuntime(movie.runtime), chatGenres(movie.genres)].filter(Boolean).join(' · ')}
+                            </p>
+                          </div>
+
+
+                          <div className="mt-2 flex items-center gap-2">
+                            <Link
+                              to={mediaHref}
+                              onClick={onClose}
+                              className="inline-flex min-h-10 items-center rounded bg-brand px-3 text-xs font-bold text-ink hover:bg-brand-hover"
+                            >
+                              {movie.episodeId || movie.episode_id ? 'Xem tập' : 'Xem phim'}
+                            </Link>
+
+                            <button
+                              onClick={() => toggleWatchlist(movie.id, movie.title)}
+                              type="button"
+                              aria-pressed={inWatchlist}
+                              className="inline-flex min-h-10 items-center rounded border border-ink/30 px-3 text-xs font-medium text-ink hover:bg-surface-elevated cursor-pointer"
+                            >
+                              {inWatchlist ? 'Đã lưu' : 'Lưu phim'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+
+              {msg.followUps && msg.followUps.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {msg.followUps.map((prompt) => (
+                    <button
+                      key={prompt}
+                      disabled={isTyping}
+                      onClick={() => handleSend(prompt)}
+                      className="rounded border border-ink/30 bg-mint px-2.5 py-1 text-[11px] text-muted transition-colors hover:border-ink hover:text-ink cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+
+
+          {isTyping && (
+            <div role="status" className="text-xs text-muted bg-surface-muted border border-brand/40 rounded-md px-3 py-1.5 w-fit">
+              Đang trả lời…
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+
+        <div className="border-t border-surface-border bg-surface-muted p-3">
+          <div className="flex items-center gap-2 rounded-md border border-surface-border bg-surface px-3 py-2 focus-within:border-brand">
+            <input
+              ref={inputRef}
+              type="text"
+              aria-label="Tin nhắn cho CineBot"
+              maxLength={4000}
+              value={input}
+              disabled={isTyping}
+              onChange={(e) => { setInput(e.target.value); setInputError(''); }}
+              onKeyDown={handleKeyDown}
+              placeholder="Nhập câu hỏi…"
+              className="w-full bg-transparent text-xs sm:text-sm text-ink placeholder:text-muted focus:outline-none disabled:opacity-60"
+            />
+            <button
+              onClick={() => handleSend()}
+              disabled={!input.trim() || isTyping}
+              className="h-11 shrink-0 rounded border border-ink bg-brand px-4 text-xs font-semibold text-ink hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              aria-label="Gửi tin nhắn"
+            >
+              Gửi
+            </button>
+          </div>
+          {inputError && <p role="alert" className="mt-2 text-xs text-red-500">{inputError}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}

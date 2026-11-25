@@ -1,0 +1,60 @@
+services:
+  fastapi:
+    build: ../backend/fastapi
+    restart: unless-stopped
+    environment:
+      DIPPIE_WEB_DIST: /app/web
+      MYSQL_HOST: mysql
+      MYSQL_PORT: '3306'
+      MYSQL_DB: ${MYSQL_DB:-movie_rcm_db}
+      MYSQL_USER: ${MYSQL_USER:-dippie_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD required for dippie_app}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET required}
+      APP_DEMO_MODE: ${APP_DEMO_MODE:-false}
+      APP_BOOTSTRAP_ADMIN_USERNAME: ${APP_BOOTSTRAP_ADMIN_USERNAME:-}
+      APP_BOOTSTRAP_ADMIN_EMAIL: ${APP_BOOTSTRAP_ADMIN_EMAIL:-}
+      APP_BOOTSTRAP_ADMIN_PASSWORD: ${APP_BOOTSTRAP_ADMIN_PASSWORD:-}
+      MODEL_MODE: ${MODEL_MODE:-light}
+      TEXT_ENCODER_PATH: ${TEXT_ENCODER_PATH:-}
+      RERANKER_MODEL_PATH: ${RERANKER_MODEL_PATH:-}
+      SCORE_CALIBRATION_PATH: ${SCORE_CALIBRATION_PATH:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      CATALOG_SYNC_TOKEN: ${CATALOG_SYNC_TOKEN:-}
+    ports:
+      - "127.0.0.1:${DIPPIE_PORT:-3000}:8000"
+    volumes:
+      - ../frontend/dist:/app/web:ro
+      - ../ai/models:/app/models:ro
+      - ../data/indices:/app/data/indices
+      - ../data/catalog.jadoo_all.json:/app/data/catalog.jadoo_all.json:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DB:-movie_rcm_db}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD required}
+      DIPPIE_DB_APP_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD required for dippie_app}
+      DIPPIE_DB_READONLY_PASSWORD: ${DIPPIE_DB_READONLY_PASSWORD:?DIPPIE_DB_READONLY_PASSWORD required}
+      DIPPIE_DB_ADMIN_PASSWORD: ${DIPPIE_DB_ADMIN_PASSWORD:?DIPPIE_DB_ADMIN_PASSWORD required}
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysqldata:/var/lib/mysql
+      - ../database/schema/01_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./init_database_objects.sh:/docker-entrypoint-initdb.d/02_database_objects.sh:ro
+      - ../database/objects:/opt/dippie/database-objects:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysqldata:

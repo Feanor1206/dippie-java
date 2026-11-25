@@ -1,0 +1,36 @@
+package com.dippie.security;
+
+import com.dippie.common.error.ForbiddenException;
+import com.dippie.common.error.UnauthorizedException;
+import java.util.Optional;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+
+@Component
+public class SecurityContextCurrentViewer implements CurrentViewer {
+
+    @Override
+    public Optional<Viewer> find() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return Optional.empty();
+        }
+        if (authentication.getPrincipal() instanceof Viewer viewer) {
+            return Optional.of(viewer);
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public Viewer require() {
+        return find().orElseThrow(() -> new UnauthorizedException("Chưa xác thực người dùng"));
+    }
+
+    @Override
+    public Viewer requireAdmin() {
+        return find()
+                .filter(Viewer::isAdmin)
+                .orElseThrow(() -> new ForbiddenException("Quyền truy cập bị từ chối (Yêu cầu ROLE_ADMIN)"));
+    }
+}
