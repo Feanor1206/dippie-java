@@ -22,7 +22,7 @@ Errors always use the envelope with `success:false`, `data:null`, produced by th
 | `GET /api/catalog/series` | array of series dicts |
 | `GET /api/catalog/series/cards` | array of series cards |
 | `GET /api/catalog/series/{id}` | `{"series":…, "seasons":[…], "episodes":[…]}` |
-| `GET /api/catalog/episodes/{id}` | `{"episode":…, "segments":[…], "mediaAssets":[…], "scenes":[…], "youtube":…}` |
+| `GET /api/catalog/episodes/{id}` | `{"episode":…, "segments":[…], "mediaAssets":[…], "scenes":[…], "youtube":…, "youtubeFallback":…}` |
 | `GET /api/catalog/search` | array of hits |
 | `POST /api/media/grant/{assetId}` | grant object |
 | `POST /api/admin/catalog/validate` | validation result (also the 400 body) |
@@ -106,6 +106,11 @@ Timestamps are UTC ISO-8601 local date-times without offset (`LocalDateTime`), a
   lock, create a `catalog_snapshots` row, then publish the eligible catalog to the AI index.
 
 ## 5. Endpoints added beyond the Python version
+
+`GET /api/catalog/episodes/{id}` keeps its raw JSON response and adds two fields:
+
+- Each `mediaAssets` item has `available` (`boolean`). It is `true` when a corresponding `media_assets` row exists and the streaming file resolver can currently locate its file. A missing row or file returns `false`.
+- `youtubeFallback` is `{"videoId": "<id>", "canEmbed": true}` when `youtube` is `null` and the episode has a valid `youtube_video_id` in `external_ids`. IDs must be 11 characters from `A–Z`, `a–z`, `0–9`, `_` or `-`. Otherwise `youtubeFallback` is `null`. The existing `youtube` field keeps its playback and watch rules.
 
 Endpoints in the following table wrap their success payload in the standard `ApiResponse` envelope (`{"success": true, "message": "...", "data": ..., "timestamp": "..."}`) and return `ApiResponse` errors with `success: false`, `data: null`.
 

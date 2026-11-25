@@ -12,6 +12,7 @@ import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
@@ -20,6 +21,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.context.TestConstructor;
@@ -58,6 +61,9 @@ class CatalogHttpTest {
     private static final String ADMIN = "/api/admin/catalog/";
     private static final String CATALOG = "/api/catalog/";
 
+    @TempDir
+    static Path mediaRoot;
+
     private final MockMvc mvc;
     private final ObjectMapper mapper;
     private final UserRepository users;
@@ -80,6 +86,59 @@ class CatalogHttpTest {
         this.database = database;
         this.visibility = visibility;
         this.entityManagerFactory = entityManagerFactory;
+    }
+
+    @DynamicPropertySource
+    static void configureMediaRoot(DynamicPropertyRegistry registry) {
+        registry.add("dippie.media.root", () -> mediaRoot.toString());
+    }
+
+    @Test
+    void episodePlaybackAvailabilityUsesTheCurrentFilesAndYoutubeNamespaces() throws Exception {
+        String admin = token("catalog-w9-availability", Role.ROLE_ADMIN);
+        submit("import", admin, """
+                {
+                  "schema_version":"dippie.catalog.v1",
+                  "package":{"id":"pkg-playback","revision":1},
+                  "series":[{"id":"playback-series","title":"Playback"}],
+                  "episodes":[
+                    {"id":"playback-jadoo","series_id":"playback-series","number":1,"title":"Jadoo",
+                     "external_ids":[{"namespace":"youtube_video_id","value":"invalid"},
+                                     {"namespace":"youtube_video_id","value":"2ykw6ZxTb8o"}]},
+                    {"id":"playback-larva","series_id":"playback-series","number":2,"title":"Larva",
+                     "external_ids":[{"namespace":"youtube_video_id","value":"other_00001"},
+                                     {"namespace":"youtube_playback","value":"9aFcot7_7Q4"}]},
+                    {"id":"playback-invalid","series_id":"playback-series","number":3,"title":"Invalid ID",
+                     "external_ids":[{"namespace":"youtube_video_id","value":"invalid"}]}],
+                  "media_assets":[
+                    {"id":"playback-missing","storage":{"provider":"local","relative_path":"missing.mp4"},
+                     "coverage":[{"episode_id":"playback-jadoo"}]},
+                    {"id":"playback-present","storage":{"provider":"local","relative_path":"present.mp4"},
+                     "coverage":[{"episode_id":"playback-jadoo"}]}]
+                }
+                """).andExpect(status().isOk());
+        Path file = Files.writeString(mediaRoot.resolve("present.mp4"), "test video");
+
+        mvc.perform(get(CATALOG + "episodes/playback-jadoo")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.youtube").value(nullValue()))
+                .andExpect(jsonPath("$.youtubeFallback.videoId").value("2ykw6ZxTb8o"))
+                .andExpect(jsonPath("$.youtubeFallback.canEmbed").value(true))
+                .andExpect(jsonPath("$.mediaAssets[*].id", contains("playback-missing", "playback-present")))
+                .andExpect(jsonPath("$.mediaAssets[0].available").value(false))
+                .andExpect(jsonPath("$.mediaAssets[1].available").value(true));
+
+        database.update("delete from media_assets where id = ?", "playback-present");
+        mvc.perform(get(CATALOG + "episodes/playback-jadoo")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.mediaAssets[1].available").value(false));
+        Files.delete(file);
+
+        mvc.perform(get(CATALOG + "episodes/playback-larva")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.youtube.videoId").value("9aFcot7_7Q4"))
+                .andExpect(jsonPath("$.youtube.canEmbed").value(true))
+                .andExpect(jsonPath("$.youtubeFallback").value(nullValue()));
+        mvc.perform(get(CATALOG + "episodes/playback-invalid")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.youtube").value(nullValue()))
+                .andExpect(jsonPath("$.youtubeFallback").value(nullValue()));
     }
 
     @Test

@@ -475,6 +475,12 @@ export interface CatalogMediaAsset {
   durationMs?: number;
   coverageJson?: string;
   accessPolicy?: 'public' | 'authenticated' | 'private' | string;
+  available?: boolean;
+}
+
+export interface CatalogYoutubeSource {
+  videoId: string;
+  canEmbed: boolean;
 }
 
 export interface CatalogSnapshot {
@@ -501,7 +507,8 @@ export interface CatalogEpisodeResponse {
   segments: CatalogSegment[];
   mediaAssets: CatalogMediaAsset[];
   scenes: CatalogScene[];
-  youtube?: { videoId: string; canEmbed: boolean } | null;
+  youtube?: CatalogYoutubeSource | null;
+  youtubeFallback?: CatalogYoutubeSource | null;
 }
 
 export interface CatalogSearchResult {

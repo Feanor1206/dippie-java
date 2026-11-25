@@ -3,6 +3,7 @@ package com.dippie.catalog.query;
 import com.dippie.catalog.domain.CatalogEpisode;
 import com.dippie.catalog.domain.CatalogEpisodeRepository;
 import com.dippie.catalog.domain.CatalogEpisodeView;
+import com.dippie.catalog.domain.CatalogMediaAsset;
 import com.dippie.catalog.domain.CatalogMediaAssetRepository;
 import com.dippie.catalog.domain.CatalogMediaAssetView;
 import com.dippie.catalog.domain.CatalogRecord;
@@ -17,11 +18,15 @@ import com.dippie.catalog.domain.CatalogSeries;
 import com.dippie.catalog.domain.CatalogSeriesRepository;
 import com.dippie.catalog.domain.CatalogSeriesView;
 import com.dippie.common.error.NotFoundException;
+import com.dippie.media.MediaAsset;
+import com.dippie.media.MediaAssetRepository;
+import com.dippie.media.MediaFileResolver;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -33,18 +38,23 @@ class CatalogQueryService {
     private final CatalogEpisodeRepository episodes;
     private final CatalogSegmentRepository segments;
     private final CatalogMediaAssetRepository assets;
+    private final MediaAssetRepository mediaAssets;
+    private final MediaFileResolver mediaFileResolver;
     private final CatalogSceneRepository scenes;
     private final CatalogVisibility visibility;
     private final CatalogReadModelCache cache;
 
     public CatalogQueryService(CatalogSeriesRepository series, CatalogSeasonRepository seasons,
             CatalogEpisodeRepository episodes, CatalogSegmentRepository segments, CatalogMediaAssetRepository assets,
-            CatalogSceneRepository scenes, CatalogVisibility visibility, CatalogReadModelCache cache) {
+            CatalogSceneRepository scenes, CatalogVisibility visibility, CatalogReadModelCache cache,
+            MediaAssetRepository mediaAssets, MediaFileResolver mediaFileResolver) {
         this.series = series;
         this.seasons = seasons;
         this.episodes = episodes;
         this.segments = segments;
         this.assets = assets;
+        this.mediaAssets = mediaAssets;
+        this.mediaFileResolver = mediaFileResolver;
         this.scenes = scenes;
         this.visibility = visibility;
         this.cache = cache;
@@ -82,13 +92,20 @@ class CatalogQueryService {
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy tập phim với mã: " + id));
         List<CatalogSegmentView> visibleSegments = segments.findByEpisodeIdOrderByPositionAsc(id).stream()
                 .filter(segment -> admin || segment.isPublished()).map(CatalogSegmentView::from).toList();
-        List<CatalogMediaAssetView> visibleAssets = assets.findByEpisodeId(id).stream()
-                .filter(asset -> asset.isAccessibleBy(authenticated, admin)).map(CatalogMediaAssetView::from).toList();
-        Set<String> assetIds = visibleAssets.stream().map(CatalogMediaAssetView::id).collect(Collectors.toSet());
+        List<CatalogMediaAsset> accessibleAssets = assets.findByEpisodeId(id).stream()
+                .filter(asset -> asset.isAccessibleBy(authenticated, admin)).toList();
+        Set<String> assetIds = accessibleAssets.stream().map(CatalogMediaAsset::getId).collect(Collectors.toSet());
+        Map<String, MediaAsset> fileAssets = mediaAssets.findAllById(assetIds).stream()
+                .collect(Collectors.toMap(MediaAsset::getId, asset -> asset));
+        List<CatalogMediaAssetView> visibleAssets = accessibleAssets.stream()
+                .map(asset -> CatalogMediaAssetView.from(asset, Optional.ofNullable(fileAssets.get(asset.getId()))
+                        .flatMap(mediaFileResolver::resolve).isPresent())).toList();
         List<CatalogSceneView> visibleScenes = scenes.findByEpisodeIdOrderByStartMsAsc(id).stream()
                 .filter(scene -> scene.isVisibleTo(admin, assetIds)).map(CatalogSceneView::from).toList();
+        YoutubeSource youtube = YoutubeSource.from(episode.getRawJson());
+        YoutubeSource youtubeFallback = youtube == null ? YoutubeSource.fallbackFrom(episode.getRawJson()) : null;
         return new EpisodeDetail(CatalogEpisodeView.from(episode), visibleSegments, visibleAssets, visibleScenes,
-                YoutubeSource.from(episode.getRawJson()));
+                youtube, youtubeFallback);
     }
 
     record SeriesDetail(CatalogSeriesView series, List<CatalogSeasonView> seasons,
@@ -101,7 +118,8 @@ class CatalogQueryService {
     }
 
     record EpisodeDetail(CatalogEpisodeView episode, List<CatalogSegmentView> segments,
-            List<CatalogMediaAssetView> mediaAssets, List<CatalogSceneView> scenes, YoutubeSource youtube) {
+            List<CatalogMediaAssetView> mediaAssets, List<CatalogSceneView> scenes, YoutubeSource youtube,
+            YoutubeSource youtubeFallback) {
 
         EpisodeDetail {
             segments = segments == null ? List.of() : List.copyOf(segments);

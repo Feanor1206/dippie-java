@@ -1,6 +1,8 @@
 package com.dippie.media;
 
+import java.io.File;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
@@ -23,6 +25,11 @@ public class DriveMountLocation implements MediaLocationStrategy {
         }
         String relativePath = asset.getRelativePath();
         if (!MediaPathPolicy.isValidRelativePath(relativePath)) {
+            return Optional.empty();
+        }
+        if (File.separatorChar == '\\' && driveRoot.equals(driveRoot.getRoot())
+                && driveRoot.toString().charAt(1) == ':'
+                && !Arrays.asList(File.listRoots()).contains(driveRoot.toFile())) {
             return Optional.empty();
         }
         Optional<Path> direct = MediaPathPolicy.resolveRegularFile(driveRoot, relativePath);
