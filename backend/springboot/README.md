@@ -300,8 +300,6 @@ Các biến môi trường tùy chọn khác được khai báo trong `src/main/
    - `catalog.ori.json`
    - `catalog.doraemon.json`
    - `catalog.trang_quynh.json`
-   - `catalog.pokemon.json`
-   - `catalog.mr_bean_animated.json`
    - `catalog.peppa_pig.json`
 
 ## 7. Kiểm thử
