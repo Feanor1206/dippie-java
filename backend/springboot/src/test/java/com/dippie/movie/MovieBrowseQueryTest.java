@@ -8,6 +8,7 @@ import java.math.BigInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+// Test đơn vị cho bước chuẩn hóa tham số tìm kiếm, thể loại và kiểm tra lỗi đầu vào của MovieBrowseQuery.
 class MovieBrowseQueryTest {
 
     @Test
@@ -69,7 +70,7 @@ class MovieBrowseQueryTest {
                 null, null, null, null, null, null, null, null, "rating", "desc", -1, 12
         ))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Chỉ số trang (page) không được âm: -1");
+                .hasMessage("Số trang không được nhỏ hơn 0: -1");
     }
 
     @Test
@@ -78,13 +79,13 @@ class MovieBrowseQueryTest {
                 null, null, null, null, null, null, null, null, "rating", "desc", 0, 0
         ))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Kích thước trang (size) phải nằm trong khoảng 1 đến 100: 0");
+                .hasMessage("Số phim mỗi trang phải từ 1 đến 100: 0");
 
         assertThatThrownBy(() -> MovieBrowseQuery.of(
                 null, null, null, null, null, null, null, null, "rating", "desc", 0, 101
         ))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Kích thước trang (size) phải nằm trong khoảng 1 đến 100: 101");
+                .hasMessage("Số phim mỗi trang phải từ 1 đến 100: 101");
     }
 
     @Test
@@ -93,7 +94,7 @@ class MovieBrowseQueryTest {
                 null, null, null, null, null, null, 2025, 2020, "rating", "desc", 0, 12
         ))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Năm tối thiểu (yearMin: 2025) không được lớn hơn năm tối đa (yearMax: 2020)");
+                .hasMessage("Năm bắt đầu (2025) không được lớn hơn năm kết thúc (2020).");
     }
 
     @Test
@@ -102,18 +103,18 @@ class MovieBrowseQueryTest {
                 null, null, null, null, null, null, null, null, "popularity", "desc", 0, 12
         ))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Trường sắp xếp không hợp lệ: 'popularity'");
+                .hasMessage("Kiểu sắp xếp không hỗ trợ: 'popularity'.");
 
         assertThatThrownBy(() -> MovieBrowseQuery.of(
                 null, null, null, null, null, null, null, null, "   ", "desc", 0, 12
         ))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Trường sắp xếp không hợp lệ: '   '");
+                .hasMessage("Kiểu sắp xếp không hỗ trợ: '   '.");
 
         assertThatThrownBy(() -> MovieBrowseQuery.of(
                 null, null, null, null, null, null, null, null, "year", "up", 0, 12
         ))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Chiều sắp xếp không hợp lệ: 'up'");
+                .hasMessage("Thứ tự sắp xếp không hợp lệ: 'up'.");
     }
 }

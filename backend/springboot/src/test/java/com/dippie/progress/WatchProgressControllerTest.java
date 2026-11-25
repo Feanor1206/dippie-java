@@ -46,6 +46,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// Test tích hợp cho WatchProgressController: khóa lạc quan, ghi song song trả đúng một 200 và một 409, giới hạn 30 tập gần đây và lọc tập không phát được.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -134,21 +135,21 @@ class WatchProgressControllerTest {
     void requiresAuthenticationOnAllEndpoints() throws Exception {
         mockMvc.perform(get("/api/users/watch-progress"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
         mockMvc.perform(get("/api/users/watch-progress/ep_shin_1"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
         mockMvc.perform(put("/api/users/watch-progress/ep_shin_1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"assetId\":\"ast_shin_1\",\"expectedVersion\":-1,\"positionMs\":0}"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
         mockMvc.perform(delete("/api/users/watch-progress/ep_shin_1"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
     }
 
     @Test
@@ -160,7 +161,7 @@ class WatchProgressControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"assetId\":\"ast_shin_1\",\"expectedVersion\":-1,\"positionMs\":120000}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Đã lưu tiến độ xem"))
+                .andExpect(jsonPath("$.message").value("Đã lưu tiến độ xem."))
                 .andExpect(jsonPath("$.data.episodeId").value("ep_shin_1"))
                 .andExpect(jsonPath("$.data.seriesId").value("ser_shin"))
                 .andExpect(jsonPath("$.data.seriesTitle").value("Shin Cậu Bé Bút Chì"))
@@ -181,7 +182,7 @@ class WatchProgressControllerTest {
                         .content("{\"assetId\":\"ast_shin_1\",\"expectedVersion\":-1,\"positionMs\":150000}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message")
-                        .value("Watch progress changed since it was loaded; refresh and retry."));
+                        .value("Tiến độ xem vừa thay đổi ở nơi khác. Bạn hãy tải lại trang rồi thử lại."));
 
         mockMvc.perform(put("/api/users/watch-progress/ep_shin_1")
                         .header(HttpHeaders.AUTHORIZATION, userAuth)
@@ -197,14 +198,14 @@ class WatchProgressControllerTest {
                         .content("{\"assetId\":\"ast_shin_1\",\"expectedVersion\":0,\"positionMs\":595000}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message")
-                        .value("Watch progress changed since it was loaded; refresh and retry."));
+                        .value("Tiến độ xem vừa thay đổi ở nơi khác. Bạn hãy tải lại trang rồi thử lại."));
 
         mockMvc.perform(put("/api/users/watch-progress/ep_shin_1")
                         .header(HttpHeaders.AUTHORIZATION, userAuth)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"assetId\":\"ast_shin_1\",\"expectedVersion\":1,\"positionMs\":600001}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Vị trí xem vượt quá thời lượng video."));
+                .andExpect(jsonPath("$.message").value("Thời điểm xem không thể vượt quá thời lượng video."));
 
         for (String invalidBody : List.of(
                 "{\"assetId\":\"ast_shin_1\",\"expectedVersion\":1,\"positionMs\":true}",
@@ -218,18 +219,18 @@ class WatchProgressControllerTest {
                             .content(invalidBody))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.message")
-                            .value("Vị trí xem phải là số nguyên từ 0 đến 24 giờ, tính bằng mili giây."));
+                            .value("Thời điểm xem phải là số nguyên từ 0 đến 24 giờ, tính bằng mili giây."));
         }
 
         mockMvc.perform(delete("/api/users/watch-progress/ep_shin_1")
                         .header(HttpHeaders.AUTHORIZATION, userAuth))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Đã xóa tiến độ xem"));
+                .andExpect(jsonPath("$.message").value("Đã xóa tiến độ xem."));
 
         mockMvc.perform(get("/api/users/watch-progress/ep_shin_1")
                         .header(HttpHeaders.AUTHORIZATION, userAuth))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Không tìm thấy tập có thể phát: ep_shin_1"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy tập phim để phát: ep_shin_1"));
     }
 
     @Test
@@ -292,7 +293,7 @@ class WatchProgressControllerTest {
 
         LocalDateTime baseTime = LocalDateTime.of(2024, 1, 1, 0, 0, 0);
         for (int i = 0; i < 32; i++) {
-            String epId = "ep" + i;
+            String episodeId = "ep" + i;
             String assetId = "asset" + i;
             String seasonId = switch (i) {
                 case 30 -> null;
@@ -300,12 +301,12 @@ class WatchProgressControllerTest {
                 default -> "season";
             };
             episodeRepository.saveAndFlush(new CatalogEpisode(
-                    epId, "s", seasonId, i, "Episode " + i, null, null, null,
+                    episodeId, "s", seasonId, i, "Episode " + i, null, null, null,
                     "regular", null, null, null, null, null, null, null, null, null,
                     null, null, null, null, null, READY, null, 1
             ));
             String scope = i == 28 ? "partial" : "full_episode";
-            String coverage = "[{\"episode_id\":\"" + epId + "\",\"scope\":\"" + scope + "\"}]";
+            String coverage = "[{\"episode_id\":\"" + episodeId + "\",\"scope\":\"" + scope + "\"}]";
             catalogMediaAssetRepository.saveAndFlush(new CatalogMediaAsset(
                     assetId, "video", i == 31 ? "dub" : "feature", null, null, null,
                     "local", "local", "test.mp4", null, null, 1024L, null, 100_000L,
@@ -318,7 +319,7 @@ class WatchProgressControllerTest {
                 ));
             }
             watchProgressRepository.saveAndFlush(WatchProgress.startAt(
-                    viewer.getId(), epId, assetId, i * 1000L, baseTime.plusMinutes(i)
+                    viewer.getId(), episodeId, assetId, i * 1000L, baseTime.plusMinutes(i)
             ));
         }
         watchProgressRepository.saveAndFlush(WatchProgress.startAt(
@@ -333,7 +334,8 @@ class WatchProgressControllerTest {
 
         Set<Integer> excluded = Set.of(25, 26, 27, 28, 29);
         List<String> expectedIds = new ArrayList<>();
-        for (int i = 30; i >= 2; i--) {
+        // Sau khi loại các tập lỗi (25..29 và 31), danh sách phải kéo bù các tập cũ hơn để vẫn đủ số mục hợp lệ còn lại
+        for (int i = 30; i >= 0; i--) {
             if (!excluded.contains(i)) {
                 expectedIds.add("ep" + i);
             }
@@ -358,7 +360,7 @@ class WatchProgressControllerTest {
             mockMvc.perform(get("/api/users/watch-progress/ep" + i)
                             .header(HttpHeaders.AUTHORIZATION, userAuth))
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.message").value("Không tìm thấy tập có thể phát: ep" + i));
+                    .andExpect(jsonPath("$.message").value("Không tìm thấy tập phim để phát: ep" + i));
         }
 
         mockMvc.perform(put("/api/users/watch-progress/ep27")

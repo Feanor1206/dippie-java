@@ -2,10 +2,12 @@ package com.dippie.media;
 
 import java.math.BigInteger;
 
+// Lưu khoảng byte cho request phát video toàn phần (200) hoặc từng phần (206).
 public record ByteRange(long start, long end, long totalLength, boolean partial) {
 
     private static final String BYTES_PREFIX = "bytes=";
 
+    // Tách header Range theo chuẩn HTTP; gặp cú pháp sai hoặc vượt kích thước tệp thì ném lỗi 416.
     public static ByteRange parse(String header, long totalLength) {
         if (totalLength < 0) {
             throw new IllegalArgumentException("totalLength must be non-negative");
@@ -13,6 +15,7 @@ public record ByteRange(long start, long end, long totalLength, boolean partial)
         if (header == null || header.isBlank()) {
             return new ByteRange(0, totalLength - 1, totalLength, false);
         }
+        // Tệp rỗng hoặc header không bắt đầu bằng bytes= đều bị từ chối với 416.
         String trimmed = header.trim();
         if (totalLength == 0 || !trimmed.startsWith(BYTES_PREFIX)) {
             throw new RangeNotSatisfiableException(totalLength);
@@ -25,7 +28,7 @@ public record ByteRange(long start, long end, long totalLength, boolean partial)
         if (spec.startsWith("-")) {
             return parseSuffixRange(spec.substring(1), totalLength);
         }
-        return parseBoundedOrOpenRange(spec, totalLength);
+        return parseRange(spec, totalLength);
     }
 
     public long length() {
@@ -36,8 +39,9 @@ public record ByteRange(long start, long end, long totalLength, boolean partial)
         return "bytes " + start + "-" + end + "/" + totalLength;
     }
 
+    // Dạng bytes=-N lấy N byte cuối; nếu N lớn hơn kích thước tệp thì kéo mốc đầu về 0.
     private static ByteRange parseSuffixRange(String suffixText, long totalLength) {
-        BigInteger suffix = parseNonNegativeInteger(suffixText, totalLength);
+        BigInteger suffix = parseDigits(suffixText, totalLength);
         if (suffix.signum() <= 0) {
             throw new RangeNotSatisfiableException(totalLength);
         }
@@ -46,12 +50,13 @@ public record ByteRange(long start, long end, long totalLength, boolean partial)
         return new ByteRange(start, totalLength - 1, totalLength, true);
     }
 
-    private static ByteRange parseBoundedOrOpenRange(String spec, long totalLength) {
+    // Xử lý dạng bytes=A-B hoặc bytes=A-; nếu B vượt cuối tệp thì kẹp lại ở byte cuối thay vì báo lỗi.
+    private static ByteRange parseRange(String spec, long totalLength) {
         int dashIndex = spec.indexOf('-');
         String startText = spec.substring(0, dashIndex).trim();
         String endText = spec.substring(dashIndex + 1).trim();
 
-        BigInteger startValue = parseNonNegativeInteger(startText, totalLength);
+        BigInteger startValue = parseDigits(startText, totalLength);
         BigInteger total = BigInteger.valueOf(totalLength);
         if (startValue.compareTo(total) >= 0) {
             throw new RangeNotSatisfiableException(totalLength);
@@ -61,7 +66,7 @@ public record ByteRange(long start, long end, long totalLength, boolean partial)
         if (endText.isEmpty()) {
             end = totalLength - 1;
         } else {
-            BigInteger endValue = parseNonNegativeInteger(endText, totalLength);
+            BigInteger endValue = parseDigits(endText, totalLength);
             if (startValue.compareTo(endValue) > 0) {
                 throw new RangeNotSatisfiableException(totalLength);
             }
@@ -71,7 +76,8 @@ public record ByteRange(long start, long end, long totalLength, boolean partial)
         return new ByteRange(start, end, totalLength, true);
     }
 
-    private static BigInteger parseNonNegativeInteger(String text, long totalLength) {
+    // Dùng BigInteger để client gửi số cực lớn vẫn kẹp hoặc trả 416 sạch sẽ, không bị tràn long.
+    private static BigInteger parseDigits(String text, long totalLength) {
         if (text.isEmpty()) {
             throw new RangeNotSatisfiableException(totalLength);
         }

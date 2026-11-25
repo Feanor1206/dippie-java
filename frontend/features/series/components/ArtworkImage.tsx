@@ -1,3 +1,4 @@
+import { safeImageUrl } from '@/lib/safeUrl';
 import React, { useEffect, useState } from 'react';
 import { getFallbackToneIndex, getTitleInitials } from '@/features/series/seriesBrowseUtils';
 
@@ -33,11 +34,9 @@ export function ArtworkImage({
   aspectClassName = 'aspect-video',
   children,
 }: ArtworkImageProps) {
-  const cleanSrc = typeof src === 'string' && src.trim() ? src.trim() : null;
-  const cleanFallback =
-    typeof fallbackSrc === 'string' && fallbackSrc.trim() && fallbackSrc.trim() !== cleanSrc
-      ? fallbackSrc.trim()
-      : null;
+  const cleanSrc = safeImageUrl(src);
+  const fallback = safeImageUrl(fallbackSrc);
+  const cleanFallback = fallback !== cleanSrc ? fallback : undefined;
 
   const [stage, setStage] = useState<0 | 1 | 2>(0);
 

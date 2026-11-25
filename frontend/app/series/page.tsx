@@ -1,10 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { Search, X } from 'lucide-react';
-import {
-  listSeriesCards,
-  type SeriesCard as SeriesCardData,
-} from '@/lib/services/seriesCardService';
+import { useSeriesCards } from '@/lib/hooks/useCatalogData';
 import { SeriesCard } from '@/features/series/components/SeriesCard';
 import {
   extractSeriesGenres,
@@ -19,37 +16,10 @@ import {
 export default function SeriesBrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryState = useMemo(() => parseSeriesBrowseParams(searchParams), [searchParams]);
-
-  const [cards, setCards] = useState<SeriesCardData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [retryTick, setRetryTick] = useState(0);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    listSeriesCards({ signal: controller.signal, forceRefresh: retryTick > 0 })
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setCards(data);
-          setLoading(false);
-        }
-      })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted || (err as { isCanceled?: boolean })?.isCanceled) return;
-        setError((err as { message?: string })?.message || 'Không thể tải danh mục bộ phim.');
-        setLoading(false);
-      });
-    return () => controller.abort();
-  }, [retryTick]);
+  const { cards, loading, error, retry } = useSeriesCards(true, 'Chưa tải được danh sách phim bộ. Bạn thử lại nhé.');
 
   const updateQueryState = (next: SeriesBrowseQueryState) => {
     setSearchParams(serializeSeriesBrowseParams(next), { replace: true });
-  };
-
-  const handleSearchChange = (value: string) => {
-    updateQueryState({ ...queryState, q: value });
   };
 
   const handleToggleGenre = (genreId: string) => {
@@ -61,45 +31,29 @@ export default function SeriesBrowsePage() {
     updateQueryState({ ...queryState, genres: nextGenres });
   };
 
-  const handleClearGenres = () => {
-    if (queryState.genres.length === 0) return;
-    updateQueryState({ ...queryState, genres: [] });
-  };
-
-  const handleSortChange = (sort: SeriesSortKey) => {
-    updateQueryState({ ...queryState, sort });
-  };
-
-  const handleResetFilters = () => {
-    updateQueryState({ q: '', genres: [], sort: 'title' });
-  };
+  const handleResetFilters = () => updateQueryState({ q: '', genres: [], sort: 'title' });
 
   const availableGenres = useMemo(() => extractSeriesGenres(cards), [cards]);
-  const filteredCards = useMemo(
-    () => filterAndSortSeriesCards(cards, queryState),
-    [cards, queryState]
-  );
-
+  const filteredCards = useMemo(() => filterAndSortSeriesCards(cards, queryState), [cards, queryState]);
   const selectedGenreKeys = useMemo(
     () => new Set(queryState.genres.map((g) => g.toLocaleLowerCase('vi'))),
     [queryState.genres]
   );
-
   const hasActiveFilters = Boolean(queryState.q.trim() || queryState.genres.length > 0);
 
   return (
-    <main className="page-shell min-h-[75vh] py-6 sm:py-8">
+    <main id="main-content" tabIndex={-1} className="page-shell min-h-[75vh] py-6 sm:py-8">
       <header className="catalog-cover">
         <div className="self-center px-5 py-4 sm:px-8 sm:py-6">
-          <h1 className="comic-heading text-3xl font-bold sm:text-4xl">Bộ phim</h1>
+          <h1 className="comic-heading text-3xl font-bold sm:text-4xl">Phim bộ</h1>
           <p className="mt-1 text-sm text-muted">
-            Khám phá toàn bộ series hoạt hình theo thể loại, năm phát hành và số tập.
+            Tìm phim bộ theo tên, lọc theo thể loại hoặc xếp theo tên, năm và số tập.
           </p>
         </div>
         <div className="catalog-cover-art" aria-hidden="true" />
       </header>
 
-      <section aria-label="Tìm kiếm và lọc bộ phim" className="mt-5 space-y-4">
+      <section aria-label="Tìm và lọc phim bộ" className="mt-5 space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="catalog-search mt-0 flex-1">
             <Search size={18} className="ml-1.5 shrink-0 text-muted" aria-hidden="true" />
@@ -107,16 +61,16 @@ export default function SeriesBrowsePage() {
               id="series-search-input"
               data-testid="series-search-input"
               type="search"
-              aria-label="Tìm bộ phim theo tên hoặc tên gốc"
+              aria-label="Tìm phim bộ theo tên"
               value={queryState.q}
-              onChange={(event) => handleSearchChange(event.target.value)}
-              placeholder="Tìm theo tên bộ phim hoặc tên gốc…"
+              onChange={(event) => updateQueryState({ ...queryState, q: event.target.value })}
+              placeholder="Tìm theo tên phim bộ…"
               className="min-h-12 min-w-0 flex-1 bg-transparent px-2.5 text-base text-ink placeholder:text-muted focus:outline-none"
             />
             {queryState.q && (
               <button
                 type="button"
-                onClick={() => handleSearchChange('')}
+                onClick={() => updateQueryState({ ...queryState, q: '' })}
                 aria-label="Xóa từ khóa tìm kiếm"
                 className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded-md px-2 text-sm text-muted hover:bg-surface-elevated hover:text-ink"
               >
@@ -133,8 +87,8 @@ export default function SeriesBrowsePage() {
               id="series-sort-select"
               data-testid="series-sort-select"
               value={queryState.sort}
-              onChange={(event) => handleSortChange(event.target.value as SeriesSortKey)}
-              className="min-h-12 rounded-lg border border-[#a6b4a4] bg-paper-white px-3 py-2 text-sm font-medium text-ink focus:border-ink focus:outline-none cursor-pointer"
+              onChange={(event) => updateQueryState({ ...queryState, sort: event.target.value as SeriesSortKey })}
+              className="min-h-12 rounded-lg border border-[#a6b4a4] bg-paper-white px-3 py-2 text-base sm:text-sm font-medium text-ink focus:border-ink focus:outline-none cursor-pointer"
             >
               {SERIES_SORT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -156,8 +110,8 @@ export default function SeriesBrowsePage() {
               type="button"
               data-testid="genre-chip-all"
               aria-pressed={queryState.genres.length === 0}
-              onClick={handleClearGenres}
-              className={`series-filter-chip ${queryState.genres.length === 0 ? 'series-filter-chip--active' : ''}`}
+              onClick={() => queryState.genres.length > 0 && updateQueryState({ ...queryState, genres: [] })}
+              className={`series-filter-chip min-h-[44px] ${queryState.genres.length === 0 ? 'series-filter-chip--active' : ''}`}
             >
               Tất cả
             </button>
@@ -171,7 +125,7 @@ export default function SeriesBrowsePage() {
                   data-genre-id={genre.id}
                   aria-pressed={active}
                   onClick={() => handleToggleGenre(genre.id)}
-                  className={`series-filter-chip ${active ? 'series-filter-chip--active' : ''}`}
+                  className={`series-filter-chip min-h-[44px] ${active ? 'series-filter-chip--active' : ''}`}
                 >
                   {genre.label}
                 </button>
@@ -184,14 +138,14 @@ export default function SeriesBrowsePage() {
       <div className="catalog-status" role="status" data-testid="series-result-status">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {loading ? (
-            <span>Đang tải danh sách bộ phim…</span>
+            <span>Đang tải phim bộ…</span>
           ) : error ? (
-            <span>Không thể tải dữ liệu bộ phim</span>
+            <span>Chưa tải được danh sách phim bộ</span>
           ) : (
             <span>
               {hasActiveFilters
-                ? `Hiển thị ${filteredCards.length} / ${cards.length} bộ phim`
-                : `${filteredCards.length} bộ phim`}
+                ? `Hiển thị ${filteredCards.length} / ${cards.length} phim bộ`
+                : `${filteredCards.length} phim bộ`}
             </span>
           )}
         </div>
@@ -199,19 +153,19 @@ export default function SeriesBrowsePage() {
           <button
             type="button"
             onClick={handleResetFilters}
-            className="text-sm font-semibold text-[#36563c] underline-offset-4 hover:underline cursor-pointer"
+            className="inline-flex min-h-[44px] items-center px-2 text-sm font-semibold text-[#36563c] underline-offset-4 hover:underline cursor-pointer"
           >
             Xóa bộ lọc
           </button>
         )}
       </div>
 
-      <section aria-label="Danh sách bộ phim">
+      <section aria-label="Danh sách phim bộ">
         {loading ? (
           <div
             data-testid="series-grid-skeleton"
             role="status"
-            aria-label="Đang tải danh sách bộ phim"
+            aria-label="Đang tải danh sách phim bộ"
             className="series-catalog-grid"
           >
             {Array.from({ length: 6 }).map((_, index) => (
@@ -234,14 +188,9 @@ export default function SeriesBrowsePage() {
             data-testid="series-error-state"
             className="flex flex-col items-center rounded-xl border border-red-500/30 bg-red-950/10 px-6 py-12 text-center"
           >
-            <h2 className="text-lg font-bold text-ink">Không thể tải danh mục bộ phim</h2>
+            <h2 className="text-lg font-bold text-ink">Chưa tải được danh sách phim bộ</h2>
             <p className="mt-1 max-w-md text-sm text-muted">{error}</p>
-            <button
-              type="button"
-              data-testid="series-retry-button"
-              onClick={() => setRetryTick((n) => n + 1)}
-              className="btn-primary mt-5 text-xs"
-            >
+            <button type="button" data-testid="series-retry-button" onClick={retry} className="btn-primary mt-5 text-xs">
               Thử lại
             </button>
           </div>
@@ -251,20 +200,16 @@ export default function SeriesBrowsePage() {
             className="rounded-xl border border-dashed border-surface-border bg-surface px-6 py-16 text-center"
           >
             <h2 className="text-base font-bold text-ink">
-              {cards.length === 0 ? 'Chưa có bộ phim nào' : 'Không tìm thấy bộ phim phù hợp'}
+              {cards.length === 0 ? 'Chưa có phim bộ nào' : 'Không tìm thấy phim bộ phù hợp'}
             </h2>
             <p className="mx-auto mt-1.5 max-w-md text-sm text-muted">
               {cards.length === 0
-                ? 'Danh mục hiện chưa có bộ phim nào được xuất bản.'
-                : 'Thử đổi từ khóa tìm kiếm hoặc bỏ bớt bộ lọc thể loại.'}
+                ? 'Kho hiện chưa có phim bộ nào.'
+                : 'Thử đổi từ khóa hoặc bỏ bớt thể loại đang chọn.'}
             </p>
             {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={handleResetFilters}
-                className="btn-secondary mt-5 text-xs"
-              >
-                Xem tất cả bộ phim
+              <button type="button" onClick={handleResetFilters} className="btn-secondary mt-5 text-xs">
+                Xem tất cả phim bộ
               </button>
             )}
           </div>

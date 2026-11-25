@@ -1,6 +1,6 @@
 package com.dippie.catalog.query;
 
-import com.dippie.catalog.importing.CatalogImportedEvent;
+import com.dippie.catalog.domain.CatalogImportedEvent;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -14,6 +14,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+// Kiểm tra khi luồng refresh đang tải bản chụp mới, các luồng gọi current() vẫn nhận ngay bản chụp cũ mà không bị chặn.
 class CatalogReadModelCacheTest {
 
     @Test

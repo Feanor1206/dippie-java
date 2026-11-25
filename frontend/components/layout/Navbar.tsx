@@ -1,31 +1,39 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router';
-
+import { getUserInitials } from '@/lib/labels';
 import { useWatchlist } from '@/lib/context/WatchlistContext';
 import { useAuth } from '@/lib/context/AuthContext';
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const openAtEnd = useRef(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const { watchlist, openChat } = useWatchlist();
   const { user, isAuthenticated, openAuthModal, logout } = useAuth();
 
-  const navLinks = [
+  const primaryNavLinks = [
     { name: 'Trang chủ', href: '/' },
-    { name: 'Bộ phim', href: '/series' },
+    { name: 'Phim bộ', href: '/series' },
     { name: 'Kho phim', href: '/search' },
-    { name: 'Danh sách xem', href: '/profile', count: watchlist.length },
+    { name: 'Thư viện', href: '/profile', count: watchlist.length },
   ];
-  if (user?.role === 'ROLE_ADMIN') {
-    navLinks.push(
-      { name: 'Nhập dữ liệu', href: '/admin/import' },
-      { name: 'Người dùng', href: '/admin/users' },
-      { name: 'Thống kê', href: '/admin/stats' },
-      { name: 'Nhật ký', href: '/admin/audit' },
-    );
-  }
+  const adminLinks = user?.role === 'ROLE_ADMIN'
+    ? [
+        { name: 'Báo lỗi video', href: '/admin/reports' },
+        { name: 'Nhập dữ liệu', href: '/admin/import' },
+        { name: 'Người dùng', href: '/admin/users' },
+        { name: 'Thống kê', href: '/admin/stats' },
+        { name: 'Nhật ký', href: '/admin/audit' },
+      ]
+    : [];
+  const desktopNavLinks = user?.role === 'ROLE_ADMIN'
+    ? [...primaryNavLinks, { name: 'Quản trị', href: '/admin/reports' }]
+    : primaryNavLinks;
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -37,33 +45,59 @@ export function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const getInitials = (name?: string) => {
-    if (!name) return 'U';
-    const parts = name.trim().split(' ');
-    if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-    return name.slice(0, 2).toUpperCase();
+  const menuItems = () => Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+
+  useEffect(() => {
+    if (!userDropdownOpen) return;
+    const items = menuItems();
+    (openAtEnd.current ? items.at(-1) : items[0])?.focus();
+  }, [userDropdownOpen]);
+
+  const onUserMenuKey = (event: React.KeyboardEvent) => {
+    const items = menuItems();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setUserDropdownOpen(false);
+      menuTriggerRef.current?.focus();
+      return;
+    }
+    if (items.length === 0 || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    const next = event.key === 'Home' ? 0
+      : event.key === 'End' ? items.length - 1
+      : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next]?.focus();
   };
+
+  const isActiveLink = (href: string) => pathname === href
+    || (href === '/series' && pathname.startsWith('/series/'))
+    || (href === '/search' && pathname.startsWith('/movies/'))
+    || (href === '/admin/reports' && pathname.startsWith('/admin'));
+
+  const userDisplayName = user?.fullName || user?.username;
+  const userInitials = getUserInitials(userDisplayName, 'U');
 
   return (
     <header className="comic-navbar sticky top-0 z-40 border-b border-surface-border/25 bg-background">
-      <nav aria-label="Điều hướng chính" className="page-shell flex h-[68px] items-center justify-between">
-        <div className="flex items-center gap-8">
+      <nav aria-label="Điều hướng chính" className="page-shell flex h-[68px] items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-4 lg:gap-8">
           <Link
             to="/"
-            className="flex items-center gap-2 text-xl font-bold tracking-tight text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand rounded px-1"
+            className="flex shrink-0 items-center gap-2 text-xl font-bold tracking-tight text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand rounded px-1"
           >
             <span className="comic-wordmark">Dippie</span>
           </Link>
 
           <div className="hidden lg:flex items-center gap-6">
-            {navLinks.map((link) => {
-              const isActive = pathname === link.href;
+            {desktopNavLinks.map((link) => {
+              const isActive = isActiveLink(link.href);
               return (
                 <Link
                   key={link.name}
                   to={link.href}
                   aria-current={isActive ? 'page' : undefined}
-                  className={`text-sm font-medium transition-colors ${
+                  className={`inline-flex min-h-[44px] items-center whitespace-nowrap text-sm font-medium transition-colors ${
                     isActive ? 'text-brand-dark font-semibold' : 'text-muted hover:text-ink'
                   }`}
                 >
@@ -79,61 +113,103 @@ export function Navbar() {
           </div>
         </div>
 
-        <div className="hidden lg:flex items-center gap-3">
+        <div className="hidden lg:flex shrink-0 items-center gap-3">
           <button
+            type="button"
+            title="Nhờ CineBot gợi ý phim theo chủ đề hoặc nhân vật bé thích"
             onClick={openChat}
-            className="min-h-[44px] min-w-[44px] rounded-lg border border-surface-border/50 bg-surface px-3.5 text-sm font-semibold text-ink hover:bg-surface-elevated cursor-pointer"
+            className="min-h-[44px] min-w-[44px] inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-[#f2d18c] px-3.5 text-sm font-bold text-ink shadow-[2px_2px_0_#203328] transition-colors hover:bg-[#f7dfa8] cursor-pointer"
           >
             Hỏi CineBot
           </button>
 
           {isAuthenticated && user ? (
-            <div className="relative" ref={dropdownRef}>
+            <div className="relative" ref={dropdownRef} onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) setUserDropdownOpen(false);
+            }}>
               <button
+                type="button"
+                ref={menuTriggerRef}
                 data-testid="nav-user-dropdown-button"
+                aria-haspopup="menu"
+                aria-controls={userDropdownOpen ? "account-menu" : undefined}
                 aria-expanded={userDropdownOpen}
-                onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                className="flex items-center gap-2 rounded-lg border border-surface-border bg-surface px-2.5 py-1 text-xs text-ink hover:border-zinc-500 transition-colors cursor-pointer"
+                onClick={() => {
+                  openAtEnd.current = false;
+                  setUserDropdownOpen((prev) => !prev);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    openAtEnd.current = event.key === 'ArrowUp';
+                    if (userDropdownOpen) {
+                      const items = menuItems();
+                      (openAtEnd.current ? items.at(-1) : items[0])?.focus();
+                    } else setUserDropdownOpen(true);
+                  } else if (event.key === 'Escape') setUserDropdownOpen(false);
+                }}
+                className="flex min-h-[44px] items-center gap-2 rounded-lg border border-surface-border bg-surface px-2.5 py-1 text-xs text-ink hover:border-ink transition-colors cursor-pointer"
               >
-                <div className="grid h-6 w-6 place-items-center rounded bg-brand text-[11px] font-bold text-zinc-950 shadow-sm">
-                  {getInitials(user.fullName || user.username)}
+                <div className="grid h-6 w-6 place-items-center rounded bg-brand text-[11px] font-bold text-ink border border-ink/30">
+                  {userInitials}
                 </div>
-                <span className="font-medium max-w-[100px] truncate">
-                  {user.fullName || user.username}
-                </span>
+                <span className="font-medium max-w-[110px] truncate">{userDisplayName}</span>
               </button>
 
               {userDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-52 rounded-xl border border-surface-border bg-surface-elevated p-2 shadow-2xl animate-fade-in z-50">
-                  <div className="px-2.5 py-2 border-b border-surface-border">
-                    <p className="text-xs font-bold text-ink truncate">{user.fullName || user.username}</p>
+                <div
+                  id="account-menu"
+                  ref={menuRef}
+                  role="menu"
+                  onKeyDown={onUserMenuKey}
+                  aria-label="Menu tài khoản"
+                  className="absolute right-0 mt-2 w-56 rounded-xl border-2 border-ink bg-paper-white p-2 shadow-brand animate-fade-in z-50"
+                >
+                  <div className="px-2.5 py-2 border-b border-surface-border/40">
+                    <p className="text-xs font-bold text-ink truncate">{userDisplayName}</p>
                     <p className="text-[11px] text-muted truncate">{user.email}</p>
                   </div>
 
                   <div className="mt-1.5 space-y-0.5">
                     <Link
                       to="/profile"
+                      role="menuitem"
+                      tabIndex={-1}
                       onClick={() => setUserDropdownOpen(false)}
-                      className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-muted hover:bg-surface-hover hover:text-ink transition-colors"
+                      className="flex min-h-[44px] items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-mint/60 transition-colors"
                     >
-                      Hồ sơ cá nhân
+                      Thư viện
                     </Link>
                     <Link
                       to="/account"
+                      role="menuitem"
+                      tabIndex={-1}
                       onClick={() => setUserDropdownOpen(false)}
-                      className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-muted hover:bg-surface-hover hover:text-ink transition-colors"
+                      className="flex min-h-[44px] items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-mint/60 transition-colors"
                     >
                       Cài đặt tài khoản
                     </Link>
+                    <Link
+                      to="/lich-su"
+                      role="menuitem"
+                      tabIndex={-1}
+                      onClick={() => setUserDropdownOpen(false)}
+                      className="flex min-h-[44px] items-center rounded-md px-2.5 text-xs font-medium text-ink hover:bg-mint/60 transition-colors"
+                    >
+                      Lịch sử xem
+                    </Link>
                   </div>
 
-                  <div className="mt-1.5 pt-1.5 border-t border-surface-border">
+                  <div className="mt-1.5 pt-1.5 border-t border-surface-border/40">
                     <button
+                      type="button"
+                      role="menuitem"
+                      tabIndex={-1}
                       onClick={() => {
                         setUserDropdownOpen(false);
                         logout();
                       }}
-                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-red-800 hover:bg-red-500/10 transition-colors cursor-pointer"
+                      className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-500/10 transition-colors cursor-pointer"
                     >
                       Đăng xuất
                     </button>
@@ -143,39 +219,54 @@ export function Navbar() {
             </div>
           ) : (
             <button
+              type="button"
               data-testid="nav-login-button"
               onClick={() => openAuthModal('login')}
-              className="min-h-[44px] rounded-lg bg-brand px-3.5 text-sm font-bold text-ink hover:bg-brand-hover active:bg-brand-active cursor-pointer"
+              className="min-h-[44px] rounded-lg border-2 border-ink bg-brand px-3.5 text-sm font-bold text-ink shadow-[2px_2px_0_#203328] hover:bg-brand-hover active:bg-brand-active cursor-pointer"
             >
               Đăng nhập
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-2 lg:hidden">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 lg:hidden">
+          <button
+            type="button"
+            data-testid="mobile-cinebot-launcher"
+            aria-label="Mở CineBot"
+            onClick={openChat}
+            className="min-h-[44px] min-w-[44px] rounded-lg border-2 border-ink bg-[#f2d18c] px-2.5 sm:px-3 text-xs font-bold text-ink shadow-[2px_2px_0_#203328] hover:bg-[#f7dfa8] cursor-pointer"
+          >
+            CineBot
+          </button>
+
           {isAuthenticated ? (
             <Link
               to="/profile"
-              aria-label="Hồ sơ cá nhân"
-              className="grid h-11 w-11 place-items-center rounded-lg bg-brand text-xs font-bold text-zinc-950 shadow-sm"
+              aria-label="Mở Thư viện"
+              className="grid h-11 w-11 place-items-center rounded-lg border border-ink/40 bg-brand text-xs font-bold text-ink shadow-sm"
             >
-              {getInitials(user?.fullName || user?.username)}
+              {userInitials}
             </Link>
           ) : (
             <button
+              type="button"
               onClick={() => openAuthModal('login')}
-              className="min-h-[44px] rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-zinc-950 hover:bg-brand-hover active:bg-brand-active cursor-pointer shadow-sm"
+              className="min-h-[44px] rounded-lg border border-ink bg-brand px-2.5 sm:px-3 py-1.5 text-xs font-bold text-ink hover:bg-brand-hover active:bg-brand-active cursor-pointer shadow-sm"
             >
               Đăng nhập
             </button>
           )}
 
           <button
+            ref={mobileTriggerRef}
+            type="button"
             aria-label={open ? 'Đóng menu' : 'Mở menu'}
             aria-expanded={open}
-            aria-controls="mobile-navigation"
-            onClick={() => setOpen(!open)}
-            className="min-h-[44px] rounded-lg border border-surface-border bg-surface px-3 text-xs font-semibold text-ink hover:bg-surface-elevated cursor-pointer"
+            aria-controls={open ? "mobile-navigation" : undefined}
+            onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false); }}
+            onClick={() => setOpen((prev) => !prev)}
+            className="min-h-[44px] min-w-[44px] rounded-lg border border-surface-border bg-surface px-2.5 sm:px-3 text-xs font-semibold text-ink hover:bg-surface-elevated cursor-pointer"
           >
             {open ? 'Đóng' : 'Menu'}
           </button>
@@ -183,32 +274,65 @@ export function Navbar() {
       </nav>
 
       {open && (
-        <div id="mobile-navigation" className="border-b border-surface-border bg-surface px-5 py-5 lg:hidden animate-slide-up">
-          <div className="flex flex-col gap-3">
-            {navLinks.map((link) => {
-              const isActive = pathname === link.href;
+        <div id="mobile-navigation" onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            setOpen(false);
+            mobileTriggerRef.current?.focus();
+          }
+        }} className="border-b-2 border-ink bg-paper-white px-5 py-5 lg:hidden animate-slide-up">
+          <div className="flex flex-col gap-2">
+            {primaryNavLinks.map((link) => {
+              const isActive = isActiveLink(link.href);
               return (
                 <Link
                   key={link.name}
                   to={link.href}
                   aria-current={isActive ? 'page' : undefined}
                   onClick={() => setOpen(false)}
-                  className={`flex items-center justify-between rounded-lg px-3.5 py-2.5 text-sm font-medium ${
-                    isActive ? 'bg-surface-elevated text-brand-dark font-bold border border-surface-border' : 'text-muted hover:bg-surface-hover hover:text-ink'
+                  className={`flex min-h-[44px] items-center justify-between rounded-lg px-3.5 py-2.5 text-sm font-medium ${
+                    isActive
+                      ? 'bg-mint/60 text-ink font-bold border border-ink/40'
+                      : 'text-muted hover:bg-surface-hover hover:text-ink'
                   }`}
                 >
                   <span>{link.name}</span>
                   {link.count !== undefined && link.count > 0 && (
-                    <span className="text-xs text-brand-dark font-semibold">
-                      ({link.count})
-                    </span>
+                    <span className="text-xs text-brand-dark font-semibold">({link.count})</span>
                   )}
                 </Link>
               );
             })}
 
-            <div className="pt-3 mt-2 border-t border-surface-border flex flex-col gap-2">
+            {adminLinks.length > 0 && (
+              <div className="mt-2 border-t border-surface-border/40 pt-3">
+                <p className="px-3.5 pb-1 text-xs font-bold text-muted">Quản trị</p>
+                <div className="flex flex-col gap-1">
+                  {adminLinks.map((link) => {
+                    const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+                    return (
+                      <Link
+                        key={link.href}
+                        to={link.href}
+                        aria-current={isActive ? 'page' : undefined}
+                        onClick={() => setOpen(false)}
+                        className={`flex min-h-[44px] items-center rounded-lg px-3.5 py-2 text-sm font-medium ${
+                          isActive
+                            ? 'bg-mint/60 text-ink font-bold border border-ink/40'
+                            : 'text-muted hover:bg-surface-hover hover:text-ink'
+                        }`}
+                      >
+                        {link.name}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-3 mt-2 border-t border-surface-border/40 flex flex-col gap-2">
               <button
+                type="button"
                 onClick={() => {
                   setOpen(false);
                   openChat();
@@ -218,13 +342,34 @@ export function Navbar() {
                 Hỏi CineBot
               </button>
               {isAuthenticated && (
-                <button
-                  data-testid="mobile-logout"
-                  onClick={() => { setOpen(false); logout(); }}
-                  className="btn-secondary w-full justify-center text-xs text-red-800 hover:text-red-800"
-                >
-                  Đăng xuất
-                </button>
+                <>
+                  <Link
+                    to="/account"
+                    data-testid="mobile-account-link"
+                    onClick={() => setOpen(false)}
+                    className="btn-secondary min-h-[44px] w-full justify-center text-xs"
+                  >
+                    Cài đặt tài khoản
+                  </Link>
+                  <Link
+                    to="/lich-su"
+                    onClick={() => setOpen(false)}
+                    className="btn-secondary min-h-[44px] w-full justify-center text-xs"
+                  >
+                    Lịch sử xem
+                  </Link>
+                  <button
+                    type="button"
+                    data-testid="mobile-logout"
+                    onClick={() => {
+                      setOpen(false);
+                      logout();
+                    }}
+                    className="btn-secondary min-h-[44px] w-full justify-center text-xs text-red-800 hover:text-red-800"
+                  >
+                    Đăng xuất
+                  </button>
+                </>
               )}
             </div>
           </div>

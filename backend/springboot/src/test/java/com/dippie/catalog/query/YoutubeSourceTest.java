@@ -7,6 +7,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+// Kiểm tra thứ tự ưu tiên phân giải mã YouTube (playback trước watch, rồi tới thumbnail), bỏ qua JSON lỗi và tạo ảnh bìa từ mã chỉ dùng làm thumbnail.
 class YoutubeSourceTest {
 
     @Test

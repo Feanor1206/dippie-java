@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
+// Một Strategy của MediaFileResolver để tìm video trong thư mục media cục bộ trên máy chủ.
 @Component
 public class LocalMediaLocation implements MediaLocationStrategy {
 
@@ -22,13 +23,17 @@ public class LocalMediaLocation implements MediaLocationStrategy {
         return locateInRoots(asset, roots);
     }
 
+    // Thử lần lượt từng thư mục gốc ứng viên và dừng ngay ở tệp hợp lệ đầu tiên.
     static Optional<Path> locateInRoots(MediaAsset asset, List<Path> candidateRoots) {
         if (asset == null) {
             return Optional.empty();
         }
-        String relativePath = asset.getRelativePath();
+        Optional<MediaPathPolicy.ValidatedRelativePath> validated = MediaPathPolicy.parse(asset.getRelativePath());
+        if (validated.isEmpty()) {
+            return Optional.empty();
+        }
         for (Path root : candidateRoots) {
-            Optional<Path> candidate = MediaPathPolicy.resolveRegularFile(root, relativePath);
+            Optional<Path> candidate = MediaPathPolicy.resolveRegularFile(root, validated.get());
             if (candidate.isPresent()) {
                 return candidate;
             }
@@ -36,6 +41,7 @@ public class LocalMediaLocation implements MediaLocationStrategy {
         return Optional.empty();
     }
 
+    // Khi dùng cấu hình mặc định, mình tìm thêm cả ../../media để chạy trong backend/springboot vẫn thấy thư mục media ở gốc repo.
     static List<Path> resolveRoots(MediaProperties properties, Path repositoryMediaRoot) {
         String configuredRoot = properties == null ? null : properties.root();
         if (configuredRoot == null || configuredRoot.isBlank() || DEFAULT_MEDIA_DIR.equals(configuredRoot.trim())) {

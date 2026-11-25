@@ -8,18 +8,24 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+// Tạo sẵn tài khoản admin và user mẫu cho môi trường demo/test.
+// Mình đặt @Order(10) để chạy trước DemoHistorySeeder (@Order(20)) và khóa profile không bao giờ chạy cùng mysql/prod.
 @Component
 @Order(10)
+@Profile("(demo | test) & !mysql & !prod")
 @ConditionalOnProperty(name = "dippie.seed-demo-data", havingValue = "true")
 public class DemoAccountSeeder implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DemoAccountSeeder.class);
-    private static final String DEMO_PASSWORD = "password123";
+    public static final String DEMO_USERNAME = "user";
+    public static final String DEMO_EMAIL = "user@dippie.com";
+    public static final String DEMO_PASSWORD = "password123";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -31,6 +37,7 @@ public class DemoAccountSeeder implements ApplicationRunner {
         this.clock = clock;
     }
 
+    // Chỉ chèn hai tài khoản mẫu nếu chưa có sẵn trong DB.
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
@@ -45,16 +52,16 @@ public class DemoAccountSeeder implements ApplicationRunner {
                     now
             ));
         }
-        if (!userRepository.existsByUsername("user")) {
+        if (!userRepository.existsByUsername(DEMO_USERNAME)) {
             userRepository.save(new User(
-                    "user",
-                    "user@dippie.com",
+                    DEMO_USERNAME,
+                    DEMO_EMAIL,
                     passwordEncoder.encode(DEMO_PASSWORD),
                     "Standard User",
                     Role.ROLE_USER,
                     now
             ));
         }
-        log.warn("Demo credentials are active (admin/user with password 'password123'). Do not use in production.");
+        log.warn("Đang bật tài khoản demo (admin/user, mật khẩu 'password123'). Không dùng cấu hình này trên môi trường thật.");
     }
 }

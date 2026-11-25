@@ -39,6 +39,7 @@ import static com.dippie.catalog.importing.CatalogCollection.SERIES;
 import static com.dippie.catalog.importing.CatalogCollection.SOURCES;
 import static com.dippie.catalog.importing.CatalogCollection.TEXT_TRACKS;
 
+// Ghi các bảng danh mục theo đúng thứ tự khóa ngoại, dùng hàm upsert generic để 11 loại entity đi chung một luồng thêm hoặc cập nhật.
 @Repository
 class CatalogRecordWriter {
 
@@ -52,35 +53,46 @@ class CatalogRecordWriter {
         this.links = links;
     }
 
+    // Ghi toàn bộ 11 bảng danh mục theo thứ tự cha trước con sau, xen kẽ flush để khóa ngoại luôn khớp.
     void write(JsonNode document, CatalogDiff.Analysis diff, int revision, LocalDateTime now) {
         Batch batch = new Batch(document, diff.storedRows(), revision, now);
         Map<String, Movie> movies = legacy.loadMovies(document);
+
+        // Nhóm bảng gốc độc lập và bộ phim phải xuống DB trước mùa và tập.
         upsert(batch, GENRES, CatalogGenre.class, CatalogRecordMapper::genre, CatalogGenre::applyImport);
         upsert(batch, ATTRIBUTE_SCALES, CatalogAttributeScale.class, CatalogRecordMapper::scale, CatalogAttributeScale::applyImport);
         upsert(batch, SOURCES, CatalogSource.class, CatalogRecordMapper::source, CatalogSource::applyImport);
-        List<CatalogSeries> series = upsert(batch, SERIES, CatalogSeries.class, CatalogRecordMapper::series, CatalogSeries::applyImport);
-        legacy.syncSeries(series, movies);
+        upsert(batch, SERIES, CatalogSeries.class, CatalogRecordMapper::series, CatalogSeries::applyImport);
         entities.flush();
 
+        // Ghi mùa rồi tới tập phim, xong đồng bộ metadata sang bảng movies cũ.
         upsert(batch, SEASONS, CatalogSeason.class, CatalogRecordMapper::season, CatalogSeason::applyImport);
         entities.flush();
-        List<CatalogEpisode> episodes = upsert(batch, EPISODES, CatalogEpisode.class,
+        upsert(batch, EPISODES, CatalogEpisode.class,
                 CatalogRecordMapper::episode, CatalogEpisode::applyImport);
-        legacy.syncEpisodes(episodes, movies);
         entities.flush();
+        legacy.syncMetadata(document, movies);
 
+        // Dời tạm các phân đoạn đổi chỗ sang vị trí âm trước khi ghi phân đoạn, nhân vật và các bảng nối phân loại.
         moveSegments(batch);
         upsert(batch, SEGMENTS, CatalogSegment.class, CatalogRecordMapper::segment, CatalogSegment::applyImport);
         upsert(batch, CHARACTERS, CatalogCharacter.class, CatalogRecordMapper::character, CatalogCharacter::applyImport);
         entities.flush();
         links.replaceTaxonomy(document);
 
+        // Cuối cùng ghi tệp media, phụ đề và phân cảnh phụ thuộc vào tập phim.
         writeAssets(batch, movies);
         upsert(batch, TEXT_TRACKS, CatalogTextTrack.class, CatalogRecordMapper::textTrack, CatalogTextTrack::applyImport);
         upsert(batch, SCENES, CatalogScene.class, CatalogRecordMapper::scene, CatalogScene::applyImport);
         entities.flush();
     }
 
+    // Khi gói nhập lại không đổi nội dung vẫn làm mới metadata bảng movies cũ để sửa lệch dữ liệu nếu có.
+    void refreshLegacyMetadata(JsonNode document) {
+        legacy.syncMetadata(document, legacy.loadMovies(document));
+    }
+
+    // Ghi và flush hết các media_assets trước rồi mới gắn related_asset_id, tránh tự tham chiếu vào bản ghi chưa có trong DB.
     private void writeAssets(Batch batch, Map<String, Movie> movies) {
         JsonNode items = MEDIA_ASSETS.items(batch.document());
         if (items.isEmpty()) {
@@ -98,6 +110,7 @@ class CatalogRecordWriter {
         links.syncEpisodeAssets(items);
     }
 
+    // Hàm generic dùng chung cho mọi bảng CatalogRecord: chưa có thì persist mới, có rồi thì gọi callback cập nhật tại chỗ.
     private <T extends CatalogRecord> List<T> upsert(Batch batch, CatalogCollection collection, Class<T> type,
             Function<CatalogRecordMapper.Row, T> create, BiConsumer<T, T> update) {
         JsonNode items = collection.items(batch.document());
@@ -118,6 +131,8 @@ class CatalogRecordWriter {
         return written;
     }
 
+    // Việt đừng bỏ bước dời tạm sang vị trí âm này nhé.
+    // Khi hai phân đoạn trong cùng tập đổi chỗ cho nhau, ghi thẳng vị trí mới sẽ đụng ngay unique (episode_id, position).
     private void moveSegments(Batch batch) {
         List<CatalogSegment> moving = new ArrayList<>();
         Map<String, Set<Integer>> occupied = new HashMap<>();
@@ -133,6 +148,7 @@ class CatalogRecordWriter {
         if (moving.isEmpty()) {
             return;
         }
+        // Đọc sẵn các số âm đang tồn tại trong DB (nếu có) để tránh gán trùng số âm tạm.
         entities.createQuery("""
                 select row.episodeId, row.position from CatalogSegment row
                 where row.episodeId in :ids and row.position < 0
@@ -140,16 +156,17 @@ class CatalogRecordWriter {
                 occupied.get((String) row[0]).add((Integer) row[1]));
         for (CatalogSegment segment : moving) {
             Set<Integer> positions = occupied.get(segment.getEpisodeId());
-            int temporary = -1;
-            while (!positions.add(temporary)) {
-                temporary--;
+            int temporaryPosition = -1;
+            while (!positions.add(temporaryPosition)) {
+                temporaryPosition--;
             }
-            segment.moveToTemporaryPosition(temporary);
+            segment.moveToTemporaryPosition(temporaryPosition);
             segment.recordImportTime(batch.now());
         }
         entities.flush();
     }
 
+    // Gom tài liệu JSON, bản đồ các hàng đang lưu, phiên bản và thời điểm nhập để đỡ truyền nhiều tham số qua các bước ghi.
     private record Batch(JsonNode document, Map<CatalogCollection, Map<String, CatalogRecord>> storedRows,
             int revision, LocalDateTime now) {
     }

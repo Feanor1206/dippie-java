@@ -1,15 +1,16 @@
 package com.dippie.catalog.query;
 
 import com.dippie.catalog.domain.CatalogCharacter;
+import com.dippie.catalog.domain.CatalogDisplayText;
 import com.dippie.catalog.domain.CatalogEpisode;
 import com.dippie.catalog.domain.CatalogGenre;
 import com.dippie.catalog.domain.CatalogSeason;
 import com.dippie.catalog.domain.CatalogSeries;
+import com.dippie.catalog.domain.EpisodeRuntime;
+import com.dippie.catalog.domain.MoviePresentationLookup;
 import com.dippie.catalog.domain.SeriesArtwork;
+import com.dippie.catalog.query.CatalogReadModel.EpisodeProfile;
 import com.dippie.common.json.JsonText;
-import com.dippie.movie.Movie;
-import com.dippie.recommendation.RecommendationCandidate;
-import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.EntityManager;
 
 import java.util.HashMap;
@@ -19,29 +20,30 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
+// Nạp dữ liệu theo lô (batch JPQL) để dựng danh sách EpisodeProfile cho bộ gợi ý, tránh query lặp N+1 từng tập một.
 final class CatalogRecommendationRows {
 
     private final EntityManager entities;
+    private final MoviePresentationLookup moviePresentations;
 
-    CatalogRecommendationRows(EntityManager entities) {
+    CatalogRecommendationRows(EntityManager entities, MoviePresentationLookup moviePresentations) {
         this.entities = entities;
+        this.moviePresentations = moviePresentations;
     }
 
-    List<RecommendationCandidate> load(List<CatalogEpisode> episodes, Map<String, CatalogSeries> series,
+    // Nạp sẵn trình chiếu, thể loại và nhân vật theo từng lô rồi ghép thành hồ sơ gợi ý cho các tập đủ điều kiện.
+    List<EpisodeProfile> load(List<CatalogEpisode> episodes, Map<String, CatalogSeries> series,
             Map<String, CatalogSeason> seasons, Predicate<CatalogEpisode> isEligible,
-            Function<String, SeriesArtwork> artworkById) {
+            Function<String, SeriesArtwork> artworkById, Set<String> episodesWithSegments) {
+        // Lọc trước danh sách tập hợp lệ rồi tải một lượt điểm đánh giá và ảnh từ bảng trình chiếu.
         var eligible = episodes.stream().filter(isEligible).toList();
         if (eligible.isEmpty()) {
             return List.of();
         }
-        Map<String, Movie> movies = entities.createQuery("""
-                select movie from Movie movie join CatalogEpisode episode on episode.id = movie.id
-                where episode.publicationStatus = 'ready'
-                """, Movie.class).getResultList().stream().collect(Collectors.toMap(Movie::getId, movie -> movie));
+        Map<String, MoviePresentationLookup.Presentation> movies = moviePresentations.findForReadyEpisodes();
 
+        // Tải gom thể loại của tập, bộ phim và nhân vật của từng tập bằng 3 câu JPQL duy nhất.
         var episodeGenres = genres("""
                 select link.episodeId, genre from CatalogEpisodeGenre link
                 join CatalogGenre genre on genre.id = link.genreId order by link.genreId
@@ -52,25 +54,48 @@ final class CatalogRecommendationRows {
                 """);
         var characters = characters();
         return eligible.stream()
-                .map(episode -> new EpisodeRow(episode, series.get(episode.getSeriesId()),
+                .map(episode -> toProfile(
+                        episode,
+                        series.get(episode.getSeriesId()),
                         episode.getSeasonId() == null ? null : seasons.get(episode.getSeasonId()),
-                        movies.get(episode.getId())))
-                .map(row -> row.candidate(
-                        episodeGenres.getOrDefault(row.episode().getId(),
-                                seriesGenres.getOrDefault(row.series().getId(), Set.of())),
-                        characters.getOrDefault(row.episode().getId(), Set.of()), artworkById.apply(row.episode().getId())))
+                        movies.get(episode.getId()),
+                        episodeGenres.getOrDefault(episode.getId(),
+                                seriesGenres.getOrDefault(episode.getSeriesId(), GenreTags.EMPTY)),
+                        characters.getOrDefault(episode.getId(), Set.of()),
+                        artworkById.apply(episode.getId()),
+                        episodesWithSegments.contains(episode.getId())))
                 .toList();
     }
 
-    private Map<String, Set<String>> genres(String query) {
-        Map<String, Set<String>> values = new HashMap<>();
+    // Chấm điểm summaryQuality (0 đến 2) dựa vào việc tập có tóm tắt và phân đoạn hay chưa; năm phát hành ưu tiên tập, mùa rồi mới đến bộ.
+    private static EpisodeProfile toProfile(CatalogEpisode episode, CatalogSeries series, CatalogSeason season,
+            MoviePresentationLookup.Presentation presentation, GenreTags genres,
+            Set<String> characters, SeriesArtwork fallback, boolean hasSegments) {
+        Long duration = EpisodeRuntime.known(episode.getDurationMs());
+        String description = episode.getSynopsis();
+        int summaryQuality = (description == null || description.isBlank() ? 0 : 1) + (hasSegments ? 1 : 0);
+        if (description == null || description.isBlank()) {
+            description = CatalogDisplayText.episode(episode.getNumber(), episode.getTitle());
+        }
+        SeriesArtwork artwork = presentation == null ? fallback
+                : fallback.fillMissing(presentation.poster(), presentation.backdrop());
+        Integer year = episode.getReleaseDate() != null ? Integer.valueOf(episode.getReleaseDate().getYear())
+                : season != null && season.getReleaseYearStart() != null ? season.getReleaseYearStart()
+                        : series.getReleaseYearStart();
+        return new EpisodeProfile(episode.getId(), episode.getTitle(), episode.getSeriesId(),
+                episode.getSeasonId(), episode.getNumber(), year,
+                presentation == null ? 0 : presentation.rating(),
+                EpisodeRuntime.label(duration), artwork.posterUrl(), artwork.backdropUrl(),
+                description, List.copyOf(genres.ids()), List.copyOf(genres.searchTerms()),
+                JsonText.stringList(episode.getThemesJson()), JsonText.stringList(episode.getKeywordsJson()),
+                List.copyOf(characters), duration, series.getTitle(),
+                season == null ? null : season.getNumber(), summaryQuality);
+    }
+
+    private Map<String, GenreTags> genres(String query) {
+        Map<String, GenreTags> values = new HashMap<>();
         for (Object[] row : entities.createQuery(query, Object[].class).getResultList()) {
-            CatalogGenre genre = (CatalogGenre) row[1];
-            Set<String> tags = values.computeIfAbsent((String) row[0], id -> new LinkedHashSet<>());
-            tags.add(genre.getId());
-            jsonArray(genre.getLabelsJson()).map(label -> label.path("text").textValue())
-                    .filter(label -> label != null).forEach(tags::add);
-            aliases(genre.getAliasesJson()).forEach(tags::add);
+            values.computeIfAbsent((String) row[0], id -> new GenreTags()).add((CatalogGenre) row[1]);
         }
         return values;
     }
@@ -84,51 +109,23 @@ final class CatalogRecommendationRows {
             CatalogCharacter character = (CatalogCharacter) row[1];
             Set<String> names = values.computeIfAbsent((String) row[0], id -> new LinkedHashSet<>());
             names.add(character.getName());
-            aliases(character.getAliasesJson()).forEach(names::add);
+            names.addAll(CatalogSearchNames.aliases(character.getAliasesJson()));
         }
         return values;
     }
 
-    private static Stream<JsonNode> jsonArray(String text) {
-        return JsonText.parse(text).filter(JsonNode::isArray).stream().flatMap(JsonNode::valueStream);
-    }
+    // Nhóm mã thể loại cùng toàn bộ từ khóa tìm kiếm mở rộng của một tập hoặc bộ phim.
+    private record GenreTags(Set<String> ids, Set<String> searchTerms) {
 
-    private static Stream<String> aliases(String text) {
-        return jsonArray(text).map(alias -> alias.isTextual() ? alias.textValue() : alias.path("text").textValue())
-                .filter(alias -> alias != null && !alias.isBlank())
-                .map(String::strip);
-    }
+        private static final GenreTags EMPTY = new GenreTags(Set.of(), Set.of());
 
-    private record EpisodeRow(CatalogEpisode episode, CatalogSeries series, CatalogSeason season, Movie movie) {
-        RecommendationCandidate candidate(Set<String> genres, Set<String> characters, SeriesArtwork fallback) {
-            Long duration = episode.getDurationMs();
-            long minutes = duration == null ? 0 : duration / 60_000;
-            String description = episode.getSynopsis();
-            if (description == null || description.isEmpty()) {
-                String number = episode.getNumber() == null ? "None" : episode.getNumber().toString();
-                description = "Episode " + number + ": " + episode.getTitle();
-            }
-            SeriesArtwork artwork = movie == null ? fallback : fallback.fillMissing(movie.getPoster(), movie.getBackdrop());
-            return new RecommendationCandidate(episode.getId(), episode.getTitle(), episode.getSeriesId(),
-                    episode.getSeasonId(), episode.getNumber(), year(), movie == null ? 0 : movie.getRating(),
-                    minutes > 0 ? minutes + "m" : "Episode", artwork.posterUrl(), artwork.backdropUrl(),
-                    description, List.copyOf(genres),
-                    JsonText.stringList(episode.getThemesJson()), JsonText.stringList(episode.getKeywordsJson()),
-                    List.copyOf(characters), null, null, duration, series.getTitle());
+        private GenreTags() {
+            this(new LinkedHashSet<>(), new LinkedHashSet<>());
         }
 
-        private int year() {
-            if (episode.getReleaseDate() != null) {
-                return episode.getReleaseDate().getYear();
-            }
-            if (season != null) {
-                int seasonYear = JsonText.parse(season.getRawJson())
-                        .map(row -> row.path("release_year_start").asInt(0)).orElse(0);
-                if (seasonYear != 0) {
-                    return seasonYear;
-                }
-            }
-            return series.getReleaseYearStart() == null ? 0 : series.getReleaseYearStart();
+        void add(CatalogGenre genre) {
+            ids.add(genre.getId());
+            searchTerms.addAll(genre.allSearchTerms());
         }
     }
 }

@@ -2,6 +2,7 @@ package com.dippie.admin;
 
 import java.util.List;
 
+// Gói toàn bộ chỉ số vận hành trả cho màn hình thống kê, sao chép hai danh sách xếp hạng thành bất biến.
 record AdminStatsResponse(
         long totalUsers,
         long activeUsers,

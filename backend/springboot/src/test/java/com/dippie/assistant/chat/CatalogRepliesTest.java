@@ -13,6 +13,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+// Kiểm tra các mẫu câu trả lời của CatalogReplies: câu dẫn mốc giờ, lọc đoạn trích lặp tên tập và trả lời thông tin bộ phim.
 class CatalogRepliesTest {
 
     static Stream<Arguments> sourceIntroParityCases() {
@@ -36,9 +37,9 @@ class CatalogRepliesTest {
     @Test
     void catalogReplyMatchesPythonParityCases() {
         assertThat(CatalogReplies.catalogReply(List.of(), "chitchat"))
-                .isEqualTo("Mình là CineBot. Bạn có thể mô tả cảnh hoặc tập phim muốn tìm trong danh mục.");
+                .isEqualTo("Mình là CineBot. Bạn cứ kể lại cảnh phim, nhân vật hoặc tập muốn tìm nhé.");
         assertThat(CatalogReplies.catalogReply(List.of(), "find_moment"))
-                .isEqualTo("Hiện chưa tìm thấy nội dung phù hợp trong danh mục.");
+                .isEqualTo("Mình chưa tìm thấy phim phù hợp trong kho phim.");
 
         SearchHit normal = SearchHitFixture.builder()
                 .title("Tập 22")
@@ -71,7 +72,7 @@ class CatalogRepliesTest {
         SearchHit boilerplateEn = SearchHitFixture.builder()
                 .title("Lò xo")
                 .episodeNumber(46)
-                .evidence(List.of(new SearchEvidence("ep-1", "Episode 46: Lò xo", null, null, "episode")))
+                .evidence(List.of(new SearchEvidence("ep-1", "Tập 46: Lò xo", null, null, "episode")))
                 .build();
         assertThat(CatalogReplies.catalogReply(List.of(boilerplateEn), "find_moment"))
                 .isEqualTo("Có vẻ bạn đang tìm Lò xo.");
@@ -80,25 +81,25 @@ class CatalogRepliesTest {
     @Test
     void seriesReplyMatchesPythonParityCases() {
         assertThat(CatalogReplies.seriesReply(List.of(), "episodes"))
-                .isEqualTo("Chưa tìm thấy bộ phim này trong danh mục.");
+                .isEqualTo("Mình chưa tìm thấy bộ phim này trong kho phim.");
 
         SearchHit episodes = SearchHitFixture.builder()
                 .title("Xin chào Jadoo")
                 .episodeCount(120)
                 .build();
         assertThat(CatalogReplies.seriesReply(List.of(episodes), "episodes"))
-                .isEqualTo("Danh mục hiện có 120 tập Xin chào Jadoo.");
+                .isEqualTo("Kho phim hiện có 120 tập Xin chào Jadoo.");
 
         SearchHit episodesDefault = SearchHitFixture.builder().title("Xin chào Jadoo").build();
         assertThat(CatalogReplies.seriesReply(List.of(episodesDefault), "episodes"))
-                .isEqualTo("Danh mục hiện có 0 tập Xin chào Jadoo.");
+                .isEqualTo("Kho phim hiện có 0 tập Xin chào Jadoo.");
 
         SearchHit seasons = SearchHitFixture.builder()
                 .title("Doraemon")
                 .seasonCount(5)
                 .build();
         assertThat(CatalogReplies.seriesReply(List.of(seasons), "seasons"))
-                .isEqualTo("Danh mục hiện có 5 mùa Doraemon.");
+                .isEqualTo("Kho phim hiện có 5 mùa Doraemon.");
 
         SearchHit characters = SearchHitFixture.builder()
                 .title("Jadoo")
@@ -112,7 +113,7 @@ class CatalogRepliesTest {
                 .characters(List.of())
                 .build();
         assertThat(CatalogReplies.seriesReply(List.of(charactersMissing), "characters"))
-                .isEqualTo("Danh mục chưa có thông tin này về Jadoo.");
+                .isEqualTo("Kho phim chưa có thông tin này về Jadoo.");
 
         SearchHit summaryFromDiagnostics = SearchHitFixture.builder()
                 .title("Larva")
@@ -130,12 +131,12 @@ class CatalogRepliesTest {
 
         SearchHit summaryMissing = SearchHitFixture.builder()
                 .title("Larva")
-                .description("Animation series: Larva")
+                .description("Phim bộ: Larva")
                 .build();
         assertThat(CatalogReplies.seriesReply(List.of(summaryMissing), "summary"))
-                .isEqualTo("Danh mục chưa có thông tin này về Larva.");
+                .isEqualTo("Kho phim chưa có thông tin này về Larva.");
         assertThat(CatalogReplies.seriesReply(List.of(summaryMissing), "other"))
-                .isEqualTo("Danh mục chưa có thông tin này về Larva.");
+                .isEqualTo("Kho phim chưa có thông tin này về Larva.");
     }
 
     @Test

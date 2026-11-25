@@ -1,10 +1,10 @@
+import { runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from '../node_modules/typescript/lib/typescript.js';
 import fs from 'node:fs';
-import vm from 'node:vm';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const serviceFile = path.resolve(__dirname, '../lib/services/catalogService.ts');
@@ -41,7 +41,7 @@ function loadService(mockFetch) {
     Boolean,
     console,
   };
-  vm.runInNewContext(compiled, sandbox);
+  runWithSharedModules(compiled, sandbox);
   const api = sandbox.module.exports.browseCatalog ? sandbox.module.exports : sandbox.exports;
   return { api, timers };
 }
@@ -239,7 +239,7 @@ test('5. C2: Malformed paginated payload (data={} or missing items) throws 502',
     (err) => {
       assert.equal(err.name, 'CatalogApiError');
       assert.equal(err.status, 502);
-      assert.match(err.message, /thiếu mảng items/);
+      assert.match(err.message, /thiếu danh sách phim/);
       return true;
     }
   );
@@ -264,7 +264,7 @@ test('6. C2: normalizeCatalogMovie rejects missing required fields and never fab
     () => api.normalizeCatalogMovie({ title: 'T', year: 2020, rating: 8 }),
     (err) => {
       assert.equal(err.status, 502);
-      assert.match(err.message, /ID bắt buộc/);
+      assert.match(err.message, /thiếu mã phim/);
       return true;
     }
   );
@@ -273,7 +273,7 @@ test('6. C2: normalizeCatalogMovie rejects missing required fields and never fab
     () => api.normalizeCatalogMovie({ id: 'm1', year: 2020, rating: 8 }),
     (err) => {
       assert.equal(err.status, 502);
-      assert.match(err.message, /tiêu đề bắt buộc/);
+      assert.match(err.message, /thiếu tiêu đề/);
       return true;
     }
   );
@@ -291,7 +291,7 @@ test('6. C2: normalizeCatalogMovie rejects missing required fields and never fab
     () => api.normalizeCatalogMovie({ id: 'm1', title: 'T', year: 2020 }),
     (err) => {
       assert.equal(err.status, 502);
-      assert.match(err.message, /điểm đánh giá/);
+      assert.match(err.message, /có điểm không hợp lệ/);
       return true;
     }
   );
@@ -332,7 +332,7 @@ test('7. C2: getCatalogMovieById verifies response ID matches requested canonica
     (err) => {
       assert.equal(err.name, 'CatalogApiError');
       assert.equal(err.status, 502);
-      assert.match(err.message, /không khớp với ID yêu cầu/);
+      assert.match(err.message, /không khớp với phim đang mở/);
       return true;
     }
   );
@@ -358,7 +358,7 @@ test('7. C2: getCatalogMovieById verifies response ID matches requested canonica
     },
     (err) => {
       assert.equal(err.status, 502);
-      assert.match(err.message, /không khớp với ID yêu cầu/);
+      assert.match(err.message, /không khớp với phim đang mở/);
       return true;
     }
   );
@@ -485,4 +485,42 @@ test('13. Catalog API: list request propagates caller cancellation', async () =>
   const pending = api.getCatalogSeriesList(undefined, external.signal, 500);
   external.abort();
   await assert.rejects(pending, (error) => error.isCanceled === true);
+});
+
+test('14. C6: normalizeCatalogMovie accepts null year and getCatalogGenres filters out zero-count genres', async () => {
+  const { api } = loadService(async (url) => {
+    assert.equal(url, '/api/movies/genres');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => [
+        { id: 'family', label: 'Gia đình', count: 50 },
+        { id: 'adventure', label: 'Phiêu lưu', count: 0 },
+        { id: 'slice_of_life', label: 'Đời thường', count: 12 },
+      ],
+    };
+  });
+
+  const normalized = api.normalizeCatalogMovie({
+    id: 'ep_no_year',
+    title: 'Tập không có năm',
+    year: null,
+    rating: 0,
+    averageRating: null,
+    ratingCount: 0,
+    genres: ['family'],
+  });
+  assert.equal(normalized.year, null);
+  assert.equal(normalized.averageRating, null);
+  assert.equal(normalized.ratingCount, 0);
+
+  api.clearCatalogGenresCache();
+  const genres = await api.getCatalogGenres({ forceRefresh: true });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(genres)),
+    [
+      { id: 'family', label: 'Gia đình', count: 50 },
+      { id: 'slice_of_life', label: 'Đời thường', count: 12 },
+    ]
+  );
 });

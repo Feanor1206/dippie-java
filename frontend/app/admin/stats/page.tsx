@@ -23,7 +23,7 @@ export default function AdminStatsPage() {
   const [stats, setStats] = useState<AdminStatsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [refreshCount, setRefreshCount] = useState(0);
 
   useEffect(() => {
     if (!isAdmin || !token) return;
@@ -32,40 +32,78 @@ export default function AdminStatsPage() {
     setLoadError(null);
 
     getAdminStats(token, { signal: controller.signal })
-      .then((data) => {
+      .then((loadedStats) => {
         if (controller.signal.aborted) return;
-        setStats(data);
+        setStats(loadedStats);
         setIsLoading(false);
       })
       .catch((err: any) => {
         if (controller.signal.aborted || err?.isCanceled) return;
-        setLoadError(err?.message || 'Không thể tải dữ liệu thống kê.');
+        setLoadError(err?.message || 'Chưa tải được dữ liệu thống kê.');
         setIsLoading(false);
       });
 
     return () => controller.abort();
-  }, [isAdmin, token, refreshNonce]);
+  }, [isAdmin, token, refreshCount]);
 
-  if (status === 'checking') return <div role="status" className="p-8 text-sm">Đang kiểm tra tài khoản…</div>;
-  if (status === 'unavailable') return <div role="alert" className="p-8 text-sm">Không thể kiểm tra tài khoản. <button className="underline" onClick={() => retryVerify()}>Thử lại</button></div>;
-  if (status === 'guest') return <div className="p-8 text-sm">Vui lòng đăng nhập để xem thống kê hệ thống. <button data-testid="admin-sign-in" className="underline" onClick={() => openAuthModal('login')}>Đăng nhập</button></div>;
-  if (!isAdmin) return <div data-testid="admin-forbidden" role="alert" className="p-8 text-sm">Tài khoản này không có quyền xem thống kê hệ thống.</div>;
+  if (status === 'checking') {
+    return (
+      <main id="main-content" tabIndex={-1} className="page-shell py-12">
+        <div role="status" className="mx-auto max-w-md rounded-2xl border border-surface-border/40 bg-paper-white p-8 text-center text-sm text-muted">
+          Đang kiểm tra tài khoản…
+        </div>
+      </main>
+    );
+  }
+  if (status === 'unavailable') {
+    return (
+      <main id="main-content" tabIndex={-1} className="page-shell py-12">
+        <div role="alert" className="mx-auto max-w-md rounded-2xl border-2 border-amber-700/40 bg-amber-500/10 p-8 text-center text-sm text-amber-950">
+          <p className="font-semibold">Chưa kiểm tra được tài khoản.</p>
+          <button type="button" className="btn-secondary mt-4 text-xs" onClick={() => retryVerify()}>
+            Thử lại
+          </button>
+        </div>
+      </main>
+    );
+  }
+  if (status === 'guest') {
+    return (
+      <main id="main-content" tabIndex={-1} className="page-shell py-12">
+        <div className="mx-auto max-w-md rounded-2xl border-2 border-ink bg-paper-white p-8 text-center shadow-brand">
+          <p className="text-sm text-muted">Đăng nhập để xem thống kê.</p>
+          <button type="button" data-testid="admin-sign-in" className="btn-primary mt-4 text-xs" onClick={() => openAuthModal('login')}>
+            Đăng nhập
+          </button>
+        </div>
+      </main>
+    );
+  }
+  if (!isAdmin) {
+    return (
+      <main id="main-content" tabIndex={-1} className="page-shell py-12">
+        <div data-testid="admin-forbidden" role="alert" className="mx-auto max-w-md rounded-2xl border-2 border-red-800/35 bg-red-500/10 p-8 text-center text-sm font-medium text-red-900">
+          Tài khoản này không có quyền xem thống kê.
+        </div>
+      </main>
+    );
+  }
 
   const maxViewers = stats && stats.topWatchedEpisodes.length > 0
-    ? Math.max(...stats.topWatchedEpisodes.map((ep) => ep.viewers), 1)
+    ? Math.max(...stats.topWatchedEpisodes.map((episode) => episode.viewers), 1)
     : 1;
 
-  const completionPercentClamped = stats
+  const completionPercent = stats
     ? Math.max(0, Math.min(100, Math.round(stats.completionRate * 100)))
     : 0;
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+    <main id="main-content" tabIndex={-1} className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <AdminNav />
 
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-surface-border pb-6">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-brand-dark">
+          <div className="flex items-center gap-2 text-xs font-semibold text-brand-dark">
             <BarChart3 size={14} aria-hidden="true" />
             <span>Quản trị hệ thống</span>
           </div>
@@ -73,14 +111,14 @@ export default function AdminStatsPage() {
             Thống kê tổng quan
           </h1>
           <p className="mt-1 text-sm text-muted">
-            Theo dõi số lượng người dùng, kho nội dung và mức độ tương tác trên toàn nền tảng.
+            Xem số người dùng, số phim, lượt xem và điểm chấm trên Dippie.
           </p>
         </div>
 
         <button
           type="button"
           data-testid="admin-stats-refresh"
-          onClick={() => setRefreshNonce((n) => n + 1)}
+          onClick={() => setRefreshCount((count) => count + 1)}
           disabled={isLoading}
           className="btn-secondary flex items-center gap-1.5 text-xs font-medium text-muted disabled:opacity-50"
         >
@@ -96,14 +134,14 @@ export default function AdminStatsPage() {
       {isLoading ? (
         <div role="status" className="flex items-center justify-center rounded-xl border border-surface-border bg-surface py-16 text-xs text-muted shadow-sm">
           <RefreshCw size={16} className="mr-2 animate-spin text-brand-dark" aria-hidden="true" />
-          <span>Đang tải dữ liệu thống kê...</span>
+          <span>Đang tải dữ liệu thống kê…</span>
         </div>
       ) : loadError ? (
         <div role="alert" data-testid="admin-stats-error" className="rounded-xl border border-red-500/30 bg-red-500/10 p-8 text-center">
           <p className="text-xs text-red-900">{loadError}</p>
           <button
             type="button"
-            onClick={() => setRefreshNonce((n) => n + 1)}
+            onClick={() => setRefreshCount((count) => count + 1)}
             className="btn-secondary mt-3 text-xs font-semibold"
           >
             Thử lại
@@ -160,14 +198,14 @@ export default function AdminStatsPage() {
               <div
                 role="progressbar"
                 aria-label="Tỷ lệ hoàn thành phiên xem"
-                aria-valuenow={completionPercentClamped}
+                aria-valuenow={completionPercent}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 className="mt-3 h-2.5 w-full overflow-hidden rounded-full border border-surface-border/40 bg-surface-elevated"
               >
                 <div
                   className="h-full rounded-full bg-brand transition-all duration-300"
-                  style={{ width: `${completionPercentClamped}%` }}
+                  style={{ width: `${completionPercent}%` }}
                 />
               </div>
               <p className="mt-2 text-[11px] text-muted">
@@ -182,7 +220,7 @@ export default function AdminStatsPage() {
                 <div className="flex items-center gap-2">
                   <PlayCircle size={18} className="text-brand-dark" aria-hidden="true" />
                   <h2 className="text-base font-bold text-ink">
-                    Tập phim được xem nhiều nhất
+                    Tập được xem nhiều nhất
                   </h2>
                 </div>
                 <span className="text-xs text-muted">Theo số người xem</span>
@@ -190,37 +228,37 @@ export default function AdminStatsPage() {
 
               {stats.topWatchedEpisodes.length === 0 ? (
                 <p className="py-10 text-center text-xs text-muted">
-                  Chưa có dữ liệu lượt xem tập phim.
+                  Chưa có dữ liệu lượt xem.
                 </p>
               ) : (
                 <ol className="mt-4 space-y-4">
-                  {stats.topWatchedEpisodes.map((ep, idx) => {
-                    const widthPct = ep.viewers > 0
-                      ? Math.max(4, Math.round((ep.viewers / maxViewers) * 100))
+                  {stats.topWatchedEpisodes.map((episode, index) => {
+                    const widthPercent = episode.viewers > 0
+                      ? Math.max(4, Math.round((episode.viewers / maxViewers) * 100))
                       : 0;
                     return (
-                      <li key={ep.episodeId} className="space-y-1.5">
+                      <li key={episode.episodeId} className="space-y-1.5">
                         <div className="flex items-baseline justify-between gap-3 text-xs">
                           <div className="min-w-0">
-                            <span className="mr-2 font-mono font-bold text-brand-dark">#{idx + 1}</span>
-                            <span className="font-semibold text-ink">{ep.title}</span>
-                            <span className="ml-2 font-mono text-[10px] text-muted">[{ep.episodeId}]</span>
+                            <span className="mr-2 font-mono font-bold text-brand-dark">#{index + 1}</span>
+                            <span className="font-semibold text-ink">{episode.title}</span>
+                            <span className="ml-2 font-mono text-[10px] text-muted">[{episode.episodeId}]</span>
                           </div>
                           <span className="shrink-0 font-mono text-xs font-bold text-ink">
-                            {formatCount(ep.viewers)} người xem
+                            {formatCount(episode.viewers)} người xem
                           </span>
                         </div>
                         <div
                           role="progressbar"
-                          aria-label={`Số người xem của ${ep.title}`}
-                          aria-valuenow={ep.viewers}
+                          aria-label={`Số người xem của ${episode.title}`}
+                          aria-valuenow={episode.viewers}
                           aria-valuemin={0}
                           aria-valuemax={maxViewers}
                           className="h-3 w-full overflow-hidden rounded-full border border-surface-border/40 bg-surface-elevated"
                         >
                           <div
                             className="h-full rounded-full bg-brand"
-                            style={{ width: `${widthPct}%` }}
+                            style={{ width: `${widthPercent}%` }}
                           />
                         </div>
                       </li>
@@ -235,25 +273,25 @@ export default function AdminStatsPage() {
                 <div className="flex items-center gap-2">
                   <Star size={18} className="text-brand-dark" aria-hidden="true" />
                   <h2 className="text-base font-bold text-ink">
-                    Phim được đánh giá cao nhất
+                    Phim có điểm cao nhất
                   </h2>
                 </div>
-                <span className="text-xs text-muted">Điểm trung bình & lượt đánh giá</span>
+                <span className="text-xs text-muted">Điểm trung bình và lượt chấm</span>
               </div>
 
               {stats.topRatedMovies.length === 0 ? (
                 <p className="py-10 text-center text-xs text-muted">
-                  Chưa có dữ liệu đánh giá phim.
+                  Chưa có dữ liệu chấm điểm.
                 </p>
               ) : (
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full border-collapse text-left text-xs">
                     <thead>
-                      <tr className="border-b border-surface-border bg-surface-elevated/70 text-[11px] font-bold uppercase tracking-wide text-muted">
+                      <tr className="border-b border-surface-border bg-surface-elevated/70 text-[11px] font-bold text-muted">
                         <th scope="col" className="px-3 py-2.5">Hạng</th>
                         <th scope="col" className="px-3 py-2.5">Phim</th>
-                        <th scope="col" className="px-3 py-2.5 text-right">Điểm TB</th>
-                        <th scope="col" className="px-3 py-2.5 text-right">Lượt đánh giá</th>
+                        <th scope="col" className="px-3 py-2.5 text-right">Điểm trung bình</th>
+                        <th scope="col" className="px-3 py-2.5 text-right">Lượt chấm</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-surface-border">

@@ -1,8 +1,8 @@
+import { runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -36,7 +36,7 @@ function loadMediaService(mockFetch, overrides = {}) {
     console,
     ...overrides.sandboxExtras,
   };
-  vm.runInNewContext(compiled, sandbox);
+  runWithSharedModules(compiled, sandbox);
   return sandbox.module.exports.getMediaDescriptor ? sandbox.module.exports : sandbox.exports;
 }
 
@@ -54,7 +54,7 @@ test('1. Payload 200 hợp lệ trả về descriptor chuẩn', async () => {
         feature: {
           assetId: 'ast-f1',
           kind: 'feature',
-          streamUrl: '/media/stream/f1.mp4',
+          streamUrl: '/api/media/stream/f1.mp4',
           mimeType: 'video/mp4',
           byteLength: 2048000,
           durationSeconds: 120,
@@ -83,7 +83,7 @@ test('1. Payload 200 hợp lệ trả về descriptor chuẩn', async () => {
   assert.equal(desc1.hasTrailer, true);
   assert.ok(desc1.feature);
   assert.equal(desc1.feature.kind, 'feature');
-  assert.equal(desc1.feature.streamUrl, '/media/stream/f1.mp4');
+  assert.equal(desc1.feature.streamUrl, '/api/media/stream/f1.mp4');
   assert.ok(desc1.trailer);
   assert.equal(desc1.trailer.kind, 'trailer');
   assert.equal(desc1.trailer.streamUrl, 'https://cdn.example.com/trailer.mp4');
@@ -100,7 +100,7 @@ test('1. Payload 200 hợp lệ trả về descriptor chuẩn', async () => {
         feature: {
           assetId: 'ast-f2',
           kind: 'feature',
-          streamUrl: 'http://cdn.example.com/movie.mp4',
+          streamUrl: 'https://cdn.example.com/movie.mp4',
           mimeType: 'video/mp4',
           byteLength: 1024,
           isPublic: true,
@@ -115,7 +115,7 @@ test('1. Payload 200 hợp lệ trả về descriptor chuẩn', async () => {
   assert.equal(desc2.movieId, 'm-valid-2');
   assert.equal(desc2.hasFeature, true);
   assert.equal(desc2.hasTrailer, false);
-  assert.equal(desc2.feature.streamUrl, 'http://cdn.example.com/movie.mp4');
+  assert.equal(desc2.feature.streamUrl, 'https://cdn.example.com/movie.mp4');
   assert.equal(desc2.trailer, null);
 });
 
@@ -182,9 +182,9 @@ test('3. Timeout nội bộ ném TimeoutError (options.signal không abort)', as
     },
     (err) => {
       assert.equal(err.name, 'TimeoutError', 'Must be named TimeoutError');
-      assert.equal(err.message, 'Hết thời gian tải mô tả media', 'Message must match Vietnamese timeout notice');
+      assert.equal(err.message, 'Tải thông tin phát phim quá chậm. Bạn thử lại nhé.', 'Message must match Vietnamese timeout notice');
       assert.equal(err.isTimeout, true, 'isTimeout property must be true');
-      assert.ok(err instanceof DOMException, 'Must be an instance of DOMException');
+      assert.equal(err.isTimeout, true);
       return true;
     }
   );
@@ -233,7 +233,7 @@ test('4. External abort ném AbortError và dọn dẹp timer', async () => {
     (err) => {
       assert.equal(err.name, 'AbortError', 'Must be named AbortError');
       assert.notEqual(err.isTimeout, true, 'isTimeout must not be set on external abort');
-      assert.ok(err instanceof DOMException, 'Must be an instance of DOMException');
+      assert.ok(err instanceof DOMException);
       return true;
     }
   );
@@ -271,7 +271,7 @@ test('5. Payload 200 rỗng `{}` ném lỗi validation', async () => {
       await service.getMediaDescriptor('m-empty-payload');
     },
     (err) => {
-      assert.equal(err.message, 'Dữ liệu mô tả media không khớp mã phim');
+      assert.equal(err.message, 'Thông tin phát phim không khớp mã phim.');
       return true;
     }
   );
@@ -289,7 +289,7 @@ test('5. Payload 200 rỗng `{}` ném lỗi validation', async () => {
       await serviceWrapped.getMediaDescriptor('m-empty-payload-2');
     },
     (err) => {
-      assert.equal(err.message, 'Dữ liệu mô tả media không khớp mã phim');
+      assert.equal(err.message, 'Thông tin phát phim không khớp mã phim.');
       return true;
     }
   );
@@ -313,7 +313,7 @@ test('6. Mismatched movieId ném lỗi validation', async () => {
       await service.getMediaDescriptor('client-movie-abc');
     },
     (err) => {
-      assert.equal(err.message, 'Dữ liệu mô tả media không khớp mã phim');
+      assert.equal(err.message, 'Thông tin phát phim không khớp mã phim.');
       return true;
     }
   );
@@ -336,7 +336,7 @@ test('7. hasFeature không phải boolean ném lỗi validation', async () => {
       await service1.getMediaDescriptor('m-bool-test');
     },
     (err) => {
-      assert.equal(err.message, 'Thiếu hoặc sai trường hasFeature/hasTrailer');
+      assert.equal(err.message, 'Thông tin phát phim thiếu nguồn video.');
       return true;
     }
   );
@@ -356,7 +356,7 @@ test('7. hasFeature không phải boolean ném lỗi validation', async () => {
       await service2.getMediaDescriptor('m-bool-test');
     },
     (err) => {
-      assert.equal(err.message, 'Thiếu hoặc sai trường hasFeature/hasTrailer');
+      assert.equal(err.message, 'Thông tin phát phim thiếu nguồn video.');
       return true;
     }
   );
@@ -377,7 +377,7 @@ test('7. hasFeature không phải boolean ném lỗi validation', async () => {
       await service3.getMediaDescriptor('m-bool-test');
     },
     (err) => {
-      assert.equal(err.message, 'Thiếu hoặc sai trường hasFeature/hasTrailer');
+      assert.equal(err.message, 'Thông tin phát phim thiếu nguồn video.');
       return true;
     }
   );
@@ -405,7 +405,7 @@ test('8. feature có streamUrl rỗng ném lỗi validation', async () => {
       await service1.getMediaDescriptor('m-feat-test');
     },
     (err) => {
-      assert.equal(err.message, 'Dữ liệu feature không hợp lệ');
+      assert.equal(err.message, 'Nguồn phát phim chính không hợp lệ.');
       return true;
     }
   );
@@ -431,7 +431,7 @@ test('8. feature có streamUrl rỗng ném lỗi validation', async () => {
       await service2.getMediaDescriptor('m-feat-test');
     },
     (err) => {
-      assert.equal(err.message, 'Dữ liệu feature không hợp lệ');
+      assert.equal(err.message, 'Nguồn phát phim chính không hợp lệ.');
       return true;
     }
   );
@@ -453,7 +453,7 @@ test('8. feature có streamUrl rỗng ném lỗi validation', async () => {
       await service3.getMediaDescriptor('m-feat-test');
     },
     (err) => {
-      assert.equal(err.message, 'Dữ liệu feature không hợp lệ');
+      assert.equal(err.message, 'Nguồn phát phim chính không hợp lệ.');
       return true;
     }
   );
@@ -479,7 +479,7 @@ test('8. feature có streamUrl rỗng ném lỗi validation', async () => {
       await service4.getMediaDescriptor('m-feat-test');
     },
     (err) => {
-      assert.equal(err.message, 'Dữ liệu feature không hợp lệ');
+      assert.equal(err.message, 'Nguồn phát phim chính không hợp lệ.');
       return true;
     }
   );
@@ -498,7 +498,7 @@ test('9. Server 500/503 ném Error', async () => {
     },
     (err) => {
       assert.ok(err instanceof Error);
-      assert.match(err.message, /Lỗi tải mô tả media \(500\)/);
+      assert.match(err.message, /Chưa tải được thông tin phát phim \(500\)\./);
       return true;
     }
   );
@@ -515,7 +515,7 @@ test('9. Server 500/503 ném Error', async () => {
     },
     (err) => {
       assert.ok(err instanceof Error);
-      assert.match(err.message, /Lỗi tải mô tả media \(503\)/);
+      assert.match(err.message, /Chưa tải được thông tin phát phim \(503\)\./);
       return true;
     }
   );

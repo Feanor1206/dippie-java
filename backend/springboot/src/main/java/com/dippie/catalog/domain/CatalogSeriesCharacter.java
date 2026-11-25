@@ -15,6 +15,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.io.Serializable;
 
+// Bảng nối nhiều-nhiều giữa phim bộ và nhân vật, xóa bên nào DB cũng tự cascade xóa dòng nối.
 @Entity
 @Table(name = "catalog_series_characters",
         indexes = {
@@ -51,14 +52,7 @@ public class CatalogSeriesCharacter {
         this.characterId = characterId;
     }
 
-    public String getSeriesId() {
-        return seriesId;
-    }
-
-    public String getCharacterId() {
-        return characterId;
-    }
-
+    // Cặp khóa ghép (seriesId, characterId) dùng với @IdClass.
     public record Key(String seriesId, String characterId) implements Serializable {
     }
 }

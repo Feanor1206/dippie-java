@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
+// Xác minh TemplateAnswerGenerator tách token kèm khoảng trắng và chọn đúng mẫu cho câu hỏi bộ phim, tâm trạng.
 class TemplateAnswerGeneratorTest {
 
     private final IntentParser intentParser = new IntentParser();
@@ -41,14 +42,14 @@ class TemplateAnswerGeneratorTest {
                 .episodeCount(42)
                 .build();
         assertThat(String.join("", generator.answer(seriesIntent, List.of(seriesHit)).toList()))
-                .isEqualTo("Danh mục hiện có 42 tập Xin chào Jadoo.");
+                .isEqualTo("Kho phim hiện có 42 tập Xin chào Jadoo.");
 
         ChatIntent moodIntent = intentParser.parse("hôm nay tôi stress quá");
-        SearchHit one = SearchHitFixture.builder().id("ep-1").build();
-        SearchHit two = SearchHitFixture.builder().id("ep-2").build();
+        SearchHit one = SearchHitFixture.builder().id("ep-1").title("Cuộc gặp đầu tiên").build();
+        SearchHit two = SearchHitFixture.builder().id("ep-2").title("Chuyến đi xa").build();
         assertThat(String.join("", generator.answer(moodIntent, List.of(one)).toList()))
-                .isEqualTo("Bạn thử tập này nhé.");
+                .isEqualTo("Bạn có thể xem tập \"Cuộc gặp đầu tiên\".");
         assertThat(String.join("", generator.answer(moodIntent, List.of(one, two)).toList()))
-                .isEqualTo("Bạn thử mấy tập này nhé.");
+                .isEqualTo("Bạn có thể xem tập \"Cuộc gặp đầu tiên\", tập \"Chuyến đi xa\".");
     }
 }

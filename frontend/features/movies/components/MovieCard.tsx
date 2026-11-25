@@ -1,49 +1,84 @@
-import { formatRuntime, genreLabel } from '@/lib/labels';
-
+import { YouTubeLink } from '@/components/ui/YouTubeLink';
+import { safeImageUrl } from '@/lib/safeUrl';
 import React, { useState } from 'react';
 import { Link } from 'react-router';
-import { Bookmark, Check, Loader2, Star, RefreshCw, Film } from 'lucide-react';
+import { Bookmark, Check, Film, Heart, Loader2, RefreshCw, Star } from 'lucide-react';
+import { cleanMediaTitle, formatGenreList, formatRuntime, formatYear, resolveRatingSummary } from '@/lib/labels';
 import { buildMediaItemHref } from '@/lib/services/mediaRouting';
+import { isMediaExternalOnly, resolveExternalYoutubeWatchUrl } from '@/lib/services/playbackSource';
 import type { Movie } from '@/types/movie';
 import { useWatchlist } from '@/lib/context/WatchlistContext';
 
 type MovieCardProps = {
   movie: Movie;
   fluid?: boolean;
+  actionMode?: 'watchlist' | 'favorite';
 };
 
-export function MovieCard({ movie, fluid = false }: MovieCardProps) {
+export function MovieCard({ movie, fluid = false, actionMode = 'watchlist' }: MovieCardProps) {
   const {
     isWatchlisted,
     toggleWatchlist,
+    isFavorite,
+    toggleFavorite,
     isActionPending,
     isActionUnconfirmed,
     getActionIntent,
   } = useWatchlist();
   const [posterError, setPosterError] = useState(false);
 
-  const inWatchlist = isWatchlisted(movie.id);
-  const isPending = isActionPending(movie.id, 'watchlist');
-  const isUnconfirmed = isActionUnconfirmed(movie.id, 'watchlist');
-  const unconfirmedIntent = isUnconfirmed ? getActionIntent(movie.id, 'watchlist') : null;
+  const displayTitle = cleanMediaTitle(movie.title);
+  const isFavoriteMode = actionMode === 'favorite';
+  const actionKey = isFavoriteMode ? 'favorite' : 'watchlist';
+  const isSaved = isFavoriteMode
+    ? typeof isFavorite === 'function' && isFavorite(movie.id)
+    : isWatchlisted(movie.id);
+  const isPending = isActionPending(movie.id, actionKey);
+  const isUnconfirmed = isActionUnconfirmed(movie.id, actionKey);
+  const unconfirmedIntent = isUnconfirmed ? getActionIntent(movie.id, actionKey) : null;
 
   const buttonAriaLabel = isPending
-    ? `Đang xử lý ${movie.title}...`
+    ? `Đang cập nhật ${isFavoriteMode ? 'Yêu thích' : 'Xem sau'} cho ${displayTitle}…`
+    : isFavoriteMode
+    ? isUnconfirmed
+      ? unconfirmedIntent === 'add'
+        ? `Chưa thêm được ${displayTitle} vào Yêu thích, nhấn để thử lại`
+        : `Chưa bỏ được ${displayTitle} khỏi Yêu thích, nhấn để thử lại`
+      : isSaved
+      ? `Bỏ ${displayTitle} khỏi Yêu thích`
+      : `Thêm ${displayTitle} vào Yêu thích`
     : isUnconfirmed
     ? unconfirmedIntent === 'add'
-      ? `Chưa xác nhận lưu • Thử lưu lại ${movie.title} vào danh sách xem`
-      : `Chưa xác nhận xóa • Thử xóa lại ${movie.title} khỏi danh sách xem`
-    : inWatchlist
-    ? `Xóa ${movie.title} khỏi danh sách xem`
-    : `Thêm ${movie.title} vào danh sách xem`;
+      ? `Chưa lưu được ${displayTitle} vào Xem sau, nhấn để thử lại`
+      : `Chưa bỏ được ${displayTitle} khỏi Xem sau, nhấn để thử lại`
+    : isSaved
+    ? `Bỏ ${displayTitle} khỏi Xem sau`
+    : `Thêm ${displayTitle} vào Xem sau`;
 
   const buttonTitle = isUnconfirmed
     ? unconfirmedIntent === 'add'
-      ? 'Chưa xác nhận lưu • Nhấn để thử lưu lại'
-      : 'Chưa xác nhận xóa • Nhấn để thử xóa lại'
+      ? isFavoriteMode
+        ? 'Chưa thêm được vào Yêu thích, nhấn để thử lại'
+        : 'Chưa lưu được vào Xem sau, nhấn để thử lại'
+      : isFavoriteMode
+      ? 'Chưa bỏ được khỏi Yêu thích, nhấn để thử lại'
+      : 'Chưa bỏ được khỏi Xem sau, nhấn để thử lại'
     : undefined;
 
   const hasPoster = Boolean(movie.poster && movie.poster.trim() && !posterError);
+  const ratingSummary = resolveRatingSummary(movie);
+  const metaLine = [formatYear(movie.year), formatRuntime(movie.runtime)].filter(Boolean).join(' · ');
+  const genresText = formatGenreList(movie.genres);
+  const externalOnly =
+    typeof isMediaExternalOnly === 'function'
+      ? isMediaExternalOnly(movie)
+      : Boolean(movie.externalOnly || movie.external_only || movie.canEmbed === false || movie.can_embed === false);
+  const externalYoutubeUrl = externalOnly
+    ? typeof resolveExternalYoutubeWatchUrl === 'function'
+      ? resolveExternalYoutubeWatchUrl(movie)
+      : movie.youtubeWatchUrl || movie.youtube_watch_url || null
+    : null;
+  const mediaHref = buildMediaItemHref(movie);
 
   return (
     <div
@@ -55,24 +90,32 @@ export function MovieCard({ movie, fluid = false }: MovieCardProps) {
         <div className="relative aspect-[4/5] w-full overflow-hidden bg-surface-elevated">
           {hasPoster ? (
             <img
-              src={movie.poster}
-              alt={movie.title}
-              loading="lazy" referrerPolicy="no-referrer"
+              src={safeImageUrl(movie.poster)}
+              alt={displayTitle}
+              loading="lazy"
+              referrerPolicy="no-referrer"
               onError={() => setPosterError(true)}
               className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center p-3 text-center bg-surface-elevated text-muted">
               <Film size={28} className="mb-2 text-muted" />
-              <span className="text-[11px] font-medium leading-tight line-clamp-2 text-muted">
-                {movie.title}
-              </span>
+              <span className="text-[11px] font-medium leading-tight line-clamp-2 text-muted">{displayTitle}</span>
             </div>
           )}
 
-          <span className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded bg-black/70 px-2 py-0.5 text-[11px] font-bold text-amber-300 border border-white/10 backdrop-blur-md">
-            <Star size={11} className="fill-amber-400 text-amber-400" />
-            {movie.rating}
+          <span
+            data-testid="movie-rating-badge"
+            className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded bg-black/75 px-2 py-0.5 text-[11px] font-bold text-amber-300 border border-white/10 backdrop-blur-md"
+          >
+            {ratingSummary.hasRating ? (
+              <>
+                <Star size={11} className="fill-amber-400 text-amber-400" aria-hidden="true" />
+                {ratingSummary.compactLabel}
+              </>
+            ) : (
+              <span className="font-medium text-paper-white/95">{ratingSummary.compactLabel}</span>
+            )}
           </span>
 
           {isUnconfirmed && (
@@ -81,13 +124,13 @@ export function MovieCard({ movie, fluid = false }: MovieCardProps) {
               className="absolute bottom-2 left-2 z-10 flex items-center gap-1 rounded bg-amber-500/95 px-2 py-0.5 text-[10px] font-bold text-zinc-950 shadow-md border border-amber-300 backdrop-blur-md"
             >
               <RefreshCw size={10} className="stroke-[2.5]" />
-              Chưa xác nhận
+              {unconfirmedIntent === 'add' ? 'Chưa lưu' : 'Chưa bỏ'}
             </span>
           )}
 
           <Link
-            to={buildMediaItemHref(movie)}
-            aria-label={`Xem chi tiết ${movie.title}`}
+            to={mediaHref}
+            aria-label={`Xem chi tiết ${displayTitle}`}
             className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 cursor-pointer"
           >
             <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-1.5 text-xs font-bold text-zinc-950 shadow-brand-sm backdrop-blur-sm transition-transform duration-150 hover:scale-105 hover:bg-brand-hover">
@@ -97,49 +140,79 @@ export function MovieCard({ movie, fluid = false }: MovieCardProps) {
 
           <button
             type="button"
+            data-testid={isFavoriteMode ? 'movie-card-favorite-btn' : 'movie-card-watchlist-btn'}
             aria-label={buttonAriaLabel}
+            aria-pressed={isSaved}
             title={buttonTitle}
             disabled={isPending}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              toggleWatchlist(movie.id, movie.title, movie.poster);
+              if (isFavoriteMode) void toggleFavorite(movie.id, displayTitle, movie.poster);
+              else void toggleWatchlist(movie.id, displayTitle, movie.poster);
             }}
-            className={`absolute top-2 right-2 z-20 rounded-full p-2 backdrop-blur-md transition-all duration-150 cursor-pointer focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none disabled:opacity-60 ${
+            className={`absolute top-2 right-2 z-20 flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full backdrop-blur-md transition-all duration-150 cursor-pointer focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none disabled:opacity-60 ${
               isUnconfirmed
                 ? 'bg-amber-400 text-zinc-950 shadow-md border border-amber-300 hover:bg-amber-300 ring-2 ring-amber-400/40'
-                : inWatchlist
-                ? 'bg-brand text-zinc-950 shadow-brand-sm'
-                : 'bg-black/60 text-muted border border-white/10 hover:bg-brand hover:text-zinc-950 hover:border-brand'
+                : isSaved
+                ? isFavoriteMode
+                  ? 'bg-[#f2d18c] text-ink border border-ink shadow-brand-sm'
+                  : 'bg-brand text-zinc-950 shadow-brand-sm'
+                : 'bg-black/60 text-paper-white border border-white/10 hover:bg-brand hover:text-zinc-950 hover:border-brand'
             }`}
           >
             {isPending ? (
-              <Loader2 size={13} className="animate-spin" />
+              <Loader2 size={15} className="animate-spin" />
             ) : isUnconfirmed ? (
-              <RefreshCw size={13} className="stroke-[2.5]" />
-            ) : inWatchlist ? (
-              <Check size={13} />
+              <RefreshCw size={15} className="stroke-[2.5]" />
+            ) : isFavoriteMode ? (
+              <Heart size={15} className={isSaved ? 'fill-current' : ''} />
+            ) : isSaved ? (
+              <Check size={15} />
             ) : (
-              <Bookmark size={13} />
+              <Bookmark size={15} />
             )}
           </button>
         </div>
 
         <div className="border-t border-surface-border p-3">
           <Link
-            to={buildMediaItemHref(movie)}
+            to={mediaHref}
             className="block truncate text-sm font-semibold text-ink transition-colors hover:text-brand-dark focus-visible:outline-none focus-visible:text-brand-dark"
           >
-            {movie.title}
+            {displayTitle}
           </Link>
 
-          <div className="mt-1 flex items-center justify-between text-xs text-muted">
-            <span>{movie.year} · {formatRuntime(movie.runtime)}</span>
-          </div>
+          {externalOnly && (
+            <span
+              data-testid="movie-external-badge"
+              className="mt-1 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"
+            >
+              Chỉ mở trên YouTube
+            </span>
+          )}
 
-          <p className="mt-1 truncate text-xs text-muted">
-            {movie.genres.map(genreLabel).join(', ')}
-          </p>
+          {metaLine && (
+            <div className="mt-1 flex items-center justify-between text-xs text-muted">
+              <span>{metaLine}</span>
+            </div>
+          )}
+
+          {genresText && (
+            <p className="mt-1 truncate text-xs text-muted" data-testid="movie-card-genres">
+              {genresText}
+            </p>
+          )}
+
+          {externalOnly && externalYoutubeUrl && (
+            <YouTubeLink
+              url={externalYoutubeUrl}
+              testId="movie-open-youtube-link"
+              className="mt-1 inline-flex min-h-[44px] items-center text-xs font-semibold text-brand-dark underline underline-offset-4"
+            >
+              Mở trên YouTube
+            </YouTubeLink>
+          )}
         </div>
       </article>
     </div>

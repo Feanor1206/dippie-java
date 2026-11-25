@@ -1,7 +1,6 @@
 package com.dippie.media;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,8 +9,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.dippie.catalog.domain.CatalogEpisode;
+import com.dippie.catalog.domain.CatalogEpisodeAsset;
+import com.dippie.catalog.domain.CatalogEpisodeRepository;
 import com.dippie.catalog.domain.CatalogMediaAsset;
 import com.dippie.catalog.domain.CatalogMediaAssetRepository;
+import com.dippie.catalog.domain.CatalogSeason;
+import com.dippie.catalog.domain.CatalogSeasonRepository;
+import com.dippie.catalog.domain.CatalogSeries;
+import com.dippie.catalog.domain.CatalogSeriesRepository;
 import com.dippie.movie.Movie;
 import com.dippie.movie.MovieRepository;
 import com.dippie.security.JwtService;
@@ -20,6 +26,7 @@ import com.dippie.user.User;
 import com.dippie.user.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -39,7 +46,10 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
+// Bài test tích hợp cho toàn bộ luồng cấp vé phát, phân quyền xuất bản danh mục và phát video HTTP Range qua MockMvc.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -47,6 +57,7 @@ import org.springframework.test.web.servlet.MvcResult;
 class MediaPlaybackControllerTest {
 
     private static final String READY = "{\"status\":\"ready\"}";
+    private static final String DRAFT = "{\"status\":\"draft\"}";
 
     @TempDir
     static Path tempDir;
@@ -61,6 +72,11 @@ class MediaPlaybackControllerTest {
     private final MovieRepository movieRepository;
     private final MediaAssetRepository mediaAssetRepository;
     private final CatalogMediaAssetRepository catalogMediaAssetRepository;
+    private final CatalogSeriesRepository catalogSeriesRepository;
+    private final CatalogSeasonRepository catalogSeasonRepository;
+    private final CatalogEpisodeRepository catalogEpisodeRepository;
+    private final EntityManager entityManager;
+    private final TransactionTemplate writes;
     private final JwtService jwtService;
 
     private String userAuth;
@@ -73,6 +89,11 @@ class MediaPlaybackControllerTest {
             MovieRepository movieRepository,
             MediaAssetRepository mediaAssetRepository,
             CatalogMediaAssetRepository catalogMediaAssetRepository,
+            CatalogSeriesRepository catalogSeriesRepository,
+            CatalogSeasonRepository catalogSeasonRepository,
+            CatalogEpisodeRepository catalogEpisodeRepository,
+            EntityManager entityManager,
+            PlatformTransactionManager transactionManager,
             JwtService jwtService
     ) {
         this.mockMvc = mockMvc;
@@ -81,6 +102,11 @@ class MediaPlaybackControllerTest {
         this.movieRepository = movieRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.catalogMediaAssetRepository = catalogMediaAssetRepository;
+        this.catalogSeriesRepository = catalogSeriesRepository;
+        this.catalogSeasonRepository = catalogSeasonRepository;
+        this.catalogEpisodeRepository = catalogEpisodeRepository;
+        this.entityManager = entityManager;
+        this.writes = new TransactionTemplate(transactionManager);
         this.jwtService = jwtService;
     }
 
@@ -100,8 +126,12 @@ class MediaPlaybackControllerTest {
 
     @BeforeEach
     void setUp() throws IOException {
+        writes.executeWithoutResult(status -> entityManager.createQuery("delete from CatalogEpisodeAsset").executeUpdate());
         mediaAssetRepository.deleteAll();
         catalogMediaAssetRepository.deleteAll();
+        catalogEpisodeRepository.deleteAll();
+        catalogSeasonRepository.deleteAll();
+        catalogSeriesRepository.deleteAll();
         movieRepository.deleteAll();
         userRepository.deleteAll();
 
@@ -124,13 +154,15 @@ class MediaPlaybackControllerTest {
                 "the-last-orbit", "The Last Orbit", 2026, 8.7, "2h 14m", "Animation,Sci-Fi",
                 "Description", null, null, "/videos/the-last-orbit.mp4"
         ));
+        savePublishedCatalogHierarchy("ser_orbit", "sea_orbit_1", "ep_orbit_1");
     }
 
     @Test
     void grantsPublicAssetAnonymouslyAndRejectsGrantAsLoginToken() throws Exception {
         byte[] content = "hello-media-world".getBytes(StandardCharsets.UTF_8);
         writeFile(mediaRoot.resolve("synthetic/feature_test.mp4"), content);
-        saveAsset("ast-orbit-feat", "local", "synthetic/feature_test.mp4", content.length, true, true);
+        savePublishedCatalogAsset("ast-orbit-feat", "ep_orbit_1", "local", "synthetic/feature_test.mp4",
+                content.length, true, true, "public");
 
         MvcResult grantResult = mockMvc.perform(post("/api/media/grant/ast-orbit-feat"))
                 .andExpect(status().isOk())
@@ -150,9 +182,72 @@ class MediaPlaybackControllerTest {
         mockMvc.perform(get("/api/auth/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + grantToken))
                 .andExpect(status().isUnauthorized());
 
-        MvcResult tokenStream = performAsyncGet("/api/media/stream/ast-orbit-feat?token=" + grantToken, null, null);
+        MvcResult tokenStream = performSyncGet("/api/media/stream/ast-orbit-feat?token=" + grantToken, null, null);
         assertThat(tokenStream.getResponse().getStatus()).isEqualTo(200);
         assertThat(tokenStream.getResponse().getContentAsByteArray()).isEqualTo(content);
+    }
+
+    @Test
+    void rejectsNonCatalogAndUnpublishedSeriesSeasonOrEpisodeAssets() throws Exception {
+        byte[] payload = "secret-episode-video".getBytes(StandardCharsets.UTF_8);
+        writeFile(mediaRoot.resolve("synthetic/noncat.mp4"), payload);
+        writeFile(mediaRoot.resolve("synthetic/draft_ep.mp4"), payload);
+        writeFile(mediaRoot.resolve("synthetic/draft_sea.mp4"), payload);
+        writeFile(mediaRoot.resolve("synthetic/draft_ser.mp4"), payload);
+
+        // Bản ghi chỉ có trong media_assets mà chưa vào catalog_media_assets thì mọi vai trò đều ăn 404.
+        saveRawMediaAsset("ast-noncat", "local", "synthetic/noncat.mp4", payload.length, true, true);
+        mockMvc.perform(post("/api/media/grant/ast-noncat")).andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/media/grant/ast-noncat").header(HttpHeaders.AUTHORIZATION, userAuth))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/media/grant/ast-noncat").header(HttpHeaders.AUTHORIZATION, adminAuth))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/media/stream/ast-noncat")).andExpect(status().isNotFound());
+
+        // Tập đang ở trạng thái draft bị chặn với khách và user thường, chỉ admin mới xin vé xem trước được.
+        catalogEpisodeRepository.saveAndFlush(new CatalogEpisode(
+                "ep_draft", "ser_orbit", "sea_orbit_1", 2, "Tập nháp", null, null, null,
+                "regular", null, 60_000L, null, null, null, null, null, null, null, null, null,
+                null, null, null, DRAFT, null, 1
+        ));
+        savePublishedCatalogAsset("ast-draft-ep", "ep_draft", "local", "synthetic/draft_ep.mp4",
+                payload.length, true, true, "public");
+        mockMvc.perform(post("/api/media/grant/ast-draft-ep")).andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/media/grant/ast-draft-ep").header(HttpHeaders.AUTHORIZATION, userAuth))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/media/stream/ast-draft-ep")).andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/media/grant/ast-draft-ep").header(HttpHeaders.AUTHORIZATION, adminAuth))
+                .andExpect(status().isOk());
+
+        // Mùa còn draft thì mọi tập bên trong cũng bị ẩn dù bản thân tập đã đánh dấu ready.
+        catalogSeasonRepository.saveAndFlush(new CatalogSeason(
+                "sea_draft", "ser_orbit", 2, "Mùa nháp", null, "regular", null, null, null, null, DRAFT, null, 1
+        ));
+        catalogEpisodeRepository.saveAndFlush(new CatalogEpisode(
+                "ep_in_draft_season", "ser_orbit", "sea_draft", 1, "Tập trong mùa nháp", null, null, null,
+                "regular", null, 60_000L, null, null, null, null, null, null, null, null, null,
+                null, null, null, READY, null, 1
+        ));
+        savePublishedCatalogAsset("ast-draft-sea", "ep_in_draft_season", "local", "synthetic/draft_sea.mp4",
+                payload.length, true, true, "public");
+        mockMvc.perform(post("/api/media/grant/ast-draft-sea")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/media/stream/ast-draft-sea").header(HttpHeaders.AUTHORIZATION, userAuth))
+                .andExpect(status().isNotFound());
+
+        // Cả bộ phim còn draft thì toàn bộ video con cũng bị ẩn theo.
+        catalogSeriesRepository.saveAndFlush(new CatalogSeries(
+                "ser_draft", "Bộ nháp", null, null, null, null, null, null, null, null, null,
+                2026, null, null, null, null, null, null, null, null, null, DRAFT, null, 1
+        ));
+        catalogEpisodeRepository.saveAndFlush(new CatalogEpisode(
+                "ep_in_draft_series", "ser_draft", null, 1, "Tập trong bộ nháp", null, null, null,
+                "regular", null, 60_000L, null, null, null, null, null, null, null, null, null,
+                null, null, null, READY, null, 1
+        ));
+        savePublishedCatalogAsset("ast-draft-ser", "ep_in_draft_series", "local", "synthetic/draft_ser.mp4",
+                payload.length, true, true, "public");
+        mockMvc.perform(post("/api/media/grant/ast-draft-ser")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/media/stream/ast-draft-ser")).andExpect(status().isNotFound());
     }
 
     @Test
@@ -161,31 +256,23 @@ class MediaPlaybackControllerTest {
         writeFile(mediaRoot.resolve("synthetic/private.mp4"), payload);
         writeFile(mediaRoot.resolve("synthetic/other.mp4"), payload);
 
-        saveAsset("ast-private", "local", "synthetic/private.mp4", payload.length, false, true);
-        catalogMediaAssetRepository.saveAndFlush(new CatalogMediaAsset(
-                "ast-private", "video", "feature", null, null, null,
-                "local", "local", "synthetic/private.mp4", null, null, (long) payload.length, null, 10_000L,
-                null, null, null, "private", true, READY, null, 1
-        ));
-        saveAsset("ast-other", "local", "synthetic/other.mp4", payload.length, false, true);
-        catalogMediaAssetRepository.saveAndFlush(new CatalogMediaAsset(
-                "ast-other", "video", "trailer", null, null, null,
-                "local", "local", "synthetic/other.mp4", null, null, (long) payload.length, null, 10_000L,
-                null, null, null, "private", true, READY, null, 1
-        ));
+        savePublishedCatalogAsset("ast-private", "ep_orbit_1", "local", "synthetic/private.mp4",
+                payload.length, false, true, "private");
+        savePublishedCatalogAsset("ast-other", "ep_orbit_1", "local", "synthetic/other.mp4",
+                payload.length, false, true, "private");
 
         mockMvc.perform(post("/api/media/grant/ast-private"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Không tìm thấy tài nguyên media: ast-private"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy video: ast-private"));
 
         mockMvc.perform(post("/api/media/grant/ast-private").header(HttpHeaders.AUTHORIZATION, userAuth))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Không tìm thấy tài nguyên media: ast-private"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy video: ast-private"));
 
         mockMvc.perform(get("/api/media/stream/ast-private"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Không tìm thấy tài nguyên media: ast-private"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy video: ast-private"));
 
         mockMvc.perform(get("/api/media/stream/ast-private").param("grant", "invalid-token"))
                 .andExpect(status().isNotFound());
@@ -199,14 +286,30 @@ class MediaPlaybackControllerTest {
         String streamUrl = grantBody.path("streamUrl").asText();
         String grantToken = grantBody.path("grant").asText();
 
-        MvcResult streamed = performAsyncGet(streamUrl, "bytes=0-9", null);
+        MvcResult streamed = performSyncGet(streamUrl, "bytes=0-9", null);
         assertThat(streamed.getResponse().getStatus()).isEqualTo(206);
         assertThat(streamed.getResponse().getContentAsByteArray()).isEqualTo(Arrays.copyOfRange(payload, 0, 10));
         assertThat(streamed.getResponse().getHeader(HttpHeaders.CONTENT_RANGE)).isEqualTo("bytes 0-9/20");
 
         mockMvc.perform(get("/api/media/stream/ast-other").param("grant", grantToken))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Không tìm thấy tài nguyên media: ast-other"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy video: ast-other"));
+
+        // Kiểm tra payload JWT của vé phát không lộ username trong sub, và mất hiệu lực ngay khi tokenVersion tăng lên.
+        String payloadJson = new String(
+                java.util.Base64.getUrlDecoder().decode(grantToken.split("\\.")[1]),
+                StandardCharsets.UTF_8
+        );
+        JsonNode claims = objectMapper.readTree(payloadJson);
+        assertThat(claims.path("sub").asText()).doesNotContain("admin");
+        assertThat(claims.path("uid").isIntegralNumber()).isTrue();
+
+        User adminUser = userRepository.findByUsername("admin").orElseThrow();
+        adminUser.incrementTokenVersion(LocalDateTime.of(2026, 1, 2, 0, 0));
+        userRepository.saveAndFlush(adminUser);
+
+        mockMvc.perform(get(streamUrl))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -217,11 +320,12 @@ class MediaPlaybackControllerTest {
         }
         Path mediaFile = mediaRoot.resolve("synthetic/feature_test.mp4");
         writeFile(mediaFile, payload);
-        saveAsset("ast-orbit-feat", "local", "synthetic/feature_test.mp4", payload.length, true, true);
+        savePublishedCatalogAsset("ast-orbit-feat", "ep_orbit_1", "local", "synthetic/feature_test.mp4",
+                payload.length, true, true, "public");
 
         String url = "/api/media/stream/ast-orbit-feat";
 
-        MvcResult full = performAsyncGet(url, null, null);
+        MvcResult full = performSyncGet(url, null, null);
         assertThat(full.getResponse().getStatus()).isEqualTo(200);
         assertThat(full.getResponse().getHeader(HttpHeaders.ACCEPT_RANGES)).isEqualTo("bytes");
         assertThat(full.getResponse().getHeader(HttpHeaders.CONTENT_LENGTH)).isEqualTo(String.valueOf(payload.length));
@@ -259,7 +363,7 @@ class MediaPlaybackControllerTest {
                 .andExpect(result -> assertThat(result.getResponse().getContentAsByteArray()).isEmpty());
 
         writeFile(mediaFile, new byte[0]);
-        MvcResult emptyGet = performAsyncGet(url, null, null);
+        MvcResult emptyGet = performSyncGet(url, null, null);
         assertThat(emptyGet.getResponse().getStatus()).isEqualTo(200);
         assertThat(emptyGet.getResponse().getContentAsByteArray()).isEmpty();
         assertThat(emptyGet.getResponse().getHeader(HttpHeaders.CONTENT_LENGTH)).isEqualTo("0");
@@ -284,50 +388,86 @@ class MediaPlaybackControllerTest {
         writeFile(mirror, mirrorBytes);
         writeFile(drive, driveBytes);
 
-        saveAsset("ast-drive", "drive", relativePath, mirrorBytes.length, true, true);
+        savePublishedCatalogAsset("ast-drive", "ep_orbit_1", "drive", relativePath,
+                mirrorBytes.length, true, true, "public");
         String url = "/api/media/stream/ast-drive";
 
-        MvcResult rangeFromMirror = performAsyncGet(url, "bytes=1-5", null);
+        MvcResult rangeFromMirror = performSyncGet(url, "bytes=1-5", null);
         assertThat(rangeFromMirror.getResponse().getStatus()).isEqualTo(206);
         assertThat(rangeFromMirror.getResponse().getContentAsString(StandardCharsets.UTF_8)).isEqualTo("irror");
         assertThat(rangeFromMirror.getResponse().getHeader(HttpHeaders.CONTENT_RANGE)).isEqualTo("bytes 1-5/12");
 
         writeFile(mirror, "short".getBytes(StandardCharsets.UTF_8));
-        assertThat(performAsyncGet(url, null, null).getResponse().getContentAsByteArray()).isEqualTo(driveBytes);
+        assertThat(performSyncGet(url, null, null).getResponse().getContentAsByteArray()).isEqualTo(driveBytes);
 
         writeFile(mirror, "mirror-video-extra".getBytes(StandardCharsets.UTF_8));
-        assertThat(performAsyncGet(url, null, null).getResponse().getContentAsByteArray()).isEqualTo(driveBytes);
+        assertThat(performSyncGet(url, null, null).getResponse().getContentAsByteArray()).isEqualTo(driveBytes);
 
         writeFile(mirror, mirrorBytes);
         mediaAssetRepository.deleteById("ast-drive");
-        saveAsset("ast-drive", "drive", relativePath, 0, true, true);
-        assertThat(performAsyncGet(url, null, null).getResponse().getContentAsByteArray()).isEqualTo(driveBytes);
+        saveRawMediaAsset("ast-drive", "drive", relativePath, 0, true, true);
+        assertThat(performSyncGet(url, null, null).getResponse().getContentAsByteArray()).isEqualTo(driveBytes);
 
         mediaAssetRepository.deleteById("ast-drive");
-        saveAsset("ast-drive", "drive", relativePath, mirrorBytes.length, false, true);
+        saveRawMediaAsset("ast-drive", "drive", relativePath, mirrorBytes.length, false, true);
         mockMvc.perform(get(url))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Không tìm thấy tài nguyên media: ast-drive"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy video: ast-drive"));
 
         mediaAssetRepository.deleteById("ast-drive");
-        saveAsset("ast-drive", "drive", relativePath, mirrorBytes.length, true, true);
+        saveRawMediaAsset("ast-drive", "drive", relativePath, mirrorBytes.length, true, true);
         Files.delete(mirror);
-        assertThat(performAsyncGet(url, null, null).getResponse().getContentAsByteArray()).isEqualTo(driveBytes);
+        assertThat(performSyncGet(url, null, null).getResponse().getContentAsByteArray()).isEqualTo(driveBytes);
     }
 
     @Test
     void returns404WhenVideoFileIsMissingOnDisk() throws Exception {
-        saveAsset("ast-missing-file", "local", "synthetic/does-not-exist.mp4", 1024, true, true);
+        savePublishedCatalogAsset("ast-missing-file", "ep_orbit_1", "local", "synthetic/does-not-exist.mp4",
+                1024, true, true, "public");
 
         mockMvc.perform(get("/api/media/stream/ast-missing-file"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Không tìm thấy tệp video."));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy video để phát."));
+    }
+
+    private void savePublishedCatalogHierarchy(String seriesId, String seasonId, String episodeId) {
+        catalogSeriesRepository.saveAndFlush(new CatalogSeries(
+                seriesId, "The Last Orbit", null, null, null, null, null, null, null, null, null,
+                2026, null, null, null, null, null, null, null, null, null, READY, null, 1
+        ));
+        catalogSeasonRepository.saveAndFlush(new CatalogSeason(
+                seasonId, seriesId, 1, "Mùa 1", null, "regular", null, null, null, null, READY, null, 1
+        ));
+        catalogEpisodeRepository.saveAndFlush(new CatalogEpisode(
+                episodeId, seriesId, seasonId, 1, "Tập 1", null, null, null,
+                "regular", null, 60_000L, null, null, null, null, null, null, null, null, null,
+                null, null, null, READY, null, 1
+        ));
+    }
+
+    private void savePublishedCatalogAsset(
+            String id,
+            String episodeId,
+            String provider,
+            String relativePath,
+            long byteLength,
+            boolean isPublic,
+            boolean isAvailable,
+            String accessPolicy
+    ) {
+        saveRawMediaAsset(id, provider, relativePath, byteLength, isPublic, isAvailable);
+        catalogMediaAssetRepository.saveAndFlush(new CatalogMediaAsset(
+                id, "video", "feature", null, null, null,
+                provider, provider, relativePath, null, null, byteLength, null, 10_000L,
+                null, null, null, accessPolicy, true, READY, null, 1
+        ));
+        writes.executeWithoutResult(status -> entityManager.persist(new CatalogEpisodeAsset(episodeId, id)));
     }
 
     private void assertPartialRange(String url, String rangeHeader, byte[] fullPayload, int start, int end)
             throws Exception {
-        MvcResult result = performAsyncGet(url, rangeHeader, null);
+        MvcResult result = performSyncGet(url, rangeHeader, null);
         assertThat(result.getResponse().getStatus()).isEqualTo(206);
         assertThat(result.getResponse().getHeader(HttpHeaders.ACCEPT_RANGES)).isEqualTo("bytes");
         assertThat(result.getResponse().getHeader(HttpHeaders.CONTENT_RANGE))
@@ -338,7 +478,7 @@ class MediaPlaybackControllerTest {
                 .isEqualTo(Arrays.copyOfRange(fullPayload, start, end + 1));
     }
 
-    private MvcResult performAsyncGet(String url, String rangeHeader, String authHeader) throws Exception {
+    private MvcResult performSyncGet(String url, String rangeHeader, String authHeader) throws Exception {
         var requestBuilder = get(url);
         if (rangeHeader != null) {
             requestBuilder.header(HttpHeaders.RANGE, rangeHeader);
@@ -346,13 +486,13 @@ class MediaPlaybackControllerTest {
         if (authHeader != null) {
             requestBuilder.header(HttpHeaders.AUTHORIZATION, authHeader);
         }
-        MvcResult started = mockMvc.perform(requestBuilder)
-                .andExpect(request().asyncStarted())
+        // Khẳng định endpoint stream chạy đồng bộ hoàn toàn, không bật async dispatch.
+        return mockMvc.perform(requestBuilder)
+                .andExpect(request().asyncNotStarted())
                 .andReturn();
-        return mockMvc.perform(asyncDispatch(started)).andReturn();
     }
 
-    private void saveAsset(
+    private void saveRawMediaAsset(
             String id,
             String provider,
             String relativePath,

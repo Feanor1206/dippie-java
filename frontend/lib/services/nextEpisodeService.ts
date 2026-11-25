@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/services/apiRequest';
 const API = '/api';
 const DEFAULT_TIMEOUT_MS = 7000;
 
@@ -11,6 +12,7 @@ export type NextEpisodeRecommendation = {
   episodeNumber: number | null;
   resumePositionMs: number;
   reason: NextEpisodeReason;
+  assetId?: string | null;
 };
 
 export type NextEpisodeResult =
@@ -67,8 +69,8 @@ export function formatNextEpisodeLabel(
   if (recommendation.reason === 'RESUME') {
     const label =
       recommendation.episodeNumber !== null
-        ? `Tiếp tục xem T${recommendation.episodeNumber}`
-        : 'Tiếp tục xem';
+        ? `Xem tiếp tập ${recommendation.episodeNumber}`
+        : 'Xem tiếp';
     return {
       label,
       resumeTime: formatResumeTime(recommendation.resumePositionMs),
@@ -85,7 +87,10 @@ export function formatNextEpisodeLabel(
 }
 
 export function buildNextEpisodeHref(
-  recommendation: Pick<NextEpisodeRecommendation, 'seriesId' | 'episodeId' | 'reason' | 'resumePositionMs'>,
+  recommendation: Pick<
+    NextEpisodeRecommendation,
+    'seriesId' | 'episodeId' | 'reason' | 'resumePositionMs' | 'assetId'
+  >,
   assetId?: string | null
 ): string {
   const params = new URLSearchParams();
@@ -96,11 +101,17 @@ export function buildNextEpisodeHref(
     Number.isFinite(recommendation.resumePositionMs) &&
     recommendation.resumePositionMs > 0
   ) {
-    if (nonEmptyString(assetId)) {
-      params.set('asset', assetId.trim());
+    const cleanAssetId = nonEmptyString(assetId)
+      ? assetId.trim()
+      : nonEmptyString(recommendation.assetId)
+      ? recommendation.assetId.trim()
+      : '';
+    const isYoutube = cleanAssetId.startsWith('youtube:');
+    if (cleanAssetId && !isYoutube) {
+      params.set('asset', cleanAssetId);
     }
     params.set('t', String(Math.floor(recommendation.resumePositionMs)));
-    params.set('timeline', 'file');
+    params.set('timeline', isYoutube ? 'episode' : 'file');
   }
   return `/series/${encodeURIComponent(recommendation.seriesId)}?${params.toString()}`;
 }
@@ -120,6 +131,7 @@ export function normalizeNextEpisodeRecommendation(raw: any): NextEpisodeRecomme
   ) {
     throw new NextEpisodeApiError('Dữ liệu tập tiếp theo thiếu trường bắt buộc.', 502);
   }
+  const assetId = nonEmptyString(raw.assetId) ? raw.assetId.trim() : undefined;
   return {
     seriesId: raw.seriesId.trim(),
     episodeId: raw.episodeId.trim(),
@@ -128,6 +140,7 @@ export function normalizeNextEpisodeRecommendation(raw: any): NextEpisodeRecomme
     episodeNumber: nullableNumber(raw.episodeNumber),
     resumePositionMs: Math.floor(raw.resumePositionMs),
     reason: raw.reason,
+    ...(assetId ? { assetId } : {}),
   };
 }
 
@@ -160,14 +173,14 @@ async function executeWithTimeout<T>(
         reject(new NextEpisodeApiError('Yêu cầu đã bị hủy.', 499, { isCanceled: true }));
       } else if (timedOut) {
         reject(
-          new NextEpisodeApiError('Yêu cầu tập tiếp theo quá thời gian phản hồi.', 408, {
+          new NextEpisodeApiError('Tải tập tiếp theo quá chậm.', 408, {
             isTimeout: true,
           })
         );
       } else if (error instanceof NextEpisodeApiError) {
         reject(error);
       } else {
-        reject(new NextEpisodeApiError('Không thể kết nối đến dịch vụ tập tiếp theo.', 0));
+        reject(new NextEpisodeApiError('Chưa kết nối được máy chủ.', 0));
       }
     };
 
@@ -207,7 +220,7 @@ export async function getNextEpisode(
     throw new NextEpisodeApiError('Chưa xác thực người dùng.', 401);
   }
   if (!nonEmptyString(seriesId)) {
-    throw new NextEpisodeApiError('Mã bộ phim không hợp lệ.', 400);
+    throw new NextEpisodeApiError('Mã phim bộ không hợp lệ.', 400);
   }
   const params = new URLSearchParams();
   params.set('seriesId', seriesId.trim());
@@ -218,7 +231,7 @@ export async function getNextEpisode(
   };
 
   return executeWithTimeout(async (signal) => {
-    const res = await fetch(url, { headers, signal });
+    const res = await apiFetch(url, { headers, signal });
     let json: any = null;
     try {
       json = await res.json();
@@ -231,7 +244,7 @@ export async function getNextEpisode(
           res.status
         );
       }
-      throw new NextEpisodeApiError('Phản hồi tập tiếp theo không phải JSON hợp lệ.', 502);
+      throw new NextEpisodeApiError('Dữ liệu tập tiếp theo trả về không hợp lệ.', 502);
     }
 
     const serverMessage = nonEmptyString(json?.message) ? json.message.trim() : '';
@@ -254,7 +267,7 @@ export async function getNextEpisode(
     if (json.data === null) {
       return {
         status: 'completed',
-        message: serverMessage || 'Bạn đã xem hết bộ phim này.',
+        message: serverMessage || 'Bạn đã xem hết phim bộ này.',
       };
     }
 

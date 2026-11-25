@@ -1,0 +1,10 @@
+CREATE INDEX IF NOT EXISTS idx_users_role_enabled ON users (role, enabled);
+CREATE INDEX IF NOT EXISTS idx_favorite_user_added ON favorite_items (user_id, added_at);
+CREATE INDEX IF NOT EXISTS idx_watchlist_user_added ON watchlist_items (user_id, added_at);
+CREATE INDEX IF NOT EXISTS idx_ratings_user_updated ON movie_ratings (user_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_watch_progress_episode ON watch_progress (episode_id);
+CREATE INDEX IF NOT EXISTS idx_cat_snap_hash_version ON catalog_snapshots (content_hash, snapshot_version);
+CREATE INDEX IF NOT EXISTS idx_cat_pkg_imported ON catalog_packages (imported_at);
+CREATE INDEX IF NOT EXISTS idx_cat_season_series_num ON catalog_seasons (series_id, number);
+CREATE INDEX IF NOT EXISTS idx_cat_scene_ep_start ON catalog_scenes (episode_id, start_ms);
+CREATE INDEX IF NOT EXISTS idx_cat_ep_series_pub_num ON catalog_episodes (series_id, publication_status, number);

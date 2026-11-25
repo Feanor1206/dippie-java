@@ -3,6 +3,8 @@ package com.dippie.assistant.search;
 import com.dippie.assistant.search.SearchDocument.Placement;
 import com.dippie.assistant.search.SearchDocument.Text;
 import com.dippie.assistant.search.SearchDocument.Timecode;
+import com.dippie.catalog.domain.CatalogDisplayText;
+import com.dippie.catalog.domain.EpisodeRuntime;
 import com.dippie.common.text.UnicodeText;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.MissingNode;
@@ -19,21 +21,30 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+// Làm phẳng cây JSON bản xuất danh mục (bộ, mùa, tập, phân đoạn, cảnh và phụ đề) thành danh sách SearchDocument cho LexicalIndex.
+// Ngay từ bước đọc này mình đã lọc bỏ bản ghi chưa xuất bản và tệp media không công khai (hoặc bị tắt) để không bao giờ lộ phim ẩn qua tìm kiếm.
 final class SearchCatalogFlattener {
 
     private static final long DIALOGUE_STRIDE = 22_500;
     private static final long DIALOGUE_WINDOW = 45_000;
+    private static final String TYPE_SERIES = "series";
+    private static final String TYPE_EPISODE = "episode";
+    private static final String TYPE_SEGMENT = "segment";
+    private static final String TYPE_SCENE = "scene";
+    private static final String TYPE_DIALOGUE = "dialogue";
 
     private final Map<String, JsonNode> series;
     private final Map<String, JsonNode> seasons;
     private final Map<String, JsonNode> episodes;
     private final Map<String, JsonNode> assets;
     private final Map<String, List<String>> genres;
+    private final Map<String, String> genreLabels;
     private final Map<String, List<String>> characters;
     private final Map<String, String> firstAssetByEpisode = new HashMap<>();
+    private final Map<String, List<String>> episodesByPrimaryAsset = new HashMap<>();
     private final Map<String, List<Coverage>> coverageByAsset = new HashMap<>();
     private final Map<String, List<Cue>> cuesByAsset = new HashMap<>();
-    private final List<JsonNode> tracks;
+    private final List<TrackCues> trackCues;
 
     private SearchCatalogFlattener(JsonNode catalog) {
         series = records(catalog, "series");
@@ -43,12 +54,25 @@ final class SearchCatalogFlattener {
                 || !visibleParent(episode, "season_id", seasons));
         assets = records(catalog, "media_assets");
         assets.values().removeIf(asset -> !"public".equals(text(asset, "access_policy", "public")) || !enabled(asset));
-        tracks = records(catalog, "text_tracks").values().stream().filter(SearchCatalogFlattener::enabled)
+        List<JsonNode> tracks = records(catalog, "text_tracks").values().stream().filter(SearchCatalogFlattener::enabled)
                 .filter(track -> assets.containsKey(text(track, "media_asset_id"))).toList();
         genres = new HashMap<>();
+        genreLabels = new HashMap<>();
         records(catalog, "genres").forEach((id, row) -> {
             List<String> names = new ArrayList<>(List.of(id));
-            row.path("labels").forEach(label -> add(names, text(label, "text")));
+            JsonNode labels = row.path("labels");
+            if (labels.isObject()) {
+                labels.valueStream().filter(JsonNode::isTextual).map(JsonNode::textValue).forEach(names::add);
+                addVietnameseLabel(id, labels.path("vi").textValue());
+            } else {
+                labels.forEach(label -> {
+                    String value = text(label, "text");
+                    add(names, value);
+                    if ("vi".equals(text(label, "language"))) {
+                        addVietnameseLabel(id, value);
+                    }
+                });
+            }
             names.addAll(aliases(row));
             genres.put(id, distinct(names));
         });
@@ -65,16 +89,30 @@ final class SearchCatalogFlattener {
                 firstAssetByEpisode.putIfAbsent(episode, asset);
             }
         }));
+        episodes.forEach((episodeId, row) -> {
+            String primary = primaryAsset(episodeId, row);
+            if (!empty(primary)) {
+                episodesByPrimaryAsset.computeIfAbsent(primary, ignored -> new ArrayList<>()).add(episodeId);
+            }
+        });
         assets.forEach(this::collectCoverage);
-        tracks.forEach(track -> cuesByAsset.computeIfAbsent(text(track, "media_asset_id"), ignored -> new ArrayList<>())
-                .addAll(cues(track)));
+        List<TrackCues> parsedTracks = new ArrayList<>(tracks.size());
+        for (JsonNode track : tracks) {
+            String assetId = text(track, "media_asset_id");
+            List<Cue> parsed = cues(track);
+            parsedTracks.add(new TrackCues(track, assetId, parsed));
+            cuesByAsset.computeIfAbsent(assetId, ignored -> new ArrayList<>()).addAll(parsed);
+        }
+        trackCues = List.copyOf(parsedTracks);
     }
 
+    // Chuyển toàn bộ cây JSON bản xuất thành danh sách tài liệu phẳng sẵn sàng đưa vào chỉ mục.
     static List<SearchDocument> flatten(JsonNode catalog) {
         return new SearchCatalogFlattener(catalog).documents(catalog);
     }
 
     private List<SearchDocument> documents(JsonNode catalog) {
+        // Đưa lần lượt bộ phim, tập, phân đoạn và cảnh thuộc các cha công khai vào danh sách tài liệu.
         List<SearchDocument> documents = new ArrayList<>();
         series.values().forEach(row -> documents.add(series(row)));
         Map<String, SearchDocument> episodeDocuments = new HashMap<>();
@@ -92,10 +130,10 @@ final class SearchCatalogFlattener {
                 documents.add(scene(row));
             }
         }
-        for (JsonNode track : tracks) {
-            String asset = text(track, "media_asset_id");
-            for (Coverage coverage : coverageByAsset.getOrDefault(asset, List.of())) {
-                addDialogue(documents, episodeDocuments.get(coverage.episodeId()), track, asset, coverage);
+        // Cắt phụ đề của từng đường track theo đúng khoảng coverage của mỗi tập phim.
+        for (TrackCues track : trackCues) {
+            for (Coverage coverage : coverageByAsset.getOrDefault(track.assetId(), List.of())) {
+                addDialogue(documents, episodeDocuments.get(coverage.episodeId()), track, coverage);
             }
         }
         return List.copyOf(documents);
@@ -104,10 +142,13 @@ final class SearchCatalogFlattener {
     private SearchDocument series(JsonNode row) {
         String title = text(row, "title", "");
         Integer year = nonzero(integer(row, "release_year_start"), year(text(row, "release_date")));
+        List<String> ids = strings(row, "genre_ids");
         var placement = new Placement(null, null, null, null, null, null, null, null, null, year,
-                resolve(strings(row, "genre_ids"), genres));
-        return document(row, "series", placement, title, aliases(row), null, null, null,
-                "Animation series: " + title, "Series", null, null, null, Timecode.NONE);
+                distinct(ids), resolve(ids, genres), localizedGenres(ids));
+        var names = new ArrayList<>(aliases(row));
+        add(names, text(row, "original_title"));
+        return document(row, TYPE_SERIES, placement, title, distinct(names), null, null, null,
+                CatalogDisplayText.series(title), CatalogDisplayText.SERIES, null, null, null, Timecode.NONE);
     }
 
     private SearchDocument episode(JsonNode row) {
@@ -117,9 +158,8 @@ final class SearchCatalogFlattener {
         String seasonId = text(row, "season_id", "");
         JsonNode parentSeries = lookup(series, seriesId);
         JsonNode parentSeason = lookup(seasons, seasonId);
-        String airDate = text(row, "release_date");
-        Integer year = nonzero(year(airDate),
-                nonzero(integer(parentSeason, "release_year_start"), integer(parentSeries, "release_year_start")));
+        String airDate = airDate(row);
+        Integer year = episodeYear(parentSeason, parentSeries, airDate);
         Integer number = integer(row, "number");
         Integer season = integer(parentSeason, "number");
         List<String> aliases = new ArrayList<>(aliases(row));
@@ -130,12 +170,12 @@ final class SearchCatalogFlattener {
                         "Season " + season + " Episode " + number, "S" + pad(season) + "E" + pad(number)));
             }
         }
-        Long duration = number(row, "duration_ms");
+        Long duration = EpisodeRuntime.known(number(row, "duration_ms"));
+        var genreIds = inheritedGenreIds(row, parentSeries);
         var placement = new Placement(seriesId, text(parentSeries, "title", ""), seasonId, season, null, null, number,
-                null, airDate, year, inheritedGenres(row, parentSeries));
-        return document(row, "episode", placement, title, distinct(aliases), plotFacts(row), null, null,
-                "Episode " + (number == null ? "None" : number) + ": " + title,
-                duration != null && duration >= 60_000 ? duration / 60_000 + "m" : "Episode", duration,
+                null, airDate, year, distinct(genreIds), resolve(genreIds, genres), localizedGenres(genreIds));
+        return document(row, TYPE_EPISODE, placement, title, distinct(aliases), plotFacts(row), null, null,
+                CatalogDisplayText.episode(number, title), EpisodeRuntime.label(duration), duration,
                 primaryAsset(id, row), null, Timecode.NONE);
     }
 
@@ -157,7 +197,7 @@ final class SearchCatalogFlattener {
         if (end == null) {
             end = number(row, "end_ms");
         }
-        return document(row, "segment", placement, title, distinct(aliases), plotFacts(row), null, null,
+        return document(row, TYPE_SEGMENT, placement, title, distinct(aliases), plotFacts(row), null, null,
                 "Segment: " + title, runtime(start, end, "Segment"), null, null, null, Timecode.unshifted(start, end));
     }
 
@@ -187,7 +227,7 @@ final class SearchCatalogFlattener {
             position = matches.size() == 1 ? matches.getFirst().timecode(start, end)
                     : new Timecode(start, end, null, null);
         }
-        return document(row, "scene", placement, title, null, null, visual, dialogue,
+        return document(row, TYPE_SCENE, placement, title, null, null, visual, dialogue,
                 nonempty(description, "Scene: " + title), runtime(start, end, "Scene"), null, null, asset, position);
     }
 
@@ -197,26 +237,25 @@ final class SearchCatalogFlattener {
         String seriesId = text(parent, "series_id", "");
         JsonNode parentSeries = lookup(series, seriesId);
         JsonNode parentSeason = lookup(seasons, text(parent, "season_id"));
-        Integer date = year(text(parent, "release_date"));
-        Integer seriesYear = integer(parentSeries, "release_year_start");
-        Integer year = nonzero(date, seriesYear);
-        if (year == null) {
-            year = integer(parentSeason, "release_year_start");
-        }
+        Integer year = episodeYear(parentSeason, parentSeries, airDate(parent));
+        var genreIds = inheritedGenreIds(parent, parentSeries);
         return new Placement(seriesId, text(parentSeries, "title", ""), null, integer(parentSeason, "number"),
                 episodeId, text(parent, "title", ""), integer(parent, "number"), segmentId, null, year,
-                inheritedGenres(parent, parentSeries));
+                distinct(genreIds), resolve(genreIds, genres), localizedGenres(genreIds));
     }
 
     private SearchDocument document(JsonNode row, String type, Placement placement, String title, List<String> aliases,
             List<String> plotFacts, String visual, String dialogue, String description, String runtime, Long duration,
             String primaryAsset, String asset, Timecode position) {
-        String synopsis = type.equals("scene") ? null : text(row, "synopsis", "");
+        String synopsis = type.equals(TYPE_SCENE) ? null : text(row, "synopsis", "");
+        var ids = strings(row, "character_ids");
+        List<String> names = ids.stream().map(characters::get).filter(values -> values != null && !values.isEmpty())
+                .map(List::getFirst).distinct().toList();
         var text = new Text(title, synopsis, nonempty(synopsis, description), aliases,
-                resolve(strings(row, "character_ids"), characters), plotFacts, strings(row, "keywords"),
-                strings(row, "themes"), visual, dialogue, type.equals("scene") ? strings(row, "sound_events") : null);
+                resolve(ids, characters), plotFacts, strings(row, "keywords"), strings(row, "themes"), visual, dialogue,
+                type.equals(TYPE_SCENE) ? strings(row, "sound_events") : null, names);
         return new SearchDocument(text(row, "id"), type, placement, text, runtime, duration, primaryAsset, asset,
-                position, attributes(row));
+                position, attributes(row), type.equals(TYPE_SEGMENT) ? integer(row, "position") : null);
     }
 
     private void collectCoverage(String assetId, JsonNode asset) {
@@ -237,11 +276,9 @@ final class SearchCatalogFlattener {
             }
         }
         if (coverage.isEmpty() && (duration == null || duration > 0)) {
-            episodes.forEach((episodeId, row) -> {
-                if (assetId.equals(primaryAsset(episodeId, row))) {
-                    mappings.add(new Coverage(episodeId, 0, duration, 0L));
-                }
-            });
+            for (String episodeId : episodesByPrimaryAsset.getOrDefault(assetId, List.of())) {
+                mappings.add(new Coverage(episodeId, 0, duration, 0L));
+            }
         }
         coverageByAsset.put(assetId, mappings);
     }
@@ -250,21 +287,28 @@ final class SearchCatalogFlattener {
         return firstAssetByEpisode.getOrDefault(episode, text(row, "primary_media_asset_id"));
     }
 
-    private static void addDialogue(List<SearchDocument> documents, SearchDocument episode, JsonNode track,
-            String asset, Coverage coverage) {
-        List<Cue> cues = cues(track).stream().filter(cue -> cue.start() >= 0 && cue.start() < cue.end()
+    private static void addDialogue(List<SearchDocument> documents, SearchDocument episode, TrackCues track,
+            Coverage coverage) {
+        // Chỉ giữ các câu phụ đề nằm giao với khoảng thời gian của tập trên tệp media rồi sắp tăng dần.
+        List<Cue> cues = track.cues().stream().filter(cue -> cue.start() >= 0 && cue.start() < cue.end()
                         && cue.end() > coverage.sourceIn() && (coverage.sourceOut() == null || cue.start() < coverage.sourceOut()))
                 .sorted(Comparator.comparingLong(Cue::start).thenComparingLong(Cue::end)).toList();
         if (cues.isEmpty()) {
             return;
         }
+        // Trượt cửa sổ 45 giây bước 22.5 giây để câu thoại vắt qua ranh giới vẫn ghép chung được, và dùng tập seen tránh nhân đôi cửa sổ y hệt nhau.
         long first = cues.getFirst().start() / DIALOGUE_STRIDE * DIALOGUE_STRIDE;
         long last = cues.stream().mapToLong(Cue::end).max().orElseThrow();
         Set<List<Cue>> seen = new HashSet<>();
+        int cursor = 0;
         for (long start = first; start < last;) {
+            while (cursor < cues.size() && cues.get(cursor).end() <= start) {
+                cursor++;
+            }
             List<Cue> selected = new ArrayList<>();
             long next = last;
-            for (Cue cue : cues) {
+            for (int i = cursor; i < cues.size(); i++) {
+                Cue cue = cues.get(i);
                 if (cue.start() - start >= DIALOGUE_WINDOW) {
                     next = Math.min(next, cue.start() / DIALOGUE_STRIDE * DIALOGUE_STRIDE - DIALOGUE_STRIDE);
                     break;
@@ -278,7 +322,7 @@ final class SearchCatalogFlattener {
                 }
             }
             if (!selected.isEmpty() && seen.add(selected)) {
-                documents.add(dialogue(episode, track, asset, coverage, start, selected));
+                documents.add(dialogue(episode, track.track(), track.assetId(), coverage, start, selected));
             }
             start = next;
         }
@@ -294,26 +338,40 @@ final class SearchCatalogFlattener {
         String dialogue = selected.stream().map(Cue::text).collect(Collectors.joining(" "));
         var parent = episode.placement();
         var placement = new Placement(parent.seriesId(), parent.seriesTitle(), parent.seasonId(), parent.seasonNumber(),
-                episode.id(), parent.episodeTitle(), parent.episodeNumber(), null, parent.airDate(), parent.year(), parent.genres());
+                episode.id(), parent.episodeTitle(), parent.episodeNumber(), null, parent.airDate(), parent.year(),
+                parent.genres(), parent.genreTerms(), parent.genreLabels());
         var text = episode.text();
         var window = new Text(text.title(), text.synopsis(), dialogue, text.aliases(), text.characters(), text.plotFacts(),
-                text.keywords(), text.themes(), null, dialogue, null);
+                text.keywords(), text.themes(), null, dialogue, null, text.characterNames());
         String id = "dialogue:" + text(track, "id", asset) + ":" + episode.id() + ":" + start;
-        return new SearchDocument(id, "dialogue", placement, window, episode.runtime(), episode.durationMs(),
-                episode.primaryMediaAssetId(), asset, coverage.timecode(sourceStart, sourceEnd), episode.comparativeAttributes());
+        return new SearchDocument(id, TYPE_DIALOGUE, placement, window, episode.runtime(), episode.durationMs(),
+                episode.primaryMediaAssetId(), asset, coverage.timecode(sourceStart, sourceEnd),
+                episode.comparativeAttributes(), null);
     }
 
-    private List<String> inheritedGenres(JsonNode episode, JsonNode parentSeries) {
+    private static List<String> inheritedGenreIds(JsonNode episode, JsonNode parentSeries) {
         List<String> ids = strings(episode, "genre_ids");
-        return resolve(ids.isEmpty() ? strings(parentSeries, "genre_ids") : ids, genres);
+        return ids.isEmpty() ? strings(parentSeries, "genre_ids") : ids;
     }
 
+    private void addVietnameseLabel(String id, String label) {
+        if (label != null && !label.isBlank()) {
+            genreLabels.putIfAbsent(id, label);
+        }
+    }
+
+    private List<String> localizedGenres(List<String> ids) {
+        return ids.stream().map(genreLabels::get).filter(label -> label != null).distinct().toList();
+    }
+
+    // Chỉ lấy bản ghi đã ở trạng thái ready hoặc dữ liệu cũ chưa có record.status; các bản ghi draft, pending, hidden đều bị bỏ qua.
     private static Map<String, JsonNode> records(JsonNode catalog, String field) {
         Map<String, JsonNode> records = new LinkedHashMap<>();
         for (JsonNode row : catalog.path(field)) {
             String id = text(row, "id");
             String status = text(row.path("record"), "status", "");
-            if (id != null && !status.equals("draft") && !status.equals("archived")) {
+            boolean published = status == null || status.isEmpty() || "ready".equalsIgnoreCase(status);
+            if (id != null && published) {
                 records.put(id, row);
             }
         }
@@ -444,6 +502,15 @@ final class SearchCatalogFlattener {
         }
     }
 
+    private static String airDate(JsonNode episode) {
+        return nonempty(text(episode, "release_date"), text(episode, "air_date"));
+    }
+
+    private static Integer episodeYear(JsonNode season, JsonNode series, String airDate) {
+        Integer seasonYear = nonzero(integer(season, "release_year_start"), year(text(season, "release_date")));
+        return nonzero(year(airDate), nonzero(seasonYear, integer(series, "release_year_start")));
+    }
+
     private static String pad(int number) {
         return String.format(Locale.ROOT, "%02d", number);
     }
@@ -477,15 +544,16 @@ final class SearchCatalogFlattener {
     }
 
     private static Integer integer(JsonNode row, String key) {
-        JsonNode value = row.path(key);
-        return value.isIntegralNumber() && value.canConvertToInt() ? value.intValue() : null;
+        JsonNode node = row.path(key);
+        return node.isIntegralNumber() && node.canConvertToInt() ? node.intValue() : null;
     }
 
     private static Long number(JsonNode row, String key) {
-        JsonNode value = row.path(key);
-        return value.isIntegralNumber() && value.canConvertToLong() ? value.longValue() : null;
+        JsonNode node = row.path(key);
+        return node.isIntegralNumber() && node.canConvertToLong() ? node.longValue() : null;
     }
 
+    // Khoảng ánh xạ thời gian giữa tệp video nguồn và dòng thời gian của một tập phim.
     private record Coverage(String episodeId, long sourceIn, Long sourceOut, Long episodeIn) {
 
         boolean contains(long start) {
@@ -501,6 +569,11 @@ final class SearchCatalogFlattener {
         }
     }
 
+    // Gom một đường phụ đề cùng mã tài nguyên media và danh sách câu đã đọc xong.
+    private record TrackCues(JsonNode track, String assetId, List<Cue> cues) {
+    }
+
+    // Một câu phụ đề đơn lẻ với mốc bắt đầu, kết thúc và nội dung gốc chưa cắt khoảng trắng.
     private record Cue(long start, long end, String rawText) {
 
         String text() {

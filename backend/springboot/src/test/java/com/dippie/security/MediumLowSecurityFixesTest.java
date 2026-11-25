@@ -1,0 +1,317 @@
+package com.dippie.security;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.dippie.admin.AdminAuditEventRepository;
+import com.dippie.catalog.domain.CatalogEpisode;
+import com.dippie.catalog.domain.CatalogEpisodeRepository;
+import com.dippie.catalog.domain.CatalogSeason;
+import com.dippie.catalog.domain.CatalogSeasonRepository;
+import com.dippie.catalog.domain.CatalogSeries;
+import com.dippie.catalog.domain.CatalogSeriesRepository;
+import com.dippie.catalog.domain.CatalogSnapshot;
+import com.dippie.catalog.domain.CatalogSnapshotRepository;
+import com.dippie.catalog.query.CatalogReadModelCache;
+import com.dippie.library.FavoriteItem;
+import com.dippie.library.FavoriteItemRepository;
+import com.dippie.library.MovieRating;
+import com.dippie.library.MovieRatingRepository;
+import com.dippie.library.WatchlistItem;
+import com.dippie.library.WatchlistItemRepository;
+import com.dippie.movie.Movie;
+import com.dippie.movie.MovieRepository;
+import com.dippie.progress.WatchProgress;
+import com.dippie.progress.WatchProgressRepository;
+import com.dippie.user.User;
+import com.dippie.user.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestConstructor;
+import org.springframework.test.web.servlet.MockMvc;
+
+// Bộ test hồi quy cho phân quyền fail-closed, lọc nội dung nháp khỏi thư viện và thống kê, ghi audit và cấu hình đóng gói H2.
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
+class MediumLowSecurityFixesTest {
+
+    private static final String READY = "{\"status\":\"ready\"}";
+    private static final String DRAFT = "{\"status\":\"draft\"}";
+
+    private final MockMvc mockMvc;
+    private final ObjectMapper objectMapper;
+    private final UserRepository userRepository;
+    private final MovieRepository movieRepository;
+    private final CatalogSeriesRepository seriesRepository;
+    private final CatalogSeasonRepository seasonRepository;
+    private final CatalogEpisodeRepository episodeRepository;
+    private final CatalogSnapshotRepository snapshotRepository;
+    private final WatchlistItemRepository watchlistRepository;
+    private final FavoriteItemRepository favoriteRepository;
+    private final MovieRatingRepository ratingRepository;
+    private final WatchProgressRepository watchProgressRepository;
+    private final AdminAuditEventRepository auditEventRepository;
+    private final CatalogReadModelCache readModelCache;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+    private final LoginRateLimiter loginRateLimiter;
+
+    MediumLowSecurityFixesTest(
+            MockMvc mockMvc,
+            ObjectMapper objectMapper,
+            UserRepository userRepository,
+            MovieRepository movieRepository,
+            CatalogSeriesRepository seriesRepository,
+            CatalogSeasonRepository seasonRepository,
+            CatalogEpisodeRepository episodeRepository,
+            CatalogSnapshotRepository snapshotRepository,
+            WatchlistItemRepository watchlistRepository,
+            FavoriteItemRepository favoriteRepository,
+            MovieRatingRepository ratingRepository,
+            WatchProgressRepository watchProgressRepository,
+            AdminAuditEventRepository auditEventRepository,
+            CatalogReadModelCache readModelCache,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService,
+            LoginRateLimiter loginRateLimiter
+    ) {
+        this.mockMvc = mockMvc;
+        this.objectMapper = objectMapper;
+        this.userRepository = userRepository;
+        this.movieRepository = movieRepository;
+        this.seriesRepository = seriesRepository;
+        this.seasonRepository = seasonRepository;
+        this.episodeRepository = episodeRepository;
+        this.snapshotRepository = snapshotRepository;
+        this.watchlistRepository = watchlistRepository;
+        this.favoriteRepository = favoriteRepository;
+        this.ratingRepository = ratingRepository;
+        this.watchProgressRepository = watchProgressRepository;
+        this.auditEventRepository = auditEventRepository;
+        this.readModelCache = readModelCache;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+        this.loginRateLimiter = loginRateLimiter;
+    }
+
+    @BeforeEach
+    void setUp() {
+        loginRateLimiter.reset();
+        auditEventRepository.deleteAll();
+        watchProgressRepository.deleteAll();
+        watchlistRepository.deleteAll();
+        favoriteRepository.deleteAll();
+        ratingRepository.deleteAll();
+        snapshotRepository.deleteAll();
+        episodeRepository.deleteAll();
+        seasonRepository.deleteAll();
+        seriesRepository.deleteAll();
+        movieRepository.deleteAll();
+        userRepository.deleteAll();
+        readModelCache.invalidate();
+    }
+
+    // Kiểm tra đăng nhập email không phân biệt hoa thường, route API lạ mặc định yêu cầu đăng nhập và ẩn cấu hình LLM nội bộ với user thường.
+    @Test
+    void enforcesFailClosedRoutesEmailNormalizationAndAssistantStatusPrivacy() throws Exception {
+        User viewer = userRepository.saveAndFlush(new User(
+                "alice_sec", "alice.sec@example.com", passwordEncoder.encode("secret123"), "Alice",
+                Role.ROLE_USER, LocalDateTime.of(2026, 3, 1, 10, 0)
+        ));
+        User admin = userRepository.saveAndFlush(new User(
+                "admin_sec", "admin.sec@dippie.com", passwordEncoder.encode("StrongAdminPass123!"), "Admin",
+                Role.ROLE_ADMIN, LocalDateTime.of(2026, 3, 1, 10, 0)
+        ));
+        String userBearer = "Bearer " + jwtService.issueLoginToken(viewer.getUsername(), viewer.getTokenVersion());
+        String adminBearer = "Bearer " + jwtService.issueLoginToken(admin.getUsername(), admin.getTokenVersion());
+
+        // Email viết hoa lúc đăng nhập phải được chuẩn hóa về chữ thường.
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "usernameOrEmail", "ALICE.SEC@EXAMPLE.COM",
+                                "password", "secret123"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value("alice_sec"));
+
+        // Route API không khai báo permitAll trả 401 khi chưa đăng nhập, còn /api/admin/** trả 403.
+        mockMvc.perform(get("/api/unmapped-endpoint"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
+        mockMvc.perform(post("/api/movies"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/admin/users"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/admin/users").header(HttpHeaders.AUTHORIZATION, userBearer))
+                .andExpect(status().isForbidden());
+
+        // /api/assistant/status giấu llmProvider và documents với user thường, chỉ trả đủ cho admin.
+        mockMvc.perform(get("/api/assistant/status").header(HttpHeaders.AUTHORIZATION, userBearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.searchReady").value(true))
+                .andExpect(jsonPath("$.data.llmProvider").isEmpty())
+                .andExpect(jsonPath("$.data.documents").isEmpty());
+        mockMvc.perform(get("/api/assistant/status").header(HttpHeaders.AUTHORIZATION, adminBearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.llmProvider").value("template"));
+    }
+
+    // Phim và bộ phim đang ở trạng thái nháp phải bị lọc khỏi watchlist, yêu thích, đánh giá và thống kê admin.
+    @Test
+    void hidesUnpublishedSeriesFromUserLibraryAndAdminStats() throws Exception {
+        LocalDateTime now = LocalDateTime.of(2026, 3, 1, 10, 0);
+        User viewer = userRepository.saveAndFlush(new User(
+                "lib_viewer", "lib.viewer@example.com", passwordEncoder.encode("secret123"), "Viewer",
+                Role.ROLE_USER, now
+        ));
+        User admin = userRepository.saveAndFlush(new User(
+                "lib_admin", "lib.admin@dippie.com", passwordEncoder.encode("StrongAdminPass123!"), "Admin",
+                Role.ROLE_ADMIN, now
+        ));
+        String userBearer = "Bearer " + jwtService.issueLoginToken(viewer.getUsername(), viewer.getTokenVersion());
+        String adminBearer = "Bearer " + jwtService.issueLoginToken(admin.getUsername(), admin.getTokenVersion());
+
+        movieRepository.saveAndFlush(new Movie("ser_pub", "Phim Xuất Bản", 2025, 8.5, "20m", "Animation", null, null, null, null));
+        movieRepository.saveAndFlush(new Movie("ser_draft", "Phim Nháp", 2025, 9.9, "20m", "Animation", null, null, null, null));
+        seriesRepository.saveAndFlush(new CatalogSeries(
+                "ser_pub", "Phim Xuất Bản", null, null, null, null, null, null, null, null, null,
+                2025, null, null, null, null, null, null, null, null, null, READY, null, 1
+        ));
+        seriesRepository.saveAndFlush(new CatalogSeries(
+                "ser_draft", "Phim Nháp", null, null, null, null, null, null, null, null, null,
+                2025, null, null, null, null, null, null, null, null, null, DRAFT, null, 1
+        ));
+        seasonRepository.saveAndFlush(new CatalogSeason(
+                "sea_draft", "ser_pub", 1, "Mùa nháp", null, "regular", null, null, null, null, DRAFT, null, 1
+        ));
+        episodeRepository.saveAndFlush(new CatalogEpisode(
+                "ep_pub_ok", "ser_pub", null, 1, "Tập công khai", null, null, null, "regular", null,
+                120_000L, null, null, null, null, null, null, null, null, null, null, null, null, READY, null, 1
+        ));
+        episodeRepository.saveAndFlush(new CatalogEpisode(
+                "ep_in_draft_season", "ser_pub", "sea_draft", 2, "Tập trong mùa nháp", null, null, null, "regular", null,
+                120_000L, null, null, null, null, null, null, null, null, null, null, null, null, READY, null, 1
+        ));
+        episodeRepository.saveAndFlush(new CatalogEpisode(
+                "ep_in_draft_series", "ser_draft", null, 1, "Tập trong bộ nháp", null, null, null, "regular", null,
+                120_000L, null, null, null, null, null, null, null, null, null, null, null, null, READY, null, 1
+        ));
+
+        watchlistRepository.saveAndFlush(new WatchlistItem(viewer.getId(), "ser_pub", now));
+        watchlistRepository.saveAndFlush(new WatchlistItem(viewer.getId(), "ser_draft", now));
+        favoriteRepository.saveAndFlush(new FavoriteItem(viewer.getId(), "ser_pub", now));
+        favoriteRepository.saveAndFlush(new FavoriteItem(viewer.getId(), "ser_draft", now));
+        ratingRepository.saveAndFlush(new MovieRating(viewer.getId(), "ser_pub", 8, now));
+        ratingRepository.saveAndFlush(new MovieRating(viewer.getId(), "ser_draft", 10, now));
+        watchProgressRepository.saveAndFlush(WatchProgress.startAt(viewer.getId(), "ep_pub_ok", "ast_1", 10_000L, now));
+        watchProgressRepository.saveAndFlush(WatchProgress.startAt(viewer.getId(), "ep_in_draft_season", "ast_2", 10_000L, now));
+        watchProgressRepository.saveAndFlush(WatchProgress.startAt(viewer.getId(), "ep_in_draft_series", "ast_3", 10_000L, now));
+        readModelCache.invalidate();
+
+        // Thư viện cá nhân chỉ trả ser_pub, bỏ qua ser_draft.
+        mockMvc.perform(get("/api/users/watchlist").header(HttpHeaders.AUTHORIZATION, userBearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].movieId").value("ser_pub"));
+        mockMvc.perform(get("/api/users/favorites").header(HttpHeaders.AUTHORIZATION, userBearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].movieId").value("ser_pub"));
+        mockMvc.perform(get("/api/users/ratings").header(HttpHeaders.AUTHORIZATION, userBearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].movieId").value("ser_pub"));
+
+        // Thống kê admin chỉ tính tập đã xuất bản đủ cả bộ, mùa và tập.
+        mockMvc.perform(get("/api/admin/stats").header(HttpHeaders.AUTHORIZATION, adminBearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.publishedEpisodes").value(1))
+                .andExpect(jsonPath("$.data.topWatchedEpisodes.length()").value(1))
+                .andExpect(jsonPath("$.data.topWatchedEpisodes[0].episodeId").value("ep_pub_ok"))
+                .andExpect(jsonPath("$.data.topRatedMovies.length()").value(1))
+                .andExpect(jsonPath("$.data.topRatedMovies[0].movieId").value("ser_pub"));
+    }
+
+    // Bỏ qua ghi audit khi vai trò hoặc trạng thái không đổi; retry snapshot và export danh mục có ghi audit; GET snapshots chỉ đọc.
+    @Test
+    void skipsNoOpUserAuditsAndAuditsCatalogRetryAndExportWithoutMutatingOnGetSnapshots() throws Exception {
+        LocalDateTime now = LocalDateTime.of(2026, 3, 1, 10, 0);
+        User admin = userRepository.saveAndFlush(new User(
+                "audit_admin", "audit.admin@dippie.com", passwordEncoder.encode("StrongAdminPass123!"), "Admin",
+                Role.ROLE_ADMIN, now
+        ));
+        User viewer = userRepository.saveAndFlush(new User(
+                "audit_viewer", "audit.viewer@example.com", passwordEncoder.encode("secret123"), "Viewer",
+                Role.ROLE_USER, now
+        ));
+        String adminBearer = "Bearer " + jwtService.issueLoginToken(admin.getUsername(), admin.getTokenVersion());
+        long originalVersion = viewer.getTokenVersion();
+
+        // Gửi lại đúng vai trò và trạng thái hiện tại không được tăng tokenVersion hay sinh thêm dòng audit.
+        mockMvc.perform(patch("/api/admin/users/" + viewer.getId() + "/role")
+                        .header(HttpHeaders.AUTHORIZATION, adminBearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ROLE_USER\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/admin/users/" + viewer.getId() + "/status")
+                        .header(HttpHeaders.AUTHORIZATION, adminBearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":true}"))
+                .andExpect(status().isOk());
+
+        assertThat(userRepository.findById(viewer.getId()).orElseThrow().getTokenVersion()).isEqualTo(originalVersion);
+        assertThat(auditEventRepository.count()).isZero();
+
+        // GET /api/admin/catalog/snapshots chỉ đọc, không tự đổi trạng thái snapshot đang BUILDING.
+        snapshotRepository.saveAndFlush(new CatalogSnapshot("snap_ro_1", 1L, "hash1", 1, "BUILDING", 0, null, null));
+        mockMvc.perform(get("/api/admin/catalog/snapshots").header(HttpHeaders.AUTHORIZATION, adminBearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("BUILDING"));
+        assertThat(snapshotRepository.findById("snap_ro_1").orElseThrow().getStatus()).isEqualTo("BUILDING");
+
+        // Retry snapshot và export danh mục đều phải ghi lại bản ghi audit.
+        mockMvc.perform(post("/api/admin/catalog/snapshots/snap_ro_1/retry")
+                        .header(HttpHeaders.AUTHORIZATION, adminBearer))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/admin/catalog/export").header(HttpHeaders.AUTHORIZATION, adminBearer))
+                .andExpect(status().isOk());
+
+        var actions = auditEventRepository.findAll().stream().map(event -> event.getAction()).toList();
+        assertThat(actions).contains("CATALOG_SNAPSHOT_RETRIED", "CATALOG_EXPORTED");
+    }
+
+    // Kiểm tra triggers.sql đã bỏ FOR SHARE gây kẹt lock, H2 giữ ở scope test trong pom.xml và script khởi chạy dùng profile demo.
+    @Test
+    void verifiesTriggerLockFixAndH2TestScopeInPomAndStartScript() throws Exception {
+        String triggers = Files.readString(Path.of("../../database/objects/triggers.sql"));
+        assertThat(triggers).doesNotContainIgnoringCase("FOR SHARE");
+
+        String pom = Files.readString(Path.of("pom.xml"));
+        assertThat(pom).contains("<artifactId>h2</artifactId>");
+        assertThat(pom).contains("<id>demo</id>");
+        int firstH2 = pom.indexOf("<artifactId>h2</artifactId>");
+        int firstScopeEnd = pom.indexOf("</scope>", firstH2);
+        assertThat(pom.substring(firstH2, firstScopeEnd)).contains("<scope>test");
+
+        String startScript = Files.readString(Path.of("../../start-java.ps1"));
+        assertThat(startScript).contains("-Pdemo");
+    }
+}

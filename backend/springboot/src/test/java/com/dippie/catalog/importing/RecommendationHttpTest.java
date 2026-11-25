@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// Kiểm tra HTTP API gợi ý phim cho khách chưa đăng nhập, người dùng đã thích phim và điều kiện lọc tập có tệp phát công khai.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -79,7 +80,7 @@ class RecommendationHttpTest {
         long before = statistics.getPrepareStatementCount();
         try {
             verifyAnonymousRecommendations();
-            assertThat(statistics.getPrepareStatementCount() - before).isZero();
+            assertThat(statistics.getPrepareStatementCount() - before).isEqualTo(1);
         } finally {
             statistics.setStatisticsEnabled(previouslyEnabled);
         }
@@ -87,14 +88,15 @@ class RecommendationHttpTest {
         submitCatalog(admin, """
                 {"package":{"id":"recommend-rival"},
                  "series":[{"id":"rival-series","title":"Rival"}],
-                 "episodes":[{"id":"rival-episode","series_id":"rival-series","title":"Rival Episode"}]}
+                 "episodes":[{"id":"rival-episode","series_id":"rival-series","title":"Rival Episode","number":2}]}
                 """).andExpect(status().isOk());
         database.update("update movies set rating = ? where id = ?", 10, "rival-episode");
         cache.invalidate();
 
         mvc.perform(post("/api/recommend").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.recommendedMovies[0].id").value("rival-episode"));
+                .andExpect(jsonPath("$.recommendedMovies[0].id").value("rival-episode"))
+                .andExpect(jsonPath("$.recommendedMovies[0].description").value("Tập 2: Rival Episode"));
 
         String member = token("recommend-viewer", Role.ROLE_USER);
         mvc.perform(post("/api/users/favorites").header(HttpHeaders.AUTHORIZATION, member)
@@ -107,7 +109,7 @@ class RecommendationHttpTest {
                                 {"limit":100}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.reasoning").value("Phim tương đồng với nội dung bạn đã thích hoặc đã xem."))
+                .andExpect(jsonPath("$.reasoning").value("Phim gần gu với những gì bạn đã thích hoặc đã xem."))
                 .andExpect(jsonPath("$.recommendedMovies[0].series_id").value("ser_jadoo"))
                 .andExpect(jsonPath("$.recommendedMovies[0].score").value(greaterThanOrEqualTo(0.8)))
                 .andExpect(jsonPath("$.recommendedMovies[*].id", not(hasItem("ep_jadoo_s01_0001"))))
@@ -119,7 +121,7 @@ class RecommendationHttpTest {
                         .content("{\"genres\":[\"Animation\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.recommendedMovies.length()").value(4))
-                .andExpect(jsonPath("$.reasoning").value("Dựa trên thể loại bạn chọn."))
+                .andExpect(jsonPath("$.reasoning").value("Phim hợp với thể loại bạn đã chọn."))
                 .andExpect(jsonPath("$.recommendedMovies[0].id").value("ep_jadoo_s01_0001"))
                 .andExpect(jsonPath("$.recommendedMovies[0].episode_id").value("ep_jadoo_s01_0001"))
                 .andExpect(jsonPath("$.recommendedMovies[0].episodeId").value("ep_jadoo_s01_0001"))

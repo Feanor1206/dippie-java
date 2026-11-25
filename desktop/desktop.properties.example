@@ -1,0 +1,4 @@
+# Sao chép thành desktop.properties để kết nối MySQL.
+url=jdbc:mysql://127.0.0.1:3306/dippie
+user=
+password=

@@ -20,14 +20,14 @@ import {
 } from '@/lib/services/catalogService';
 
 const entityLabels: Record<string, string> = {
-  genres: 'Thể loại', attributeScales: 'Thang đánh giá', sources: 'Nguồn', series: 'Bộ phim',
-  seasons: 'Phần', episodes: 'Tập', segments: 'Đoạn', characters: 'Nhân vật',
-  mediaAssets: 'Tệp phương tiện', textTracks: 'Phụ đề', scenes: 'Cảnh',
+  genres: 'Thể loại', attributeScales: 'Thang điểm', sources: 'Nguồn', series: 'Phim bộ',
+  seasons: 'Mùa', episodes: 'Tập', segments: 'Phân đoạn', characters: 'Nhân vật',
+  mediaAssets: 'Tệp video', textTracks: 'Phụ đề', scenes: 'Phân cảnh',
 };
 
 const importMessages: Record<string, string> = {
-  'Idempotent import: Package đã tồn tại với cùng revision và nội dung.': 'Gói này đã được nhập với cùng phiên bản và nội dung.',
-  'Nhập dữ liệu package thành công và ghi nhận outbox snapshot.': 'Dữ liệu đã được nhập và đang chờ đồng bộ.',
+  'Idempotent import: Package đã tồn tại với cùng revision và nội dung.': 'Tệp này đã được nhập trước đó với cùng phiên bản và nội dung.',
+  'Nhập dữ liệu package thành công và ghi nhận outbox snapshot.': 'Đã nhập dữ liệu và đang chờ đồng bộ tìm kiếm.',
 };
 
 const indexStatusLabels: Record<string, string> = {
@@ -79,14 +79,14 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
     };
     reader.onerror = () => {
       if (inputVersion !== inputVersionRef.current) return;
-      setParsingError('Không thể đọc tệp JSON đã chọn.');
+      setParsingError('Chưa đọc được tệp JSON đã chọn.');
     };
     reader.readAsText(file);
   };
 
   const parseJsonSafely = () => {
     if (!jsonInput.trim()) {
-      setParsingError('Chọn tệp JSON hoặc dán nội dung danh mục.');
+      setParsingError('Chọn tệp JSON hoặc dán nội dung vào ô bên dưới.');
       return null;
     }
     try {
@@ -94,7 +94,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
       setParsingError(null);
       return parsed;
     } catch (err: any) {
-      setParsingError(`Cú pháp JSON không hợp lệ: ${err?.message || err}`);
+      setParsingError(`Tệp JSON chưa đúng định dạng: ${err?.message || err}`);
       return null;
     }
   };
@@ -118,7 +118,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
         validatedHashRef.current = result.contentHash || 'valid_hash';
       }
     } catch (err: any) {
-      if (inputVersion === inputVersionRef.current) setParsingError(`Lỗi kết nối máy chủ xác thực: ${err?.message || err}`);
+      if (inputVersion === inputVersionRef.current) setParsingError(`Chưa kiểm tra được trên máy chủ: ${err?.message || err}`);
     } finally {
       setIsValidating(false);
     }
@@ -129,7 +129,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
     if (!parsed) return;
 
     if (!validationResult || !validationResult.valid || !validatedHashRef.current) {
-      setImportError('Dữ liệu chưa được kiểm tra hoặc đã bị sửa đổi. Vui lòng nhấn "Kiểm tra & Xem trước" trước khi nhập.');
+      setImportError('Dữ liệu chưa được kiểm tra hoặc vừa thay đổi. Nhấn "Kiểm tra và xem trước" trước khi nhập.');
       return;
     }
 
@@ -143,7 +143,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
         onImportSuccess(res);
       }
     } catch (err: any) {
-      setImportError(err?.message || 'Có lỗi xảy ra trong quá trình nhập dữ liệu.');
+      setImportError(err?.message || 'Chưa nhập được dữ liệu. Bạn thử lại nhé.');
     } finally {
       setIsImporting(false);
     }
@@ -182,7 +182,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
             className="btn-secondary flex items-center gap-2 text-xs font-semibold"
           >
             <Upload size={14} />
-            <span>Chọn tệp JSON...</span>
+            <span>Chọn tệp JSON…</span>
           </button>
           <input
             ref={fileInputRef}
@@ -213,7 +213,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
               setImportResult(null);
               validatedHashRef.current = null;
             }}
-            placeholder='Dán nội dung JSON theo mẫu dippie.catalog.v1...'
+            placeholder='Dán nội dung JSON theo mẫu dippie.catalog.v1…'
             rows={8}
             data-testid="catalog-json-textarea"
             className="w-full rounded-lg border border-surface-border bg-surface p-3 font-mono text-xs text-ink placeholder-zinc-500 focus:border-brand focus:outline-none"
@@ -238,12 +238,12 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
             {isValidating ? (
               <>
                 <Loader2 size={14} className="animate-spin text-brand-dark" />
-                <span>Đang kiểm tra...</span>
+                <span>Đang kiểm tra…</span>
               </>
             ) : (
               <>
                 <FileCheck size={14} className="text-brand-dark" />
-                <span>Kiểm tra & Xem trước</span>
+                <span>Kiểm tra và xem trước</span>
               </>
             )}
           </button>
@@ -263,12 +263,12 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
             {isImporting ? (
               <>
                 <Loader2 size={14} className="animate-spin text-zinc-950" />
-                <span>Đang ghi vào cơ sở dữ liệu...</span>
+                <span>Đang nhập dữ liệu…</span>
               </>
             ) : (
               <>
                 <Database size={14} />
-                <span>Xác nhận nhập dữ liệu</span>
+                <span>Nhập dữ liệu</span>
               </>
             )}
           </button>
@@ -280,22 +280,22 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 {validationResult.valid ? (
                   <span data-testid="catalog-validation-status" className="flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-900 border border-emerald-500/30">
-                    <CheckCircle2 size={14} /> Gói hợp lệ
+                    <CheckCircle2 size={14} /> Tệp hợp lệ
                   </span>
                 ) : (
                   <span data-testid="catalog-validation-status" className="flex items-center gap-1.5 rounded-full bg-red-500/15 px-3 py-1 text-xs font-bold text-red-900 border border-red-500/30">
-                    <XCircle size={14} /> Gói không hợp lệ ({validationResult.errors.length} lỗi)
+                    <XCircle size={14} /> Tệp có {validationResult.errors.length} lỗi
                   </span>
                 )}
                 {validationResult.packageId && (
                   <span className="max-w-full break-words text-xs text-muted">
-                    Mã gói: <strong className="text-ink">{validationResult.packageId}</strong> (Phiên bản {validationResult.revision})
+                    Mã tệp: <strong className="text-ink">{validationResult.packageId}</strong> (Phiên bản {validationResult.revision})
                   </span>
                 )}
               </div>
               {validationResult.contentHash && (
                 <span className="font-mono text-[11px] text-muted" title={validationResult.contentHash}>
-                  SHA-256: {validationResult.contentHash.slice(0, 12)}...
+                  SHA-256: {validationResult.contentHash.slice(0, 12)}…
                 </span>
               )}
             </div>
@@ -361,7 +361,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
             <div className="flex items-center gap-2 text-emerald-900">
 
               <CheckCircle2 size={18} />
-              <h3 className="text-sm font-bold">Nhập dữ liệu thành công!</h3>
+              <h3 className="text-sm font-bold">Đã nhập dữ liệu</h3>
             </div>
             <p className="mt-1 text-xs text-muted">{importMessages[importResult.message] || importResult.message}</p>
 
@@ -369,7 +369,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
               {importResult.counts &&
                 Object.entries(importResult.counts).map(([entity, count]) => (
                   <div key={entity} className="rounded bg-surface p-2 border border-surface-border">
-                    <span className="text-[11px] text-muted capitalize">{entityLabels[entity] || entity}:</span>
+                    <span className="text-[11px] text-muted">{entityLabels[entity] || entity}:</span>
                     <strong className="ml-1 text-ink">{count}</strong>
                   </div>
                 ))}
@@ -377,7 +377,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
 
             <div className="mt-3 flex items-center justify-between border-t border-emerald-500/20 pt-2 text-[11px] text-muted">
               <span>Mã lần nhập: <code className="text-emerald-900">{importResult.importId}</code></span>
-              <span>Trạng thái chỉ mục: {indexStatusLabels[importResult.indexStatus || ''] || importResult.indexStatus || 'Chưa xác định'}</span>
+              <span>Trạng thái tìm kiếm: {indexStatusLabels[importResult.indexStatus || ''] || importResult.indexStatus || 'Chưa rõ'}</span>
             </div>
           </div>
         )}

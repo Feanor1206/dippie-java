@@ -71,27 +71,27 @@ export function resolveFileTimestamp(
     }
 
     const relevantCoverage = episodeId
-      ? coverageList.filter((c) => c && c.episode_id === episodeId)
-      : coverageList.filter((c) => c);
+      ? coverageList.filter((entry) => entry && entry.episode_id === episodeId)
+      : coverageList.filter((entry) => entry);
 
-    const isUsable = (c: CoverageEntry): c is CoverageEntry & { source_in_ms: number; episode_in_ms: number } => Number.isFinite(c.source_in_ms) &&
-      Number.isFinite(c.episode_in_ms) && (c.source_in_ms as number) >= 0 &&
-      (c.episode_in_ms as number) >= 0 &&
-      (c.source_out_ms == null || (Number.isFinite(c.source_out_ms) && c.source_out_ms > (c.source_in_ms as number)));
-    const contains = (c: CoverageEntry) => logicalMs >= (c.episode_in_ms as number) &&
-      (c.source_out_ms == null || logicalMs < (c.episode_in_ms as number) + c.source_out_ms - (c.source_in_ms as number));
+    const isUsable = (entry: CoverageEntry): entry is CoverageEntry & { source_in_ms: number; episode_in_ms: number } => Number.isFinite(entry.source_in_ms) &&
+      Number.isFinite(entry.episode_in_ms) && (entry.source_in_ms as number) >= 0 &&
+      (entry.episode_in_ms as number) >= 0 &&
+      (entry.source_out_ms == null || (Number.isFinite(entry.source_out_ms) && entry.source_out_ms > (entry.source_in_ms as number)));
+    const contains = (entry: CoverageEntry) => logicalMs >= (entry.episode_in_ms as number) &&
+      (entry.source_out_ms == null || logicalMs < (entry.episode_in_ms as number) + entry.source_out_ms - (entry.source_in_ms as number));
 
     if (segmentId) {
-      const segCov = relevantCoverage.find((c) => c.segment_id === segmentId);
-      if (segCov) {
-        if (!isUsable(segCov) || !contains(segCov)) return null;
-        const delta = logicalMs - segCov.episode_in_ms;
+      const segmentCoverage = relevantCoverage.find((entry) => entry.segment_id === segmentId);
+      if (segmentCoverage) {
+        if (!isUsable(segmentCoverage) || !contains(segmentCoverage)) return null;
+        const delta = logicalMs - segmentCoverage.episode_in_ms;
         if (delta < 0) return null;
-        return (segCov.source_in_ms + delta) / 1000;
+        return (segmentCoverage.source_in_ms + delta) / 1000;
       }
     }
 
-    const matches = relevantCoverage.filter((c) => isUsable(c) && contains(c));
+    const matches = relevantCoverage.filter((entry) => isUsable(entry) && contains(entry));
 
     if (matches.length === 1) {
       const match = matches[0];
@@ -132,12 +132,12 @@ export function resolveMediaSeekSeconds(params: ResolveSeekParams): number | nul
   const isFileTimeline = timeline === 'file' || (isScene && !isSegment);
 
   if (timeMs !== undefined && timeMs !== null && timeMs !== '') {
-    const num = Number(timeMs);
-    if (!isNaN(num) && isFinite(num) && num >= 0) {
+    const parsedMs = Number(timeMs);
+    if (!isNaN(parsedMs) && isFinite(parsedMs) && parsedMs >= 0) {
       if (isFileTimeline) {
-        return num / 1000;
+        return parsedMs / 1000;
       }
-      return resolveFileTimestamp(num, asset, segmentId, episodeId);
+      return resolveFileTimestamp(parsedMs, asset, segmentId, episodeId);
     }
     return null;
   }
@@ -160,7 +160,7 @@ export function resolveMediaSeekSeconds(params: ResolveSeekParams): number | nul
 }
 
 export function buildMediaItemHref(item: Partial<Movie> | MediaNavigationContext | null | undefined): string {
-  if (!item) return '/movies';
+  if (!item) return '/search';
 
   const rawId = typeof item.id === 'string' ? item.id.trim() : '';
   const rawType = (
@@ -245,7 +245,7 @@ export function buildMediaItemHref(item: Partial<Movie> | MediaNavigationContext
     if (targetSeriesId) {
       return `/series/${encodeURIComponent(targetSeriesId)}`;
     }
-    return rawId ? `/movies/${encodeURIComponent(rawId)}` : '/movies';
+    return rawId ? `/movies/${encodeURIComponent(rawId)}` : '/search';
   }
 
   if (effectiveType === 'episode') {
@@ -269,7 +269,7 @@ export function buildMediaItemHref(item: Partial<Movie> | MediaNavigationContext
       }
       return `/series/${encodeURIComponent(seriesId)}?${params.toString()}`;
     }
-    return rawId ? `/movies/${encodeURIComponent(rawId)}` : '/movies';
+    return rawId ? `/movies/${encodeURIComponent(rawId)}` : '/search';
   }
 
   if (effectiveType === 'segment' || effectiveType === 'scene') {
@@ -296,11 +296,11 @@ export function buildMediaItemHref(item: Partial<Movie> | MediaNavigationContext
       }
       return `/series/${encodeURIComponent(seriesId)}?${params.toString()}`;
     }
-    return rawId ? `/movies/${encodeURIComponent(rawId)}` : '/movies';
+    return rawId ? `/movies/${encodeURIComponent(rawId)}` : '/search';
   }
 
   if (rawId) {
     return `/movies/${encodeURIComponent(rawId)}`;
   }
-  return '/movies';
+  return '/search';
 }

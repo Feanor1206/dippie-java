@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
+// Khung phản hồi phân trang dùng chung cho các API quản trị bằng kiểu tổng quát <T>.
 record AdminPageResponse<T>(
         List<T> items,
         int page,
@@ -21,13 +22,15 @@ record AdminPageResponse<T>(
         items = items == null ? List.of() : List.copyOf(items);
     }
 
+    // Chặn size ngoài khoảng 1 đến 100 để tránh truy vấn quá nặng khi client truyền số lớn.
     static PageRequest pageRequest(int page, int size) {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
-            throw new InvalidRequestException("Tham số phân trang không hợp lệ.");
+            throw new InvalidRequestException("Số trang hoặc số mục mỗi trang không hợp lệ.");
         }
         return PageRequest.of(page, size);
     }
 
+    // Chuyển kết quả Page của Spring Data sang cấu trúc phân trang của ứng dụng.
     static <T> AdminPageResponse<T> of(Page<T> page) {
         return new AdminPageResponse<>(
                 page.getContent(),

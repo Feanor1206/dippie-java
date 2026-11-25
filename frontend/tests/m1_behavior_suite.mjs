@@ -1,9 +1,9 @@
 import { labels } from './labels_fixture.mjs';
+import { createInternalResolver, shouldInlineComponent, runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -19,7 +19,7 @@ const movieDetailFile = path.resolve(__dirname, '../features/movies/components/M
 const profileOverviewFile = path.resolve(__dirname, '../features/profile/components/ProfileOverview.tsx');
 
 const mediaRoutingModule = { exports: {} };
-vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../lib/services/mediaRouting.ts'), 'utf8'), {
+runWithSharedModules(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../lib/services/mediaRouting.ts'), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, { exports: mediaRoutingModule.exports, module: mediaRoutingModule, URLSearchParams });
 
@@ -43,14 +43,22 @@ function renderComponent(filePath, componentName, contextVal, authVal, props = {
   };
 
   const module = { exports: {} };
+  const baseRenderCtx = { process: { env: {} }, AbortController, console };
   const context = {
+    ...baseRenderCtx,
     module,
     exports: module.exports,
-    process: { env: {} },
-    require: (name) => {
+    require: createInternalResolver(baseRenderCtx, (name) => {
       if (name === '@/lib/labels') return labels;
 
-      if (name === 'react') return { createElement: (t, p, ...c) => ({ type: t, props: { ...(p || {}), children: c.length === 1 ? c[0] : c } }), ...hooks };
+      if (name === 'react')
+        return {
+          createElement: (t, p, ...c) =>
+            shouldInlineComponent(t)
+              ? t(p || {})
+              : { type: t, props: { ...(p || {}), children: c.length === 1 ? c[0] : c } },
+          ...hooks,
+        };
 
       if (name === 'react-router') return { Link: 'route-link' };
       if (name === 'lucide-react') return new Proxy({}, { get: (_, prop) => (p) => ({ type: String(prop), props: p }) });
@@ -60,10 +68,10 @@ function renderComponent(filePath, componentName, contextVal, authVal, props = {
       if (name.includes('MovieCard')) return { MovieCard: (p) => ({ type: 'MovieCard', props: p }) };
       if (name.includes('movies')) return { movies: [] };
       return {};
-    },
+    }),
   };
 
-  vm.runInNewContext(code, context, { filename: filePath });
+  runWithSharedModules(code, context, { filename: filePath });
   return module.exports[componentName](props);
 }
 
@@ -144,12 +152,16 @@ function makeHarness(file, provider, fetcher, authContextRef) {
 
   const storage = new Map();
   const localStorage = {
+    get length() { return storage.size; },
+    key: (i) => [...storage.keys()][i] ?? null,
     getItem: (k) => storage.get(k) ?? null,
     setItem: (k, v) => storage.set(k, String(v)),
     removeItem: (k) => storage.delete(k),
     clear: () => storage.clear(),
   };
 
+  const listeners = new Map();
+  let tree;
   const timers = new Map();
   let timerId = 0;
   const module = { exports: {} };
@@ -164,15 +176,16 @@ function makeHarness(file, provider, fetcher, authContextRef) {
     },
   }).outputText;
 
-  const context = {
-    module,
-    exports: module.exports,
+  const baseHarnessCtx = {
     process: { env: {} },
     console,
     AbortController,
     DOMException,
     fetch: fetcher,
-    window: {},
+    window: {
+      addEventListener: (event, listener) => listeners.set(event, listener),
+      removeEventListener: (event) => listeners.delete(event),
+    },
     localStorage,
     setTimeout: (fn, ms) => {
       const id = ++timerId;
@@ -180,22 +193,27 @@ function makeHarness(file, provider, fetcher, authContextRef) {
       return id;
     },
     clearTimeout: (id) => timers.delete(id),
-    require: (name) => {
+  };
+  const context = {
+    ...baseHarnessCtx,
+    module,
+    exports: module.exports,
+    require: createInternalResolver(baseHarnessCtx, (name) => {
       if (name === '@/lib/labels') return labels;
 
       if (name === 'react') return { __esModule: true, default: hooks, ...hooks, lazy: () => () => null };
       if (name === './AuthContext') return { useAuth: () => authContextRef.current };
       return {};
-    },
+    }),
   };
 
-  vm.runInNewContext(code, context, { filename: file });
+  runWithSharedModules(code, context, { filename: file });
 
   function render() {
     index = 0;
     changed = false;
-    const res = module.exports[provider]({ children: null });
-    value = res.props.value;
+    tree = module.exports[provider]({ children: null });
+    value = tree.props.value;
     const pending = effects;
     effects = [];
     pending.forEach((fn) => fn());
@@ -210,7 +228,12 @@ function makeHarness(file, provider, fetcher, authContextRef) {
     return value;
   }
 
-  return { render, settle, storage, get value() { return value; }, timers };
+  return {
+    render, settle, storage, get value() { return value; }, timers,
+    apiFetch: context.require('@/lib/services/apiRequest').apiFetch,
+    notices: () => tree.props.children.filter((child) => child?.props.role === 'status').map((child) => child.props.children[0]),
+    emitStorage: (key) => listeners.get('storage')?.({ key, storageArea: localStorage }),
+  };
 }
 
 const makeActor = (id, overrides = {}) => ({
@@ -220,6 +243,112 @@ const makeActor = (id, overrides = {}) => ({
   isAuthenticated: true,
   handleSessionExpired: () => {},
   ...overrides,
+});
+
+test('Logout posts an empty authenticated request and clears private storage even on 405', async () => {
+  const requests = [];
+  const harness = makeHarness(authFile, 'AuthProvider', async (url, init) => {
+    requests.push({ url, init });
+    return { ok: false, status: 405 };
+  });
+  const user = { id: 4, username: 'minh', email: 'minh@example.com', role: 'ROLE_USER' };
+  harness.render().applySession('viewer-token', user);
+  const keys = ['dippie_auth_token', 'dippie_auth_user', 'token', 'auth_token',
+    'dippie_guest_library_v1', 'dippie_guest_watch_progress_v1', 'dippie_movie_progress_v1',
+    'dippie_auto_next_enabled_v1', 'dippie_movie_progress_v2:4', 'dippie_chat_history_v1'];
+  for (const key of keys.slice(2)) harness.storage.set(key, 'private');
+  harness.storage.set('other-site-setting', 'keep');
+  await harness.render().logout();
+  assert.equal(harness.render().status, 'guest');
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, '/api/auth/logout');
+  assert.equal(requests[0].init.method, 'POST');
+  assert.equal(requests[0].init.headers.Authorization, 'Bearer viewer-token');
+  assert.equal(requests[0].init.body, undefined);
+  for (const key of keys) assert.equal(harness.storage.has(key), false, key);
+  assert.equal(harness.storage.get('other-site-setting'), 'keep');
+});
+
+test('S1 ignores a stale 401 and clears the active session with one notice on concurrent 401s', async () => {
+  const view = makeHarness(authFile, 'AuthProvider', async () => ({ ok: false, status: 401 }));
+  view.render().applySession('a', { id: 4, username: 'a', email: 'a@example.test', role: 'ROLE_USER' });
+  view.render().applySession('b', { id: 5, username: 'b', email: 'b@example.test', role: 'ROLE_USER' });
+  const headers = (token) => ({ headers: { Authorization: `Bearer ${token}` } });
+  await view.apiFetch('/api/users/ratings', headers('a'));
+  assert.equal(view.render().token, 'b');
+  assert.equal(view.notices().length, 0);
+  await Promise.all([
+    view.apiFetch('/api/users/watch-progress', headers('b')),
+    view.apiFetch('/api/admin/reports?status=open', headers('b')),
+  ]);
+  assert.equal(view.render().status, 'guest');
+  assert.equal(view.storage.has('dippie_auth_token'), false);
+  assert.deepEqual(view.notices(), ['Phiên đăng nhập đã hết hạn. Bạn đăng nhập lại nhé.']);
+});
+
+test('A 403 shows one permission notice and revalidates a changed role without logging out', async () => {
+  const user = { id: 4, username: 'minh', email: 'minh@example.test', role: 'ROLE_ADMIN' };
+  let verifications = 0;
+  const view = makeHarness(authFile, 'AuthProvider', async (url) => {
+    if (url === '/api/auth/me') {
+      verifications++;
+      return ok({ ...user, role: 'ROLE_USER' });
+    }
+    return { ok: false, status: 403 };
+  });
+  view.render().applySession('a', user);
+  const request = () => view.apiFetch('/api/admin/users', { headers: { Authorization: 'Bearer a' } });
+  await Promise.all([request(), request()]);
+  await view.settle();
+  assert.equal(verifications, 1);
+  assert.equal(view.value.token, 'a');
+  assert.equal(view.value.user.role, 'ROLE_USER');
+  assert.deepEqual(view.notices(), ['Tài khoản của bạn không có quyền thực hiện việc này.']);
+});
+
+test('A cross-tab logout resets local state and an account erase shows the success notice', () => {
+  const user = { id: 4, username: 'minh', email: 'minh@example.test', role: 'ROLE_USER' };
+  const view = makeHarness(authFile, 'AuthProvider', async () => { throw new Error('unexpected'); });
+  view.render().applySession('a', user);
+  const before = view.render().sessionEpoch;
+  view.storage.delete('dippie_auth_token');
+  view.emitStorage('dippie_auth_token');
+  assert.equal(view.render().status, 'guest');
+  assert.equal(view.value.sessionEpoch, before + 1);
+  view.value.applySession('b', user);
+  view.render().finishAccountDeletion('b');
+  assert.equal(view.render().status, 'guest');
+  assert.equal(view.storage.has('dippie_auth_user'), false);
+  assert.deepEqual(view.notices(), ['Đã xóa tài khoản Dippie.']);
+});
+
+test('A delayed auth verification cannot restore a token already cleared in another tab', async () => {
+  const response = deferred();
+  const view = makeHarness(authFile, 'AuthProvider', () => response.promise);
+  view.storage.set('dippie_auth_token', 'a');
+  view.render();
+  view.storage.delete('dippie_auth_token');
+  response.resolve(ok({ id: 1, username: 'a', email: 'a@example.test' }));
+  await turn();
+  assert.equal(view.storage.has('dippie_auth_token'), false);
+  view.emitStorage('dippie_auth_token');
+  assert.equal(view.render().status, 'guest');
+});
+
+test('S3 rejects missing consent and sends a literal true after the user accepts terms', async () => {
+  const requests = [];
+  const view = makeHarness(authFile, 'AuthProvider', async (url, init) => {
+    requests.push({ url, body: JSON.parse(init.body) });
+    return ok({ id: 4, username: 'minh', email: 'minh@example.test', token: 'new-account' });
+  });
+  const auth = view.render();
+  view.storage.set('dippie_guest_library_v1', '{}');
+  assert.equal((await auth.register('minh', 'minh@example.test', 'secret', undefined, false)).success, false);
+  assert.equal(requests.length, 0);
+  assert.equal((await auth.register('minh', 'minh@example.test', 'secret', undefined, true)).success, true);
+  assert.equal(requests[0].url, '/api/auth/register');
+  assert.equal(requests[0].body.acceptedTerms, true);
+  assert.equal(view.storage.has('dippie_guest_library_v1'), false);
 });
 
 test('1. Auth login sends verbatim raw password with spaces', async () => {
@@ -1035,8 +1164,8 @@ test('21. UI H2: MovieCard renders unconfirmed ADD badge/label and click trigger
 
   assert.equal(badges.length, 1);
 
-  assert.match(buttons[0].props['aria-label'], /Chưa xác nhận lưu • Thử lưu lại Movie X vào danh sách xem/);
-  assert.match(buttons[0].props.title, /Chưa xác nhận lưu • Nhấn để thử lưu lại/);
+  assert.match(buttons[0].props['aria-label'], /Chưa lưu được Movie X vào Xem sau, nhấn để thử lại/);
+  assert.match(buttons[0].props.title, /Chưa lưu được vào Xem sau, nhấn để thử lại/);
   assert.match(buttons[0].props.className, /bg-amber-400/);
 
   buttons[0].props.onClick({ preventDefault: () => {}, stopPropagation: () => {} });
@@ -1053,7 +1182,7 @@ test('21. UI H2: MovieCard renders unconfirmed ADD badge/label and click trigger
   buttons = findElements(cardTree, (n) => n.type === 'button');
 
   assert.equal(badges.length, 0);
-  assert.match(buttons[0].props['aria-label'], /Xóa Movie X khỏi danh sách xem/);
+  assert.match(buttons[0].props['aria-label'], /Bỏ Movie X khỏi Xem sau/);
   assert.match(buttons[0].props.className, /bg-brand/);
 });
 
@@ -1103,8 +1232,8 @@ test('22. UI H2: MovieCard renders unconfirmed DELETE label and click triggers r
 
   let buttons = findElements(cardTree, (n) => n.type === 'button');
 
-  assert.match(buttons[0].props['aria-label'], /Chưa xác nhận xóa • Thử xóa lại Movie Y khỏi danh sách xem/);
-  assert.match(buttons[0].props.title, /Chưa xác nhận xóa • Nhấn để thử xóa lại/);
+  assert.match(buttons[0].props['aria-label'], /Chưa bỏ được Movie Y khỏi Xem sau, nhấn để thử lại/);
+  assert.match(buttons[0].props.title, /Chưa bỏ được khỏi Xem sau, nhấn để thử lại/);
   assert.match(buttons[0].props.className, /bg-amber-400/);
 
   buttons[0].props.onClick({ preventDefault: () => {}, stopPropagation: () => {} });
@@ -1118,7 +1247,7 @@ test('22. UI H2: MovieCard renders unconfirmed DELETE label and click triggers r
   });
 
   buttons = findElements(cardTree, (n) => n.type === 'button');
-  assert.match(buttons[0].props['aria-label'], /Thêm Movie Y vào danh sách xem/);
+  assert.match(buttons[0].props['aria-label'], /Thêm Movie Y vào Xem sau/);
 });
 
 test('23. UI H2: MovieDetail renders unconfirmed Watchlist, Favorite, and Rating with explicit retry buttons and handles new rating selection', async () => {
@@ -1161,15 +1290,15 @@ test('23. UI H2: MovieDetail renders unconfirmed Watchlist, Favorite, and Rating
     similarMovies: [],
   });
 
-  const watchlistBtn = findElements(detailTree, (n) => n.type === 'button' && n.props?.['aria-label']?.includes('Danh sách xem'))[0];
-  assert.match(watchlistBtn.props['aria-label'], /Chưa xác nhận lưu • Thử lưu lại vào Danh sách xem/);
+  const watchlistBtn = findElements(detailTree, (n) => n.type === 'button' && n.props?.['aria-label']?.includes('Xem sau'))[0];
+  assert.match(watchlistBtn.props['aria-label'], /Chưa lưu được vào Xem sau, nhấn để thử lại/);
   assert.match(watchlistBtn.props.className, /border-amber-400/);
 
   watchlistBtn.props.onClick();
   assert.equal(watchlistClicked, true);
 
   const favBtn = findElements(detailTree, (n) => n.type === 'button' && n.props?.['aria-label']?.includes('Yêu thích'))[0];
-  assert.match(favBtn.props['aria-label'], /Chưa xác nhận bỏ thích • Thử xóa lại khỏi Yêu thích/);
+  assert.match(favBtn.props['aria-label'], /Chưa bỏ được khỏi Yêu thích, nhấn để thử lại/);
   assert.match(favBtn.props.className, /border-amber-400/);
 
   favBtn.props.onClick();
@@ -1179,11 +1308,11 @@ test('23. UI H2: MovieDetail renders unconfirmed Watchlist, Favorite, and Rating
   assert.ok(ratingBanner);
 
   const retryRatingBtn = findElements(ratingBanner, (n) => n.type === 'button')[0];
-  assert.equal(retryRatingBtn.props['aria-label'], 'Thử lưu lại điểm đánh giá');
+  assert.equal(retryRatingBtn.props['aria-label'], 'Thử lưu lại điểm');
   retryRatingBtn.props.onClick();
   assert.equal(ratedScore, 9);
 
-  const star6Btn = findElements(detailTree, (n) => n.type === 'button' && n.props?.['aria-label'] === 'Chấm 6 trên 10 sao')[0];
+  const star6Btn = findElements(detailTree, (n) => n.type === 'button' && n.props?.['aria-label'] === 'Chấm 6 trên 10 điểm')[0];
   assert.ok(star6Btn);
   star6Btn.props.onClick();
   assert.equal(ratedScore, 6);
@@ -1231,9 +1360,9 @@ test('24. UI H2: ProfileOverview renders persistent library error banner and orp
   retryBannerBtn.props.onClick();
   assert.equal(refetched, true);
 
-  const orphanButtons = findElements(profileTree, (n) => n.type === 'button' && n.props?.['aria-label']?.includes('Chưa xác nhận'));
+  const orphanButtons = findElements(profileTree, (n) => n.type === 'button' && n.props?.['aria-label']?.includes('Chưa lưu được'));
   assert.ok(orphanButtons.length > 0);
-  assert.match(orphanButtons[0].props['aria-label'], /Chưa xác nhận lưu • Thử lưu lại/);
+  assert.match(orphanButtons[0].props['aria-label'], /Chưa lưu được vào Xem sau, nhấn để thử lại/);
 
   orphanButtons[0].props.onClick();
   assert.equal(removedTab, 'watchlist');
@@ -1295,7 +1424,7 @@ test('25. UI H2: ProfileOverview rating retry with production provider executes 
 
   let retryBtn = findElements(
     profileTree,
-    (n) => n.type === 'button' && n.props?.['aria-label'] === 'Chưa xác nhận điểm • Thử lưu lại điểm đánh giá'
+    (n) => n.type === 'button' && n.props?.['aria-label'] === 'Chưa lưu được điểm, nhấn để thử lại'
   )[0];
   assert.ok(retryBtn, 'Expected retry rating button in found row');
 
@@ -1317,7 +1446,7 @@ test('25. UI H2: ProfileOverview rating retry with production provider executes 
 
   let deleteBtn = findElements(
     profileTree,
-    (n) => n.type === 'button' && n.props?.['aria-label'] === 'Xóa đánh giá'
+    (n) => n.type === 'button' && n.props?.['aria-label'] === 'Xóa điểm'
   )[0];
   assert.ok(deleteBtn, 'Expected confirmed delete button');
 
@@ -1346,7 +1475,7 @@ test('25. UI H2: ProfileOverview rating retry with production provider executes 
 
   const errorRemoveBtns = findElements(
     errorProfileTree,
-    (n) => n.type === 'button' && n.props?.['aria-label'] === 'Chưa xác nhận xóa • Thử xóa lại điểm đánh giá'
+    (n) => n.type === 'button' && n.props?.['aria-label'] === 'Chưa xóa được điểm, nhấn để thử lại'
   );
   assert.ok(errorRemoveBtns.length >= 2, 'Expected retry remove buttons for error and orphan rows');
 
@@ -1391,5 +1520,5 @@ test('Favorite retries an uncertain add and rolls back a definite failure', asyn
   assert.ok(requests[0].url.endsWith('/users/favorites'));
   assert.ok(requests[2].url.endsWith('/users/favorites/a%2Fb'));
   assert.deepEqual(JSON.parse(requests[0].body), { movieId: 'a/b', movieTitle: 'Film', posterUrl: 'poster' });
-  assert.equal(h.value.toasts.at(-1).message, 'Không thể cập nhật Yêu thích. Vui lòng thử lại.');
+  assert.equal(h.value.toasts.at(-1).message, 'Chưa cập nhật được mục Yêu thích. Bạn thử lại nhé.');
 });

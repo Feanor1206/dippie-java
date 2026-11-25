@@ -1,14 +1,14 @@
+import { runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
 import ts from 'typescript';
 
 function load(window) {
   const module = { exports: {} };
   const source = fs.readFileSync(new URL('../lib/services/movieProgress.ts', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, window, URLSearchParams, Date, JSON, console });
+  runWithSharedModules(code, { module, exports: module.exports, window, URLSearchParams, Date, JSON, console });
   return module.exports;
 }
 
@@ -49,5 +49,15 @@ test('a t query on the film page overrides the stored resume point', () => {
   const { window } = memoryWindow('?t=15000');
   const progress = load(window);
   progress.saveMovieProgress({ movieId: 'totoro', title: 'Totoro', positionMs: 65000, durationMs: 120000 });
-  assert.equal(progress.readFilmResumeSeconds('totoro'), 15);
+  assert.equal(progress.getMovieResumeSeconds('totoro'), 15);
+});
+
+test('Movie progress keeps guest and each signed-in viewer in separate collections', () => {
+  const progress = load(memoryWindow().window);
+  const draft = { movieId: 'film', title: 'Phim', positionMs: 10000 };
+  progress.saveMovieProgress(draft, 100000);
+  progress.saveMovieProgress({ ...draft, positionMs: 30000 }, 100000, 1);
+  assert.equal(progress.getMovieProgress('film').positionMs, 10000);
+  assert.equal(progress.getMovieProgress('film', 1).positionMs, 30000);
+  assert.equal(progress.getMovieProgress('film', 2), null);
 });

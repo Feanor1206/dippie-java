@@ -1,9 +1,9 @@
 import { labels } from './labels_fixture.mjs';
+import { createInternalResolver, runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 import ts from 'typescript';
 import { fileURLToPath } from 'node:url';
 
@@ -35,7 +35,7 @@ const filmGridTranspiled = ts.transpileModule(
 ).outputText;
 
 const mediaRoutingModule = { exports: {} };
-vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../lib/services/mediaRouting.ts'), 'utf8'), {
+runWithSharedModules(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../lib/services/mediaRouting.ts'), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, { exports: mediaRoutingModule.exports, module: mediaRoutingModule, URLSearchParams });
 
@@ -211,7 +211,18 @@ function createSearchHarness(initialUrl = '', catalogMocks = {}) {
       if (mod.includes('mediaRouting')) return mediaRoutingModule.exports;
       if (mod.includes('FilmShelf')) return grid.exports;
       if (mod.includes('catalogService')) {
+        const realCatalog = createInternalResolver({ URLSearchParams, console }, () => ({}));
+        const catalogMod = (() => {
+          const m = { exports: {} };
+          const code = ts.transpileModule(
+            fs.readFileSync(path.resolve(__dirname, '../lib/services/catalogService.ts'), 'utf8'),
+            { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }
+          ).outputText;
+          runWithSharedModules(code, { module: m, exports: m.exports, URLSearchParams, console, require: realCatalog });
+          return m.exports;
+        })();
         return {
+          deriveGenresFromMovies: catalogMod.deriveGenresFromMovies,
           browseCatalog: mocks.browse || (async () => ({
             items: [],
             page: 0,
@@ -221,6 +232,7 @@ function createSearchHarness(initialUrl = '', catalogMocks = {}) {
             hasNext: false,
             hasPrevious: false,
           })),
+          ...(mocks.getGenres ? { getCatalogGenres: mocks.getGenres } : {}),
         };
       }
       if (mod.includes('WatchlistContext')) {
@@ -238,8 +250,8 @@ function createSearchHarness(initialUrl = '', catalogMocks = {}) {
     },
   };
 
-  vm.runInNewContext(filmGridTranspiled, { ...context, React: hooks, module: grid, exports: grid.exports });
-  vm.runInNewContext(searchTranspiled, context, { filename: searchFilePath });
+  runWithSharedModules(filmGridTranspiled, { ...context, React: hooks, module: grid, exports: grid.exports });
+  runWithSharedModules(searchTranspiled, context, { filename: searchFilePath });
 
   function render() {
     hookIndex = 0;
@@ -357,7 +369,7 @@ function renderActualMovieCard(movie, watchlistContext = {}) {
     },
   };
 
-  vm.runInNewContext(movieCardTranspiled, context, { filename: movieCardFilePath });
+  runWithSharedModules(movieCardTranspiled, context, { filename: movieCardFilePath });
   hookIndex = 0;
   return moduleObj.exports.MovieCard({ movie, fluid: true });
 }
@@ -444,7 +456,7 @@ test('4. Catalog search: pending query does not render a false empty state', asy
   resolveSearch({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 0, hasNext: false, hasPrevious: false });
   await h.settle();
   assert.ok(getText(h.tree).includes('Không tìm thấy phim phù hợp'));
-  assert.ok(getText(h.tree).includes('Không có phim hoạt hình khớp'));
+  assert.ok(getText(h.tree).includes('Không có phim nào khớp'));
 });
 
 test('5. Catalog search: query navigation never labels old results as the new query', async () => {
@@ -504,7 +516,7 @@ test('6. Catalog list: renders standalone films and asks the server for the URL 
   assert.equal(cards[0].props.to, '/movies/film-2');
   assert.ok(getText(cards[0]).includes('Catalog synopsis 2'));
   assert.ok(getText(cards[0]).includes('2002'));
-  assert.equal(getText(h.tree).includes('Điểm cao nhất'), false, 'Sort controls stay off this screen');
+  assert.ok(findNodes(h.tree, (node) => node.props?.['data-testid'] === 'search-sort-select').length === 1);
 });
 
 test('Catalog search opens imported series and episodes on their playback routes', async () => {
@@ -647,15 +659,15 @@ test('12. S4 (P2): MovieCard renders unconfirmed watchlist status badge and exec
 
   const unconfirmedBadge = findNodes(cardNode, (n) => n.props?.['data-testid'] === 'unconfirmed-badge')[0];
   assert.ok(unconfirmedBadge, 'Unconfirmed status badge must be present');
-  assert.ok(getText(unconfirmedBadge).includes('Chưa xác nhận'));
+  assert.ok(getText(unconfirmedBadge).includes('Chưa lưu'));
 
   const watchlistBtn = findNodes(cardNode, (n) => n.type === 'button')[0];
   assert.ok(watchlistBtn, 'Watchlist toggle button must exist');
   assert.ok(
-    watchlistBtn.props['aria-label'].includes('Chưa xác nhận lưu • Thử lưu lại Princess Mononoke vào danh sách xem')
+    watchlistBtn.props['aria-label'].includes('Chưa lưu được Princess Mononoke vào Xem sau, nhấn để thử lại')
   );
   assert.ok(
-    watchlistBtn.props.title.includes('Chưa xác nhận lưu • Nhấn để thử lưu lại')
+    watchlistBtn.props.title.includes('Chưa lưu được vào Xem sau, nhấn để thử lại')
   );
 
   watchlistBtn.props.onClick({ preventDefault: () => {}, stopPropagation: () => {} });
@@ -707,7 +719,7 @@ test('Vietnamese catalog labels preserve unknown values', () => {
   assert.equal(labels.formatRuntime('1h 45m'), '1 giờ 45 phút');
   assert.equal(labels.formatRuntime('25m'), '25 phút');
   assert.equal(labels.formatRuntime('7m 25s'), '7 phút 25 giây');
-  assert.equal(labels.formatRuntime('Series'), 'Series');
+  assert.equal(labels.formatRuntime('Series'), 'Phim bộ');
   assert.equal(labels.formatRuntime(), '');
   assert.equal(
     labels.movieSynopsis('Two estranged sisters cross an unmapped ocean in search of their father.'),
@@ -727,6 +739,80 @@ test('Empty genre results show Vietnamese while requesting the original genre', 
   h.render();
   await h.settle();
   assert.equal(calls[0].genre, 'Adventure');
-  assert.ok(getText(h.tree).includes('Không có phim hoạt hình thuộc thể loại Phiêu lưu.'));
+  assert.ok(getText(h.tree).includes('Chưa có phim thuộc thể loại Phiêu lưu.'));
+  assert.ok(findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-clear-filters').length >= 1);
+  h.unmount();
+});
+
+test('Search filters load genres from GET /api/movies/genres, hide zero-count genres, support year range, sort, and clear-filter', async () => {
+  const calls = [];
+  const h = createSearchHarness('genre=family&yearMin=2010&yearMax=2020&sort=year&direction=desc', {
+    getGenres: async () => [
+      { id: 'family', label: 'Gia đình', count: 120 },
+      { id: 'comedy', label: 'Hài hước', count: 80 },
+      { id: 'fantasy', label: 'Giả tưởng', count: 0 },
+    ],
+    browse: async (options) => {
+      calls.push(options);
+      return {
+        items: [sampleMovie({ id: 'ep1', title: 'Tập 1', genres: ['family'] })],
+        page: 0,
+        size: 12,
+        totalElements: 1,
+        totalPages: 1,
+        hasNext: false,
+        hasPrevious: false,
+      };
+    },
+  });
+  h.render();
+  await h.settle();
+
+  assert.equal(calls[0].genre, 'family');
+  assert.equal(calls[0].yearMin, 2010);
+  assert.equal(calls[0].yearMax, 2020);
+  assert.equal(calls[0].sort, 'year');
+  assert.equal(calls[0].direction, 'desc');
+
+  const chips = findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-genre-chip');
+  assert.deepEqual(chips.map((c) => c.props['data-genre-id']), ['family', 'comedy']);
+
+  const sortSelect = findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-sort-select')[0];
+  sortSelect.props.onChange({ target: { value: 'title:asc' } });
+  assert.ok(h.pushes.at(-1).includes('sort=title'));
+  assert.ok(h.pushes.at(-1).includes('direction=asc'));
+
+  const clearBtn = findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-clear-filters')[0];
+  clearBtn.props.onClick();
+  assert.equal(h.pushes.at(-1), '/search');
+  h.unmount();
+});
+
+test('Search genre chips fall back to genres present in loaded items when GET /api/movies/genres fails', async () => {
+  const h = createSearchHarness('', {
+    getGenres: async () => {
+      throw new Error('404 Not Found');
+    },
+    browse: async () => ({
+      items: [
+        sampleMovie({ id: 'ep1', title: 'Tập 1', genres: ['comedy', 'family'] }),
+        sampleMovie({ id: 'ep2', title: 'Tập 2', genres: ['school'] }),
+      ],
+      page: 0,
+      size: 12,
+      totalElements: 2,
+      totalPages: 1,
+      hasNext: false,
+      hasPrevious: false,
+    }),
+  });
+  h.render();
+  await h.settle();
+
+  const chips = findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-genre-chip');
+  const ids = chips.map((c) => c.props['data-genre-id']);
+  assert.ok(ids.includes('comedy'));
+  assert.ok(ids.includes('family'));
+  assert.ok(ids.includes('school'));
   h.unmount();
 });

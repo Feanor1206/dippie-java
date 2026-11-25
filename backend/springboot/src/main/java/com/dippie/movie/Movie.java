@@ -14,6 +14,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 
+// Entity ánh xạ bảng movies, lưu cả phim lẻ lẫn bản ghi đại diện của bộ phim và từng tập trong danh mục.
+// Dấu thời gian createdAt và updatedAt tự cập nhật theo giờ UTC qua @PrePersist và @PreUpdate.
 @Entity
 @Table(name = "movies",
         indexes = {
@@ -31,8 +33,8 @@ public class Movie {
     @Column(name = "title", length = 255, nullable = false)
     private String title;
 
-    @Column(name = "release_year", nullable = false)
-    private int releaseYear;
+    @Column(name = "release_year")
+    private Integer releaseYear;
 
     @Column(name = "rating", nullable = false)
     private double rating;
@@ -66,7 +68,7 @@ public class Movie {
     protected Movie() {
     }
 
-    public Movie(String id, String title, int releaseYear, double rating, String runtime, String genres,
+    public Movie(String id, String title, Integer releaseYear, double rating, String runtime, String genres,
             String description, String poster, String backdrop, String videoUrl) {
         this.id = id;
         this.title = title;
@@ -88,7 +90,7 @@ public class Movie {
         return title;
     }
 
-    public int getReleaseYear() {
+    public Integer getReleaseYear() {
         return releaseYear;
     }
 
@@ -120,17 +122,13 @@ public class Movie {
         return videoUrl;
     }
 
-    public void updateCatalogSeries(String title, Integer releaseYear, String synopsis) {
+    // Đồng bộ lại thông tin phim khi import danh mục mới, ép mô tả null về chuỗi rỗng để frontend không bị lỗi hiển thị.
+    public void updateCatalogMetadata(String title, Integer releaseYear, String runtime, String synopsis,
+            String genres) {
         this.title = title;
-        if (releaseYear != null && releaseYear != 0) {
-            this.releaseYear = releaseYear;
-        }
-        description = synopsis == null ? "" : synopsis;
-    }
-
-    public void updateCatalogEpisode(String title, String runtime, String synopsis) {
-        this.title = title;
+        this.releaseYear = releaseYear;
         this.runtime = runtime;
+        this.genres = genres;
         description = synopsis == null ? "" : synopsis;
     }
 

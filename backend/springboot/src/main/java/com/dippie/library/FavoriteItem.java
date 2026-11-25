@@ -15,6 +15,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
+// Entity ánh xạ bảng favorite_items, kế thừa LibraryEntry để dùng lại các cột chung và khai báo riêng khóa ngoại, unique key.
 @Entity
 @Table(
         name = "favorite_items",
@@ -22,7 +23,8 @@ import java.time.LocalDateTime;
                 @UniqueConstraint(name = "uq_user_movie_favorite", columnNames = {"user_id", "movie_id"})
         },
         indexes = {
-                @Index(name = "idx_favorite_movie", columnList = "movie_id")
+                @Index(name = "idx_favorite_movie", columnList = "movie_id"),
+                @Index(name = "idx_favorite_user_added", columnList = "user_id, added_at")
         }
 )
 public class FavoriteItem extends LibraryEntry {

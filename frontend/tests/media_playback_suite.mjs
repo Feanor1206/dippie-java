@@ -1,9 +1,9 @@
+import { runWithSharedModules } from './internal_loader.mjs';
 import { labels } from './labels_fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -36,7 +36,7 @@ function loadMediaService(mockFetch) {
     Boolean,
     console,
   };
-  vm.runInNewContext(compiled, sandbox);
+  runWithSharedModules(compiled, sandbox);
   return sandbox.module.exports.getMediaDescriptor ? sandbox.module.exports : sandbox.exports;
 }
 
@@ -162,6 +162,7 @@ function createMovieDetailHarness(options = {}) {
       if (moduleName === 'react') return { __esModule: true, default: hooks, ...hooks };
       if (moduleName === 'react-router') return { Link: 'route-link' };
       if (moduleName === 'lucide-react') return new Proxy({}, { get: (_, key) => String(key) });
+      if (moduleName === '@/lib/context/AuthContext') return { useAuth: () => ({ status: 'guest', user: null }) };
       if (moduleName.includes('WatchlistContext')) {
         return {
           useWatchlist: () => ({
@@ -196,7 +197,7 @@ function createMovieDetailHarness(options = {}) {
     },
   };
 
-  vm.runInNewContext(code, context, { filename: file });
+  runWithSharedModules(code, context, { filename: file });
 
   function render(movie) {
     slotIndex = 0;
@@ -260,7 +261,9 @@ test('1. resolveStreamUrl correctly handles relative and absolute URLs', () => {
   const { resolveStreamUrl } = loadMediaService();
 
   assert.equal(resolveStreamUrl('https://example.com/stream/video.mp4'), 'https://example.com/stream/video.mp4');
-  assert.equal(resolveStreamUrl('http://cdn.example.com/media/clip.mp4'), 'http://cdn.example.com/media/clip.mp4');
+  assert.equal(resolveStreamUrl('http://cdn.example.com/media/clip.mp4'), '');
+  assert.equal(resolveStreamUrl('//cdn.example.com/media/clip.mp4'), '');
+  assert.equal(resolveStreamUrl('/\\cdn.example.com/media/clip.mp4'), '');
 
   const relativeStream = resolveStreamUrl('/api/media/stream/ast-001');
   assert.equal(relativeStream, '/api/media/stream/ast-001');
@@ -320,7 +323,7 @@ test('3. getMediaDescriptor rejects on server error', async () => {
 
   await assert.rejects(
     () => getMediaDescriptor('non-existent'),
-    /Lỗi tải mô tả media \(404\)/
+    /Chưa tải được thông tin phát phim \(404\)\./
   );
 });
 

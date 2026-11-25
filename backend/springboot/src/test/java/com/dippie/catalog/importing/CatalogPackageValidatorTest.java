@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
+// Kiểm tra CatalogPackageValidator bắt đúng lỗi đầu tiên, đường dẫn trường JSON và giá trị mặc định khi thiếu trường.
 class CatalogPackageValidatorTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -35,38 +36,49 @@ class CatalogPackageValidatorTest {
         assertThat(validator.validate(document).revision()).isEqualTo(1);
     }
 
+    @Test
+    void mapsDefaultTextTrackKindToSubtitleMatchingDatabaseCheckConstraint() throws Exception {
+        var row = new CatalogRecordMapper.Row(
+                mapper.readTree("{\"id\":\"tt_1\",\"episode_id\":\"ep_1\",\"source_id\":\"src_1\"}"),
+                1
+        );
+        assertThat(CatalogRecordMapper.textTrack(row).getKind()).isEqualTo("subtitle");
+    }
+
     private static Stream<Arguments> invalidDocuments() {
         return Stream.of(
                 arguments("[]", "package.id", "Thiếu mã gói danh mục."),
                 arguments("{\"package\":{\"id\":\"x\",\"revision\":true},\"genres\":{}}",
-                        "package.revision", "Phiên bản phải là số nguyên dương hợp lệ."),
-                arguments(document("\"scenes\":{},\"genres\":{}"), "genres", "Cần một danh sách bản ghi."),
+                        "package.revision", "Số phiên bản phải là số nguyên dương."),
+                arguments(document("\"scenes\":{},\"genres\":{}"), "genres", "Trường này phải là một danh sách."),
                 arguments(document("\"genres\":[{\"id\":\"Straße\"},{\"id\":\"STRASSE\"}]"),
-                        "genres[1].id", "Mã định danh bị trùng."),
+                        "genres[1].id", "Mã bị trùng trong danh sách."),
                 arguments(document("\"episodes\":[{\"id\":\"e\",\"air_date\":\"bad\"}]"),
-                        "episodes[0].series_id", "Mã định danh không hợp lệ."),
+                        "episodes[0].series_id", "Mã không hợp lệ."),
                 arguments(document("\"episodes\":[{\"id\":\"e\",\"series_id\":\"s\",\"air_date\":\"2025-02-29\"}]"),
                         "episodes[0].release_date", "day is out of range for month"),
                 arguments(document("\"sources\":[{\"id\":\"s\",\"retrieved_at\":\"2026-11-24\"}]"),
-                        "sources[0].retrieved_at", "Thời điểm phải có dạng ISO 8601."),
+                        "sources[0].retrieved_at", "Thời gian phải đúng định dạng ISO 8601."),
                 arguments(document("\"segments\":[{\"id\":\"a\",\"episode_id\":\"e\"},{\"id\":\"b\",\"episode_id\":\"e\"}]"),
-                        "segments[1].position", "Vị trí phân đoạn phải duy nhất trong tập."),
+                        "segments[1].position", "Vị trí phân đoạn bị trùng trong cùng một tập."),
                 arguments(segment("\"position\":0"), "segments[0].position", "Vị trí phân đoạn phải là số nguyên dương."),
                 arguments(segment("\"episode_start_ms\":-1,\"episode_end_ms\":20"), "segments[0]",
-                        "Phân đoạn cần đủ hai mốc và mốc kết thúc phải sau mốc bắt đầu."),
+                        "Phân đoạn cần đủ cả hai mốc thời gian và mốc kết thúc phải sau mốc bắt đầu."),
                 arguments(segment("\"episode_start_ms\":0,\"episode_end_ms\":null"), "segments[0]",
-                        "Phân đoạn cần đủ hai mốc và mốc kết thúc phải sau mốc bắt đầu."),
+                        "Phân đoạn cần đủ cả hai mốc thời gian và mốc kết thúc phải sau mốc bắt đầu."),
                 arguments(segment("\"episode_start_ms\":0,\"episode_end_ms\":1.5"), "segments[0]",
-                        "Phân đoạn cần đủ hai mốc và mốc kết thúc phải sau mốc bắt đầu."),
-                arguments(asset("\"coverage\":[{}]"), "media_assets[0].coverage[0].episode_id", "Mã định danh không hợp lệ."),
+                        "Phân đoạn cần đủ cả hai mốc thời gian và mốc kết thúc phải sau mốc bắt đầu."),
+                arguments(asset("\"coverage\":[{}]"), "media_assets[0].coverage[0].episode_id", "Mã không hợp lệ."),
                 arguments(asset("\"content_type\":[]"), "media_assets[0].content_type", "Loại tệp phải là video hoặc audio."),
-                arguments(asset("\"access_policy\":\"restricted\""), "media_assets[0].access_policy", "Quyền truy cập video không hợp lệ."),
+                arguments(asset("\"access_policy\":\"restricted\""), "media_assets[0].access_policy", "Quyền truy cập tệp không hợp lệ."),
                 arguments(asset("\"storage\":{\"relative_path\":\"video/.. /private.mp4\"}"),
-                        "media_assets[0].storage.relative_path", "Đường dẫn video phải nằm trong thư mục lưu trữ."),
+                        "media_assets[0].storage.relative_path", "Đường dẫn tệp phải nằm trong thư mục lưu trữ."),
                 arguments(track("\"sha256\":null,\"relative_path\":\"../private.json\""),
                         "text_tracks[0].external_file.relative_path", "Đường dẫn tệp phụ đề phải là đường dẫn tương đối."),
                 arguments(track("\"sha256\":\"not-a-hash\",\"relative_path\":\"captions/episode.json\""),
-                        "text_tracks[0].external_file.sha256", "Mã SHA-256 của tệp phụ đề không hợp lệ."));
+                        "text_tracks[0].external_file.sha256", "Mã SHA-256 của tệp phụ đề không hợp lệ."),
+                arguments(document("\"text_tracks\":[{\"id\":\"track\",\"episode_id\":\"ep\",\"source_id\":\"source\",\"kind\":\"subtitles\"}]"),
+                        "text_tracks[0].kind", "Loại phụ đề hoặc văn bản không hợp lệ."));
     }
 
     private static String document(String fields) {

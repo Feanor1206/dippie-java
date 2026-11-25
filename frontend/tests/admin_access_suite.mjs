@@ -1,7 +1,7 @@
+import { runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
 import ts from 'typescript';
 
 function compile(path) {
@@ -24,7 +24,7 @@ test('Admin screen gates requests and supports retry after a partial load failur
     createElement(type, props, ...children) { return { type, props: { ...props, children } }; },
   };
   const module = { exports: {} };
-  vm.runInNewContext(compile('../app/admin/import/page.tsx'), { module, exports: module.exports, AbortController,
+  runWithSharedModules(compile('../app/admin/import/page.tsx'), { module, exports: module.exports, AbortController,
     require(name) {
       if (name === 'react') return react;
       if (name.includes('AuthContext')) return { useAuth: () => auth };
@@ -62,7 +62,7 @@ test('Admin screen gates requests and supports retry after a partial load failur
 
 test('Admin history and snapshots reject HTTP errors instead of reporting empty lists', async () => {
   const module = { exports: {} };
-  vm.runInNewContext(compile('../lib/services/catalogService.ts'), { module, exports: module.exports,
+  runWithSharedModules(compile('../lib/services/catalogService.ts'), { module, exports: module.exports,
     process: { env: {} }, fetch: async () => ({ ok: false, status: 403 }), AbortController, setTimeout, clearTimeout,
   });
   await assert.rejects(module.exports.getImportHistory(), /403/);
@@ -72,7 +72,7 @@ test('Admin history and snapshots reject HTTP errors instead of reporting empty 
 test('Validation preserves structured 400 errors and rejects authorization failures', async () => {
   let response = { ok: false, status: 400, json: async () => ({ valid: false, errors: [{ message: 'invalid package' }] }) };
   const module = { exports: {} };
-  vm.runInNewContext(compile('../lib/services/catalogService.ts'), { module, exports: module.exports,
+  runWithSharedModules(compile('../lib/services/catalogService.ts'), { module, exports: module.exports,
     process: { env: {} }, fetch: async () => response, AbortController, setTimeout, clearTimeout,
   });
   assert.equal((await module.exports.validateCatalogPackage({})).errors[0].message, 'invalid package');
@@ -82,7 +82,7 @@ test('Validation preserves structured 400 errors and rejects authorization failu
 
 test('Admin history and snapshot loads time out while a response body stalls', async () => {
   const module = { exports: {} };
-  vm.runInNewContext(compile('../lib/services/catalogService.ts'), { module, exports: module.exports,
+  runWithSharedModules(compile('../lib/services/catalogService.ts'), { module, exports: module.exports,
     process: { env: {} }, AbortController, setTimeout, clearTimeout,
     fetch: async (_, { signal }) => ({ ok: true, json: () => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')))) }),
   });
@@ -99,7 +99,7 @@ test('Editing a catalog while validation is pending cannot authorize the edited 
     createElement(type, props, ...children) { return { type, props: { ...props, children } }; },
   };
   const module = { exports: {} };
-  vm.runInNewContext(compile('../features/admin/components/CatalogImportModal.tsx'), { module, exports: module.exports,
+  runWithSharedModules(compile('../features/admin/components/CatalogImportModal.tsx'), { module, exports: module.exports,
     require(name) {
       if (name === 'react') return react;
       if (name.includes('catalogService')) return {

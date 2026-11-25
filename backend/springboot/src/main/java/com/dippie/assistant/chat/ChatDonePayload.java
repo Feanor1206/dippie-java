@@ -3,6 +3,7 @@ package com.dippie.assistant.chat;
 import com.dippie.assistant.search.SearchHit;
 import java.util.List;
 
+// Gói dữ liệu kết thúc của sự kiện SSE "done", gửi kèm toàn văn trả lời, phim gợi ý và các gợi ý hỏi tiếp.
 public record ChatDonePayload(
         String text,
         List<SearchHit> recommendedMovies,

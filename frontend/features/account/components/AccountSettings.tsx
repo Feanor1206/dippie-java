@@ -1,3 +1,4 @@
+import { DeleteAccountSection } from './DeleteAccountSection';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { AlertCircle, CheckCircle2, KeyRound, Loader2, RefreshCw, User } from 'lucide-react';
@@ -33,7 +34,6 @@ export function AccountSettings() {
     retryVerify,
     applySession,
     updateUser,
-    handleSessionExpired,
   } = useAuth();
 
   const [fullName, setFullName] = useState(user?.fullName || '');
@@ -91,14 +91,11 @@ export function AccountSettings() {
       setProfileFeedback({ type: 'success', text: result.message });
     } catch (err: unknown) {
       if (err instanceof AccountApiError && err.isCanceled) return;
-      if (err instanceof AccountApiError && err.status === 401) {
-        handleSessionExpired();
-        return;
-      }
+      if (err instanceof AccountApiError && err.status === 401) return;
       const message =
         err instanceof Error && err.message
           ? err.message
-          : 'Không thể cập nhật thông tin tài khoản. Vui lòng thử lại.';
+          : 'Chưa lưu được thông tin tài khoản. Bạn thử lại nhé.';
       setProfileFeedback({ type: 'error', text: message });
     } finally {
       if (profileAbortRef.current === controller) {
@@ -146,14 +143,11 @@ export function AccountSettings() {
       });
     } catch (err: unknown) {
       if (err instanceof AccountApiError && err.isCanceled) return;
-      if (err instanceof AccountApiError && err.status === 401) {
-        handleSessionExpired();
-        return;
-      }
+      if (err instanceof AccountApiError && err.status === 401) return;
       const message =
         err instanceof Error && err.message
           ? err.message
-          : 'Không thể đổi mật khẩu. Vui lòng thử lại.';
+          : 'Chưa đổi được mật khẩu. Bạn thử lại nhé.';
       setPasswordFeedback({ type: 'error', text: message });
     } finally {
       if (passwordAbortRef.current === controller) {
@@ -164,7 +158,7 @@ export function AccountSettings() {
   };
 
   return (
-    <main className="page-shell min-h-[75vh] py-8 sm:py-12">
+    <main id="main-content" tabIndex={-1} className="page-shell min-h-[75vh] py-8 sm:py-12">
       {status === 'unavailable' && (
         <div
           role="alert"
@@ -173,7 +167,7 @@ export function AccountSettings() {
           <div className="flex items-center gap-3">
             <AlertCircle size={20} className="shrink-0 text-amber-900" aria-hidden="true" />
             <div className="text-xs sm:text-sm">
-              <span className="font-bold">Không thể kết nối đến máy chủ xác thực:</span> Vui lòng thử kết nối lại để quản lý tài khoản.
+              <span className="font-bold">Chưa kết nối được máy chủ:</span> Bạn thử kết nối lại để chỉnh sửa tài khoản.
             </div>
           </div>
           <button
@@ -181,7 +175,7 @@ export function AccountSettings() {
             onClick={() => retryVerify()}
             className="flex min-h-[44px] items-center gap-1.5 rounded-md bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-500/30 transition-colors cursor-pointer"
           >
-            <RefreshCw size={13} aria-hidden="true" /> Thử kết nối lại
+            <RefreshCw size={13} aria-hidden="true" /> Thử lại
           </button>
         </div>
       )}
@@ -190,10 +184,22 @@ export function AccountSettings() {
         <div
           role="status"
           aria-live="polite"
-          className="flex flex-col items-center justify-center rounded-xl border border-surface-border bg-surface py-20 text-muted"
+          className="mx-auto max-w-4xl space-y-6"
         >
-          <Loader2 className="animate-spin text-brand-dark mb-3" size={28} aria-hidden="true" />
-          <p className="text-xs sm:text-sm">Đang kiểm tra phiên đăng nhập…</p>
+          <p className="sr-only">Đang kiểm tra tài khoản…</p>
+          <div className="rounded-xl border border-surface-border bg-surface p-6 sm:p-8 animate-pulse">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-md bg-surface-elevated" />
+              <div className="space-y-2">
+                <div className="h-3.5 w-32 rounded bg-surface-elevated" />
+                <div className="h-6 w-48 rounded bg-surface-elevated" />
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+            <div className="h-72 rounded-xl border border-surface-border bg-surface p-6 animate-pulse" />
+            <div className="h-72 rounded-xl border border-surface-border bg-surface p-6 animate-pulse" />
+          </div>
         </div>
       ) : !isAuthenticated || !user || !token ? (
         <section
@@ -205,7 +211,7 @@ export function AccountSettings() {
               <User size={22} aria-hidden="true" />
             </div>
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-brand-dark">
+              <span className="text-xs font-bold text-brand-dark">
                 Chế độ khách
               </span>
               <h1 id="account-guest-heading" className="mt-0.5 text-xl sm:text-2xl font-bold text-ink">
@@ -215,7 +221,7 @@ export function AccountSettings() {
           </div>
 
           <p className="mt-5 text-sm text-muted leading-relaxed">
-            Đăng nhập để cập nhật họ tên, email và đổi mật khẩu tài khoản Dippie của bạn.
+            Đăng nhập để đổi tên, email hoặc mật khẩu tài khoản Dippie của bạn.
           </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -246,8 +252,8 @@ export function AccountSettings() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-brand-dark">
-                      Thành viên Dippie
+                    <span className="text-xs font-bold text-brand-dark">
+                      Tài khoản Dippie
                     </span>
                     <span className="text-muted" aria-hidden="true">•</span>
                     <span className="text-xs text-muted truncate">@{user.username}</span>
@@ -258,9 +264,12 @@ export function AccountSettings() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <Link to="/profile" className="btn-secondary text-xs w-full sm:w-auto">
-                  Hồ sơ cá nhân
+                  Thư viện
+                </Link>
+                <Link to="/lich-su" className="btn-secondary text-xs w-full sm:w-auto">
+                  Lịch sử xem
                 </Link>
               </div>
             </div>
@@ -321,7 +330,7 @@ export function AccountSettings() {
                       disabled={profileSubmitting}
                       value={fullName}
                       onChange={(event) => setFullName(event.target.value)}
-                      placeholder="Nguyễn Văn A"
+                      placeholder="Tên hiển thị của bạn"
                       autoComplete="name"
                       className="w-full bg-transparent text-base sm:text-sm text-ink placeholder:text-muted focus:outline-none focus-visible:shadow-none disabled:opacity-50"
                     />
@@ -341,7 +350,7 @@ export function AccountSettings() {
                       disabled={profileSubmitting}
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
-                      placeholder="email@vidu.com"
+                      placeholder="ten@email.com"
                       autoComplete="email"
                       className="w-full bg-transparent text-base sm:text-sm text-ink placeholder:text-muted focus:outline-none focus-visible:shadow-none disabled:opacity-50"
                     />
@@ -371,7 +380,7 @@ export function AccountSettings() {
               </div>
 
               <p className="mt-4 text-xs text-muted leading-relaxed">
-                Sau khi đổi mật khẩu, phiên hiện tại vẫn được giữ nguyên và mọi thiết bị khác sẽ tự động đăng xuất.
+                Đổi mật khẩu xong, máy này vẫn giữ đăng nhập còn các thiết bị khác sẽ tự đăng xuất.
               </p>
 
               <div aria-live="polite" className="mt-4">
@@ -427,20 +436,20 @@ export function AccountSettings() {
                       disabled={passwordSubmitting}
                       value={newPassword}
                       onChange={(event) => setNewPassword(event.target.value)}
-                      placeholder="Tối thiểu 6 ký tự"
+                      placeholder="Ít nhất 6 ký tự"
                       autoComplete="new-password"
                       aria-describedby="account-password-hint"
                       className="w-full bg-transparent text-base sm:text-sm text-ink placeholder:text-muted focus:outline-none focus-visible:shadow-none disabled:opacity-50"
                     />
                   </div>
                   <p id="account-password-hint" className="mt-1 text-[11px] text-muted">
-                    Tối thiểu 6 ký tự, tối đa 72 byte UTF-8.
+                    Mật khẩu dài từ 6 ký tự, tối đa khoảng 70 chữ (chữ có dấu tính nhiều hơn).
                   </p>
                 </div>
 
                 <div>
                   <label htmlFor="account-confirm-password" className="block text-xs font-medium text-muted mb-1.5">
-                    Xác nhận mật khẩu mới
+                    Nhập lại mật khẩu mới
                   </label>
                   <div className="relative flex items-center rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 focus-within:border-brand focus-within:ring-1 focus-within:ring-brand">
                     <input
@@ -463,11 +472,12 @@ export function AccountSettings() {
                   disabled={passwordSubmitting}
                   className="btn-primary w-full justify-center py-2.5 text-xs sm:text-sm font-bold shadow-brand-sm"
                 >
-                  {passwordSubmitting ? 'Đang cập nhật…' : 'Đổi mật khẩu'}
+                  {passwordSubmitting ? 'Đang lưu…' : 'Đổi mật khẩu'}
                 </button>
               </form>
             </section>
           </div>
+          <DeleteAccountSection />
         </div>
       )}
     </main>

@@ -1,0 +1,43 @@
+# Loại trừ tệp không cần thiết khỏi Docker build context
+.git
+.github
+.gitignore
+.worktrees
+.idea
+.vscode
+
+# Không bao giờ đưa bí mật cục bộ vào build context
+.env
+.env.*
+**/.env
+**/.env.*
+!infrastructure/.env.example
+
+# Artifact build cục bộ và thư mục phụ thuộc
+node_modules
+frontend/node_modules
+frontend/dist
+frontend/build
+frontend/*.tsbuildinfo
+backend/springboot/target
+backend/springboot/.gradle
+backend/springboot/data
+target
+
+# Dữ liệu mẫu, video, tài liệu và bản sao lưu
+data
+docs
+database
+scripts
+backups
+storage
+mysql_data
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.db
+*.mv.db
+*.trace.db
+*.sql.gz
+*.log

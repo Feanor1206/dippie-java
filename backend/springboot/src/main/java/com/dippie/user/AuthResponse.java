@@ -1,5 +1,6 @@
 package com.dippie.user;
 
+// Phản hồi sau khi đăng nhập, đăng ký hoặc đổi mật khẩu: chứa JWT dạng Bearer và thông tin cơ bản của tài khoản.
 public record AuthResponse(
         String token,
         String type,

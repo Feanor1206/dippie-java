@@ -1,0 +1,844 @@
+/* Bảng màu giấy sáng và xanh xô thơm đồng bộ với website Dippie. */
+.root {
+    -dippie-paper: #f7f3e9;
+    -dippie-surface: #fffdf6;
+    -dippie-surface-muted: #f1eddf;
+    -dippie-surface-elevated: #e9e4d7;
+    -dippie-ink: #203328;
+    -dippie-ink-strong: #18241e;
+    -dippie-muted: #516359;
+    -dippie-subtle: #6b7c72;
+    -dippie-border: #dcd6c6;
+    -dippie-border-strong: #b7c1b1;
+    -dippie-sage: #8dad86;
+    -dippie-sage-deep: #3d6347;
+    -dippie-sage-hover: #31513a;
+    -dippie-sage-pressed: #26402d;
+    -dippie-mint: #dce8d4;
+    -dippie-mint-soft: #eef4e8;
+    -dippie-honey: #c89d42;
+    -dippie-honey-soft: #f6ecd2;
+    -dippie-honey-ink: #6b4f12;
+    -dippie-danger: #b4433b;
+    -dippie-danger-hover: #97352e;
+    -dippie-danger-pressed: #7d2a24;
+    -dippie-danger-soft: #fae9e7;
+    -dippie-danger-ink: #992c25;
+
+    -fx-font-family: "Segoe UI";
+    -fx-font-size: 13.5px;
+    -fx-base: -dippie-paper;
+    -fx-background: -dippie-paper;
+    -fx-background-color: -dippie-paper;
+    -fx-control-inner-background: -dippie-surface;
+    -fx-control-inner-background-alt: #fbf9f2;
+    -fx-text-fill: -dippie-ink;
+    -fx-text-background-color: -dippie-ink;
+    -fx-accent: -dippie-sage-deep;
+    -fx-focus-color: -dippie-sage-deep;
+    -fx-faint-focus-color: rgba(141, 173, 134, 0.28);
+    -fx-selection-bar: -dippie-mint;
+    -fx-selection-bar-non-focused: #e8efe2;
+    -fx-selection-bar-text: -dippie-ink-strong;
+}
+
+.label {
+    -fx-text-fill: -dippie-ink;
+}
+
+.muted-text {
+    -fx-text-fill: -dippie-muted;
+    -fx-font-size: 12.5px;
+}
+
+.field-label {
+    -fx-text-fill: -dippie-ink;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.section-title {
+    -fx-font-size: 15.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -dippie-ink-strong;
+}
+
+.section-subtitle {
+    -fx-font-size: 12px;
+    -fx-text-fill: -dippie-muted;
+}
+
+/* Thanh đầu trang chứa thương hiệu, tài khoản quản trị và nút đăng xuất. */
+.app-header {
+    -fx-background-color: -dippie-surface;
+    -fx-border-color: transparent transparent -dippie-border transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 12 24 12 24;
+}
+
+.brand-mark {
+    -fx-min-width: 34px;
+    -fx-min-height: 34px;
+    -fx-max-width: 34px;
+    -fx-max-height: 34px;
+    -fx-background-color: -dippie-sage-deep;
+    -fx-background-radius: 9;
+    -fx-text-fill: -dippie-surface;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-alignment: center;
+}
+
+.brand {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -dippie-ink-strong;
+}
+
+.brand-badge {
+    -fx-background-color: -dippie-mint-soft;
+    -fx-background-radius: 999;
+    -fx-border-color: #c5d7bd;
+    -fx-border-radius: 999;
+    -fx-border-width: 1;
+    -fx-padding: 2 10 2 10;
+    -fx-font-size: 11.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -dippie-sage-deep;
+}
+
+.admin-chip {
+    -fx-background-color: -dippie-paper;
+    -fx-background-radius: 999;
+    -fx-border-color: -dippie-border;
+    -fx-border-radius: 999;
+    -fx-border-width: 1;
+    -fx-padding: 4 14 4 6;
+}
+
+.admin-avatar {
+    -fx-min-width: 30px;
+    -fx-min-height: 30px;
+    -fx-max-width: 30px;
+    -fx-max-height: 30px;
+    -fx-background-color: -dippie-mint;
+    -fx-background-radius: 999;
+    -fx-text-fill: -dippie-sage-deep;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-alignment: center;
+}
+
+.admin-name {
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -dippie-ink-strong;
+}
+
+.admin-meta {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -dippie-muted;
+}
+
+/* Hệ thống tab phẳng có vạch nhấn xanh xô thơm. */
+.workspace-tabs > .tab-header-area {
+    -fx-padding: 4 24 0 24;
+}
+
+.workspace-tabs > .tab-header-area > .tab-header-background {
+    -fx-background-color: -dippie-surface;
+    -fx-border-color: transparent transparent -dippie-border transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.workspace-tabs > .tab-header-area > .headers-region > .tab {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 7 7 0 0;
+    -fx-padding: 10 18 10 18;
+    -fx-border-color: transparent;
+    -fx-border-width: 0 0 3 0;
+    -fx-cursor: hand;
+}
+
+.workspace-tabs > .tab-header-area > .headers-region > .tab:hover {
+    -fx-background-color: -dippie-mint-soft;
+}
+
+.workspace-tabs > .tab-header-area > .headers-region > .tab:selected {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent -dippie-sage-deep transparent;
+    -fx-border-width: 0 0 3 0;
+}
+
+.workspace-tabs > .tab-header-area > .headers-region > .tab .tab-label {
+    -fx-text-fill: -dippie-muted;
+    -fx-font-size: 13.5px;
+    -fx-font-weight: bold;
+}
+
+.workspace-tabs > .tab-header-area > .headers-region > .tab:selected .tab-label {
+    -fx-text-fill: -dippie-sage-deep;
+}
+
+.workspace-tabs:focused > .tab-header-area > .headers-region > .tab:selected .focus-indicator {
+    -fx-border-color: transparent;
+}
+
+/* Màn hình đăng nhập và thẻ nổi giữa nền giấy ấm. */
+.login-canvas {
+    -fx-background-color: -dippie-paper;
+    -fx-padding: 32;
+}
+
+.login-card {
+    -fx-background-color: -dippie-surface;
+    -fx-background-radius: 14;
+    -fx-border-color: -dippie-border;
+    -fx-border-radius: 14;
+    -fx-border-width: 1;
+    -fx-padding: 32 34 32 34;
+    -fx-effect: dropshadow(gaussian, rgba(32, 51, 40, 0.08), 24, 0.05, 0, 8);
+}
+
+.login-title {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -dippie-ink-strong;
+}
+
+.login-subtitle {
+    -fx-font-size: 13px;
+    -fx-text-fill: -dippie-muted;
+}
+
+/* Vùng nội dung, thanh công cụ và thẻ bề mặt. */
+.data-pane {
+    -fx-background-color: -dippie-paper;
+    -fx-padding: 18 24 18 24;
+}
+
+.toolbar-card {
+    -fx-background-color: -dippie-surface;
+    -fx-background-radius: 10;
+    -fx-border-color: -dippie-border;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 11 16 11 16;
+}
+
+.surface-card {
+    -fx-background-color: -dippie-surface;
+    -fx-background-radius: 10;
+    -fx-border-color: -dippie-border;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 16;
+}
+
+.catalog-detail {
+    -fx-background-color: -dippie-surface;
+    -fx-background-radius: 10;
+    -fx-border-color: -dippie-border;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 20;
+}
+
+/* Các kiểu nút chính, phụ, cảnh báo và nút nhẹ. */
+.button,
+.secondary-button {
+    -fx-background-color: -dippie-surface;
+    -fx-background-insets: 0;
+    -fx-background-radius: 7;
+    -fx-border-color: -dippie-border-strong;
+    -fx-border-radius: 7;
+    -fx-border-width: 1;
+    -fx-text-fill: -dippie-ink;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-padding: 8 15 8 15;
+    -fx-cursor: hand;
+}
+
+.button:hover,
+.secondary-button:hover {
+    -fx-background-color: -dippie-mint-soft;
+    -fx-border-color: -dippie-sage;
+}
+
+.button:armed,
+.secondary-button:armed {
+    -fx-background-color: -dippie-mint;
+    -fx-border-color: -dippie-sage-deep;
+}
+
+.button:focused,
+.secondary-button:focused {
+    -fx-border-color: -dippie-sage-deep;
+    -fx-effect: dropshadow(gaussian, rgba(141, 173, 134, 0.45), 6, 0.25, 0, 0);
+}
+
+.button:disabled,
+.secondary-button:disabled {
+    -fx-opacity: 0.46;
+    -fx-cursor: default;
+}
+
+.primary-button {
+    -fx-background-color: -dippie-sage-deep;
+    -fx-border-color: -dippie-sage-deep;
+    -fx-text-fill: -dippie-surface;
+}
+
+.primary-button:hover {
+    -fx-background-color: -dippie-sage-hover;
+    -fx-border-color: -dippie-sage-hover;
+}
+
+.primary-button:armed {
+    -fx-background-color: -dippie-sage-pressed;
+    -fx-border-color: -dippie-sage-pressed;
+}
+
+.primary-button:focused {
+    -fx-border-color: -dippie-ink-strong;
+    -fx-effect: dropshadow(gaussian, rgba(61, 99, 71, 0.35), 7, 0.25, 0, 0);
+}
+
+.danger-button {
+    -fx-background-color: -dippie-danger;
+    -fx-border-color: -dippie-danger;
+    -fx-text-fill: -dippie-surface;
+}
+
+.danger-button:hover {
+    -fx-background-color: -dippie-danger-hover;
+    -fx-border-color: -dippie-danger-hover;
+}
+
+.danger-button:armed {
+    -fx-background-color: -dippie-danger-pressed;
+    -fx-border-color: -dippie-danger-pressed;
+}
+
+.danger-button:focused {
+    -fx-border-color: #6b1f1a;
+    -fx-effect: dropshadow(gaussian, rgba(180, 67, 59, 0.32), 7, 0.25, 0, 0);
+}
+
+.ghost-button {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-text-fill: -dippie-muted;
+    -fx-padding: 6 10 6 10;
+}
+
+.ghost-button:hover {
+    -fx-background-color: -dippie-surface-muted;
+    -fx-border-color: transparent;
+    -fx-text-fill: -dippie-ink;
+}
+
+/* Ô nhập văn bản, tìm kiếm, hộp chọn và vùng văn bản chỉ đọc. */
+.text-field,
+.password-field {
+    -fx-background-color: -dippie-surface;
+    -fx-background-insets: 0;
+    -fx-background-radius: 7;
+    -fx-border-color: -dippie-border-strong;
+    -fx-border-radius: 7;
+    -fx-border-width: 1;
+    -fx-padding: 8 12 8 12;
+    -fx-text-fill: -dippie-ink;
+    -fx-prompt-text-fill: #7f8f85;
+    -fx-highlight-fill: -dippie-mint;
+    -fx-highlight-text-fill: -dippie-ink-strong;
+}
+
+.text-field:focused,
+.password-field:focused {
+    -fx-border-color: -dippie-sage-deep;
+    -fx-effect: dropshadow(gaussian, rgba(141, 173, 134, 0.45), 6, 0.25, 0, 0);
+}
+
+.search-field {
+    -fx-pref-width: 270px;
+}
+
+.text-area {
+    -fx-background-color: #faf8f1;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8;
+    -fx-border-color: -dippie-border;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-text-fill: -dippie-ink;
+    -fx-highlight-fill: -dippie-mint;
+    -fx-highlight-text-fill: -dippie-ink-strong;
+}
+
+.text-area .content {
+    -fx-background-color: #faf8f1;
+    -fx-background-radius: 7;
+    -fx-padding: 10 12 10 12;
+}
+
+.text-area:focused {
+    -fx-border-color: -dippie-sage;
+}
+
+.combo-box-base {
+    -fx-background-color: -dippie-surface;
+    -fx-background-insets: 0;
+    -fx-background-radius: 7;
+    -fx-border-color: -dippie-border-strong;
+    -fx-border-radius: 7;
+    -fx-border-width: 1;
+    -fx-padding: 3 6 3 6;
+    -fx-cursor: hand;
+}
+
+.combo-box-base:hover {
+    -fx-background-color: -dippie-mint-soft;
+    -fx-border-color: -dippie-sage;
+}
+
+.combo-box-base:focused {
+    -fx-border-color: -dippie-sage-deep;
+}
+
+.combo-box .list-cell {
+    -fx-text-fill: -dippie-ink;
+    -fx-padding: 4 8 4 8;
+}
+
+.combo-box-popup .list-view {
+    -fx-background-color: -dippie-surface;
+    -fx-border-color: -dippie-border;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-effect: dropshadow(gaussian, rgba(32, 51, 40, 0.12), 14, 0, 0, 4);
+}
+
+.combo-box-popup .list-view .list-cell:hover {
+    -fx-background-color: -dippie-mint-soft;
+    -fx-text-fill: -dippie-ink-strong;
+}
+
+.combo-box-popup .list-view .list-cell:selected {
+    -fx-background-color: -dippie-mint;
+    -fx-text-fill: -dippie-ink-strong;
+    -fx-font-weight: bold;
+}
+
+/* Thẻ số liệu tổng quan và biểu đồ phân bố điểm. */
+.metric {
+    -fx-background-color: -dippie-surface;
+    -fx-background-radius: 10;
+    -fx-border-color: -dippie-border;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 13 16 14 16;
+    -fx-effect: dropshadow(gaussian, rgba(32, 51, 40, 0.04), 8, 0, 0, 2);
+}
+
+.metric-accent {
+    -fx-min-height: 4px;
+    -fx-max-height: 4px;
+    -fx-max-width: 38px;
+    -fx-background-radius: 999;
+}
+
+.metric-accent-sage {
+    -fx-background-color: #3d6347;
+}
+
+.metric-accent-leaf {
+    -fx-background-color: #5c8263;
+}
+
+.metric-accent-mint {
+    -fx-background-color: #7ea177;
+}
+
+.metric-accent-honey {
+    -fx-background-color: #c89d42;
+}
+
+.metric-accent-teal {
+    -fx-background-color: #4d7c74;
+}
+
+.metric-label {
+    -fx-font-size: 12.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -dippie-muted;
+}
+
+.metric-value {
+    -fx-font-size: 27px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -dippie-ink-strong;
+}
+
+.metric-hint {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -dippie-subtle;
+}
+
+.chart {
+    -fx-background-color: transparent;
+    -fx-padding: 4 6 0 0;
+}
+
+.chart-plot-background {
+    -fx-background-color: transparent;
+}
+
+.chart-horizontal-grid-lines {
+    -fx-stroke: #eae4d5;
+    -fx-stroke-dash-array: 3 3;
+}
+
+.chart-vertical-grid-lines {
+    -fx-stroke: transparent;
+}
+
+.chart-alternative-row-fill {
+    -fx-fill: transparent;
+}
+
+.axis {
+    -fx-tick-label-fill: -dippie-muted;
+    -fx-font-size: 12px;
+}
+
+.axis-label {
+    -fx-text-fill: -dippie-muted;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.default-color0.chart-bar {
+    -fx-bar-fill: #7ea177;
+    -fx-background-radius: 5 5 0 0;
+}
+
+.default-color0.chart-bar:hover {
+    -fx-bar-fill: #3d6347;
+}
+
+/* Bảng dữ liệu và cây danh mục gọn gàng, dễ quét hàng. */
+.table-view {
+    -fx-background-color: -dippie-surface;
+    -fx-background-radius: 10;
+    -fx-border-color: -dippie-border;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 0;
+    -fx-table-cell-border-color: transparent;
+}
+
+.table-view:focused {
+    -fx-border-color: -dippie-sage;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: -dippie-surface-muted;
+    -fx-background-radius: 9 9 0 0;
+    -fx-border-color: transparent transparent -dippie-border transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 0;
+}
+
+.table-view .column-header,
+.table-view .filler {
+    -fx-background-color: transparent;
+    -fx-size: 38px;
+    -fx-border-color: transparent #e6e0d0 transparent transparent;
+    -fx-border-width: 0 1 0 0;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: -dippie-muted;
+    -fx-font-size: 12.5px;
+    -fx-font-weight: bold;
+    -fx-alignment: CENTER_LEFT;
+    -fx-padding: 0 10 0 10;
+}
+
+.table-view .table-row-cell {
+    -fx-cell-size: 40px;
+    -fx-background-color: -dippie-surface;
+    -fx-border-color: transparent transparent #f0ebe0 transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.table-view .table-row-cell:odd {
+    -fx-background-color: #fbf9f2;
+}
+
+.table-view .table-row-cell:hover {
+    -fx-background-color: -dippie-mint-soft;
+}
+
+.table-view .table-row-cell:selected {
+    -fx-background-color: -dippie-mint;
+}
+
+.table-view .table-row-cell:selected .text {
+    -fx-fill: -dippie-ink-strong;
+}
+
+.table-view .table-row-cell:empty {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.table-view .table-cell {
+    -fx-padding: 0 10 0 10;
+    -fx-alignment: CENTER_LEFT;
+    -fx-text-fill: -dippie-ink;
+    -fx-border-color: transparent;
+}
+
+.table-view .table-cell.numeric-cell {
+    -fx-alignment: CENTER_RIGHT;
+}
+
+.table-view .table-cell.center-cell {
+    -fx-alignment: CENTER;
+}
+
+.tree-view {
+    -fx-background-color: -dippie-surface;
+    -fx-background-radius: 10;
+    -fx-border-color: -dippie-border;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 8;
+}
+
+.tree-view:focused {
+    -fx-border-color: -dippie-sage;
+}
+
+.tree-cell {
+    -fx-background-color: transparent;
+    -fx-background-radius: 7;
+    -fx-padding: 6 10 6 6;
+    -fx-text-fill: -dippie-ink;
+    -fx-cell-size: 36px;
+}
+
+.tree-cell:hover {
+    -fx-background-color: -dippie-mint-soft;
+}
+
+.tree-cell:selected {
+    -fx-background-color: -dippie-mint;
+    -fx-text-fill: -dippie-ink-strong;
+    -fx-font-weight: bold;
+}
+
+.tree-cell .tree-node-title {
+    -fx-text-fill: -dippie-ink;
+}
+
+.tree-cell:selected .tree-node-title {
+    -fx-text-fill: -dippie-ink-strong;
+    -fx-font-weight: bold;
+}
+
+.tree-cell:empty,
+.tree-cell:empty:hover {
+    -fx-background-color: transparent;
+}
+
+.tree-cell .tree-disclosure-node .arrow {
+    -fx-background-color: -dippie-muted;
+}
+
+/* Nhãn trạng thái, vai trò, điểm số và cấp danh mục. */
+.pill {
+    -fx-background-radius: 999;
+    -fx-padding: 2 10 2 10;
+    -fx-font-size: 11.5px;
+    -fx-font-weight: bold;
+}
+
+.pill-sage {
+    -fx-background-color: #e4efe0;
+    -fx-text-fill: #2d5436;
+}
+
+.pill-honey {
+    -fx-background-color: -dippie-honey-soft;
+    -fx-text-fill: -dippie-honey-ink;
+}
+
+.pill-neutral {
+    -fx-background-color: -dippie-surface-muted;
+    -fx-text-fill: -dippie-muted;
+}
+
+.pill-danger {
+    -fx-background-color: -dippie-danger-soft;
+    -fx-text-fill: -dippie-danger-ink;
+}
+
+/* Thanh chia khung tinh gọn không viền nổi cũ. */
+.split-pane {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.split-pane > .split-pane-divider {
+    -fx-background-color: transparent;
+    -fx-padding: 0 7 0 7;
+}
+
+/* Trạng thái trống và lớp phủ đang tải. */
+.empty-state {
+    -fx-padding: 28 20 28 20;
+    -fx-alignment: center;
+}
+
+.empty-title {
+    -fx-font-size: 14.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -dippie-ink;
+}
+
+.empty-hint {
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -dippie-muted;
+    -fx-text-alignment: center;
+}
+
+.loading-overlay {
+    -fx-background-color: rgba(247, 243, 233, 0.78);
+    -fx-background-radius: 10;
+}
+
+.loading-box {
+    -fx-background-color: -dippie-surface;
+    -fx-background-radius: 10;
+    -fx-border-color: -dippie-border;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 16 24 16 24;
+    -fx-effect: dropshadow(gaussian, rgba(32, 51, 40, 0.08), 16, 0, 0, 4);
+}
+
+.progress-indicator {
+    -fx-progress-color: -dippie-sage-deep;
+}
+
+/* Thanh trạng thái dưới cùng. */
+.status-bar {
+    -fx-background-color: -dippie-surface-muted;
+    -fx-border-color: -dippie-border transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 8 24 8 24;
+}
+
+.status-label {
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -dippie-ink;
+}
+
+.status-hint {
+    -fx-font-size: 12px;
+    -fx-text-fill: -dippie-subtle;
+}
+
+.status-connected {
+    -fx-fill: #2d7a4d;
+}
+
+.status-disconnected {
+    -fx-fill: #b4433b;
+}
+
+.status-idle {
+    -fx-fill: #78857c;
+}
+
+/* Hộp thoại thông báo, xác nhận và chú giải nổi. */
+.app-dialog {
+    -fx-background-color: -dippie-surface;
+}
+
+.app-dialog .header-panel {
+    -fx-background-color: -dippie-surface-muted;
+    -fx-border-color: transparent transparent -dippie-border transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 14 20 14 20;
+}
+
+.app-dialog .header-panel .label {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -dippie-ink-strong;
+}
+
+.app-dialog .content.label {
+    -fx-font-size: 13.5px;
+    -fx-text-fill: -dippie-ink;
+    -fx-padding: 16 20 12 20;
+}
+
+.app-dialog .button-bar {
+    -fx-padding: 8 18 16 18;
+}
+
+.tooltip {
+    -fx-background-color: -dippie-ink-strong;
+    -fx-text-fill: -dippie-surface;
+    -fx-background-radius: 6;
+    -fx-padding: 6 10 6 10;
+    -fx-font-size: 12px;
+    -fx-effect: dropshadow(gaussian, rgba(24, 36, 30, 0.22), 10, 0, 0, 3);
+}
+
+/* Thanh cuộn mảnh đồng bộ với màu giấy và xô thơm. */
+.scroll-bar {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar:vertical {
+    -fx-pref-width: 10px;
+}
+
+.scroll-bar:horizontal {
+    -fx-pref-height: 10px;
+}
+
+.scroll-bar .track {
+    -fx-background-color: #efeae0;
+    -fx-background-radius: 999;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: #b7c4b2;
+    -fx-background-radius: 999;
+    -fx-background-insets: 2;
+}
+
+.scroll-bar .thumb:hover {
+    -fx-background-color: -dippie-sage;
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+}
+
+.scroll-bar .increment-arrow,
+.scroll-bar .decrement-arrow {
+    -fx-shape: "";
+    -fx-padding: 0;
+}

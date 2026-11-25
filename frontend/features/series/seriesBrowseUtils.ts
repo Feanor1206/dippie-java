@@ -1,4 +1,4 @@
-import { genreLabel } from '@/lib/labels';
+import { resolveGenreLabel } from '@/lib/labels';
 import type { SeriesCard, SeriesCardGenre } from '@/lib/services/seriesCardService';
 
 export type SeriesSortKey = 'title' | 'newest' | 'episodes';
@@ -10,7 +10,7 @@ export type SeriesBrowseQueryState = {
 };
 
 export const SERIES_SORT_OPTIONS: { value: SeriesSortKey; label: string }[] = [
-  { value: 'title', label: 'Tên A–Z' },
+  { value: 'title', label: 'Tên từ A đến Z' },
   { value: 'newest', label: 'Mới nhất theo năm' },
   { value: 'episodes', label: 'Nhiều tập nhất' },
 ];
@@ -21,12 +21,18 @@ function cleanUrl(value?: string | null): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
-function foldVietnamese(text: string): string {
+export function foldVietnamese(text: string): string {
   return text
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[đĐ]/g, 'd')
-    .toLocaleLowerCase('vi');
+    .toLocaleLowerCase('vi')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function validPositiveYear(value?: number | null): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.trunc(value) : null;
 }
 
 export function pickSeriesArtwork(
@@ -35,13 +41,9 @@ export function pickSeriesArtwork(
 ): { primary: string | null; fallback: string | null } {
   const backdrop = cleanUrl(card.backdropUrl);
   const poster = cleanUrl(card.posterUrl);
-  if (prefer === 'poster') {
-    const primary = poster || backdrop;
-    const fallback = poster && backdrop && poster !== backdrop ? backdrop : null;
-    return { primary, fallback };
-  }
-  const primary = backdrop || poster;
-  const fallback = backdrop && poster && backdrop !== poster ? poster : null;
+  const [first, second] = prefer === 'poster' ? [poster, backdrop] : [backdrop, poster];
+  const primary = first || second;
+  const fallback = first && second && first !== second ? second : null;
   return { primary, fallback };
 }
 
@@ -50,31 +52,23 @@ export function pickMovieArtwork(item: {
   backdrop?: string | null;
   poster?: string | null;
 }): { primary: string | null; fallback: string | null } {
-  const candidates = [cleanUrl(item.thumbnailUrl), cleanUrl(item.backdrop), cleanUrl(item.poster)].filter(
-    (url): url is string => Boolean(url)
-  );
-  const unique = [...new Set(candidates)];
-  return {
-    primary: unique[0] || null,
-    fallback: unique[1] || null,
-  };
+  const unique = [
+    ...new Set(
+      [cleanUrl(item.thumbnailUrl), cleanUrl(item.backdrop), cleanUrl(item.poster)].filter(
+        (url): url is string => Boolean(url)
+      )
+    ),
+  ];
+  return { primary: unique[0] || null, fallback: unique[1] || null };
 }
 
 export function getTitleInitials(title?: string | null): string {
   const clean = typeof title === 'string' ? title.trim() : '';
   if (!clean) return '?';
-  const words = clean
-    .split(/[\s\-_:|/.,!?()[\]"]+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
+  const words = clean.split(/[\s\-_:|/.,!?()[\]"]+/).filter(Boolean);
   if (words.length === 0) return clean.slice(0, 2).toLocaleUpperCase('vi');
-  if (words.length === 1) {
-    const chars = Array.from(words[0]);
-    return chars.slice(0, 2).join('').toLocaleUpperCase('vi');
-  }
-  const first = Array.from(words[0])[0] || '';
-  const last = Array.from(words[words.length - 1])[0] || '';
-  return `${first}${last}`.toLocaleUpperCase('vi');
+  if (words.length === 1) return Array.from(words[0]).slice(0, 2).join('').toLocaleUpperCase('vi');
+  return `${Array.from(words[0])[0] || ''}${Array.from(words[words.length - 1])[0] || ''}`.toLocaleUpperCase('vi');
 }
 
 export function getFallbackToneIndex(seed?: string | null, paletteSize = 6): number {
@@ -87,30 +81,29 @@ export function getFallbackToneIndex(seed?: string | null, paletteSize = 6): num
 }
 
 export function formatYearRange(start?: number | null, end?: number | null): string {
-  const validStart = typeof start === 'number' && Number.isFinite(start) && start > 0 ? Math.trunc(start) : null;
-  const validEnd = typeof end === 'number' && Number.isFinite(end) && end > 0 ? Math.trunc(end) : null;
+  const validStart = validPositiveYear(start);
+  const validEnd = validPositiveYear(end);
   if (validStart !== null && validEnd !== null) {
-    return validStart === validEnd ? String(validStart) : `${validStart}–${validEnd}`;
+    return validStart === validEnd ? String(validStart) : `${validStart} đến ${validEnd}`;
   }
-  if (validStart !== null) return String(validStart);
-  if (validEnd !== null) return String(validEnd);
-  return '';
+  return String(validStart ?? validEnd ?? '');
 }
 
 export function formatSeriesCounts(seasonCount?: number | null, episodeCount?: number | null): string {
-  const seasons = typeof seasonCount === 'number' && Number.isFinite(seasonCount) && seasonCount > 0 ? Math.floor(seasonCount) : null;
-  const episodes = typeof episodeCount === 'number' && Number.isFinite(episodeCount) && episodeCount > 0 ? Math.floor(episodeCount) : null;
   const parts: string[] = [];
-  if (seasons !== null) parts.push(`${seasons} mùa`);
-  if (episodes !== null) parts.push(`${episodes} tập`);
+  if (typeof seasonCount === 'number' && Number.isFinite(seasonCount) && seasonCount > 0) {
+    parts.push(`${Math.floor(seasonCount)} mùa`);
+  }
+  if (typeof episodeCount === 'number' && Number.isFinite(episodeCount) && episodeCount > 0) {
+    parts.push(`${Math.floor(episodeCount)} tập`);
+  }
   return parts.join(' · ');
 }
 
 export function formatEpisodeTag(episodeNumber?: number | null): string {
-  if (typeof episodeNumber !== 'number' || !Number.isFinite(episodeNumber) || episodeNumber <= 0) {
-    return '';
-  }
-  return `Tập ${Math.floor(episodeNumber)}`;
+  return typeof episodeNumber === 'number' && Number.isFinite(episodeNumber) && episodeNumber > 0
+    ? `Tập ${Math.floor(episodeNumber)}`
+    : '';
 }
 
 export function computeProgressPercent(positionMs?: number | null, durationMs?: number | null): number | null {
@@ -124,23 +117,21 @@ export function computeProgressPercent(positionMs?: number | null, durationMs?: 
   ) {
     return null;
   }
-  const ratio = Math.min(1, Math.max(0, positionMs / durationMs));
-  return Math.round(ratio * 100);
+  return Math.round(Math.min(1, Math.max(0, positionMs / durationMs)) * 100);
 }
 
 export function extractSeriesGenres(cards: SeriesCard[]): SeriesCardGenre[] {
-  const byId = new Map<string, SeriesCardGenre>();
+  const byLabel = new Map<string, SeriesCardGenre>();
   for (const card of cards) {
     for (const genre of card.genres || []) {
       const id = genre.id.trim();
       if (!id) continue;
-      const key = id.toLocaleLowerCase('vi');
-      if (!byId.has(key)) {
-        byId.set(key, { id, label: genre.label?.trim() || genreLabel(id) });
-      }
+      const label = resolveGenreLabel(genre) || id;
+      const key = label.toLocaleLowerCase('vi');
+      if (!byLabel.has(key)) byLabel.set(key, { id, label });
     }
   }
-  return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label, 'vi', { sensitivity: 'base' }));
+  return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label, 'vi', { sensitivity: 'base' }));
 }
 
 export function normalizeGenreSelection(genres: string[]): string[] {
@@ -159,24 +150,15 @@ export function normalizeGenreSelection(genres: string[]): string[] {
 
 export function parseSeriesBrowseParams(input: URLSearchParams | string): SeriesBrowseQueryState {
   const params = typeof input === 'string' ? new URLSearchParams(input) : input;
-  const q = (params.get('q') || '').trim();
-  const rawGenres: string[] = [];
-  for (const val of params.getAll('genres')) {
-    for (const part of val.split(',')) {
-      if (part.trim()) rawGenres.push(part.trim());
-    }
-  }
-  for (const val of params.getAll('genre')) {
-    for (const part of val.split(',')) {
-      if (part.trim()) rawGenres.push(part.trim());
-    }
-  }
+  const rawGenres = [...params.getAll('genres'), ...params.getAll('genre')]
+    .flatMap((val) => val.split(','))
+    .map((part) => part.trim())
+    .filter(Boolean);
   const rawSort = (params.get('sort') || '').trim() as SeriesSortKey;
-  const sort: SeriesSortKey = VALID_SORTS.has(rawSort) ? rawSort : 'title';
   return {
-    q,
+    q: (params.get('q') || '').trim(),
     genres: normalizeGenreSelection(rawGenres),
-    sort,
+    sort: VALID_SORTS.has(rawSort) ? rawSort : 'title',
   };
 }
 
@@ -186,9 +168,7 @@ export function serializeSeriesBrowseParams(state: SeriesBrowseQueryState): URLS
   if (q) params.set('q', q);
   const genres = normalizeGenreSelection(state.genres);
   if (genres.length > 0) params.set('genres', genres.join(','));
-  if (VALID_SORTS.has(state.sort) && state.sort !== 'title') {
-    params.set('sort', state.sort);
-  }
+  if (VALID_SORTS.has(state.sort) && state.sort !== 'title') params.set('sort', state.sort);
   return params;
 }
 
@@ -202,44 +182,35 @@ export function filterAndSortSeriesCards(cards: SeriesCard[], state: SeriesBrows
     if (rawQuery) {
       const title = card.title || '';
       const original = card.originalTitle || '';
-      const directMatch =
+      const matches =
         title.toLocaleLowerCase('vi').includes(lowerQuery) ||
-        original.toLocaleLowerCase('vi').includes(lowerQuery);
-      const foldedMatch =
+        original.toLocaleLowerCase('vi').includes(lowerQuery) ||
         foldVietnamese(title).includes(foldedQuery) ||
         foldVietnamese(original).includes(foldedQuery);
-      if (!directMatch && !foldedMatch) return false;
+      if (!matches) return false;
     }
     if (selectedGenres.size > 0) {
-      const hasGenre = (card.genres || []).some((genre) => selectedGenres.has(genre.id.toLocaleLowerCase('vi')));
-      if (!hasGenre) return false;
+      return (card.genres || []).some((genre) => selectedGenres.has(genre.id.toLocaleLowerCase('vi')));
     }
     return true;
   });
 
-  const compareTitle = (a: SeriesCard, b: SeriesCard) => {
-    const cmp = a.title.localeCompare(b.title, 'vi', { sensitivity: 'base' });
-    return cmp !== 0 ? cmp : a.id.localeCompare(b.id);
-  };
+  const compareTitle = (a: SeriesCard, b: SeriesCard) =>
+    a.title.localeCompare(b.title, 'vi', { sensitivity: 'base' }) || a.id.localeCompare(b.id);
 
   return [...filtered].sort((a, b) => {
     if (state.sort === 'newest') {
-      const yearA = a.releaseYearStart ?? a.releaseYearEnd ?? -1;
-      const yearB = b.releaseYearStart ?? b.releaseYearEnd ?? -1;
+      const yearA = validPositiveYear(a.releaseYearStart) ?? validPositiveYear(a.releaseYearEnd) ?? -1;
+      const yearB = validPositiveYear(b.releaseYearStart) ?? validPositiveYear(b.releaseYearEnd) ?? -1;
       if (yearB !== yearA) return yearB - yearA;
-      const endA = a.releaseYearEnd ?? -1;
-      const endB = b.releaseYearEnd ?? -1;
-      if (endB !== endA) return endB - endA;
-      return compareTitle(a, b);
+      const endA = validPositiveYear(a.releaseYearEnd) ?? -1;
+      const endB = validPositiveYear(b.releaseYearEnd) ?? -1;
+      return endB - endA || compareTitle(a, b);
     }
     if (state.sort === 'episodes') {
-      const epA = a.episodeCount ?? -1;
-      const epB = b.episodeCount ?? -1;
-      if (epB !== epA) return epB - epA;
-      const seasonA = a.seasonCount ?? -1;
-      const seasonB = b.seasonCount ?? -1;
-      if (seasonB !== seasonA) return seasonB - seasonA;
-      return compareTitle(a, b);
+      const episodeDiff = (b.episodeCount ?? -1) - (a.episodeCount ?? -1);
+      if (episodeDiff !== 0) return episodeDiff;
+      return (b.seasonCount ?? -1) - (a.seasonCount ?? -1) || compareTitle(a, b);
     }
     return compareTitle(a, b);
   });

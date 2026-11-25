@@ -16,8 +16,13 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+// Đảm nhận riêng phần transaction ghi CSDL khi nhập gói danh mục.
+// Mình tách ra khỏi CatalogImportService để Spring proxy commit xong DB trước rồi lớp ngoài mới đồng bộ chỉ mục và bắn CatalogImportedEvent.
 @Repository
 class CatalogImportTransaction {
+
+    private static final String STATUS_COMMITTED = "COMMITTED";
+    private static final int MAX_SNAPSHOT_PREFIX = 48;
 
     private final CatalogDiff diff;
     private final CatalogRecordWriter writer;
@@ -34,8 +39,10 @@ class CatalogImportTransaction {
         this.clock = clock;
     }
 
+    // Khóa hàng cần sửa, kiểm tra xung đột phiên bản rồi ghi gói, các bảng con và bản ghi snapshot trong cùng một transaction.
     @Transactional
     public Commit write(JsonNode document, CatalogPackageValidator.PackageIdentity identity, ContentHash hash) {
+        // Tính sai khác kèm khóa hàng; hễ có bất kỳ xung đột phiên bản nào thì hủy ngay.
         CatalogDiff.Analysis changes = diff.calculate(document, identity, hash, true);
         if (changes.counts().conflicts() != 0) {
             throw new ConflictException("Gói danh mục xung đột với phiên bản đã lưu.");
@@ -44,13 +51,17 @@ class CatalogImportTransaction {
         for (CatalogCollection collection : CatalogCollection.values()) {
             counts.put(collection.resultKey, collection.items(document).size());
         }
+
+        // Gói nhập lại y hệt nội dung cũ thì dùng lại snapshot cùng contentHash để giữ idempotent, nhưng vẫn sửa lại metadata bảng movies cũ.
         if (!changes.counts().hasChanges()) {
             CatalogSnapshot previous = snapshots.findFirstByContentHashOrderBySnapshotVersionDesc(hash.value()).orElse(null);
             if (previous != null) {
+                writer.refreshLegacyMetadata(document);
                 return new Commit(previous, identity, changes.existingPackage().getImportedAt(), counts, true);
             }
         }
 
+        // Lưu gói, ghi toàn bộ các bảng dữ liệu rồi tạo snapshot PENDING để sau khi commit xong mới đẩy sang bộ tìm kiếm.
         LocalDateTime now = CatalogDates.now(clock);
         savePackage(document.path("package"), identity, hash, changes.existingPackage(), now);
         writer.write(document, changes, identity.revision(), now);
@@ -65,7 +76,7 @@ class CatalogImportTransaction {
                 identity.revision(), metadataText(metadata.path("default_language"), "vi"),
                 metadataText(metadata.path("import_mode"), "upsert"),
                 metadataText(metadata.path("reference_scope"), "self_contained"),
-                null, description, hash.value(), "COMMITTED", null);
+                null, description, hash.value(), STATUS_COMMITTED, null);
         incoming.recordImportTime(now);
         if (stored == null) {
             entities.persist(incoming);
@@ -77,7 +88,7 @@ class CatalogImportTransaction {
     private CatalogSnapshot saveSnapshot(String packageId, ContentHash hash, Map<String, Integer> counts, LocalDateTime now) {
         long generation = snapshots.findTopByOrderBySnapshotVersionDesc()
                 .map(latest -> latest.getSnapshotVersion() + 1).orElse(CatalogSnapshotService.FIRST_GENERATION);
-        int prefixLength = Math.min(48, packageId.codePointCount(0, packageId.length()));
+        int prefixLength = Math.min(MAX_SNAPSHOT_PREFIX, packageId.codePointCount(0, packageId.length()));
         String prefix = packageId.substring(0, packageId.offsetByCodePoints(0, prefixLength));
         String id = "snap_" + clock.millis() + "_" + prefix + "_g" + generation;
         int total = counts.values().stream().mapToInt(Integer::intValue).sum();
@@ -88,20 +99,21 @@ class CatalogImportTransaction {
         return snapshot;
     }
 
-    private static String metadataText(JsonNode value, String fallback) {
-        if (!JsonText.isTruthy(value)) {
+    private static String metadataText(JsonNode node, String fallback) {
+        if (!JsonText.isTruthy(node)) {
             return fallback;
         }
-        return value.isBoolean() ? "True" : scalarText(value);
+        return node.isBoolean() ? "True" : scalarText(node);
     }
 
-    private static String scalarText(JsonNode value) {
-        if (value.isContainerNode()) {
+    private static String scalarText(JsonNode node) {
+        if (node.isContainerNode()) {
             throw new IllegalArgumentException("Expected a scalar package field");
         }
-        return value.asText(null);
+        return node.asText(null);
     }
 
+    // Kết quả sau khi transaction commit để CatalogImportService biết có cần đồng bộ chỉ mục và phát sự kiện hay không.
     record Commit(CatalogSnapshot snapshot, CatalogPackageValidator.PackageIdentity identity, LocalDateTime importedAt,
             Map<String, Integer> counts, boolean unchanged) {
 
@@ -109,10 +121,11 @@ class CatalogImportTransaction {
             counts = Collections.unmodifiableMap(new LinkedHashMap<>(counts));
         }
 
+        // Đóng gói kết quả giao dịch thành DTO trả về cho endpoint admin.
         CatalogImportResult response() {
             return new CatalogImportResult(true, snapshot.getId(), identity.id(), identity.revision(),
                     snapshot.getSnapshotVersion(), snapshot.getContentHash(), importedAt, counts, snapshot.getStatus(),
-                    unchanged ? "Gói danh mục đã được nhập." : "Đã nhập gói danh mục.");
+                    unchanged ? "Gói danh mục này đã được nhập trước đó." : "Đã nhập gói danh mục thành công.");
         }
     }
 }

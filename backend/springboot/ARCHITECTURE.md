@@ -1,34 +1,21 @@
-# Dippie Java Backend — Architecture & Engineering Rules
+# Dippie Java backend architecture and engineering rules
 
-Spring Boot 3.5 · Java 21 · JPA/Hibernate · Spring Security (stateless JWT) · H2 (demo/test) · MySQL 8 (production).
+Built with Spring Boot 3.5, Java 21, JPA/Hibernate, stateless JWT via Spring Security, H2 for demo and tests, and MySQL 8 for production.
 
-This module is the standalone Java backend for Dippie, serving both the core business API and the runtime AI
-assistant in a single JVM process: CineBot SSE (`/api/chat`), lexical catalog search/discovery (`/v1/search`,
-`/v1/discover`), mood and affinity recommendations (`/api/recommend`), and `/api/assistant/status`. The React frontend
-(`frontend/`) is served directly by this application; `ai/` remains the offline ML pipeline.
+This module is the standalone Java backend for Dippie. It runs both the core business API and the runtime AI assistant in one JVM process: CineBot SSE (`/api/chat`), lexical catalog search and discovery (`/v1/search`, `/v1/discover`), mood and affinity recommendations (`/api/recommend`), and `/api/assistant/status`. It also serves the built React frontend from `frontend/`. The `ai/` directory remains the offline ML pipeline.
 
 ## Hard rules (every contributor, no exceptions)
 
-1. **No comments anywhere in code.** No `//`, no `/* */`, no Javadoc. Intent is expressed with names, small methods,
-   value objects and enums. Reviews reject any file with a comment.
-2. **The HTTP contract in `CONTRACT.md` is frozen.** JSON field names, envelope vs raw body, status codes and
-   Vietnamese messages must match the Python implementation byte-for-byte in meaning. The frontend depends on it.
-3. **Business rules live in domain objects**, not in controllers and not as if-chains in services.
-   Controllers only map HTTP ⇄ application service calls. Services orchestrate; entities/value objects decide.
-4. **No Lombok.** DTOs are Java `record`s. Entities use explicit constructors and intention-revealing methods
-   (`progress.advanceTo(...)`, `asset.isAccessibleBy(viewer)`), no public setters for invariants.
-5. **Constructor injection only**, `final` fields, no field `@Autowired`.
-6. **Errors are thrown as `com.dippie.common.error.*Exception`** and rendered by `GlobalExceptionHandler` into the
-   standard envelope. Never build error `ResponseEntity`s by hand in controllers unless the contract demands a raw
-   error body (catalog validate, media 416).
-7. **Database portability:** code must run on H2 (`MODE=MySQL`) and MySQL 8 with the schema in
-   `database/schema/01_init.sql`. No native MySQL-only functions (`JSON_EXTRACT`, `HEX`) in queries. JSON columns are
-   `LONGTEXT` mapped to `String`; parse them with Jackson in Java.
-8. **Time** is UTC `LocalDateTime` from the injected `java.time.Clock`. Never call `LocalDateTime.now()` without a clock
-   in domain/service code.
-9. **Tests:** every feature package ships JUnit 5 tests. Domain rules get plain unit tests; HTTP behaviour gets
-   `@SpringBootTest` + `@AutoConfigureMockMvc` + `@ActiveProfiles("test")` tests asserting status codes and JSON.
-10. Build must pass: `./mvnw -o -B test` from `backend/springboot`.
+1. No comments anywhere in code: no `//`, no `/* */`, and no Javadoc. Express intent through names, small methods, value objects, and enums. Reviews reject any file with a comment.
+2. The HTTP contract in `CONTRACT.md` is frozen. JSON field names, envelope vs raw bodies, status codes, and Vietnamese messages must match the Python version in meaning because the frontend depends on them.
+3. Business rules live in domain objects, not in controllers and not as long `if` chains in services. Controllers only map HTTP requests to application service calls; services orchestrate while entities and value objects decide.
+4. No Lombok. Use Java `record` types for DTOs. Entities use explicit constructors and intention-revealing methods (like `progress.advanceTo(...)` or `asset.isAccessibleBy(viewer)`), with no public setters for invariants.
+5. Constructor injection only, with `final` fields and no field `@Autowired`.
+6. Throw errors as `com.dippie.common.error.*Exception` and let `GlobalExceptionHandler` render them into the standard envelope. Do not build error `ResponseEntity` objects by hand in controllers unless the contract requires a raw error body (catalog validate and media 416).
+7. Database portability: code must run on both H2 (`MODE=MySQL`) and MySQL 8 against `database/schema/01_init.sql`. Avoid MySQL-only functions (`JSON_EXTRACT`, `HEX`) in queries. JSON columns are `LONGTEXT` mapped to `String`, parsed with Jackson in Java.
+8. Time is UTC `LocalDateTime` from the injected `java.time.Clock`. Do not call `LocalDateTime.now()` directly in domain or service code.
+9. Every feature package ships JUnit 5 tests. Domain rules get plain unit tests; HTTP behaviour gets `@SpringBootTest` + `@AutoConfigureMockMvc` + `@ActiveProfiles("test")` tests checking status codes and JSON.
+10. The build must pass with `./mvnw -o -B test` from `backend/springboot`.
 
 ## Package layout (package-by-feature)
 
@@ -66,10 +53,9 @@ com.dippie
 └── web              SpaController (serves frontend/dist), WebResourceConfig, OpenApiConfig
 ```
 
-Cross-package rule: a package may depend on `common`, `security` and on another feature's **domain/repository**
-types, never on another feature's controller.
+Cross-package rule: a package may depend on `common`, `security`, and another feature's domain or repository types, never on another feature's controller.
 
-## Design patterns used deliberately
+## Design patterns used
 
 | Pattern | Where |
 | --- | --- |
@@ -81,6 +67,4 @@ types, never on another feature's controller.
 
 ## Configuration
 
-`application.yml` defines `dippie.*` properties bound to `@ConfigurationProperties` records in each feature
-(`JwtProperties`, `MediaProperties`, `AssistantProperties`, ...). Profiles: `demo` (default, H2 file
-DB, seeds demo accounts), `mysql` (validate schema), `test` (H2 in-memory, used by tests).
+`application.yml` defines `dippie.*` properties bound to `@ConfigurationProperties` records in each feature (`JwtProperties`, `MediaProperties`, `AssistantProperties`, and so on). Profiles: `demo` (default, file-backed H2 database, seeds demo accounts), `mysql` (validates schema), and `test` (in-memory H2 for tests).

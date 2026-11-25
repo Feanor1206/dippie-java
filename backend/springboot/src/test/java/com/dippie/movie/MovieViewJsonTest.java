@@ -3,10 +3,12 @@ package com.dippie.movie;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.dippie.catalog.domain.SeriesArtwork;
+import com.dippie.common.rating.RatingSummary;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+// Test JSON của MovieView để chắc chắn phim lẻ không lộ key thừa, phim bộ đổi nhãn runtime và tập chưa đánh số vẫn xuất episode_number là null.
 class MovieViewJsonTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -24,8 +26,10 @@ class MovieViewJsonTest {
 
     @Test
     void seriesCarriesTypeIdAndTitle() {
-        JsonNode json = mapper.valueToTree(MovieView.forSeries(movie("ser_jadoo"), "Jadoo", SeriesArtwork.EMPTY));
+        Movie saved = new Movie("ser_jadoo", "Jadoo", 2011, 0, "Series", "Animation", null, null, null, null);
+        JsonNode json = mapper.valueToTree(MovieView.forSeries(saved, "Jadoo", SeriesArtwork.EMPTY, RatingSummary.EMPTY));
         assertThat(json.get("item_type").asText()).isEqualTo("series");
+        assertThat(json.get("runtime").asText()).isEqualTo("Phim bộ");
         assertThat(json.get("series_id").asText()).isEqualTo("ser_jadoo");
         assertThat(json.get("series_title").asText()).isEqualTo("Jadoo");
         assertThat(json.has("seriesTitle")).isFalse();
@@ -36,7 +40,7 @@ class MovieViewJsonTest {
     @Test
     void unnumberedEpisodeEmitsExplicitNullEpisodeNumber() {
         JsonNode json = mapper.valueToTree(MovieView.forEpisode(movie("ep_special"), "ser_jadoo", "Jadoo", null,
-                SeriesArtwork.EMPTY));
+                420_000L, SeriesArtwork.EMPTY, RatingSummary.EMPTY));
         assertThat(json.get("item_type").asText()).isEqualTo("episode");
         assertThat(json.get("episode_id").asText()).isEqualTo("ep_special");
         assertThat(json.get("series_title").asText()).isEqualTo("Jadoo");
@@ -49,7 +53,7 @@ class MovieViewJsonTest {
         Movie movie = new Movie("ser_jadoo", "Movie Title", 2026, 8.0, "7m", "Animation", "Synopsis",
                 "https://example.com/existing.jpg", null, null);
         SeriesArtwork fallback = new SeriesArtwork("https://example.com/poster.jpg", "https://example.com/backdrop.jpg");
-        MovieView view = MovieView.forSeries(movie, "Jadoo", fallback);
+        MovieView view = MovieView.forSeries(movie, "Jadoo", fallback, RatingSummary.EMPTY);
         assertThat(view.poster()).isEqualTo("https://example.com/existing.jpg");
         assertThat(view.backdrop()).isEqualTo(fallback.backdropUrl());
     }

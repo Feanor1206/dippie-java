@@ -1,8 +1,10 @@
 export type Movie = {
   id: string;
   title: string;
-  year: number;
+  year: number | null;
   rating: number;
+  averageRating?: number | null;
+  ratingCount?: number;
   runtime: string;
   genres: string[];
   description: string;
@@ -36,6 +38,18 @@ export type Movie = {
   primaryMediaAssetId?: string;
   media_asset_id?: string;
   mediaAssetId?: string;
+  externalOnly?: boolean;
+  external_only?: boolean;
+  canEmbed?: boolean;
+  can_embed?: boolean;
+  youtubeWatchUrl?: string | null;
+  youtube_watch_url?: string | null;
+  youtubeVideoId?: string | null;
+  youtube_video_id?: string | null;
+  externalUrl?: string | null;
+  external_url?: string | null;
+  watchUrl?: string | null;
+  watch_url?: string | null;
   timeline?: string;
   timescale?: string;
   matchPercentage?: number | null;

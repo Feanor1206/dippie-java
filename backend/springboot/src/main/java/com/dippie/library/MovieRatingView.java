@@ -2,6 +2,7 @@ package com.dippie.library;
 
 import java.time.LocalDateTime;
 
+// DTO trả thông tin đánh giá phim của một tài khoản ra API.
 public record MovieRatingView(
         Long id,
         Long userId,

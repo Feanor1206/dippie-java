@@ -1,15 +1,11 @@
 package com.dippie.progress;
 
-import com.dippie.catalog.domain.CatalogEpisode;
-import com.dippie.catalog.domain.CatalogMediaAsset;
-import com.dippie.catalog.domain.CatalogSeason;
-import com.dippie.catalog.domain.CatalogSeries;
 import com.dippie.catalog.query.CatalogReadModel;
 import com.dippie.catalog.query.CatalogReadModelCache;
 import com.dippie.common.error.ConflictException;
 import com.dippie.common.error.InvalidRequestException;
 import com.dippie.common.error.NotFoundException;
-import com.dippie.media.MediaAsset;
+import com.dippie.progress.PlaybackContextResolver.PendingPlayback;
 import com.dippie.security.CurrentViewer;
 import com.dippie.security.Viewer;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -25,10 +21,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+// Facade điều phối việc đọc, lưu và xóa tiến độ xem kèm optimistic locking.
+// Giao dịch đọc và ghi (REQUIRES_NEW) được tách riêng, còn bước kiểm tra tệp trên đĩa chạy bên ngoài giao dịch để tránh giữ connection DB lâu.
 @Service
 public class WatchProgressService {
 
     private static final int RECENT_LIMIT = 30;
+    private static final int RECENT_FETCH_LIMIT = RECENT_LIMIT * 3;
 
     private final WatchProgressRepository repository;
     private final PlaybackContextResolver contextResolver;
@@ -38,14 +37,9 @@ public class WatchProgressService {
     private final TransactionTemplate readTransaction;
     private final Clock clock;
 
-    public WatchProgressService(
-            WatchProgressRepository repository,
-            PlaybackContextResolver contextResolver,
-            CatalogReadModelCache catalog,
-            CurrentViewer currentViewer,
-            PlatformTransactionManager transactionManager,
-            Clock clock
-    ) {
+    public WatchProgressService(WatchProgressRepository repository, PlaybackContextResolver contextResolver,
+            CatalogReadModelCache catalog, CurrentViewer currentViewer, PlatformTransactionManager transactionManager,
+            Clock clock) {
         this.repository = repository;
         this.contextResolver = contextResolver;
         this.catalog = catalog;
@@ -57,64 +51,71 @@ public class WatchProgressService {
         this.clock = clock;
     }
 
+    // Trả tối đa 30 tập xem gần đây còn phát được; mình cố tình query dư gấp 3 (90 dòng) để bù lại các tập bị ẩn hoặc hỏng file.
     public List<WatchProgressView> listRecent() {
         Viewer viewer = currentViewer.require();
         CatalogReadModel model = catalog.current();
-        return readTransaction.execute(status -> {
-            List<Object[]> rows = repository.findRecentWithContext(viewer.userId(), PageRequest.of(0, RECENT_LIMIT));
-            List<WatchProgressView> result = new ArrayList<>();
-            for (Object[] row : rows) {
-                WatchProgress progress = (WatchProgress) row[0];
-                CatalogEpisode episode = (CatalogEpisode) row[1];
-                CatalogSeries series = (CatalogSeries) row[2];
-                CatalogSeason season = (CatalogSeason) row[3];
-                CatalogMediaAsset catalogAsset = (CatalogMediaAsset) row[4];
-                MediaAsset mediaAsset = (MediaAsset) row[5];
-                contextResolver.validate(
-                        episode,
-                        series,
-                        season,
-                        catalogAsset,
-                        mediaAsset,
-                        progress.getEpisodeId(),
-                        viewer
-                ).ifPresent(ctx -> result.add(WatchProgressView.of(progress, ctx,
-                        model.episodeThumbnail(episode.getId(), series.getId()))));
+        // Lọc trước phần metadata trong giao dịch đọc
+        List<LoadedProgress> loaded = readTransaction.execute(status -> {
+            List<WatchProgressRepository.ContextRow> rows = repository.findRecentWithContext(
+                    viewer.userId(), PageRequest.of(0, RECENT_FETCH_LIMIT));
+            List<LoadedProgress> candidates = new ArrayList<>(Math.min(rows.size(), RECENT_LIMIT));
+            for (WatchProgressRepository.ContextRow row : rows) {
+                contextResolver.validateRow(row, viewer)
+                        .ifPresent(pending -> candidates.add(new LoadedProgress(row.progress(), pending)));
             }
-            return List.copyOf(result);
+            return candidates;
         });
+        // Đẩy bước kiểm tra tệp trên ổ đĩa ra ngoài giao dịch rồi gom đủ tối đa RECENT_LIMIT mục
+        List<WatchProgressView> result = new ArrayList<>(Math.min(loaded.size(), RECENT_LIMIT));
+        for (LoadedProgress item : loaded) {
+            if (result.size() >= RECENT_LIMIT) {
+                break;
+            }
+            contextResolver.verifyPlayable(item.pending())
+                    .ifPresent(context -> result.add(WatchProgressView.of(item.progress(), context,
+                            model.episodeThumbnail(context.episode().getId(), context.series().getId()))));
+        }
+        return List.copyOf(result);
     }
 
+    // Đọc tiến độ của một tập và báo 404 nếu chưa có lịch sử hoặc tập đã bị ẩn, không còn phát được.
     public WatchProgressView getForEpisode(String episodeId) {
         Viewer viewer = currentViewer.require();
         CatalogReadModel model = catalog.current();
-        return readTransaction.execute(status -> {
+        LoadedProgress loaded = readTransaction.execute(status -> {
             WatchProgress progress = repository.findByUserIdAndEpisodeId(viewer.userId(), episodeId)
                     .orElseThrow(() -> notPlayable(episodeId));
-            PlaybackContext context = contextResolver.resolve(episodeId, progress.getAssetId(), viewer)
+            PendingPlayback pending = contextResolver.loadCandidate(episodeId, progress.getAssetId(), viewer)
                     .orElseThrow(() -> notPlayable(episodeId));
-            return WatchProgressView.of(progress, context,
-                    model.episodeThumbnail(episodeId, context.series().getId()));
+            return new LoadedProgress(progress, pending);
         });
+        PlaybackContext context = contextResolver.verifyPlayable(loaded.pending())
+                .orElseThrow(() -> notPlayable(episodeId));
+        return WatchProgressView.of(loaded.progress(), context,
+                model.episodeThumbnail(episodeId, context.series().getId()));
     }
 
+    // Lưu tiến độ mới (expectedVersion = -1) hoặc cập nhật bản ghi cũ sau khi kiểm tra tập phát được và thời điểm không vượt thời lượng video.
     public WatchProgressView save(String episodeId, JsonNode body) {
         Viewer viewer = currentViewer.require();
         WatchProgressCommand command = WatchProgressCommand.from(body);
-        PlaybackContext context = readTransaction.execute(status ->
-                contextResolver.resolve(episodeId, command.assetId(), viewer).orElse(null)
+        // Nạp ngữ cảnh phát; vẫn nhận tiến độ YouTube dự phòng kể cả khi tập cũng có file nội bộ
+        PendingPlayback pending = readTransaction.execute(status ->
+                contextResolver.loadCandidate(episodeId, command.assetId(), viewer)
+                        .orElseThrow(() -> notPlayable(episodeId))
         );
-        if (context == null) {
-            throw notPlayable(episodeId);
-        }
-        if (context.duration().isExceededBy(command.positionMs())) {
-            throw new InvalidRequestException("Vị trí xem vượt quá thời lượng video.");
+        // Kiểm tra tệp trên đĩa ngoài giao dịch rồi chặn thời điểm xem vượt quá độ dài video
+        PlaybackContext context = contextResolver.verifyPlayable(pending)
+                .orElseThrow(() -> notPlayable(episodeId));
+        if (context.storageDuration().isExceededBy(command.positionMs())) {
+            throw new InvalidRequestException("Thời điểm xem không thể vượt quá thời lượng video.");
         }
 
         String thumbnail = catalog.current().episodeThumbnail(episodeId, context.series().getId());
         WatchProgress saved = command.isCreate()
-                ? createProgress(viewer.userId(), episodeId, context.catalogAsset().getId(), command.positionMs())
-                : updateProgress(viewer.userId(), episodeId, context.catalogAsset().getId(), command);
+                ? createProgress(viewer.userId(), episodeId, context.assetId(), command.positionMs())
+                : updateProgress(viewer.userId(), episodeId, context.assetId(), command);
         return WatchProgressView.of(saved, context, thumbnail);
     }
 
@@ -125,6 +126,7 @@ public class WatchProgressService {
         );
     }
 
+    // Việt đừng bỏ đoạn bắt DataIntegrityViolationException ở đây nhé: hai request cùng tạo version -1 sẽ đụng unique key, mình kiểm tra lại trong DB để trả đúng 409 Conflict thay vì 500.
     private WatchProgress createProgress(Long userId, String episodeId, String assetId, long positionMs) {
         Optional<WatchProgress> existing = readTransaction.execute(status ->
                 repository.findByUserIdAndEpisodeId(userId, episodeId)
@@ -146,27 +148,17 @@ public class WatchProgressService {
         }
     }
 
-    private WatchProgress updateProgress(
-            Long userId,
-            String episodeId,
-            String assetId,
-            WatchProgressCommand command
-    ) {
+    // Cập nhật nguyên tử theo expectedVersion; nếu số dòng cập nhật khác 1 nghĩa là có request khác đã nhảy version trước.
+    private WatchProgress updateProgress(Long userId, String episodeId, String assetId, WatchProgressCommand command) {
         WatchProgress current = readTransaction.execute(status ->
-                repository.findByUserIdAndEpisodeId(userId, episodeId).orElse(null)
-        );
+                repository.findByUserIdAndEpisodeId(userId, episodeId).orElse(null));
         if (current == null) {
             throw new ConflictException(WatchProgress.CONFLICT_MESSAGE);
         }
         current.advance(command.expectedVersion(), assetId, command.positionMs(), clock);
-        int updated = requiresNewTransaction.execute(status -> repository.advanceVersion(
-                current.getId(),
-                command.expectedVersion(),
-                current.getOptLockVersion(),
-                current.getAssetId(),
-                current.getPositionMs(),
-                current.getUpdatedAt()
-        ));
+        int updated = requiresNewTransaction.execute(status -> repository.advanceVersion(current.getId(),
+                command.expectedVersion(), current.getOptLockVersion(), current.getAssetId(),
+                current.getPositionMs(), current.getUpdatedAt()));
         if (updated != 1) {
             throw new ConflictException(WatchProgress.CONFLICT_MESSAGE);
         }
@@ -174,6 +166,9 @@ public class WatchProgressService {
     }
 
     private static NotFoundException notPlayable(String episodeId) {
-        return new NotFoundException("Không tìm thấy tập có thể phát: " + episodeId);
+        return new NotFoundException("Không tìm thấy tập phim để phát: " + episodeId);
     }
+
+    // Gói bản ghi tiến độ lấy từ DB cùng ngữ cảnh đang chờ kiểm tra tệp trên đĩa.
+    private record LoadedProgress(WatchProgress progress, PendingPlayback pending) {}
 }

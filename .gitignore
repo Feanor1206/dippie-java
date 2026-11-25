@@ -36,6 +36,8 @@ backend/springboot/.gradle/
 !.mvn/wrapper/maven-wrapper.properties
 
 mysql_data/
+backups/
+*.sql.gz
 backend/springboot/data/
 *.db
 *.mv.db
@@ -50,3 +52,5 @@ frontend/public/videos/*
 !frontend/public/videos/.gitkeep
 
 .worktrees/
+.tools/
+dist-release/

@@ -1,5 +1,6 @@
 package com.dippie.catalog.importing;
 
+import com.dippie.catalog.domain.CatalogImportedEvent;
 import com.dippie.catalog.domain.CatalogPackageRepository;
 import com.dippie.catalog.domain.CatalogPackageView;
 import com.dippie.catalog.domain.CatalogSnapshotView;
@@ -22,6 +23,8 @@ import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
+// Facade điều phối trọn luồng nhập danh mục từ kiểm tra, ghi CSDL, đồng bộ chỉ mục tới phát CatalogImportedEvent cho các listener.
+// Mình để Propagation.NOT_SUPPORTED và khóa bằng ReentrantLock để transaction DB commit xong hẳn rồi mới đồng bộ chỉ mục và bắn sự kiện.
 @Service
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class CatalogImportService {
@@ -47,14 +50,16 @@ public class CatalogImportService {
         this.events = events;
     }
 
+    // Kiểm tra gói JSON và ước lượng số thay đổi ở chế độ chỉ đọc.
     @Transactional(readOnly = true)
     public CatalogValidation validate(CatalogDocument input) {
-        JsonNode document = input.json();
+        JsonNode document = input.readOnlyJson();
         var identity = validator.validate(document);
         ContentHash hash = ContentHash.of(document);
         return CatalogValidation.valid(identity, hash, diff.calculate(document, identity, hash, false).counts());
     }
 
+    // Xếp hàng các lần nhập qua catalogLock; chỉ đẩy chỉ mục và phát CatalogImportedEvent sau khi DB đã commit có thay đổi.
     public CatalogImportResult importPackage(CatalogDocument input) {
         String username = currentViewer.find().filter(Viewer::isAdmin).map(Viewer::username).orElse(null);
         return withLock(() -> {
@@ -68,21 +73,33 @@ public class CatalogImportService {
         });
     }
 
+    // Lấy lịch sử các gói đã nhập, mới nhất lên đầu.
+    @Transactional(readOnly = true)
     public List<CatalogPackageView> history() {
         return packages.findAllByOrderByImportedAtDesc().stream().map(CatalogPackageView::from).toList();
     }
 
+    // Đọc danh sách snapshot dưới khóa chung để không đọc trúng lúc một đợt nhập đang ghi dở.
     public List<CatalogSnapshotView> snapshots() {
         return withLock(snapshots::list);
     }
 
+    // Rà soát các snapshot còn dang dở dưới khóa chung để tránh chạy chồng với luồng nhập.
+    public void reconcilePending() {
+        withLock(() -> {
+            snapshots.reconcilePending();
+            return null;
+        });
+    }
+
+    // Đồng bộ lại snapshot mới nhất dưới khóa chung.
     public CatalogSnapshotView retrySnapshot(String id) {
         return withLock(() -> snapshots.retry(id));
     }
 
     private CatalogImportTransaction.Commit write(CatalogDocument input) {
         try {
-            JsonNode document = input.json();
+            JsonNode document = input.readOnlyJson();
             var identity = validator.validate(document);
             return transaction.write(document, identity, ContentHash.of(document));
         } catch (PessimisticLockingFailureException exception) {
@@ -105,6 +122,7 @@ public class CatalogImportService {
         }
     }
 
+    // Phân loại mã lỗi SQL về deadlock, trùng khóa duy nhất hoặc sai kiểu dữ liệu để trả lỗi HTTP đúng ngữ cảnh.
     private static DomainException translateIntegrityFailure(DataIntegrityViolationException exception) {
         if (exception.getMostSpecificCause() instanceof SQLException sql) {
             int code = sql.getErrorCode();
@@ -119,15 +137,15 @@ public class CatalogImportService {
                 return invalidData();
             }
         }
-        return new InvalidRequestException("Gói danh mục có dữ liệu hoặc liên kết không hợp lệ.");
+        return new InvalidRequestException("Dữ liệu hoặc liên kết trong gói danh mục không hợp lệ.");
     }
 
     private static ConflictException concurrentImport() {
-        return new ConflictException("Đang có lần nhập khác. Vui lòng thử lại.");
+        return new ConflictException("Hệ thống đang xử lý một lần nhập khác, bạn hãy thử lại sau.");
     }
 
     private static ConflictException changedCatalog() {
-        return new ConflictException("Danh mục vừa thay đổi. Kiểm tra lại gói rồi thử lại.");
+        return new ConflictException("Danh mục vừa được cập nhật. Bạn hãy kiểm tra lại gói rồi thử lại.");
     }
 
     private static InvalidRequestException invalidData() {

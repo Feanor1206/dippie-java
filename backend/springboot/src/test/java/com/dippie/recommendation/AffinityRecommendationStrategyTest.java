@@ -7,6 +7,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+// Kiểm tra cách chấm điểm sở thích, làm tròn HALF_EVEN, lọc tập đã xem và chuẩn hóa tên thể loại của AffinityRecommendationStrategy.
 class AffinityRecommendationStrategyTest {
 
     private final AffinityRecommendationStrategy strategy = new AffinityRecommendationStrategy();
@@ -25,8 +26,8 @@ class AffinityRecommendationStrategyTest {
         var result = strategy.recommend(context(List.of(liked, match, wrongGenre, seen, seenSeries), List.of("drama"),
                 Set.of("liked"), Set.of("liked", "seen", "seen-series")));
 
-        assertThat(result.reasoning()).isEqualTo("Phim tương đồng với nội dung bạn đã thích hoặc đã xem.");
-        assertThat(result.recommendedMovies()).extracting(RecommendedItem::id).containsExactly("match");
+        assertThat(result.reasoning()).isEqualTo("Phim gần gu với những gì bạn đã thích hoặc đã xem.");
+        assertThat(result.recommendedMovies()).extracting(RecommendedItem::id).containsExactly("match", "other-episode");
         assertThat(result.recommendedMovies().getFirst().score()).isEqualTo(4.275);
     }
 
@@ -36,7 +37,7 @@ class AffinityRecommendationStrategyTest {
                 candidate("b", 8.0002, "Drama"), candidate("a", 8.0002, "Drama"), candidate("c", 8.0001, "Drama"),
                 candidate("top", 8.125, "Drama"), candidate("bottom", 6.25, "Drama")), List.of(), Set.of(), Set.of()));
 
-        assertThat(result.reasoning()).isEqualTo("Gợi ý từ kho phim.");
+        assertThat(result.reasoning()).isEqualTo("Một vài gợi ý từ kho phim cho bạn.");
         assertThat(result.recommendedMovies()).extracting(RecommendedItem::id).containsExactly("top", "a", "b", "c", "bottom");
         assertThat(result.recommendedMovies()).extracting(RecommendedItem::score)
                 .containsExactly(0.8125, 0.8, 0.8, 0.8, 0.625);
@@ -47,15 +48,15 @@ class AffinityRecommendationStrategyTest {
         var result = strategy.recommend(context(List.of(candidate("match", 8.0625, "Straße"),
                 candidate("miss", 10, "Other")), List.of("STRASSE"), Set.of(), Set.of()));
 
-        assertThat(result.reasoning()).isEqualTo("Dựa trên thể loại bạn chọn.");
+        assertThat(result.reasoning()).isEqualTo("Phim hợp với thể loại bạn đã chọn.");
         assertThat(result.recommendedMovies()).extracting(RecommendedItem::id).containsExactly("match");
         assertThat(result.recommendedMovies().getFirst().score()).isEqualTo(2.8062);
     }
 
     private static RecommendationContext context(List<RecommendationCandidate> catalog, List<String> genres,
             Set<String> liked, Set<String> seen) {
-        return new RecommendationContext(new RecommendationRequest(genres, null, null, 10), catalog,
-                new ViewerSignals(liked, seen));
+        return new RecommendationContext(new RecommendationRequest(genres, null, null, null, null, 10), catalog,
+                new ViewerSignals(liked, seen, Set.of()));
     }
 
     static RecommendationCandidate candidate(String id, double rating, String genre) {
@@ -65,6 +66,6 @@ class AffinityRecommendationStrategyTest {
     private static RecommendationCandidate candidate(String id, String series, double rating, List<String> genres,
             List<String> themes, List<String> keywords, List<String> characters) {
         return new RecommendationCandidate(id, id, series, "season", 1, 2026, rating, "20m", null, null,
-                "Synopsis", genres, themes, keywords, characters, null, null, 1_200_000L, "Series");
+                "Synopsis", genres, genres, themes, keywords, characters, null, null, 1_200_000L, "Series", 1, 1);
     }
 }

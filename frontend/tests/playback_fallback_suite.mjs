@@ -1,9 +1,9 @@
 import { labels } from './labels_fixture.mjs';
+import { createInternalResolver, shouldInlineComponent, runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
@@ -34,7 +34,7 @@ function loadTsModule(relativePath, extraSandbox = {}) {
     console,
     ...extraSandbox,
   };
-  vm.runInNewContext(compiled, sandbox, { filename: fullPath });
+  runWithSharedModules(compiled, sandbox, { filename: fullPath });
   return moduleObj.exports;
 }
 
@@ -132,6 +132,7 @@ function createSeriesPageHarness(options = {}) {
       }
     },
     createElement(type, props, ...children) {
+      if (shouldInlineComponent(type)) return type(props || {});
       return { type, props: { ...props, children } };
     },
   };
@@ -158,27 +159,34 @@ function createSeriesPageHarness(options = {}) {
   };
 
   const moduleObj = { exports: {} };
-  vm.runInNewContext(
+  const baseCtx = {
+    AbortController,
+    URL,
+    URLSearchParams,
+    window: windowMock,
+    document: documentMock,
+    setTimeout: fakeSetTimeout,
+    clearTimeout: fakeClearTimeout,
+    console,
+  };
+  runWithSharedModules(
     code,
     {
+      ...baseCtx,
       module: moduleObj,
       exports: moduleObj.exports,
-      AbortController,
-      URL,
-      URLSearchParams,
-      window: windowMock,
-      document: documentMock,
-      setTimeout: fakeSetTimeout,
-      clearTimeout: fakeClearTimeout,
-      console,
-      require(name) {
+      require: createInternalResolver(baseCtx, (name) => {
         if (name === '@/lib/labels') return labels;
         if (name === 'react') return { __esModule: true, default: react, ...react };
         if (name === 'react-router') {
           return {
             Link: 'route-link',
             useParams: () => ({ id: 'ser1' }),
-            useSearchParams: () => [new URLSearchParams(options.query || '')],
+            useSearchParams: () => [new URL(currentUrl).searchParams, (params) => {
+              const next = new URL(currentUrl);
+              next.search = params.toString();
+              currentUrl = next.href;
+            }],
           };
         }
         if (name.includes('catalogService')) {
@@ -199,8 +207,10 @@ function createSeriesPageHarness(options = {}) {
               episodes.find((ep) => ep.id === targetId) || episodes[0] || null,
             getEpisodesForSeason: (items) => items,
             getAdjacentEpisode: () => null,
+            formatAdjacentEpisodeLabel: () => '',
           };
         }
+        if (name.includes('seriesBrowseUtils')) return { foldVietnamese: (v) => String(v || '').toLowerCase() };
         if (name.includes('mediaService')) {
           return {
             resolveStreamUrl: (url) => url,
@@ -228,11 +238,13 @@ function createSeriesPageHarness(options = {}) {
           return {
             readAutoNextPreference: () => false,
             writeAutoNextPreference: () => {},
-            isUsableResumeProgress: () => false,
+            isUsableResumeProgress: (record) => Boolean(record && !record.completed && record.positionMs > 0),
+            isYoutubeAssetId: (id) => typeof id === 'string' && id.startsWith('youtube:'),
+            toYoutubeAssetId: (id) => `youtube:${id}`,
           };
         }
         return {};
-      },
+      }),
     },
     { filename: pageFile }
   );
@@ -436,7 +448,7 @@ test('1. Source selection table: available true/false/absent x youtube x youtube
       assert.equal(result.origin, row.expectOrigin, row.name);
       assert.equal(result.youtube.videoId, row.expectVideoId, row.name);
       assert.equal(result.isFallback, row.expectFallback, row.name);
-      assert.equal(result.embedUrl, `https://www.youtube-nocookie.com/embed/${row.expectVideoId}?start=30`, row.name);
+      assert.equal(result.embedUrl, `https://www.youtube-nocookie.com/embed/${row.expectVideoId}?start=30&enablejsapi=1&rel=0&modestbranding=1`, row.name);
     } else {
       assert.equal(result.reason, row.expectReason, row.name);
       assert.equal(result.canRetryFile, row.expectCanRetryFile, row.name);
@@ -551,7 +563,40 @@ test('4. requestPlaybackGrantResult reports HTTP failure status codes without br
   }
 });
 
-test('5. Proactive fallback (available: false) renders YouTube fallback with deep-link start time and retry recovers file', async () => {
+test('5. Proactive fallback shows calm source note for unmounted Drive files and retry notice for local files', async () => {
+  const unmountedDriveHarness = createSeriesPageHarness({
+    query: 'episode=ep1&t=42000&timeline=file&asset=ast1',
+    getCatalogEpisodeDetail: async () => ({
+      episode: { id: 'ep1', title: 'Tập 1: Bắt đầu', durationMs: 600000 },
+      segments: [],
+      scenes: [],
+      mediaAssets: [
+        {
+          id: 'ast1',
+          contentType: 'video',
+          role: 'feature',
+          storageProvider: 'drive',
+          available: false,
+        },
+      ],
+      youtube: null,
+      youtubeFallback: { videoId: '9aFcot7_7Q4', canEmbed: true },
+    }),
+  });
+
+  const driveTree = await unmountedDriveHarness.settle();
+  const driveIframe = find(driveTree, (n) => n.props?.['data-testid'] === 'series-youtube-player');
+  assert.ok(driveIframe, 'YouTube fallback iframe must render when Drive file is unmounted');
+  assert.equal(driveIframe.props.src, 'https://www.youtube-nocookie.com/embed/9aFcot7_7Q4?start=42&enablejsapi=1&rel=0&modestbranding=1');
+
+  const sourceNote = find(driveTree, (n) => n.props?.['data-testid'] === 'playback-source-note');
+  assert.ok(sourceNote, 'Unmounted Drive asset must show calm source note');
+  assert.equal(sourceNote.props.role, 'status');
+  assert.match(textContent(sourceNote), /Đang phát từ YouTube/);
+  assert.equal(find(driveTree, (n) => n.props?.['data-testid'] === 'playback-fallback-notice'), null);
+  assert.equal(find(driveTree, (n) => n.props?.['data-testid'] === 'retry-original-file'), null);
+  unmountedDriveHarness.unmount();
+
   let fetchCount = 0;
   const harness = createSeriesPageHarness({
     query: 'episode=ep1&t=42000&timeline=file&asset=ast1',
@@ -566,7 +611,7 @@ test('5. Proactive fallback (available: false) renders YouTube fallback with dee
             id: 'ast1',
             contentType: 'video',
             role: 'feature',
-            storageProvider: 'drive',
+            storageProvider: 'local',
             available: fetchCount >= 2,
           },
         ],
@@ -578,17 +623,17 @@ test('5. Proactive fallback (available: false) renders YouTube fallback with dee
 
   let tree = await harness.settle();
   const iframe = find(tree, (n) => n.props?.['data-testid'] === 'series-youtube-player');
-  assert.ok(iframe, 'YouTube fallback iframe must render when file asset has available=false');
-  assert.equal(iframe.props.src, 'https://www.youtube-nocookie.com/embed/9aFcot7_7Q4?start=42');
+  assert.ok(iframe, 'YouTube fallback iframe must render when local file asset has available=false');
+  assert.equal(iframe.props.src, 'https://www.youtube-nocookie.com/embed/9aFcot7_7Q4?start=42&enablejsapi=1&rel=0&modestbranding=1');
 
   const notice = find(tree, (n) => n.props?.['data-testid'] === 'playback-fallback-notice');
-  assert.ok(notice, 'Fallback inline notice must render');
+  assert.ok(notice, 'Fallback inline notice must render for non-drive unavailable asset');
   assert.equal(notice.props.role, 'status');
-  assert.match(textContent(notice), /Tệp video chưa sẵn sàng, đang phát bản YouTube\./);
+  assert.match(textContent(notice), /Bản video trên máy chủ chưa sẵn sàng, đang phát từ YouTube\./);
 
   const retryBtn = find(notice, (n) => n.props?.['data-testid'] === 'retry-original-file');
   assert.ok(retryBtn, 'Retry original file button must exist');
-  assert.match(textContent(retryBtn), /Thử lại tệp gốc/);
+  assert.match(textContent(retryBtn), /Thử lại bản gốc/);
 
   retryBtn.props.onClick();
   tree = await harness.settle();
@@ -636,11 +681,11 @@ test('6. Runtime <video> error carries currentTime to YouTube fallback and retry
   tree = await harness.settle();
   const iframe = find(tree, (n) => n.props?.['data-testid'] === 'series-youtube-player');
   assert.ok(iframe, 'YouTube fallback must activate on video error');
-  assert.equal(iframe.props.src, 'https://www.youtube-nocookie.com/embed/AbCdEfGhIjK?start=73');
+  assert.equal(iframe.props.src, 'https://www.youtube-nocookie.com/embed/AbCdEfGhIjK?start=73&enablejsapi=1&rel=0&modestbranding=1');
 
   const notice = find(tree, (n) => n.props?.['data-testid'] === 'playback-fallback-notice');
   assert.ok(notice, 'Inline fallback notice must appear');
-  assert.match(textContent(notice), /Tệp video chưa sẵn sàng, đang phát bản YouTube\./);
+  assert.match(textContent(notice), /Bản video trên máy chủ chưa sẵn sàng, đang phát từ YouTube\./);
 
   const retryBtn = find(notice, (n) => n.props?.['data-testid'] === 'retry-original-file');
   retryBtn.props.onClick();
@@ -678,7 +723,7 @@ test('7. Runtime grant 404/403/500 failures switch automatically to youtubeFallb
     const tree = await harness.settle();
     const iframe = find(tree, (n) => n.props?.['data-testid'] === 'series-youtube-player');
     assert.ok(iframe, `HTTP ${status} grant failure must fall back to YouTube`);
-    assert.equal(iframe.props.src, 'https://www.youtube-nocookie.com/embed/ZyXwVuTsRqP?start=25');
+    assert.equal(iframe.props.src, 'https://www.youtube-nocookie.com/embed/ZyXwVuTsRqP?start=25&enablejsapi=1&rel=0&modestbranding=1');
     assert.ok(find(tree, (n) => n.props?.['data-testid'] === 'playback-fallback-notice'));
     harness.unmount();
   }
@@ -704,7 +749,7 @@ test('7. Runtime grant 404/403/500 failures switch automatically to youtubeFallb
   assert.ok(card, 'Grant 403 without YouTube fallback must show unavailable card');
   assert.equal(card.props.role, 'alert');
   assert.equal(card.props['aria-live'], 'assertive');
-  assert.match(textContent(card), /Không phát được tập này/);
+  assert.match(textContent(card), /Chưa phát được tập này/);
   assert.match(textContent(card), /Tập Bảo Vệ/);
   assert.ok(find(card, (n) => n.props?.['data-testid'] === 'retry-original-file'));
   noFallbackHarness.unmount();
@@ -734,7 +779,7 @@ test('8. Metadata timeout (~10s) falls back to YouTube; loadedmetadata before ti
 
   const iframe = find(tree, (n) => n.props?.['data-testid'] === 'series-youtube-player');
   assert.ok(iframe, 'Metadata timeout must automatically switch to YouTube fallback');
-  assert.equal(iframe.props.src, 'https://www.youtube-nocookie.com/embed/TimeoutYt01?start=19');
+  assert.equal(iframe.props.src, 'https://www.youtube-nocookie.com/embed/TimeoutYt01?start=19&enablejsapi=1&rel=0&modestbranding=1');
   assert.ok(find(tree, (n) => n.props?.['data-testid'] === 'playback-fallback-notice'));
   timeoutHarness.unmount();
 
@@ -779,9 +824,9 @@ test('9. Unavailable card displays title, heading, reason, optional YouTube link
   assert.equal(noSourceCard.props.role, 'alert');
   assert.equal(noSourceCard.props['aria-live'], 'assertive');
   assert.match(textContent(noSourceCard), /Tập Trống/);
-  assert.match(textContent(noSourceCard), /Không phát được tập này/);
+  assert.match(textContent(noSourceCard), /Chưa phát được tập này/);
   assert.match(textContent(noSourceCard), /chưa có nguồn video/i);
-  assert.equal(find(noSourceCard, (n) => n.props?.['data-testid'] === 'open-on-youtube-link'), null);
+  assert.equal(find(noSourceCard, (n) => n.props?.testId === 'open-on-youtube-link'), null);
   assert.equal(find(noSourceTree, (n) => n.type === 'video'), null);
   noSourceHarness.unmount();
 
@@ -804,10 +849,10 @@ test('9. Unavailable card displays title, heading, reason, optional YouTube link
   assert.equal(extCard.props.role, 'alert');
   assert.equal(extCard.props['aria-live'], 'assertive');
   assert.match(textContent(extCard), /Tập Ngoài YouTube/);
-  assert.match(textContent(extCard), /Không phát được tập này/);
-  const extLink = find(extCard, (n) => n.props?.['data-testid'] === 'open-on-youtube-link');
+  assert.match(textContent(extCard), /Chưa phát được tập này/);
+  const extLink = find(extCard, (n) => n.props?.testId === 'open-on-youtube-link');
   assert.ok(extLink);
-  assert.equal(extLink.props.href, 'https://www.youtube.com/watch?v=ExtLink1234&t=35');
+  assert.equal(extLink.props.url, 'https://www.youtube.com/watch?v=ExtLink1234&t=35');
   assert.match(textContent(extLink), /Mở trên YouTube/);
   assert.ok(find(extCard, (n) => n.props?.['data-testid'] === 'retry-original-file'));
   externalYtHarness.unmount();
@@ -826,7 +871,7 @@ test('9. Unavailable card displays title, heading, reason, optional YouTube link
   const ytOnlyTree = await ytOnlyHarness.settle();
   const ytOnlyIframe = find(ytOnlyTree, (n) => n.props?.['data-testid'] === 'series-youtube-player');
   assert.ok(ytOnlyIframe);
-  assert.equal(ytOnlyIframe.props.src, 'https://www.youtube-nocookie.com/embed/LarvaYt0001?start=15');
+  assert.equal(ytOnlyIframe.props.src, 'https://www.youtube-nocookie.com/embed/LarvaYt0001?start=15&enablejsapi=1&rel=0&modestbranding=1');
   assert.equal(find(ytOnlyTree, (n) => n.props?.['data-testid'] === 'playback-fallback-notice'), null);
   ytOnlyHarness.unmount();
 });
@@ -873,5 +918,52 @@ test('10. Deep links (?episode&t&timeline&asset) and manual asset selection rema
   assert.ok(switchedVideo);
   assert.equal(switchedVideo.props.src, '/api/media/stream/ast1');
 
+  harness.unmount();
+});
+
+test('Switching from a timed deep link clears its parameters and offers the next episode resume across sources', async () => {
+  const episodes = [
+    { id: 'ep1', title: 'Tập 1', seasonId: 'season1', number: 1 },
+    { id: 'ep2', title: 'Tập 2', seasonId: 'season1', number: 2 },
+  ];
+  const harness = createSeriesPageHarness({
+    episode: episodes[0], episodes,
+    query: 'episode=ep1&t=12000&timeline=file&scene=old&asset=old&from=shelf',
+    progressRecords: [{ episodeId: 'ep2', assetId: 'previous-file', positionMs: 22000, completed: false }],
+    getCatalogEpisodeDetail: async (id) => ({
+      episode: episodes.find((episode) => episode.id === id),
+      segments: [], scenes: [], mediaAssets: [],
+      youtube: { videoId: 'AbCdEfGhIjK', canEmbed: true },
+    }),
+  });
+  let tree = await harness.settle();
+  const next = find(tree, (node) => node.props?.onClick && textContent(node).includes('Tập 2') && node.type === 'button');
+  assert.ok(next);
+  next.props.onClick();
+  tree = await harness.settle();
+  assert.equal(new URL(harness.getCurrentUrl()).search, '?from=shelf&episode=ep2');
+  const resume = find(tree, (node) => node.props?.['data-testid'] === 'resume-choice');
+  assert.ok(resume);
+  await find(resume, (node) => node.type === 'button' && textContent(node) === 'Xem tiếp').props.onClick();
+  const player = find(harness.render(), (node) => node.props?.['data-testid'] === 'series-youtube-player');
+  assert.equal(player.props.seekRequest.seconds, 22);
+  harness.unmount();
+});
+
+test('File playback encodes a reserved asset ID and still saves progress for that asset', async () => {
+  const assetId = 'drive:/ảnh 1?%';
+  const harness = createSeriesPageHarness({
+    getCatalogEpisodeDetail: async () => ({
+      episode: { id: 'ep1', title: 'Tập 1' }, segments: [], scenes: [],
+      mediaAssets: [{ id: assetId, contentType: 'video', role: 'feature', storageProvider: 'local', available: true, coverageJson: '[{"episode_id":"ep1","scope":"full_episode"}]' }],
+    }),
+  });
+  const tree = await harness.settle();
+  const player = find(tree, (node) => node.props?.['data-testid'] === 'series-video-player');
+  assert.equal(player.props.src, '/api/media/stream/' + encodeURIComponent(assetId));
+  player.props.ref.current = { currentSrc: 'http://localhost' + player.props.src, currentTime: 18, duration: 120 };
+  player.props.onPlay();
+  player.props.onPause();
+  assert.equal(harness.saveCalls.at(-1)?.draft.assetId, assetId);
   harness.unmount();
 });

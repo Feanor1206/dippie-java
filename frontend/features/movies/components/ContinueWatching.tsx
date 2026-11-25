@@ -1,3 +1,4 @@
+import { formatViDateTime, parseTimestamp } from '@/lib/timestamps';
 import React from 'react';
 import { Link } from 'react-router';
 import { useWatchProgress } from '@/lib/hooks/useWatchProgress';
@@ -8,10 +9,10 @@ import {
   type MovieProgressRecord,
 } from '@/lib/services/movieProgress';
 import { ArtworkImage } from '@/features/series/components/ArtworkImage';
-import {
-  computeProgressPercent,
-  formatEpisodeTag,
-} from '@/features/series/seriesBrowseUtils';
+import { cleanMediaTitle } from '@/lib/labels';
+import { computeProgressPercent, formatEpisodeTag } from '@/features/series/seriesBrowseUtils';
+
+const MAX_CONTINUE_ITEMS = 3;
 
 function formatMark(positionMs: number): string {
   const totalSeconds = Math.floor(positionMs / 1000);
@@ -23,8 +24,8 @@ export function ContinueWatching({ films }: { films: MovieProgressRecord[] }) {
   const entries = [
     ...records.filter(isUsableResumeProgress).map((episode) => ({
       id: episode.episodeId,
-      title: episode.episodeTitle || episode.seriesTitle,
-      seriesTitle: episode.seriesTitle,
+      title: cleanMediaTitle(episode.episodeTitle || episode.seriesTitle),
+      seriesTitle: cleanMediaTitle(episode.seriesTitle),
       episodeTag: formatEpisodeTag(episode.episodeNumber),
       thumbnailUrl: episode.thumbnailUrl ?? null,
       href: buildWatchProgressHref(episode),
@@ -34,7 +35,7 @@ export function ContinueWatching({ films }: { films: MovieProgressRecord[] }) {
     })),
     ...films.filter(isUsableMovieProgress).map((film) => ({
       id: film.movieId,
-      title: film.title,
+      title: cleanMediaTitle(film.title),
       seriesTitle: '',
       episodeTag: '',
       thumbnailUrl: film.thumbnailUrl ?? null,
@@ -44,14 +45,18 @@ export function ContinueWatching({ films }: { films: MovieProgressRecord[] }) {
       updatedAt: film.updatedAt,
     })),
   ];
+
   const unique = [...new Map(entries.reverse().map((entry) => [entry.id, entry])).values()]
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 3);
+    .sort((a, b) => parseTimestamp(b.updatedAt) - parseTimestamp(a.updatedAt))
+    .slice(0, MAX_CONTINUE_ITEMS);
+
   if (!unique.length) return null;
 
   return (
     <section className="shelf-section" aria-labelledby="continue-title" data-testid="continue-watching">
-      <h2 id="continue-title" className="section-title mb-4">Xem tiếp</h2>
+      <h2 id="continue-title" className="section-title mb-4">
+        Xem tiếp
+      </h2>
       <div className="film-grid">
         {unique.map((entry) => {
           const percent = computeProgressPercent(entry.position, entry.duration);
@@ -66,7 +71,7 @@ export function ContinueWatching({ films }: { films: MovieProgressRecord[] }) {
             >
               <ArtworkImage
                 src={entry.thumbnailUrl}
-                alt={entry.seriesTitle ? `${entry.seriesTitle} — ${entry.title}` : entry.title}
+                alt={entry.seriesTitle ? `${entry.seriesTitle}: ${entry.title}` : entry.title}
                 title={entry.seriesTitle || entry.title}
                 seed={entry.id}
                 imgClassName="transition-transform duration-300 group-hover:scale-105"
@@ -107,6 +112,9 @@ export function ContinueWatching({ films }: { films: MovieProgressRecord[] }) {
                 <h3 className="line-clamp-2 font-display text-base font-bold leading-snug text-ink">
                   {entry.title}
                 </h3>
+                <time dateTime={entry.updatedAt} className="text-xs text-muted">
+                  {formatViDateTime(entry.updatedAt)}
+                </time>
               </div>
             </Link>
           );

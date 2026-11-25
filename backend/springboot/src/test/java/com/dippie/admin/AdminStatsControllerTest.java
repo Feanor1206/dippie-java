@@ -35,6 +35,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.web.servlet.MockMvc;
 
+// Test tích hợp màn hình thống kê admin, đối chiếu công thức JPQL với CompletionPolicy và WatchDuration.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -93,6 +94,7 @@ class AdminStatsControllerTest {
         userRepository.deleteAll();
     }
 
+    // Dựng đủ dữ liệu người dùng, đánh giá phim, tập nháp và phiên xem sát ranh giới hoàn thành để đối chiếu kết quả thống kê.
     @Test
     void computesAggregatedStatsWithCompletionPolicyParity() throws Exception {
         LocalDateTime now = LocalDateTime.now(clock);
@@ -118,15 +120,16 @@ class AdminStatsControllerTest {
                 2024, 2024, "ongoing", null, null, null, null, null, null, null, READY_RECORD, "{}", 1
         ));
 
-        CatalogEpisode epLong = saveEpisode("ep-1", "ser-1", 1, "Episode Long", 1_500_000L, READY_RECORD);
-        CatalogEpisode epShort = saveEpisode("ep-2", "ser-1", 2, "Episode Short", 100_000L, READY_RECORD);
-        saveEpisode("ep-3", "ser-1", 3, "Episode Draft", 100_000L, DRAFT_RECORD);
+        CatalogEpisode longEpisode = saveEpisode("ep-1", "ser-1", 1, "Episode Long", 1_500_000L, READY_RECORD);
+        CatalogEpisode shortEpisode = saveEpisode("ep-2", "ser-1", 2, "Episode Short", 100_000L, READY_RECORD);
+        saveEpisode("ep-3", "ser-1", 3, "Episode with invalid duration", 5_000L, READY_RECORD);
+        saveEpisode("ep-4", "ser-1", 4, "Episode Draft", 100_000L, DRAFT_RECORD);
 
         CatalogMediaAsset assetLong = saveAsset("asset-1", 1_500_000L);
         CatalogMediaAsset assetShort = saveAsset("asset-2", 90_000L);
 
-        long effectiveLong = WatchDuration.resolve(epLong.getDurationMs(), assetLong.getDurationMs()).durationMs();
-        long effectiveShort = WatchDuration.resolve(epShort.getDurationMs(), assetShort.getDurationMs()).durationMs();
+        long effectiveLong = WatchDuration.resolve(longEpisode.getDurationMs(), assetLong.getDurationMs()).durationMs();
+        long effectiveShort = WatchDuration.resolve(shortEpisode.getDurationMs(), assetShort.getDurationMs()).durationMs();
 
         assertThat(CompletionPolicy.isCompleted(1_440_000L, effectiveLong)).isTrue();
         assertThat(CompletionPolicy.isCompleted(1_439_999L, effectiveLong)).isFalse();
@@ -138,6 +141,8 @@ class AdminStatsControllerTest {
         watchProgressRepository.saveAndFlush(WatchProgress.startAt(oldUser.getId(), "ep-2", "asset-2", 85_500L, now));
         watchProgressRepository.saveAndFlush(WatchProgress.startAt(admin.getId(), "ep-2", "asset-2", 85_499L, now));
         watchProgressRepository.saveAndFlush(WatchProgress.startAt(recentUser1.getId(), "ep-2", "asset-2", 89_000L, now));
+        watchProgressRepository.saveAndFlush(WatchProgress.startAt(recentUser1.getId(), "ep-3", "youtube:Z3D9Wr2AYeA",
+                5_000L, now));
 
         String adminAuth = "Bearer " + jwtService.issueLoginToken(admin.getUsername(), admin.getTokenVersion());
 
@@ -148,12 +153,12 @@ class AdminStatsControllerTest {
                 .andExpect(jsonPath("$.data.totalUsers").value(4))
                 .andExpect(jsonPath("$.data.activeUsers").value(3))
                 .andExpect(jsonPath("$.data.totalMovies").value(4))
-                .andExpect(jsonPath("$.data.publishedEpisodes").value(2))
-                .andExpect(jsonPath("$.data.totalWatchSessions").value(5))
+                .andExpect(jsonPath("$.data.publishedEpisodes").value(3))
+                .andExpect(jsonPath("$.data.totalWatchSessions").value(6))
                 .andExpect(jsonPath("$.data.completedWatchSessions").value(3))
-                .andExpect(jsonPath("$.data.completionRate").value(0.6))
+                .andExpect(jsonPath("$.data.completionRate").value(0.5))
                 .andExpect(jsonPath("$.data.newUsersLast7Days").value(2))
-                .andExpect(jsonPath("$.data.topWatchedEpisodes.length()").value(2))
+                .andExpect(jsonPath("$.data.topWatchedEpisodes.length()").value(3))
                 .andExpect(jsonPath("$.data.topWatchedEpisodes[0].episodeId").value("ep-2"))
                 .andExpect(jsonPath("$.data.topWatchedEpisodes[0].title").value("Episode Short"))
                 .andExpect(jsonPath("$.data.topWatchedEpisodes[0].viewers").value(3))
@@ -170,6 +175,7 @@ class AdminStatsControllerTest {
                 .andExpect(jsonPath("$.data.topRatedMovies[2].ratingCount").value(3));
     }
 
+    // Khi chưa có phiên xem nào thì completionRate trả về 0.0 để tránh chia cho 0.
     @Test
     void returnsZeroCompletionRateWhenNoWatchSessionsExist() throws Exception {
         User admin = saveUser("admin", "admin@dippie.com", Role.ROLE_ADMIN, LocalDateTime.now(clock), true);

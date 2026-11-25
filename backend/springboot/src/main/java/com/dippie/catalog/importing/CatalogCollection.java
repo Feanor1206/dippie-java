@@ -14,6 +14,8 @@ import com.dippie.catalog.domain.CatalogSource;
 import com.dippie.catalog.domain.CatalogTextTrack;
 import com.fasterxml.jackson.databind.JsonNode;
 
+// Gom tên trường JSON, khóa đếm trong kết quả trả về và lớp entity JPA cho từng loại dữ liệu trong gói.
+// Thứ tự khai báo ở đây cũng là thứ tự duyệt khi kiểm tra và xuất danh mục.
 enum CatalogCollection {
     GENRES("genres", CatalogGenre.class),
     ATTRIBUTE_SCALES("attribute_scales", "attributeScales", CatalogAttributeScale.class),

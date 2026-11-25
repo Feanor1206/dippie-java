@@ -19,13 +19,15 @@ import org.hibernate.annotations.OnDeleteAction;
 import java.time.LocalDate;
 import java.util.Locale;
 
+// Tập phim trong phân cấp phim bộ, mùa và tập (kế thừa CatalogRecord). Khóa ngoại kép (series_id, season_id) để DB tự chặn gắn nhầm tập vào mùa của bộ khác.
 @Entity
 @Table(name = "catalog_episodes",
         indexes = {
                 @Index(name = "idx_cat_ep_series_season", columnList = "series_id, season_id"),
                 @Index(name = "idx_cat_ep_season", columnList = "season_id"),
                 @Index(name = "idx_cat_ep_publication", columnList = "publication_status"),
-                @Index(name = "idx_cat_ep_status_series_duration", columnList = "publication_status, series_id, duration_ms")
+                @Index(name = "idx_cat_ep_status_series_duration", columnList = "publication_status, series_id, duration_ms"),
+                @Index(name = "idx_cat_ep_series_pub_num", columnList = "series_id, publication_status, number")
         })
 @Check(name = "ck_catalog_episode_publication",
         constraints = "publication_status IN ('draft', 'ready', 'archived')")
@@ -120,6 +122,7 @@ public class CatalogEpisode extends CatalogRecord {
     protected CatalogEpisode() {
     }
 
+    // Nạp lại metadata tập phim khi import đè rồi đồng bộ lại cột publication_status theo recordJson mới (orders, links, ratings và credits giữ nguyên).
     public void applyImport(CatalogEpisode imported) {
         replaceRecordFrom(imported);
         seriesId = imported.seriesId;
@@ -140,7 +143,7 @@ public class CatalogEpisode extends CatalogRecord {
         themesJson = imported.themesJson;
         attributesJson = imported.attributesJson;
         artworksJson = imported.artworksJson;
-        synchronizePublicationStatus();
+        syncPublicationStatus();
     }
 
     public CatalogEpisode(String id, String seriesId, String seasonId, Integer number, String title,
@@ -172,7 +175,7 @@ public class CatalogEpisode extends CatalogRecord {
         this.ratingsJson = ratingsJson;
         this.artworksJson = artworksJson;
         this.creditsJson = creditsJson;
-        synchronizePublicationStatus();
+        syncPublicationStatus();
     }
 
     public String getSeriesId() {
@@ -209,6 +212,15 @@ public class CatalogEpisode extends CatalogRecord {
 
     public LocalDate getReleaseDate() {
         return releaseDate;
+    }
+
+    // Lấy năm phát hành theo thứ tự ưu tiên: ngày chiếu riêng của tập, năm đầu mùa, rồi mới rơi về năm của phim bộ.
+    public Integer releaseYear(CatalogSeason season, CatalogSeries series) {
+        if (releaseDate != null) {
+            return releaseDate.getYear();
+        }
+        Integer seasonYear = season == null ? null : season.getReleaseYearStart();
+        return seasonYear == null ? series.getReleaseYearStart() : seasonYear;
     }
 
     public Long getDurationMs() {
@@ -267,14 +279,16 @@ public class CatalogEpisode extends CatalogRecord {
         return publicationStatus;
     }
 
+    // Việt nhớ đổi recordJson của tập thì đi qua hàm này để cột publication_status cập nhật theo, đừng sửa trực tiếp kẻo lệch với JSON.
     public void updateRecordJson(String recordJson) {
         replaceRecordJson(recordJson);
-        synchronizePublicationStatus();
+        syncPublicationStatus();
     }
 
+    // Cột publication_status là bản sao rút từ recordJson để SQL lọc tập ready qua index thay vì parse JSON mỗi lần query.
     @PrePersist
     @PreUpdate
-    private void synchronizePublicationStatus() {
+    private void syncPublicationStatus() {
         publicationStatus = PublicationStatus.of(getRecordJson()).name().toLowerCase(Locale.ROOT);
     }
 }

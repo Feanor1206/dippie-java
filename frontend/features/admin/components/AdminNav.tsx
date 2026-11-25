@@ -1,12 +1,13 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router';
-import { Database, Users, BarChart3, ClipboardList } from 'lucide-react';
+import { Database, Users, BarChart3, ClipboardList, Flag } from 'lucide-react';
 
 const ADMIN_NAV_ITEMS = [
   { to: '/admin/import', label: 'Nhập dữ liệu', Icon: Database },
   { to: '/admin/users', label: 'Người dùng', Icon: Users },
   { to: '/admin/stats', label: 'Thống kê', Icon: BarChart3 },
   { to: '/admin/audit', label: 'Nhật ký', Icon: ClipboardList },
+  { to: '/admin/reports', label: 'Báo lỗi video', Icon: Flag },
 ] as const;
 
 export function AdminNav() {

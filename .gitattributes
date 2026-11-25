@@ -1,1 +1,3 @@
-infrastructure/init_database_objects.sh text eol=lf
+*.sh text eol=lf
+mvnw text eol=lf
+infrastructure/Caddyfile text eol=lf

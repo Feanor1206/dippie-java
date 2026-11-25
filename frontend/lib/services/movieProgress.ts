@@ -1,4 +1,5 @@
-export const MOVIE_PROGRESS_KEY = 'dippie_movie_progress_v1';
+import { parseTimestamp } from '@/lib/timestamps';
+export const MOVIE_PROGRESS_KEY = 'dippie_movie_progress_v2';
 export const MOVIE_PROGRESS_LIMIT = 30;
 
 export type MovieProgressRecord = {
@@ -39,7 +40,7 @@ export function normalizeMovieProgress(raw: unknown): MovieProgressRecord | null
   if (!nonEmpty(record.movieId) || !nonEmpty(record.title)) return null;
   if (typeof record.positionMs !== 'number' || !Number.isSafeInteger(record.positionMs) || record.positionMs < 0) return null;
   if (typeof record.completed !== 'boolean') return null;
-  if (!nonEmpty(record.updatedAt) || !Number.isFinite(Date.parse(record.updatedAt))) return null;
+  if (!nonEmpty(record.updatedAt) || !Number.isFinite(parseTimestamp(record.updatedAt))) return null;
   const durationMs = typeof record.durationMs === 'number' && Number.isSafeInteger(record.durationMs) && record.durationMs > 0
     ? record.durationMs
     : null;
@@ -51,32 +52,40 @@ export function normalizeMovieProgress(raw: unknown): MovieProgressRecord | null
     positionMs: durationMs === null ? record.positionMs : Math.min(record.positionMs, durationMs),
     durationMs,
     completed: record.completed,
-    updatedAt: new Date(Date.parse(record.updatedAt)).toISOString(),
+    updatedAt: new Date(parseTimestamp(record.updatedAt)).toISOString(),
   };
 }
 
-export function listMovieProgress(): MovieProgressRecord[] {
+function movieProgressKey(userId: number | null): string {
+  return userId === null ? MOVIE_PROGRESS_KEY : `${MOVIE_PROGRESS_KEY}:${userId}`;
+}
+
+export function listMovieProgress(userId: number | null = null): MovieProgressRecord[] {
   const store = storage();
   if (!store) return [];
   try {
-    const parsed = JSON.parse(store.getItem(MOVIE_PROGRESS_KEY) || '[]');
+    const parsed = JSON.parse(store.getItem(movieProgressKey(userId)) || '[]');
     if (!Array.isArray(parsed)) return [];
     return parsed
       .map(normalizeMovieProgress)
-      .filter((item): item is MovieProgressRecord => item !== null)
-      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+      .filter((entry): entry is MovieProgressRecord => entry !== null)
+      .sort((a, b) => parseTimestamp(b.updatedAt) - parseTimestamp(a.updatedAt))
       .slice(0, MOVIE_PROGRESS_LIMIT);
   } catch {
     return [];
   }
 }
 
-export function getMovieProgress(movieId: string): MovieProgressRecord | null {
+export function getMovieProgress(movieId: string, userId: number | null = null): MovieProgressRecord | null {
   if (!nonEmpty(movieId)) return null;
-  return listMovieProgress().find((item) => item.movieId === movieId.trim()) || null;
+  return listMovieProgress(userId).find((entry) => entry.movieId === movieId.trim()) || null;
 }
 
-export function saveMovieProgress(draft: MovieProgressDraft, now = Date.now()): MovieProgressRecord | null {
+export function saveMovieProgress(
+  draft: MovieProgressDraft,
+  now = Date.now(),
+  userId: number | null = null,
+): MovieProgressRecord | null {
   const store = storage();
   if (!store || !draft || !nonEmpty(draft.movieId) || !nonEmpty(draft.title)) return null;
   if (!Number.isSafeInteger(draft.positionMs) || draft.positionMs < 0) return null;
@@ -93,11 +102,11 @@ export function saveMovieProgress(draft: MovieProgressDraft, now = Date.now()): 
     completed: Boolean(draft.completed),
     updatedAt: new Date(now).toISOString(),
   };
-  const next = [record, ...listMovieProgress().filter((item) => item.movieId !== record.movieId)]
-    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+  const next = [record, ...listMovieProgress(userId).filter((entry) => entry.movieId !== record.movieId)]
+    .sort((a, b) => parseTimestamp(b.updatedAt) - parseTimestamp(a.updatedAt))
     .slice(0, MOVIE_PROGRESS_LIMIT);
   try {
-    store.setItem(MOVIE_PROGRESS_KEY, JSON.stringify(next));
+    store.setItem(movieProgressKey(userId), JSON.stringify(next));
   } catch {
     return null;
   }
@@ -117,7 +126,7 @@ export function buildMovieProgressHref(record: MovieProgressRecord): string {
   return `/movies/${encodeURIComponent(record.movieId)}?${params.toString()}`;
 }
 
-export function readFilmResumeSeconds(movieId: string): number {
+export function getMovieResumeSeconds(movieId: string, userId: number | null = null): number {
   try {
     if (typeof window !== 'undefined' && window.location?.search) {
       const raw = new URLSearchParams(window.location.search).get('t');
@@ -126,7 +135,7 @@ export function readFilmResumeSeconds(movieId: string): number {
     }
   } catch {
   }
-  const saved = getMovieProgress(movieId);
+  const saved = getMovieProgress(movieId, userId);
   if (saved && !saved.completed && saved.positionMs > 0) return saved.positionMs / 1000;
   return 0;
 }

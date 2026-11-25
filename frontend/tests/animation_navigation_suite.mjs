@@ -1,8 +1,8 @@
+import { runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 import ts from '../node_modules/typescript/lib/typescript.js';
 import { fileURLToPath } from 'node:url';
 
@@ -13,7 +13,7 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const moduleObject = { exports: {} };
-vm.runInNewContext(compiled, { exports: moduleObject.exports, module: moduleObject });
+runWithSharedModules(compiled, { exports: moduleObject.exports, module: moduleObject });
 const navigation = moduleObject.exports;
 
 const seasons = [
@@ -54,4 +54,20 @@ test('Default selection uses the numerically first season and first ordered epis
   const selectedEpisode = navigation.getInitialEpisode(episodes, selectedSeason);
   assert.equal(selectedSeason, 'season-1');
   assert.equal(selectedEpisode?.id, 's1-e1');
+});
+
+test('Next and previous cross season boundaries when seasons are supplied and format cross-season labels', () => {
+  const nextAcross = navigation.getAdjacentEpisode(episodes, 'season-1', 's1-e10', 1, true, seasons);
+  assert.equal(nextAcross?.id, 's2-e1');
+  assert.equal(navigation.formatAdjacentEpisodeLabel(nextAcross, 'season-1', seasons, 1), 'Sang Mùa 2 · Tập 1');
+
+  const prevAcross = navigation.getAdjacentEpisode(episodes, 'season-2', 's2-e1', -1, true, seasons);
+  assert.equal(prevAcross?.id, 's1-e10');
+  assert.equal(navigation.formatAdjacentEpisodeLabel(prevAcross, 'season-2', seasons, -1), 'Về Mùa 1 · Tập 10');
+
+  assert.equal(navigation.getAdjacentEpisode(episodes, 'season-1', 's1-e1', -1, true, seasons), null);
+  assert.equal(navigation.getAdjacentEpisode(episodes, 'season-2', 's2-e10', 1, true, seasons), null);
+
+  const inSeasonNext = navigation.getAdjacentEpisode(episodes, 'season-2', 's2-e1', 1, true, seasons);
+  assert.equal(navigation.formatAdjacentEpisodeLabel(inSeasonNext, 'season-2', seasons, 1), 'Tập tiếp theo');
 });

@@ -6,6 +6,7 @@ import com.dippie.catalog.domain.CatalogSeries;
 
 import java.time.LocalDateTime;
 
+// DTO trả tiến độ xem của một tập phim ra frontend kèm cờ completed và số version để gửi lại ở lần lưu sau.
 public record WatchProgressView(
         String episodeId,
         String seriesId,

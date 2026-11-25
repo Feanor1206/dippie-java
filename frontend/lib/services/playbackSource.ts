@@ -1,4 +1,5 @@
 import type {
+  CatalogEpisode,
   CatalogEpisodeResponse,
   CatalogMediaAsset,
   CatalogYoutubeSource,
@@ -7,6 +8,146 @@ import type {
 export const PLAYBACK_METADATA_TIMEOUT_MS = 10_000;
 
 const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+
+type ExternalMediaLike = {
+  externalOnly?: boolean;
+  external_only?: boolean;
+  canEmbed?: boolean;
+  can_embed?: boolean;
+  primaryMediaAssetId?: string | null;
+  primary_media_asset_id?: string | null;
+  youtube?: CatalogYoutubeSource | null;
+  youtubeFallback?: CatalogYoutubeSource | null;
+  youtubeWatchUrl?: string | null;
+  youtube_watch_url?: string | null;
+  externalUrl?: string | null;
+  external_url?: string | null;
+  watchUrl?: string | null;
+  watch_url?: string | null;
+  youtubeVideoId?: string | null;
+  youtube_video_id?: string | null;
+  videoUrl?: string | null;
+  rawJson?: string | null;
+  startMs?: number | null;
+  start_ms?: number | null;
+  durationMs?: number | null;
+  evidence?: Array<{ startMs?: number | null }>;
+};
+
+function parseYoutubeUrlVideoId(rawUrl?: string | null): string | null {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) return null;
+  const trimmed = rawUrl.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
+      const videoIdParam = parsed.searchParams.get('v')?.trim() || '';
+      if (YOUTUBE_VIDEO_ID_PATTERN.test(videoIdParam)) return videoIdParam;
+      const match = parsed.pathname.match(/^\/(?:embed|shorts|live)\/([A-Za-z0-9_-]{11})(?:\/|$)/);
+      if (match) return match[1];
+    } else if (host === 'youtu.be') {
+      const candidate = parsed.pathname.replace(/^\/+/, '').split('/')[0] || '';
+      if (YOUTUBE_VIDEO_ID_PATTERN.test(candidate)) return candidate;
+    }
+  } catch {
+  }
+  return null;
+}
+
+function extractRawJsonYoutubeIds(rawJson?: string | null): { playbackId: string | null; watchId: string | null } {
+  if (typeof rawJson !== 'string' || !rawJson.trim()) {
+    return { playbackId: null, watchId: null };
+  }
+  try {
+    const parsed = JSON.parse(rawJson) as {
+      external_ids?: Array<{ namespace?: unknown; value?: unknown }>;
+    };
+    const externalIds = Array.isArray(parsed?.external_ids) ? parsed.external_ids : [];
+    let playbackId: string | null = null;
+    let watchId: string | null = null;
+    for (const entry of externalIds) {
+      if (!entry || typeof entry !== 'object') continue;
+      const value = typeof entry.value === 'string' ? entry.value.trim() : '';
+      if (!YOUTUBE_VIDEO_ID_PATTERN.test(value)) continue;
+      if (entry.namespace === 'youtube_playback' && !playbackId) {
+        playbackId = value;
+      } else if (entry.namespace === 'youtube_watch' && !watchId) {
+        watchId = value;
+      }
+    }
+    return { playbackId, watchId };
+  } catch {
+    return { playbackId: null, watchId: null };
+  }
+}
+
+export function isMediaExternalOnly(item?: ExternalMediaLike | null): boolean {
+  if (!item) return false;
+  if (item.externalOnly === true || item.external_only === true) return true;
+  if (item.canEmbed === false || item.can_embed === false) return true;
+  if (item.canEmbed === true || item.can_embed === true) return false;
+
+  const primaryYoutube = normalizeYoutubeSource(item.youtube);
+  const fallbackYoutube = normalizeYoutubeSource(item.youtubeFallback);
+  if (primaryYoutube?.canEmbed || fallbackYoutube?.canEmbed) return false;
+  const hasPrimaryAsset = Boolean(item.primaryMediaAssetId || item.primary_media_asset_id);
+  if (primaryYoutube && !primaryYoutube.canEmbed && !hasPrimaryAsset) return true;
+
+  const rawIds = extractRawJsonYoutubeIds(item.rawJson);
+  if (rawIds.playbackId) return false;
+  if (rawIds.watchId && !hasPrimaryAsset) return true;
+
+  return false;
+}
+
+export function resolveExternalYoutubeWatchUrl(
+  item?: ExternalMediaLike | null,
+  startTimeMs?: number | string | null
+): string | null {
+  if (!item) return null;
+  const effectiveStartMs =
+    startTimeMs !== undefined && startTimeMs !== null
+      ? startTimeMs
+      : item.startMs ?? item.start_ms ?? item.evidence?.[0]?.startMs ?? 0;
+  const startSeconds = resolveYoutubeStartSeconds(effectiveStartMs, item.durationMs);
+
+  const directCandidates = [
+    item.youtubeWatchUrl,
+    item.youtube_watch_url,
+    item.externalUrl,
+    item.external_url,
+    item.watchUrl,
+    item.watch_url,
+    item.videoUrl,
+  ];
+  for (const candidate of directCandidates) {
+    const parsedId = parseYoutubeUrlVideoId(candidate);
+    if (parsedId) {
+      return buildYoutubeWatchUrl(parsedId, startSeconds);
+    }
+  }
+
+  const directIds = [
+    item.youtubeVideoId,
+    item.youtube_video_id,
+    item.youtube?.videoId,
+    item.youtubeFallback?.videoId,
+  ];
+  for (const candidateId of directIds) {
+    if (typeof candidateId === 'string' && YOUTUBE_VIDEO_ID_PATTERN.test(candidateId.trim())) {
+      return buildYoutubeWatchUrl(candidateId.trim(), startSeconds);
+    }
+  }
+
+  const rawIds = extractRawJsonYoutubeIds(item.rawJson);
+  const fallbackId = rawIds.watchId || rawIds.playbackId;
+  if (fallbackId) {
+    return buildYoutubeWatchUrl(fallbackId, startSeconds);
+  }
+
+  return null;
+}
 
 export type PlaybackFailureReason =
   | 'file_unreachable'
@@ -76,6 +217,23 @@ export function isMediaAssetAvailable(asset?: CatalogMediaAsset | null): boolean
   return Boolean(asset) && asset!.available !== false;
 }
 
+export function isEpisodeExternalOnly(episode?: CatalogEpisode | null): boolean {
+  return isMediaExternalOnly(episode);
+}
+
+export function isUnmountedDriveFallback(
+  selection: PlaybackSourceSelection,
+  runtimeFailure?: PlaybackRuntimeFailure | null
+): boolean {
+  return (
+    selection.kind === 'youtube' &&
+    selection.isFallback &&
+    !runtimeFailure &&
+    selection.failedAsset?.storageProvider === 'drive' &&
+    selection.failedAsset.available === false
+  );
+}
+
 export function resolveYoutubeStartSeconds(
   startTimeMs?: number | string | null,
   episodeDurationMs?: number | null
@@ -96,12 +254,12 @@ export function resolveYoutubeStartSeconds(
 
 export function buildYoutubeEmbedUrl(videoId: string, startSeconds = 0): string {
   const safeStart = Number.isFinite(startSeconds) && startSeconds > 0 ? Math.floor(startSeconds) : 0;
-  return `https://www.youtube-nocookie.com/embed/${videoId}?start=${safeStart}`;
+  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?start=${safeStart}&enablejsapi=1&rel=0&modestbranding=1`;
 }
 
 export function buildYoutubeWatchUrl(videoId: string, startSeconds = 0): string {
   const safeStart = Number.isFinite(startSeconds) && startSeconds > 0 ? Math.floor(startSeconds) : 0;
-  return `https://www.youtube.com/watch?v=${videoId}&t=${safeStart}`;
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&t=${safeStart}`;
 }
 
 export function resolveFallbackStartTimeMs(params: {
@@ -153,26 +311,27 @@ export function resolveFallbackStartTimeMs(params: {
 export function classifyGrantFailureReason(status: number): PlaybackFailureReason {
   if (status === 401 || status === 403) return 'forbidden';
   if (status === 404) return 'file_unreachable';
+  if (status === 408) return 'timeout';
   return 'stream_error';
 }
 
 export function getUnavailableReasonMessage(reason: PlaybackUnavailableReason): string {
   switch (reason) {
     case 'file_unreachable':
-      return 'Không thể truy cập tệp video trên máy chủ. Tệp có thể chưa sẵn sàng hoặc kết nối lưu trữ đang gián đoạn.';
+      return 'Video trên máy chủ chưa sẵn sàng hoặc kết nối lưu trữ đang gián đoạn.';
     case 'timeout':
-      return 'Quá thời gian chờ tải dữ liệu tệp video từ máy chủ.';
+      return 'Tải video từ máy chủ quá chậm. Bạn thử lại nhé.';
     case 'forbidden':
-      return 'Video được bảo vệ hoặc tài khoản chưa có quyền truy cập tệp này.';
+      return 'Tài khoản hiện chưa có quyền xem bản video này.';
     case 'stream_error':
-      return 'Máy chủ không thể cấp luồng phát cho tệp video này.';
+      return 'Máy chủ chưa mở được bản video này.';
     case 'youtube_embed_disabled':
-      return 'Bản YouTube của tập này không hỗ trợ phát nhúng trên trang.';
+      return 'Tập này chỉ xem được trực tiếp trên YouTube.';
     case 'file_unreachable_youtube_external':
-      return 'Không thể truy cập tệp video trên máy chủ và bản YouTube không hỗ trợ phát nhúng.';
+      return 'Video trên máy chủ chưa sẵn sàng, tập này chỉ mở được trực tiếp trên YouTube.';
     case 'no_source':
     default:
-      return 'Tập này chưa có nguồn video khả dụng.';
+      return 'Tập này chưa có nguồn video.';
   }
 }
 
@@ -266,7 +425,7 @@ export function selectPlaybackSource(
     : unavailableAsset
     ? 'file_unreachable'
     : null;
-  const hasFileFallbackContext = failedAsset !== null;
+  const hadFileFailure = failedAsset !== null;
 
   const primaryYoutube = normalizeYoutubeSource(episodeDetail.youtube);
   const fallbackYoutube = normalizeYoutubeSource(episodeDetail.youtubeFallback);
@@ -280,7 +439,7 @@ export function selectPlaybackSource(
       kind: 'youtube',
       youtube: primaryYoutube,
       origin: 'youtube',
-      isFallback: hasFileFallbackContext,
+      isFallback: hadFileFailure,
       failedAsset,
       startSeconds,
       embedUrl: buildYoutubeEmbedUrl(primaryYoutube.videoId, startSeconds),
@@ -294,7 +453,7 @@ export function selectPlaybackSource(
       kind: 'youtube',
       youtube: fallbackYoutube,
       origin: 'youtubeFallback',
-      isFallback: hasFileFallbackContext,
+      isFallback: hadFileFailure,
       failedAsset,
       startSeconds,
       embedUrl: buildYoutubeEmbedUrl(fallbackYoutube.videoId, startSeconds),
@@ -327,7 +486,7 @@ export function selectPlaybackSource(
     kind: 'unavailable',
     reason,
     failedAsset,
-    canRetryFile: hasFileFallbackContext,
+    canRetryFile: hadFileFailure,
     youtubeWatchUrl,
     youtubeVideoId,
   };

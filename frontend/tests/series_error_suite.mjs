@@ -1,8 +1,8 @@
 import { labels } from './labels_fixture.mjs';
+import { createInternalResolver, shouldInlineComponent, runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
 import ts from 'typescript';
 
 const playbackSourceCode = ts.transpileModule(
@@ -10,7 +10,7 @@ const playbackSourceCode = ts.transpileModule(
   { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }
 ).outputText;
 const playbackSourceModule = { exports: {} };
-vm.runInNewContext(playbackSourceCode, { module: playbackSourceModule, exports: playbackSourceModule.exports });
+runWithSharedModules(playbackSourceCode, { module: playbackSourceModule, exports: playbackSourceModule.exports });
 
 function find(node, predicate) {
   if (!node || typeof node !== 'object') return null;
@@ -35,11 +35,15 @@ test('Episode loading failure offers retry instead of claiming a missing video',
         effects.push(() => { slots[i].cleanup?.(); slots[i].cleanup = effect(); });
       }
     },
-    createElement(type, props, ...children) { return { type, props: { ...props, children } }; },
+    createElement(type, props, ...children) {
+      if (shouldInlineComponent(type)) return type(props || {});
+      return { type, props: { ...props, children } };
+    },
   };
   const module = { exports: {} };
-  vm.runInNewContext(code, { module, exports: module.exports, AbortController, URL, console,
-    require(name) {
+  const baseCtx = { AbortController, URL, console };
+  runWithSharedModules(code, { ...baseCtx, module, exports: module.exports,
+    require: createInternalResolver(baseCtx, (name) => {
       if (name === '@/lib/labels') return labels;
       if (name === 'react') return react;
       if (name === 'react-router') return { Link: 'route-link', useParams: () => ({ id: 'series1' }), useSearchParams: () => [new URLSearchParams()] };
@@ -49,13 +53,14 @@ test('Episode loading failure offers retry instead of claiming a missing video',
       };
       if (name.includes('episodeNavigation')) return {
         sortCatalogSeasons: (seasons) => seasons, getInitialSeasonId: () => 'season1', getInitialEpisode: () => episode,
-        getEpisodesForSeason: (episodes) => episodes, getAdjacentEpisode: () => null,
+        getEpisodesForSeason: (episodes) => episodes, getAdjacentEpisode: () => null, formatAdjacentEpisodeLabel: () => '',
       };
+      if (name.includes('seriesBrowseUtils')) return { foldVietnamese: (v) => String(v || '').toLowerCase() };
       if (name.includes('useWatchProgress')) return { useWatchProgress: () => ({ records: [], saveProgress() {} }) };
-      if (name.includes('watchProgressService')) return { readAutoNextPreference: () => false, isUsableResumeProgress: () => false };
+      if (name.includes('watchProgressService')) return { readAutoNextPreference: () => false, isUsableResumeProgress: () => false, isYoutubeAssetId: () => false, toYoutubeAssetId: (v) => `youtube:${v}` };
       if (name.includes('playbackSource')) return playbackSourceModule.exports;
       return {};
-    },
+    }),
   });
   const render = () => { index = 0; effects = []; const tree = module.exports.default(); for (const effect of effects) effect(); return tree; };
   const settle = async () => { let tree; for (let i = 0; i < 5; i++) { tree = render(); await new Promise(setImmediate); } return render(); };
@@ -85,37 +90,42 @@ test('Episode playback defaults to video and honors an explicitly selected asset
       useState(initial) { const i = index++; if (!(i in slots)) slots[i] = { value: typeof initial === 'function' ? initial() : initial }; return [slots[i].value, (v) => { slots[i].value = typeof v === 'function' ? v(slots[i].value) : v; }]; },
       useRef(initial) { const i = index++; return slots[i] ||= { current: initial }; },
       useEffect(effect, deps) { const i = index++, previous = slots[i]; if (!previous || deps.some((v, j) => !Object.is(v, previous.deps[j]))) { slots[i] = { deps, cleanup: previous?.cleanup }; effects.push(() => { slots[i].cleanup?.(); slots[i].cleanup = effect(); }); } },
-      createElement(type, props, ...children) { return { type, props: { ...props, children } }; },
+      createElement(type, props, ...children) {
+        if (shouldInlineComponent(type)) return type(props || {});
+        return { type, props: { ...props, children } };
+      },
     };
     const module = { exports: {} };
-    vm.runInNewContext(code, { module, exports: module.exports, AbortController, URL, console,
-      require(name) {
+    const baseCtx = { AbortController, URL, console };
+    runWithSharedModules(code, { ...baseCtx, module, exports: module.exports,
+      require: createInternalResolver(baseCtx, (name) => {
         if (name === '@/lib/labels') return labels;
         if (name === 'react') return react;
         if (name === 'react-router') return { Link: 'route-link', useParams: () => ({ id: 'series1' }), useSearchParams: () => [new URLSearchParams(query)] };
         if (name.includes('catalogService')) return { getCatalogSeriesDetail: async () => ({ series: { title: 'Series' }, seasons: [{ id: 'season1', number: 1 }], episodes: [episode] }), getCatalogEpisodeDetail: async () => ({ episode, mediaAssets, scenes: [], segments: [], youtube }) };
-        if (name.includes('episodeNavigation')) return { sortCatalogSeasons: (seasons) => seasons, getInitialSeasonId: () => 'season1', getInitialEpisode: () => episode, getEpisodesForSeason: (episodes) => episodes, getAdjacentEpisode: () => null };
+        if (name.includes('episodeNavigation')) return { sortCatalogSeasons: (seasons) => seasons, getInitialSeasonId: () => 'season1', getInitialEpisode: () => episode, getEpisodesForSeason: (episodes) => episodes, getAdjacentEpisode: () => null, formatAdjacentEpisodeLabel: () => '' };
+        if (name.includes('seriesBrowseUtils')) return { foldVietnamese: (v) => String(v || '').toLowerCase() };
         if (name.includes('mediaService')) return { resolveStreamUrl: (url) => url, getStoredAuthToken: () => null };
         if (name.includes('mediaRouting')) return { resolveMediaSeekSeconds: () => null };
         if (name.includes('useWatchProgress')) return { useWatchProgress: () => ({ records: [], saveProgress() {} }) };
-        if (name.includes('watchProgressService')) return { readAutoNextPreference: () => false, isUsableResumeProgress: () => false };
+        if (name.includes('watchProgressService')) return { readAutoNextPreference: () => false, isUsableResumeProgress: () => false, isYoutubeAssetId: () => false, toYoutubeAssetId: (v) => `youtube:${v}` };
         if (name.includes('playbackSource')) return playbackSourceModule.exports;
         return {};
-      },
+      }),
     });
     const render = () => { index = 0; effects = []; const tree = module.exports.default(); for (const effect of effects) effect(); return tree; };
     let tree;
     for (let i = 0; i < 6; i++) { tree = render(); await new Promise(setImmediate); }
     tree = render();
     return find(tree, (n) => n.type === 'video' || n.props?.['data-testid'] === 'series-youtube-player')?.props.src
-      ?? find(tree, (n) => n.type === 'a' && n.props?.href?.startsWith('https://www.youtube.com/watch'))?.props.href
+      ?? find(tree, (n) => n.type?.name === 'YouTubeLink' && n.props?.url?.startsWith('https://www.youtube.com/watch'))?.props.url
       ?? null;
   }
   assert.equal(await selectedAsset('episode=ep1'), '/api/media/stream/video');
   assert.equal(await selectedAsset('episode=ep1&asset=alternate'), '/api/media/stream/alternate');
   assert.equal(await selectedAsset('episode=ep1', [assets[0]]), null);
   const youtube = { videoId: '9aFcot7_7Q4', canEmbed: true };
-  assert.equal(await selectedAsset('episode=ep1&t=42000', [], youtube), 'https://www.youtube-nocookie.com/embed/9aFcot7_7Q4?start=42');
+  assert.equal(await selectedAsset('episode=ep1&t=42000', [], youtube), 'https://www.youtube-nocookie.com/embed/9aFcot7_7Q4?start=42&enablejsapi=1&rel=0&modestbranding=1');
   assert.equal(await selectedAsset('episode=ep1&t=42000', [], { ...youtube, canEmbed: false }), 'https://www.youtube.com/watch?v=9aFcot7_7Q4&t=42');
   assert.equal(await selectedAsset('episode=ep1', [assets[1]], youtube), '/api/media/stream/video');
   assert.equal(await selectedAsset('episode=ep1', [], { videoId: 'https://example.com/video', canEmbed: false }), null);

@@ -21,6 +21,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+// Kiểm tra vòng đời snapshot: list() luôn chỉ đọc, bản mới nhất cập nhật theo bộ tìm kiếm, bản cũ bị bỏ qua và CACHE_REQUIRED cũ chuyển sang BLOCKED.
 class CatalogSnapshotReconciliationTest {
 
     private final CatalogSnapshotRepository repository = mock(CatalogSnapshotRepository.class);
@@ -36,11 +37,24 @@ class CatalogSnapshotReconciliationTest {
     }
 
     @Test
+    void listSnapshotsIsStrictlyReadOnlyWithoutMutatingOrPublishing() {
+        CatalogSnapshot pending = snapshot("snap_g2", 2, "BUILDING");
+        when(repository.findAllByOrderBySnapshotVersionDesc()).thenReturn(List.of(pending));
+
+        List<CatalogSnapshotView> views = service.list();
+
+        assertThat(views).hasSize(1);
+        assertThat(pending.getStatus()).isEqualTo("BUILDING");
+        verify(publisher, never()).publish(anyLong(), anyString(), any(), anyBoolean());
+    }
+
+    @Test
     void latestBuildingSnapshotBecomesReadyOnceTheAiIndexAcceptsIt() {
         CatalogSnapshot latest = snapshot("snap_g2", 2, "BUILDING");
         when(repository.findAllByOrderBySnapshotVersionDesc()).thenReturn(List.of(latest));
         when(publisher.publish(2L, "snap_g2", export.exportForIndex(), false)).thenReturn(IndexSyncOutcome.READY);
 
+        service.reconcilePending();
         List<CatalogSnapshotView> views = service.list();
 
         assertThat(latest.getStatus()).isEqualTo("READY");
@@ -54,7 +68,7 @@ class CatalogSnapshotReconciliationTest {
         when(repository.findAllByOrderBySnapshotVersionDesc()).thenReturn(List.of(latest));
         when(publisher.publish(anyLong(), anyString(), any(), anyBoolean())).thenReturn(IndexSyncOutcome.BUILDING);
 
-        service.list();
+        service.reconcilePending();
 
         assertThat(latest.getStatus()).isEqualTo("BUILDING");
         assertThat(latest.getCompletedAt()).isNull();
@@ -66,7 +80,7 @@ class CatalogSnapshotReconciliationTest {
         CatalogSnapshot superseded = snapshot("snap_g2", 2, "PENDING");
         when(repository.findAllByOrderBySnapshotVersionDesc()).thenReturn(List.of(latest, superseded));
 
-        service.list();
+        service.reconcilePending();
 
         assertThat(latest.getStatus()).isEqualTo("READY");
         assertThat(superseded.getStatus()).isEqualTo("SYNC_FAILED");
@@ -78,7 +92,7 @@ class CatalogSnapshotReconciliationTest {
         CatalogSnapshot latest = snapshot("snap_g1", 1, "CACHE_REQUIRED");
         when(repository.findAllByOrderBySnapshotVersionDesc()).thenReturn(List.of(latest));
 
-        service.list();
+        service.reconcilePending();
 
         assertThat(latest.getStatus()).isEqualTo("BLOCKED");
         verify(publisher, never()).publish(anyLong(), anyString(), any(), anyBoolean());

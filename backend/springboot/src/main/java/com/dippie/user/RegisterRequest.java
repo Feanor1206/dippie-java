@@ -1,6 +1,17 @@
 package com.dippie.user;
 
-public record RegisterRequest(String username, String email, String password, String fullName) {
+// Dữ liệu đăng ký tài khoản mới gửi lên POST /api/auth/register, gồm thông tin tài khoản và cờ đồng ý điều khoản.
+public record RegisterRequest(
+        String username,
+        String email,
+        String password,
+        String fullName,
+        Boolean acceptedTerms
+) {
+
+    public RegisterRequest(String username, String email, String password, String fullName) {
+        this(username, email, password, fullName, null);
+    }
 
     public String rawUsername() {
         return username == null ? "" : username;
@@ -12,5 +23,9 @@ public record RegisterRequest(String username, String email, String password, St
 
     public String rawPassword() {
         return password == null ? "" : password;
+    }
+
+    public boolean isTermsAccepted() {
+        return Boolean.TRUE.equals(acceptedTerms);
     }
 }

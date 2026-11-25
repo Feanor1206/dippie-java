@@ -11,6 +11,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+// Tiện ích đọc ngày phát hành và mốc thời gian ISO 8601 khi nhập danh mục.
 final class CatalogDates {
 
     private static final String DATE_FORMAT = "[1-9][0-9]{3}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])";
@@ -22,19 +23,21 @@ final class CatalogDates {
     private CatalogDates() {
     }
 
+    // Lấy giờ hiện tại theo Clock rồi cắt về độ chính xác micro giây cho khớp cột DATETIME của MySQL.
     static LocalDateTime now(Clock clock) {
         return LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS);
     }
 
+    // Đọc release_date theo chuẩn YYYY-MM-DD, riêng tập phim có thể lấy dự phòng từ air_date.
     static LocalDate releaseDate(JsonNode item, boolean episode) {
         JsonNode release = item.path("release_date");
-        JsonNode value = CatalogJson.or(release, episode ? item.path("air_date") : MissingNode.getInstance());
-        if (CatalogJson.absent(value)) {
+        JsonNode dateNode = CatalogJson.or(release, episode ? item.path("air_date") : MissingNode.getInstance());
+        if (CatalogJson.absent(dateNode)) {
             return null;
         }
-        String text = value.textValue();
+        String text = dateNode.textValue();
         if (text == null || !DATE.matcher(text).matches()) {
-            throw new IllegalArgumentException("Ngày phải có dạng YYYY-MM-DD.");
+            throw new IllegalArgumentException("Ngày phải đúng định dạng YYYY-MM-DD.");
         }
         try {
             return LocalDate.parse(text);
@@ -43,13 +46,14 @@ final class CatalogDates {
         }
     }
 
-    static LocalDateTime retrievedAt(JsonNode value) {
-        if (CatalogJson.absent(value)) {
+    // Chuyển chuỗi ISO 8601 về múi giờ UTC rồi chặn các năm nằm ngoài giới hạn DATETIME.
+    static LocalDateTime retrievedAt(JsonNode timestampNode) {
+        if (CatalogJson.absent(timestampNode)) {
             return null;
         }
-        Matcher match = DATE_TIME.matcher(value.asText());
-        if (!value.isTextual() || !match.matches()) {
-            throw new IllegalArgumentException("Thời điểm phải có dạng ISO 8601.");
+        Matcher match = DATE_TIME.matcher(timestampNode.asText());
+        if (!timestampNode.isTextual() || !match.matches()) {
+            throw new IllegalArgumentException("Thời gian phải đúng định dạng ISO 8601.");
         }
         LocalDateTime time;
         try {
@@ -57,6 +61,7 @@ final class CatalogDates {
         } catch (DateTimeParseException exception) {
             throw new IllegalArgumentException("day is out of range for month");
         }
+        // Phải cộng trừ độ lệch múi giờ về UTC trước khi kiểm tra năm, tránh trường hợp quy đổi xong mới vượt biên.
         String offset = match.group(2);
         if (offset != null && !offset.equals("Z")) {
             int minutes = Integer.parseInt(offset.substring(1, 3)) * 60 + Integer.parseInt(offset.substring(4));
@@ -66,7 +71,7 @@ final class CatalogDates {
             throw new IllegalArgumentException("date value out of range");
         }
         if (time.getYear() < 1000) {
-            throw new IllegalArgumentException("Thời điểm UTC nằm ngoài phạm vi DATETIME.");
+            throw new IllegalArgumentException("Thời gian UTC nằm ngoài giới hạn DATETIME.");
         }
         return time;
     }

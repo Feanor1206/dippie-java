@@ -49,7 +49,7 @@ export default function AdminUsersPage() {
   const [searchInput, setSearchInput] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [page, setPage] = useState(0);
-  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [refreshCount, setRefreshCount] = useState(0);
 
   const [pageData, setPageData] = useState<AdminPageResponse<AdminUserView> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -90,12 +90,12 @@ export default function AdminUsersPage() {
       })
       .catch((err: any) => {
         if (controller.signal.aborted || err?.isCanceled) return;
-        setLoadError(err?.message || 'Không thể tải danh sách người dùng.');
+        setLoadError(err?.message || 'Chưa tải được danh sách người dùng.');
         setIsLoading(false);
       });
 
     return () => controller.abort();
-  }, [isAdmin, token, debouncedQuery, page, refreshNonce]);
+  }, [isAdmin, token, debouncedQuery, page, refreshCount]);
 
   const openRoleDialog = (target: AdminUserView) => {
     const nextRole: AdminUserRole = target.role === 'ROLE_ADMIN' ? 'ROLE_USER' : 'ROLE_ADMIN';
@@ -129,7 +129,7 @@ export default function AdminUsersPage() {
         if (!prev) return prev;
         return {
           ...prev,
-          items: prev.items.map((item) => (item.id === updated.id ? updated : item)),
+          items: prev.items.map((account) => (account.id === updated.id ? updated : account)),
         };
       });
 
@@ -142,20 +142,58 @@ export default function AdminUsersPage() {
       setActionMessage({ text: successText, type: 'success' });
       setPendingAction(null);
     } catch (err: any) {
-      const msg = err?.message || 'Không thể thực hiện thay đổi tài khoản.';
-      setDialogError(msg);
-      setActionMessage({ text: msg, type: 'error' });
+      const message = err?.message || 'Chưa lưu được thay đổi tài khoản.';
+      setDialogError(message);
+      setActionMessage({ text: message, type: 'error' });
     } finally {
       setIsMutating(false);
     }
   };
 
-  if (status === 'checking') return <div role="status" className="p-8 text-sm">Đang kiểm tra tài khoản…</div>;
-  if (status === 'unavailable') return <div role="alert" className="p-8 text-sm">Không thể kiểm tra tài khoản. <button className="underline" onClick={() => retryVerify()}>Thử lại</button></div>;
-  if (status === 'guest') return <div className="p-8 text-sm">Vui lòng đăng nhập để quản trị người dùng. <button data-testid="admin-sign-in" className="underline" onClick={() => openAuthModal('login')}>Đăng nhập</button></div>;
-  if (!isAdmin) return <div data-testid="admin-forbidden" role="alert" className="p-8 text-sm">Tài khoản này không có quyền quản trị người dùng.</div>;
+  if (status === 'checking') {
+    return (
+      <main id="main-content" tabIndex={-1} className="page-shell py-12">
+        <div role="status" className="mx-auto max-w-md rounded-2xl border border-surface-border/40 bg-paper-white p-8 text-center text-sm text-muted">
+          Đang kiểm tra tài khoản…
+        </div>
+      </main>
+    );
+  }
+  if (status === 'unavailable') {
+    return (
+      <main id="main-content" tabIndex={-1} className="page-shell py-12">
+        <div role="alert" className="mx-auto max-w-md rounded-2xl border-2 border-amber-700/40 bg-amber-500/10 p-8 text-center text-sm text-amber-950">
+          <p className="font-semibold">Chưa kiểm tra được tài khoản.</p>
+          <button type="button" className="btn-secondary mt-4 text-xs" onClick={() => retryVerify()}>
+            Thử lại
+          </button>
+        </div>
+      </main>
+    );
+  }
+  if (status === 'guest') {
+    return (
+      <main id="main-content" tabIndex={-1} className="page-shell py-12">
+        <div className="mx-auto max-w-md rounded-2xl border-2 border-ink bg-paper-white p-8 text-center shadow-brand">
+          <p className="text-sm text-muted">Đăng nhập để quản lý người dùng.</p>
+          <button type="button" data-testid="admin-sign-in" className="btn-primary mt-4 text-xs" onClick={() => openAuthModal('login')}>
+            Đăng nhập
+          </button>
+        </div>
+      </main>
+    );
+  }
+  if (!isAdmin) {
+    return (
+      <main id="main-content" tabIndex={-1} className="page-shell py-12">
+        <div data-testid="admin-forbidden" role="alert" className="mx-auto max-w-md rounded-2xl border-2 border-red-800/35 bg-red-500/10 p-8 text-center text-sm font-medium text-red-900">
+          Tài khoản này không có quyền quản lý người dùng.
+        </div>
+      </main>
+    );
+  }
 
-  const items = pageData?.items ?? [];
+  const users = pageData?.items ?? [];
   const paging = pageData ? getPagingSummary(pageData) : null;
 
   const dialogTitle = pendingAction
@@ -170,10 +208,10 @@ export default function AdminUsersPage() {
 
   const dialogDescription = pendingAction
     ? pendingAction.type === 'role'
-      ? `Bạn có chắc muốn đổi vai trò của tài khoản "${pendingAction.target.username}" sang ${getRoleLabel(pendingAction.nextRole)}?`
+      ? `Bạn có chắc muốn đổi vai trò của tài khoản "${pendingAction.target.username}" thành ${getRoleLabel(pendingAction.nextRole)}?`
       : pendingAction.nextEnabled
-        ? `Tài khoản "${pendingAction.target.username}" sẽ được kích hoạt lại và có thể đăng nhập vào hệ thống.`
-        : `Tài khoản "${pendingAction.target.username}" sẽ bị khóa và không thể tiếp tục truy cập hệ thống.`
+        ? `Tài khoản "${pendingAction.target.username}" sẽ hoạt động lại và có thể đăng nhập vào Dippie.`
+        : `Tài khoản "${pendingAction.target.username}" sẽ bị khóa và không thể đăng nhập vào Dippie.`
     : '';
 
   const dialogConfirmLabel = pendingAction
@@ -192,12 +230,12 @@ export default function AdminUsersPage() {
     : 'primary';
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+    <main id="main-content" tabIndex={-1} className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <AdminNav />
 
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-surface-border pb-6">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-brand-dark">
+          <div className="flex items-center gap-2 text-xs font-semibold text-brand-dark">
             <Users size={14} aria-hidden="true" />
             <span>Quản trị người dùng</span>
           </div>
@@ -205,13 +243,13 @@ export default function AdminUsersPage() {
             Quản lý tài khoản
           </h1>
           <p className="mt-1 text-sm text-muted">
-            Tìm kiếm người dùng, phân quyền quản trị và kiểm soát trạng thái hoạt động.
+            Tìm tài khoản, đổi quyền quản trị và khóa hoặc mở khóa người dùng.
           </p>
         </div>
 
         <button
           type="button"
-          onClick={() => setRefreshNonce((n) => n + 1)}
+          onClick={() => setRefreshCount((count) => count + 1)}
           disabled={isLoading}
           className="btn-secondary flex items-center gap-1.5 text-xs font-medium text-muted disabled:opacity-50"
         >
@@ -243,7 +281,7 @@ export default function AdminUsersPage() {
               type="button"
               aria-label="Đóng thông báo"
               onClick={() => setActionMessage(null)}
-              className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg text-muted hover:bg-surface-hover hover:text-ink"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-muted hover:bg-surface-hover hover:text-ink cursor-pointer"
             >
               ✕
             </button>
@@ -255,7 +293,7 @@ export default function AdminUsersPage() {
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-surface-border pb-4">
           <div className="w-full max-w-md">
             <label htmlFor="admin-users-search" className="mb-1.5 block text-xs font-semibold text-ink">
-              Tìm kiếm theo tên đăng nhập hoặc email
+              Tìm theo tên đăng nhập hoặc email
             </label>
             <div className="relative flex items-center rounded-lg border border-surface-border bg-surface-elevated px-3 focus-within:border-brand focus-within:bg-surface">
               <Search size={14} className="shrink-0 text-muted" aria-hidden="true" />
@@ -265,15 +303,15 @@ export default function AdminUsersPage() {
                 type="search"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Nhập tên đăng nhập hoặc email..."
-                className="min-h-[44px] w-full bg-transparent px-2.5 text-xs text-ink placeholder:text-muted focus:outline-none"
+                placeholder="Nhập tên đăng nhập hoặc email…"
+                className="min-h-[44px] w-full bg-transparent px-2.5 text-base sm:text-xs text-ink placeholder:text-muted focus:outline-none"
               />
               {searchInput && (
                 <button
                   type="button"
                   aria-label="Xóa từ khóa tìm kiếm"
                   onClick={() => setSearchInput('')}
-                  className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded text-muted hover:text-ink"
+                  className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-muted hover:text-ink cursor-pointer"
                 >
                   <X size={14} aria-hidden="true" />
                 </button>
@@ -293,20 +331,20 @@ export default function AdminUsersPage() {
         {isLoading ? (
           <div role="status" className="flex items-center justify-center py-12 text-xs text-muted">
             <RefreshCw size={16} className="mr-2 animate-spin text-brand-dark" aria-hidden="true" />
-            <span>Đang tải danh sách người dùng...</span>
+            <span>Đang tải danh sách người dùng…</span>
           </div>
         ) : loadError ? (
           <div role="alert" data-testid="admin-users-error" className="py-10 text-center">
             <p className="text-xs text-red-900">{loadError}</p>
             <button
               type="button"
-              onClick={() => setRefreshNonce((n) => n + 1)}
+              onClick={() => setRefreshCount((count) => count + 1)}
               className="btn-secondary mt-3 text-xs font-semibold"
             >
               Thử lại
             </button>
           </div>
-        ) : items.length === 0 ? (
+        ) : users.length === 0 ? (
           <div data-testid="admin-users-empty" className="py-10 text-center text-xs text-muted">
             {debouncedQuery
               ? `Không tìm thấy người dùng nào khớp với "${debouncedQuery}".`
@@ -317,29 +355,29 @@ export default function AdminUsersPage() {
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[760px] border-collapse text-left text-xs">
                 <thead>
-                  <tr className="border-b border-surface-border bg-surface-elevated/70 text-[11px] font-bold uppercase tracking-wide text-muted">
+                  <tr className="border-b border-surface-border bg-surface-elevated/70 text-[11px] font-bold text-muted">
                     <th scope="col" className="px-3 py-3">Tên đăng nhập</th>
                     <th scope="col" className="px-3 py-3">Email</th>
                     <th scope="col" className="px-3 py-3">Họ và tên</th>
                     <th scope="col" className="px-3 py-3">Vai trò</th>
                     <th scope="col" className="px-3 py-3">Trạng thái</th>
                     <th scope="col" className="px-3 py-3">Ngày tạo</th>
-                    <th scope="col" className="px-3 py-3 text-right">Thao tác</th>
+                    <th scope="col" className="px-3 py-3 text-right">Tùy chỉnh</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-border">
-                  {items.map((item) => {
-                    const isSelf = item.id === user?.id || item.username === user?.username;
-                    const isTargetAdmin = item.role === 'ROLE_ADMIN';
+                  {users.map((account) => {
+                    const isSelf = account.id === user?.id || account.username === user?.username;
+                    const isTargetAdmin = account.role === 'ROLE_ADMIN';
                     return (
                       <tr
-                        key={item.id}
-                        data-testid={`admin-user-row-${item.id}`}
+                        key={account.id}
+                        data-testid={`admin-user-row-${account.id}`}
                         className="transition-colors hover:bg-surface-hover/50"
                       >
                         <td className="px-3 py-3.5 font-mono font-semibold text-ink">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span>{item.username}</span>
+                            <span>{account.username}</span>
                             {isSelf && (
                               <span className="rounded border border-brand/30 bg-brand/15 px-1.5 py-0.5 font-sans text-[10px] font-bold text-brand-dark">
                                 Bạn
@@ -347,8 +385,8 @@ export default function AdminUsersPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-3.5 text-muted">{item.email}</td>
-                        <td className="px-3 py-3.5 text-ink">{item.fullName || '—'}</td>
+                        <td className="px-3 py-3.5 text-muted">{account.email}</td>
+                        <td className="px-3 py-3.5 text-ink">{account.fullName || 'Chưa có'}</td>
                         <td className="px-3 py-3.5">
                           <span
                             className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-bold ${
@@ -358,45 +396,45 @@ export default function AdminUsersPage() {
                             }`}
                           >
                             {isTargetAdmin && <Shield size={11} aria-hidden="true" />}
-                            <span>{getRoleLabel(item.role)}</span>
+                            <span>{getRoleLabel(account.role)}</span>
                           </span>
                         </td>
                         <td className="px-3 py-3.5">
                           <span
                             className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-bold ${
-                              item.enabled
+                              account.enabled
                                 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-900'
                                 : 'border-red-500/30 bg-red-500/10 text-red-900'
                             }`}
                           >
-                            {item.enabled ? (
+                            {account.enabled ? (
                               <UserCheck size={11} aria-hidden="true" />
                             ) : (
                               <UserX size={11} aria-hidden="true" />
                             )}
-                            <span>{getUserStatusLabel(item.enabled)}</span>
+                            <span>{getUserStatusLabel(account.enabled)}</span>
                           </span>
                         </td>
-                        <td className="px-3 py-3.5 font-mono text-[11px] text-muted" title={formatViDateTime(item.createdAt)}>
-                          {formatViDate(item.createdAt)}
+                        <td className="px-3 py-3.5 font-mono text-[11px] text-muted" title={formatViDateTime(account.createdAt)}>
+                          {formatViDate(account.createdAt)}
                         </td>
                         <td className="px-3 py-3.5 text-right">
                           <div className="inline-flex flex-wrap items-center justify-end gap-2">
                             <span title={isSelf ? SELF_ACTION_TOOLTIP : undefined}>
                               <button
                                 type="button"
-                                data-testid={`toggle-role-${item.id}`}
+                                data-testid={`toggle-role-${account.id}`}
                                 disabled={isSelf}
                                 title={isSelf ? SELF_ACTION_TOOLTIP : undefined}
                                 aria-label={
                                   isSelf
-                                    ? `${SELF_ACTION_TOOLTIP} (${item.username})`
+                                    ? `${SELF_ACTION_TOOLTIP} (${account.username})`
                                     : isTargetAdmin
-                                      ? `Hạ quyền quản trị của ${item.username}`
-                                      : `Cấp quyền quản trị cho ${item.username}`
+                                      ? `Hạ quyền quản trị của ${account.username}`
+                                      : `Cấp quyền quản trị cho ${account.username}`
                                 }
-                                onClick={() => openRoleDialog(item)}
-                                className="btn-secondary min-h-[38px] px-3 py-1.5 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => openRoleDialog(account)}
+                                className="btn-secondary min-h-[44px] px-3 py-1.5 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {isTargetAdmin ? 'Hạ xuống người dùng' : 'Cấp quyền quản trị'}
                               </button>
@@ -404,24 +442,24 @@ export default function AdminUsersPage() {
                             <span title={isSelf ? SELF_ACTION_TOOLTIP : undefined}>
                               <button
                                 type="button"
-                                data-testid={`toggle-status-${item.id}`}
+                                data-testid={`toggle-status-${account.id}`}
                                 disabled={isSelf}
                                 title={isSelf ? SELF_ACTION_TOOLTIP : undefined}
                                 aria-label={
                                   isSelf
-                                    ? `${SELF_ACTION_TOOLTIP} (${item.username})`
-                                    : item.enabled
-                                      ? `Khóa tài khoản ${item.username}`
-                                      : `Mở khóa tài khoản ${item.username}`
+                                    ? `${SELF_ACTION_TOOLTIP} (${account.username})`
+                                    : account.enabled
+                                      ? `Khóa tài khoản ${account.username}`
+                                      : `Mở khóa tài khoản ${account.username}`
                                 }
-                                onClick={() => openStatusDialog(item)}
-                                className={`inline-flex min-h-[38px] items-center justify-center rounded border-2 border-ink px-3 py-1.5 text-[11px] font-semibold shadow-brand-sm transition-transform duration-150 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 ${
-                                  item.enabled
+                                onClick={() => openStatusDialog(account)}
+                                className={`inline-flex min-h-[44px] items-center justify-center rounded border-2 border-ink px-3 py-1.5 text-[11px] font-semibold shadow-brand-sm transition-transform duration-150 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 cursor-pointer ${
+                                  account.enabled
                                     ? 'bg-red-500/15 text-red-900'
                                     : 'bg-emerald-500/15 text-emerald-900'
                                 }`}
                               >
-                                {item.enabled ? 'Khóa' : 'Mở khóa'}
+                                {account.enabled ? 'Khóa' : 'Mở khóa'}
                               </button>
                             </span>
                           </div>
@@ -436,7 +474,7 @@ export default function AdminUsersPage() {
             {paging && (
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-surface-border pt-4 text-xs text-muted">
                 <span>
-                  Hiển thị <strong className="text-ink">{formatCount(paging.from)}–{formatCount(paging.to)}</strong> /{' '}
+                  Hiển thị <strong className="text-ink">{formatCount(paging.from)} đến {formatCount(paging.to)}</strong> /{' '}
                   <strong className="text-ink">{formatCount(paging.totalElements)}</strong> tài khoản · Trang{' '}
                   <strong className="text-ink">{paging.currentPage}</strong>/{Math.max(paging.totalPages, 1)}
                 </span>
@@ -447,7 +485,7 @@ export default function AdminUsersPage() {
                     data-testid="admin-users-prev"
                     disabled={!paging.canPrevious || isLoading}
                     onClick={() => pageData && setPage(getPreviousPage(pageData))}
-                    className="btn-secondary min-h-[40px] px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                    className="btn-secondary min-h-[44px] px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <ChevronLeft size={14} aria-hidden="true" />
                     <span>Trước</span>
@@ -457,7 +495,7 @@ export default function AdminUsersPage() {
                     data-testid="admin-users-next"
                     disabled={!paging.canNext || isLoading}
                     onClick={() => pageData && setPage(getNextPage(pageData))}
-                    className="btn-secondary min-h-[40px] px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                    className="btn-secondary min-h-[44px] px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <span>Sau</span>
                     <ChevronRight size={14} aria-hidden="true" />

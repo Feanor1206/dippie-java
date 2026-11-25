@@ -7,21 +7,31 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.dippie.common.error.InvalidRequestException;
 import org.junit.jupiter.api.Test;
 
+// Test đơn vị cho PasswordPolicy: cấm khoảng trắng, kiểm tra độ dài tối thiểu, trần 72 byte UTF-8 và chuẩn mật khẩu admin.
 class PasswordPolicyTest {
 
     @Test
-    void acceptsValidRegistrationPasswordsIncludingBoundaryAndWhitespace() {
-        assertThatCode(() -> PasswordPolicy.DEFAULT.validateForRegistration("abcdef")).doesNotThrowAnyException();
-        assertThatCode(() -> PasswordPolicy.DEFAULT.validateForRegistration(" abcdef ")).doesNotThrowAnyException();
-        assertThatCode(() -> PasswordPolicy.DEFAULT.validateForRegistration("a".repeat(72))).doesNotThrowAnyException();
-        assertThatCode(() -> PasswordPolicy.DEFAULT.validateForRegistration("ế".repeat(24))).doesNotThrowAnyException();
+    void acceptsValidRegistrationPasswordsIncludingBoundaryAndSurroundingWhitespace() {
+        assertThatCode(() -> PasswordPolicy.DEFAULT.validateUserPassword("abcdef")).doesNotThrowAnyException();
+        assertThatCode(() -> PasswordPolicy.DEFAULT.validateUserPassword(" abcdef ")).doesNotThrowAnyException();
+        assertThatCode(() -> PasswordPolicy.DEFAULT.validateUserPassword("a".repeat(72))).doesNotThrowAnyException();
+        assertThatCode(() -> PasswordPolicy.DEFAULT.validateUserPassword("ế".repeat(24))).doesNotThrowAnyException();
     }
 
     @Test
-    void rejectsTooShortRegistrationPassword() {
-        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateForRegistration("12345"))
+    void rejectsBlankWhitespaceOnlyAndTooShortRegistrationPasswords() {
+        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateUserPassword("      "))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Mật khẩu phải có ít nhất 6 ký tự");
+                .hasMessage(PasswordPolicy.BLANK_PASSWORD_MESSAGE);
+        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateUserPassword("\t\n   \r "))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessage(PasswordPolicy.BLANK_PASSWORD_MESSAGE);
+        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateUserPassword("  123  "))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessage("Mật khẩu cần ít nhất 6 ký tự.");
+        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateUserPassword("12345"))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessage("Mật khẩu cần ít nhất 6 ký tự.");
     }
 
     @Test
@@ -30,20 +40,28 @@ class PasswordPolicyTest {
         assertThat(PasswordPolicy.DEFAULT.exceedsMaxBytes("ế".repeat(25))).isTrue();
         assertThat(PasswordPolicy.DEFAULT.exceedsMaxBytes("ế".repeat(24))).isFalse();
 
-        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateForRegistration("ế".repeat(25)))
+        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateUserPassword("ế".repeat(25)))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Mật khẩu được dùng tối đa 72 byte UTF-8.");
+                .hasMessage("Mật khẩu không được dài quá 72 byte UTF-8.");
     }
 
     @Test
-    void enforcesAdminBootstrapPasswordBounds() {
-        assertThatCode(() -> PasswordPolicy.DEFAULT.validateForAdminBootstrap("A-strong-private-password-123"))
+    void enforcesAdminBootstrapAndAdminPasswordChangeBounds() {
+        assertThatCode(() -> PasswordPolicy.DEFAULT.validateBootstrapPassword("A-strong-private-password-123"))
                 .doesNotThrowAnyException();
-        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateForAdminBootstrap("too-short-12345"))
+        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateBootstrapPassword("too-short-12345"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("Mật khẩu quản trị phải dài từ 16 ký tự đến 72 byte.");
-        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateForAdminBootstrap("x".repeat(73)))
+                .hasMessage("Mật khẩu quản trị cần từ 16 ký tự đến tối đa 72 byte.");
+        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateBootstrapPassword("                "))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateBootstrapPassword("x".repeat(73)))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("Mật khẩu quản trị phải dài từ 16 ký tự đến 72 byte.");
+                .hasMessage("Mật khẩu quản trị cần từ 16 ký tự đến tối đa 72 byte.");
+
+        assertThatCode(() -> PasswordPolicy.DEFAULT.validateAdminPassword("A-strong-private-password-123"))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> PasswordPolicy.DEFAULT.validateAdminPassword("12345678"))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessage("Mật khẩu quản trị cần từ 16 ký tự đến tối đa 72 byte.");
     }
 }

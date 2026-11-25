@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+// Endpoint REST cấp vé phát tạm thời cho thẻ video trên frontend.
 @RestController
 @RequestMapping("/api/media/grant")
 public class PlaybackGrantController {

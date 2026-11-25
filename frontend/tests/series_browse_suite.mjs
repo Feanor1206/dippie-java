@@ -1,8 +1,8 @@
 import { labels } from './labels_fixture.mjs';
+import { createInternalResolver, shouldInlineComponent, runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
 import ts from '../node_modules/typescript/lib/typescript.js';
 
 function loadTsModule(relativePath, globals = {}) {
@@ -16,9 +16,7 @@ function loadTsModule(relativePath, globals = {}) {
     },
   }).outputText;
   const module = { exports: {} };
-  vm.runInNewContext(code, {
-    module,
-    exports: module.exports,
+  const baseContext = {
     console,
     AbortController,
     DOMException,
@@ -27,6 +25,13 @@ function loadTsModule(relativePath, globals = {}) {
     setTimeout,
     clearTimeout,
     ...globals,
+  };
+  const customRequire = typeof globals.require === 'function' ? globals.require : () => ({});
+  runWithSharedModules(code, {
+    ...baseContext,
+    module,
+    exports: module.exports,
+    require: createInternalResolver(baseContext, customRequire),
   });
   return module.exports;
 }
@@ -95,6 +100,7 @@ function makeReactHarness() {
       }
     },
     createElement(type, props, ...children) {
+      if (shouldInlineComponent(type)) return type(props || {});
       const flat = children.length === 1 ? children[0] : children.length > 1 ? children : undefined;
       return { type, props: { ...props, ...(flat !== undefined ? { children: flat } : {}) } };
     },
@@ -221,7 +227,7 @@ test('seriesCardService parses complete cards and handles missing optional field
   assert.deepEqual(
     JSON.parse(JSON.stringify(list[1].genres)),
     [
-      { id: 'Comedy', label: 'Hài' },
+      { id: 'Comedy', label: 'Hài hước' },
       { id: 'family', label: 'Gia đình' },
     ]
   );
@@ -337,7 +343,7 @@ test('label formatting handles counts, year ranges, episode tags, and progress p
   assert.equal(utils.formatSeriesCounts(0, 12), '12 tập');
   assert.equal(utils.formatSeriesCounts(null, null), '');
 
-  assert.equal(utils.formatYearRange(2011, 2022), '2011–2022');
+  assert.equal(utils.formatYearRange(2011, 2022), '2011 đến 2022');
   assert.equal(utils.formatYearRange(2023, 2023), '2023');
   assert.equal(utils.formatYearRange(2023, null), '2023');
   assert.equal(utils.formatYearRange(null, 2020), '2020');
@@ -394,7 +400,7 @@ test('SeriesRow renders heading, view-all link, accessible scroll buttons, and c
   h.resetCursor();
   const tree = mod.SeriesRow({ cards: sampleCards, loading: false, error: null });
   h.flushEffects();
-  assert.ok(getText(tree).includes('Các bộ phim'));
+  assert.ok(getText(tree).includes('Phim bộ'));
   const viewAll = findNodes(tree, (n) => n.props?.['data-testid'] === 'series-row-view-all')[0];
   assert.equal(viewAll.props.to, '/series');
   const prevBtn = findNodes(tree, (n) => n.props?.['data-testid'] === 'series-row-prev')[0];
@@ -509,6 +515,7 @@ test('SeriesCard caps genre tags at 3, links to /series/{id}, and includes synop
   });
   const mod = loadTsModule('../features/series/components/SeriesCard.tsx', {
     require: (name) => {
+      if (name === '@/lib/labels') return labels;
       if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
       if (name === 'react-router') return { Link: 'route-link' };
       if (name === 'lucide-react') return { Play: 'PlayIcon' };
@@ -520,16 +527,19 @@ test('SeriesCard caps genre tags at 3, links to /series/{id}, and includes synop
 
   h.resetCursor();
   const tree = mod.SeriesCard({ card: sampleCards[0] });
-  assert.equal(tree.props.to, '/series/ser_jadoo');
   assert.equal(tree.props['data-testid'], 'series-card');
+  const cardLink = findNodes(tree, (n) => n.type === 'route-link')[0];
+  assert.equal(cardLink.props.to, '/series/ser_jadoo');
   const genresWrap = findNodes(tree, (n) => n.props?.['data-testid'] === 'series-card-genres')[0];
   assert.equal(genresWrap.props.children.length, 3);
   const text = getText(tree);
   assert.ok(text.includes('Xin Chào Jadoo'));
-  assert.ok(text.includes('2011–2022'));
+  assert.ok(text.includes('2011 đến 2022'));
   assert.ok(text.includes('4 mùa · 52 tập'));
   assert.ok(text.includes('Xem'));
   assert.ok(text.includes('Cô bé tinh nghịch Jadoo'));
+  const overlayNodes = findNodes(tree, (n) => typeof n.props?.className === 'string' && n.props.className.includes('series-card-overlay'));
+  assert.equal(overlayNodes.length, 0, 'Synopsis and Xem CTA live directly in the visible card body without hover-only overlay');
 });
 
 test('SeriesBrowsePage mirrors search, genre chips, and sort into URL and supports retry', async () => {
@@ -583,7 +593,7 @@ test('SeriesBrowsePage mirrors search, genre chips, and sort into URL and suppor
 
   const cards = findNodes(tree, (n) => n.type === 'SeriesCard');
   assert.equal(cards.length, 3);
-  assert.ok(getText(tree).includes('3 bộ phim'));
+  assert.ok(getText(tree).includes('3 phim bộ'));
 
   const sortSelect = findNodes(tree, (n) => n.props?.['data-testid'] === 'series-sort-select')[0];
   sortSelect.props.onChange({ target: { value: 'episodes' } });
@@ -611,6 +621,7 @@ test('ContinueWatching renders thumbnail, series title, episode tag, progress ba
   });
   const mod = loadTsModule('../features/movies/components/ContinueWatching.tsx', {
     require: (name) => {
+      if (name === '@/lib/labels') return labels;
       if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
       if (name === 'react-router') return { Link: 'route-link' };
       if (name.includes('useWatchProgress')) {
@@ -632,7 +643,7 @@ test('ContinueWatching renders thumbnail, series title, episode tag, progress ba
                 durationMs: 240000,
                 completed: false,
                 version: 1,
-                updatedAt: '2026-11-20T00:00:00Z',
+                updatedAt: '2026-11-20T08:00:00+07:00',
               },
             ],
           }),
@@ -647,8 +658,16 @@ test('ContinueWatching renders thumbnail, series title, episode tag, progress ba
   });
 
   h.resetCursor();
-  const tree = mod.ContinueWatching({ films: [] });
-  const card = findNodes(tree, (n) => n.props?.['data-testid'] === 'continue-card')[0];
+  const tree = mod.ContinueWatching({ films: [
+    { movieId: 'newer', title: 'Phim mới xem', positionMs: 24000, durationMs: 100000, completed: false, updatedAt: '2026-11-20T02:00:00Z' },
+  ] });
+  const [newest, card] = findNodes(tree, (n) => n.props?.['data-testid'] === 'continue-card');
+  assert.equal(newest.props.to, '/movies/newer?t=24000');
+  const watchedAt = findNodes(card, (n) => n.type === 'time')[0];
+  const expectedTime = new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  }).format(Date.parse('2026-11-20T01:00:00Z'));
+  assert.equal(getText(watchedAt), expectedTime);
   assert.ok(card);
   assert.equal(card.props.to, '/series/ser_jadoo?episode=ep_1&asset=ast_1&t=60000&timeline=file');
   const art = findNodes(card, (n) => n.type === 'ArtworkImage')[0];
@@ -713,4 +732,159 @@ test('SeriesDetailBanner renders backdrop overlay, genres, counts, and falls bac
   assert.ok(fallbackText.includes('2 mùa · 10 tập'));
   assert.ok(fallbackText.includes('Hài'));
   assert.ok(fallbackText.includes('Gia đình'));
+});
+
+test('R2: null and zero years never render "null", "0", or empty separators across cards, banner, detail, and sort', () => {
+  assert.equal(labels.formatYear(null), '');
+  assert.equal(labels.formatYear(undefined), '');
+  assert.equal(labels.formatYear(0), '');
+  assert.equal(labels.formatYear(-10), '');
+  assert.equal(labels.formatYear(2005), '2005');
+
+  const nullYearCard = {
+    id: 'ser_doraemon',
+    title: 'Doraemon',
+    originalTitle: 'Doraemon',
+    synopsis: 'Chú mèo máy đến từ tương lai.',
+    releaseYearStart: null,
+    releaseYearEnd: null,
+    genres: [{ id: 'family', label: 'Gia đình' }],
+    seasonCount: 12,
+    episodeCount: 337,
+    posterUrl: null,
+    backdropUrl: null,
+    averageRating: null,
+    ratingCount: 0,
+  };
+  const zeroYearCard = {
+    ...nullYearCard,
+    id: 'ser_zero',
+    title: 'Zero Year',
+    releaseYearStart: 0,
+    releaseYearEnd: 0,
+    seasonCount: null,
+    episodeCount: null,
+  };
+
+  const sortedNewest = utils.filterAndSortSeriesCards([nullYearCard, zeroYearCard, sampleCards[0]], {
+    q: '',
+    genres: [],
+    sort: 'newest',
+  });
+  assert.equal(sortedNewest[0].id, 'ser_jadoo');
+
+  const h = makeReactHarness();
+  const cardMod = loadTsModule('../features/series/components/SeriesCard.tsx', {
+    require: (name) => {
+      if (name === '@/lib/labels') return labels;
+      if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
+      if (name === 'react-router') return { Link: 'route-link' };
+      if (name === 'lucide-react') return { Play: 'PlayIcon' };
+      if (name.includes('ArtworkImage')) return { ArtworkImage: 'ArtworkImage' };
+      if (name.includes('LibraryControls')) return { QuickSaveButtons: 'QuickSaveButtons' };
+      if (name.includes('seriesBrowseUtils')) return utils;
+      return {};
+    },
+  });
+  h.resetCursor();
+  const nullCardTree = cardMod.SeriesCard({ card: nullYearCard });
+  const nullCardText = getText(nullCardTree);
+  assert.doesNotMatch(nullCardText, /\bnull\b|^·|·\s*·/);
+  assert.equal(findNodes(nullCardTree, (n) => n.props?.['data-testid'] === 'series-card-years').length, 0);
+  assert.ok(nullCardText.includes('12 mùa · 337 tập'));
+
+  h.resetCursor();
+  const zeroCardTree = cardMod.SeriesCard({ card: zeroYearCard });
+  const zeroCardText = getText(zeroCardTree);
+  assert.doesNotMatch(zeroCardText, /\b0\b|\bnull\b|·/);
+
+  const bh = makeReactHarness();
+  const bannerMod = loadTsModule('../features/series/components/SeriesDetailBanner.tsx', {
+    require: (name) => {
+      if (name === '@/lib/labels') return labels;
+      if (name === 'react') return { __esModule: true, default: bh.react, ...bh.react };
+      if (name === 'react-router') return { Link: 'route-link' };
+      if (name.includes('seriesBrowseUtils')) return utils;
+      return {};
+    },
+  });
+  bh.resetCursor();
+  const nullBannerTree = bannerMod.SeriesDetailBanner({
+    series: { id: 'ser_doraemon', title: 'Doraemon' },
+    card: nullYearCard,
+    seasonCount: 12,
+    episodeCount: 337,
+    nextEpisodeAction: null,
+  });
+  const nullBannerText = getText(nullBannerTree);
+  assert.doesNotMatch(nullBannerText, /\bnull\b|·\s*·/);
+  assert.equal(findNodes(nullBannerTree, (n) => n.props?.['data-testid'] === 'series-banner-years').length, 0);
+
+  const mcH = makeReactHarness();
+  const mediaRouting = loadTsModule('../lib/services/mediaRouting.ts', {});
+  const baseWl = {
+    isWatchlisted: () => false,
+    toggleWatchlist() {},
+    isFavorite: () => false,
+    toggleFavorite() {},
+    getRating: () => undefined,
+    rateMovie() {},
+    removeRating() {},
+    isActionPending: () => false,
+    isActionUnconfirmed: () => false,
+    getActionIntent: () => null,
+    getUnconfirmedRating: () => undefined,
+    openChat() {},
+  };
+  const mcMod = loadTsModule('../features/movies/components/MovieCard.tsx', {
+    require: (name) => {
+      if (name === '@/lib/labels') return labels;
+      if (name === 'react') return { __esModule: true, default: mcH.react, ...mcH.react };
+      if (name === 'react-router') return { Link: 'route-link' };
+      if (name === 'lucide-react') return new Proxy({}, { get: (_, k) => String(k) });
+      if (name.includes('mediaRouting')) return mediaRouting;
+      if (name.includes('WatchlistContext')) return { useWatchlist: () => baseWl };
+      return {};
+    },
+  });
+  mcH.resetCursor();
+  const nullMovieCardText = getText(
+    mcMod.MovieCard({
+      movie: {
+        id: 'ep_doraemon_1',
+        title: 'Tập 1',
+        year: null,
+        rating: 0,
+        runtime: '22m',
+        genres: ['family'],
+        description: '',
+        poster: '',
+        backdrop: '',
+      },
+    })
+  );
+  assert.ok(nullMovieCardText.includes('22 phút'));
+  assert.doesNotMatch(nullMovieCardText, /\bnull\b|·/);
+
+  mcH.resetCursor();
+  const zeroMovieCardText = getText(
+    mcMod.MovieCard({
+      movie: {
+        id: 'ep_zero',
+        title: 'Tập 2',
+        year: 0,
+        rating: 0,
+        runtime: '',
+        genres: ['family'],
+        description: '',
+        poster: '',
+        backdrop: '',
+      },
+    })
+  );
+  assert.doesNotMatch(zeroMovieCardText, /\b0\b|\bnull\b|·/);
+
+  const pageSource = fs.readFileSync(new URL('../app/series/page.tsx', import.meta.url), 'utf8');
+  assert.ok(pageSource.includes('lọc theo thể loại hoặc xếp theo tên, năm và số tập.'));
+  assert.equal(pageSource.includes('theo thể loại, năm phát hành và số tập.'), false);
 });

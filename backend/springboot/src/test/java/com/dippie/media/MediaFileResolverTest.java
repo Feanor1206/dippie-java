@@ -13,6 +13,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+// Kiểm tra thứ tự tìm tệp video giữa nguồn Drive và local, đồng thời khóa chặt các ca path traversal và symlink.
 class MediaFileResolverTest {
 
     @TempDir

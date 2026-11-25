@@ -23,6 +23,7 @@ import static com.dippie.catalog.importing.CatalogCollection.CHARACTERS;
 import static com.dippie.catalog.importing.CatalogCollection.EPISODES;
 import static com.dippie.catalog.importing.CatalogCollection.SERIES;
 
+// Đồng bộ các bảng nối nhiều-nhiều cho thể loại, nhân vật, bộ phim và liên kết tập với tệp media.
 @Repository
 class CatalogLinks {
 
@@ -32,6 +33,7 @@ class CatalogLinks {
         this.entities = entities;
     }
 
+    // Xóa rồi ghi lại toàn bộ bảng nối thể loại và nhân vật cho những mục có trong gói nhập.
     void replaceTaxonomy(JsonNode document) {
         JsonNode episodes = EPISODES.items(document);
         replace(episodes, CatalogEpisodeCharacter.class, "episodeId", "character_ids", CatalogEpisodeCharacter::new);
@@ -42,10 +44,12 @@ class CatalogLinks {
         replace(CHARACTERS.items(document), CatalogCharacterSeries.class, "characterId", "series_ids", CatalogCharacterSeries::new);
     }
 
+    // Đối chiếu danh sách tập mà mỗi tệp media bao phủ, chỉ xóa và chèn lại những tệp thực sự thay đổi.
     void syncEpisodeAssets(JsonNode assets) {
         if (assets.isEmpty()) {
             return;
         }
+        // Bỏ qua các tệp có tập liên kết giống hệt DB hiện tại để đỡ phải xóa rồi chèn lại.
         Map<String, Set<String>> expected = new LinkedHashMap<>();
         for (JsonNode asset : assets) {
             Set<String> episodes = new HashSet<>();

@@ -2,14 +2,10 @@ package com.dippie.common.error;
 
 import org.springframework.http.HttpStatus;
 
+// Lỗi không đủ quyền thực hiện thao tác, trả HTTP 403.
 public class ForbiddenException extends DomainException {
 
     public ForbiddenException(String message) {
-        super(message);
-    }
-
-    @Override
-    public HttpStatus status() {
-        return HttpStatus.FORBIDDEN;
+        super(HttpStatus.FORBIDDEN, message);
     }
 }

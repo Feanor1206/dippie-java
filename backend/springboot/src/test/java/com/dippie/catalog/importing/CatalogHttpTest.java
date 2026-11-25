@@ -1,5 +1,6 @@
 package com.dippie.catalog.importing;
 
+import com.dippie.catalog.domain.CatalogImportedEvent;
 import com.dippie.catalog.query.CatalogVisibility;
 import com.dippie.security.JwtService;
 import com.dippie.security.Role;
@@ -34,7 +35,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -50,6 +53,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// Bộ test tích hợp HTTP chạy trọn luồng kiểm tra, nhập gói, phân quyền, ẩn hiện bản nháp, xuất danh mục và lưu tiến độ xem.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -102,7 +106,7 @@ class CatalogHttpTest {
                   "package":{"id":"pkg-playback","revision":1},
                   "series":[{"id":"playback-series","title":"Playback"}],
                   "episodes":[
-                    {"id":"playback-jadoo","series_id":"playback-series","number":1,"title":"Jadoo",
+                    {"id":"playback-jadoo","series_id":"playback-series","number":1,"title":"Jadoo","duration_ms":100000,
                      "external_ids":[{"namespace":"youtube_video_id","value":"invalid"},
                                      {"namespace":"youtube_video_id","value":"2ykw6ZxTb8o"}]},
                     {"id":"playback-larva","series_id":"playback-series","number":2,"title":"Larva",
@@ -112,9 +116,9 @@ class CatalogHttpTest {
                      "external_ids":[{"namespace":"youtube_video_id","value":"invalid"}]}],
                   "media_assets":[
                     {"id":"playback-missing","storage":{"provider":"local","relative_path":"missing.mp4"},
-                     "coverage":[{"episode_id":"playback-jadoo"}]},
+                     "coverage":[{"episode_id":"playback-jadoo","scope":"full_episode"}]},
                     {"id":"playback-present","storage":{"provider":"local","relative_path":"present.mp4"},
-                     "coverage":[{"episode_id":"playback-jadoo"}]}]
+                     "coverage":[{"episode_id":"playback-jadoo","scope":"full_episode"}]}]
                 }
                 """).andExpect(status().isOk());
         Path file = Files.writeString(mediaRoot.resolve("present.mp4"), "test video");
@@ -126,11 +130,37 @@ class CatalogHttpTest {
                 .andExpect(jsonPath("$.mediaAssets[*].id", contains("playback-missing", "playback-present")))
                 .andExpect(jsonPath("$.mediaAssets[0].available").value(false))
                 .andExpect(jsonPath("$.mediaAssets[1].available").value(true));
+        mvc.perform(get("/api/movies/playback-jadoo/media-descriptor")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hasFeature").value(true))
+                .andExpect(jsonPath("$.data.feature.assetId").value("playback-present"));
+        mvc.perform(post("/api/media/grant/playback-present")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.streamUrl").isNotEmpty());
+
+        String member = token("fallback-progress", Role.ROLE_USER);
+        String progressPath = "/api/users/watch-progress/playback-jadoo";
+        String body = progressBody("youtube:2ykw6ZxTb8o", 60_000, -1);
+        // Vẫn phải cho lưu tiến độ xem YouTube dự phòng ngay cả khi tệp cục bộ hoặc Drive đang có sẵn trên đĩa.
+        mvc.perform(auth(put(progressPath), member).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.durationMs").value(100_000))
+                .andExpect(jsonPath("$.data.assetId").value("youtube:2ykw6ZxTb8o"))
+                .andExpect(jsonPath("$.data.version").value(0));
+        Files.delete(file);
+        mvc.perform(get("/api/movies/playback-jadoo/media-descriptor")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hasFeature").value(false))
+                .andExpect(jsonPath("$.data.feature").value(nullValue()));
+        mvc.perform(post("/api/media/grant/playback-present")).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Không tìm thấy video để phát."));
+        mvc.perform(auth(put(progressPath), member).contentType(MediaType.APPLICATION_JSON)
+                        .content(progressBody("youtube:2ykw6ZxTb8o", 70_000, 0)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.durationMs").value(100_000))
+                .andExpect(jsonPath("$.data.assetId").value("youtube:2ykw6ZxTb8o"))
+                .andExpect(jsonPath("$.data.version").value(1));
 
         database.update("delete from media_assets where id = ?", "playback-present");
         mvc.perform(get(CATALOG + "episodes/playback-jadoo")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.mediaAssets[1].available").value(false));
-        Files.delete(file);
 
         mvc.perform(get(CATALOG + "episodes/playback-larva")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.youtube.videoId").value("9aFcot7_7Q4"))
@@ -163,9 +193,11 @@ class CatalogHttpTest {
                 .andExpect(jsonPath("$.counts.mediaAssets").value(198)));
         String snapshot = imported.path("importId").asText();
         assertThat(visibility.isSeriesVisible("ser_jadoo")).isTrue();
+        String importedAtText = imported.path("importedAt").asText();
+        assertThat(importedAtText).endsWith("Z");
         assertThat(events.stream(CatalogImportedEvent.class)).containsExactly(new CatalogImportedEvent(
                 "pkg_dippie_series_jadoo", 5, imported.path("snapshotVersion").asLong(), snapshot,
-                "catalog-jadoo", LocalDateTime.parse(imported.path("importedAt").asText())));
+                "catalog-jadoo", LocalDateTime.ofInstant(Instant.parse(importedAtText), ZoneOffset.UTC)));
         verifyNextEpisodeAfterJadooImport();
 
         mvc.perform(auth(get(ADMIN + "history"), admin)).andExpect(status().isOk())
@@ -193,14 +225,14 @@ class CatalogHttpTest {
         assertThat(database.queryForList("select character_id from catalog_episode_characters where episode_id = 'ep_jadoo_s01_0001'", String.class))
                 .isNotEmpty();
         assertThat(database.queryForList("select genre_name from movie_genres where movie_id = 'ser_jadoo'", String.class))
-                .containsExactly("animation");
+                .containsExactlyInAnyOrder("animation", "comedy", "family", "school", "slice_of_life");
         assertThat(database.queryForObject("select mime_type from media_assets where id = 'asset_jadoo_s01_a0001'", String.class))
                 .isEqualTo("audio/mpeg");
 
         submit("validate", admin, fixture).andExpect(status().isOk())
                 .andExpect(jsonPath("$.unchanged").value(715));
         JsonNode repeated = body(submit("import", admin, fixture).andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Gói danh mục đã được nhập."))
+                .andExpect(jsonPath("$.message").value("Gói danh mục này đã được nhập trước đó."))
                 .andExpect(jsonPath("$.unchanged").doesNotHaveJsonPath()));
         assertThat(repeated.path("importId")).isEqualTo(imported.path("importId"));
         assertThat(repeated.path("importedAt")).isEqualTo(imported.path("importedAt"));
@@ -221,7 +253,7 @@ class CatalogHttpTest {
                 .andExpect(status().isOk());
         mvc.perform(auth(post(ADMIN + "snapshots/" + snapshot + "/retry"), admin))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("Chỉ có thể thử lại snapshot mới nhất."));
+                .andExpect(jsonPath("$.message").value("Chỉ được đồng bộ lại snapshot mới nhất."));
         mvc.perform(auth(post(ADMIN + "snapshots/unknown/retry"), admin)).andExpect(status().isBadRequest());
     }
 
@@ -232,7 +264,7 @@ class CatalogHttpTest {
         mvc.perform(jadoo).andExpect(status().isUnauthorized());
         mvc.perform(auth(get(endpoint).param("seriesId", "unknown-series"), member))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Không tìm thấy bộ phim (series) với mã: unknown-series"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy bộ phim với mã: unknown-series"));
         mvc.perform(auth(jadoo, member)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.seriesId").value("ser_jadoo"))
                 .andExpect(jsonPath("$.data.episodeId").value("ep_jadoo_s01_0001"))
@@ -269,7 +301,7 @@ class CatalogHttpTest {
     void authorizationAndInvalidInputUseTheirContractBodies() throws Exception {
         String admin = token("catalog-validate", Role.ROLE_ADMIN);
         String user = token("catalog-member", Role.ROLE_USER);
-        ResultMatcher denied = jsonPath("$.message").value("Quyền truy cập bị từ chối (Yêu cầu ROLE_ADMIN)");
+        ResultMatcher denied = jsonPath("$.message").value("Chỉ tài khoản quản trị mới dùng được mục này.");
 
         for (String endpoint : new String[]{"history", "snapshots", "export"}) {
             mvc.perform(auth(get(ADMIN + endpoint), user)).andExpect(status().isForbidden()).andExpect(denied);
@@ -287,10 +319,10 @@ class CatalogHttpTest {
                 .andExpect(jsonPath("$.conflicts").value(0))
                 .andExpect(jsonPath("$.errors[0].path").value("package"))
                 .andExpect(jsonPath("$.errors[0].code").value("INVALID_FIELD"))
-                .andExpect(jsonPath("$.errors[0].message").value("Dữ liệu JSON không hợp lệ."));
+                .andExpect(jsonPath("$.errors[0].message").value("Dữ liệu gửi lên không đúng định dạng."));
         submit("import", admin, "{ {} }").andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Dữ liệu JSON không hợp lệ."));
+                .andExpect(jsonPath("$.message").value("Dữ liệu gửi lên không đúng định dạng."));
     }
 
     @Test
@@ -336,10 +368,10 @@ class CatalogHttpTest {
         mvc.perform(auth(get(CATALOG + "series"), admin)).andExpect(status().isOk())
                 .andExpect(jsonPath("$[*].id", hasItem("draft-series")));
         mvc.perform(get(CATALOG + "series/draft-series")).andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Không tìm thấy bộ phim (series) với mã: draft-series"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy bộ phim với mã: draft-series"));
         mvc.perform(auth(get("/api/users/next-episode").param("seriesId", "draft-series"), admin))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Không tìm thấy bộ phim (series) với mã: draft-series"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy bộ phim với mã: draft-series"));
         mvc.perform(auth(get("/api/users/next-episode").param("seriesId", "visible-series"), member))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.episodeId").value("visible-episode"))
@@ -375,7 +407,7 @@ class CatalogHttpTest {
                     .andExpect(jsonPath("$[*].type", contains("series", "episode", "segment", "scene")))
                     .andExpect(jsonPath("$[2].startMs").value(20))
                     .andExpect(jsonPath("$[3].title").value("Phân cảnh khớp truy vấn"));
-            assertThat(queries.getPrepareStatementCount() - before).isZero();
+            assertThat(queries.getPrepareStatementCount() - before).isEqualTo(1);
         } finally {
             queries.setStatisticsEnabled(previouslyEnabled);
         }
@@ -407,7 +439,7 @@ class CatalogHttpTest {
         submit("validate", admin, wrongSeason).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].path").value("episodes[0].season_id"));
         submit("import", admin, wrongSeason).andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Mùa phải tồn tại và thuộc đúng bộ của tập phim."));
+                .andExpect(jsonPath("$.message").value("Mùa phim phải tồn tại và thuộc đúng bộ phim của tập này."));
 
         String missingAsset = """
                 {"package":{"id":"rollback"},"series":[{"id":"rollback-series"}],
@@ -416,7 +448,7 @@ class CatalogHttpTest {
                 """;
         submit("validate", admin, missingAsset).andExpect(status().isOk());
         submit("import", admin, missingAsset).andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Gói danh mục có dữ liệu hoặc liên kết không hợp lệ."));
+                .andExpect(jsonPath("$.message").value("Dữ liệu hoặc liên kết trong gói danh mục không hợp lệ."));
         mvc.perform(auth(get(CATALOG + "series/rollback-series"), admin)).andExpect(status().isNotFound());
         mvc.perform(auth(get(ADMIN + "history"), admin)).andExpect(status().isOk())
                 .andExpect(jsonPath("$[*].id", not(hasItem("rollback"))));
@@ -487,10 +519,64 @@ class CatalogHttpTest {
     }
 
     @Test
-    void nextEpisodeCoversSeriesStreamedOnlyThroughYoutube() throws Exception {
+    void reimportRepairsGenreLinksAndAppliesTheCatalogYearFallbacks() throws Exception {
+        String admin = token("catalog-legacy-metadata", Role.ROLE_ADMIN);
+        String fixture = """
+                {"package":{"id":"legacy-metadata"},
+                 "genres":[{"id":"metadata-family","labels":[{"language":"en","text":"Family test"},
+                                                               {"language":"vi","text":"Gia đình thử nghiệm"}]}],
+                 "series":[{"id":"metadata-series","title":"Metadata","release_year_start":2001,
+                            "genre_ids":["metadata-family"]},
+                           {"id":"metadata-undated","title":"Undated"}],
+                 "seasons":[{"id":"metadata-season","series_id":"metadata-series","release_year_start":2003}],
+                 "episodes":[{"id":"metadata-aired","series_id":"metadata-series","season_id":"metadata-season",
+                              "release_date":"2005-01-01"},
+                             {"id":"metadata-season-year","series_id":"metadata-series","season_id":"metadata-season"},
+                             {"id":"metadata-series-year","series_id":"metadata-series"},
+                             {"id":"metadata-unknown","series_id":"metadata-undated"}]}
+                """;
+        submit("import", admin, fixture).andExpect(status().isOk());
+        database.update("update movies set genres = 'Animation', release_year = 2026 where id like 'metadata-%'");
+        database.update("delete from movie_genres where movie_id like 'metadata-%' and genre_name <> 'animation'");
+        submit("import", admin, fixture).andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Gói danh mục này đã được nhập trước đó."));
+
+        mvc.perform(get("/api/movies/browse").param("genre", "FAMILY TEST").param("sort", "year"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(4))
+                .andExpect(jsonPath("$.data.items[*].year", contains(2005, 2003, 2001, 2001)))
+                .andExpect(jsonPath("$.data.items[0].genres", hasItem("metadata-family")));
+        mvc.perform(get("/api/movies/browse").param("genre", "METADATA-FAMILY").param("yearMin", "2003"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(2));
+        mvc.perform(get("/api/movies/genres")).andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == 'metadata-family')].label", contains("Gia đình thử nghiệm")))
+                .andExpect(jsonPath("$[?(@.id == 'metadata-family')].count", contains(4)));
+        mvc.perform(get("/api/movies/metadata-unknown")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.year").value(nullValue()));
+        assertThat(database.queryForObject("select release_year from movies where id = 'metadata-unknown'", Integer.class))
+                .isNull();
+
+        submit("import", admin, """
+                {"package":{"id":"legacy-metadata","revision":2},
+                 "series":[{"id":"metadata-series","title":"Metadata","release_year_start":2002}]}
+                """).andExpect(status().isOk());
+        mvc.perform(get("/api/movies/metadata-series-year")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.year").value(2002))
+                .andExpect(jsonPath("$.data.genres", contains("animation")));
+        mvc.perform(get("/api/movies/genres")).andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == 'metadata-family')]").isEmpty());
+    }
+
+    @Test
+    void youtubeProgressSupportsContinueWatchingAndAdvancesToTheNextEpisode() throws Exception {
         String admin = token("catalog-larva", Role.ROLE_ADMIN);
         String fixture = Files.readString(Path.of("../../data/catalog-by-series/catalog.larva.json"));
         submit("import", admin, fixture).andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true));
+        mvc.perform(get("/api/movies/browse").param("animationOnly", "true").param("genre", "Family")
+                        .param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].genres", hasItem("family")));
         String member = token("larva-next-episode", Role.ROLE_USER);
 
         mvc.perform(auth(get("/api/users/next-episode").param("seriesId", "ser_larva"), member))
@@ -499,6 +585,44 @@ class CatalogHttpTest {
                 .andExpect(jsonPath("$.data.seasonNumber").value(1))
                 .andExpect(jsonPath("$.data.episodeNumber").value(1))
                 .andExpect(jsonPath("$.data.reason").value("NEXT_UNWATCHED"));
+
+        String episode = "ep_larva_s01_0001";
+        String path = "/api/users/watch-progress/" + episode;
+        JsonNode detail = mapper.readTree(mvc.perform(get(CATALOG + "episodes/" + episode))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray());
+        String asset = "youtube:" + detail.path("youtube").path("videoId").asText();
+        mvc.perform(auth(put(path), member).contentType(MediaType.APPLICATION_JSON)
+                        .content(progressBody("youtube:wrong_id_01", 60_000, -1)))
+                .andExpect(status().isNotFound());
+        mvc.perform(auth(put(path), member).contentType(MediaType.APPLICATION_JSON)
+                        .content(progressBody(asset, 60_000, -1)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.assetId").value(asset))
+                .andExpect(jsonPath("$.data.durationMs").value(139_000))
+                .andExpect(jsonPath("$.data.completed").value(false));
+        mvc.perform(auth(get(path), member)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.assetId").value(asset));
+        mvc.perform(auth(get("/api/users/watch-progress"), member)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].assetId").value(asset));
+        mvc.perform(auth(get("/api/users/next-episode").param("seriesId", "ser_larva"), member))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.episodeId").value(episode))
+                .andExpect(jsonPath("$.data.assetId").value(asset))
+                .andExpect(jsonPath("$.data.resumePositionMs").value(60_000))
+                .andExpect(jsonPath("$.data.reason").value("RESUME"));
+        mvc.perform(auth(put(path), member).contentType(MediaType.APPLICATION_JSON)
+                        .content(progressBody(asset, 139_000, 0)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.completed").value(true));
+        mvc.perform(auth(get("/api/users/next-episode").param("seriesId", "ser_larva"), member))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.episodeId").value("ep_larva_s01_0002"))
+                .andExpect(jsonPath("$.data.reason").value("NEXT_UNWATCHED"));
+    }
+
+    private String progressBody(String assetId, long positionMs, long version) {
+        return mapper.createObjectNode().put("assetId", assetId)
+                .put("positionMs", positionMs).put("expectedVersion", version).toString();
     }
 
     @Test
@@ -540,6 +664,15 @@ class CatalogHttpTest {
                 """).andExpect(status().isOk());
 
         verifySeriesCards(admin);
+        var missing = body(mvc.perform(post("/api/recommend").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"seriesId\":\"cards-featured\",\"limit\":100}")).andExpect(status().isOk()));
+        assertThat(missing.path("recommendedMovies").valueStream().map(item -> item.path("id").asText()))
+                .doesNotContain("cards-feature");
+        mvc.perform(auth(put("/api/users/watch-progress/cards-feature"), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"assetId\":\"cards-video\",\"positionMs\":0,\"expectedVersion\":-1}"))
+                .andExpect(status().isNotFound());
+
+        Files.writeString(mediaRoot.resolve("cards.mp4"), "test video");
         verifyMovieAndRecommendationArtwork();
         verifyProgressThumbnails();
     }
@@ -552,7 +685,7 @@ class CatalogHttpTest {
         try {
             long before = statistics.getPrepareStatementCount();
             JsonNode cards = body(mvc.perform(request).andExpect(status().isOk()));
-            assertThat(statistics.getPrepareStatementCount() - before).isZero();
+            assertThat(statistics.getPrepareStatementCount() - before).isEqualTo(1);
             assertThat(cards.isArray()).isTrue();
             var fixtureCards = cards.valueStream().filter(card -> card.path("id").asText().startsWith("cards-")).toList();
             assertThat(fixtureCards).hasSize(2);
@@ -561,12 +694,12 @@ class CatalogHttpTest {
                      "releaseYearStart":2011,"releaseYearEnd":null,
                      "genres":[{"id":"cards-vietnamese","label":"Hài"},{"id":"cards-english","label":"Family"}],
                      "seasonCount":2,"episodeCount":3,"posterUrl":"https://example.com/cards.jpg",
-                     "backdropUrl":"https://i.ytimg.com/vi/video_00001/maxresdefault.jpg"}
+                     "backdropUrl":"https://i.ytimg.com/vi/video_00001/maxresdefault.jpg","averageRating":null,"ratingCount":0}
                     """));
             assertThat(fixtureCards.getLast()).isEqualTo(mapper.readTree("""
                     {"id":"cards-empty","title":"W6 a","originalTitle":null,"synopsis":null,
                      "releaseYearStart":null,"releaseYearEnd":null,"genres":[],"seasonCount":0,"episodeCount":0,
-                     "posterUrl":null,"backdropUrl":null}
+                     "posterUrl":null,"backdropUrl":null,"averageRating":null,"ratingCount":0}
                     """));
             assertThat(body(mvc.perform(auth(get(CATALOG + "series/cards"), admin)).andExpect(status().isOk())))
                     .isEqualTo(cards);
@@ -618,6 +751,24 @@ class CatalogHttpTest {
 
     static String jadooFixture() throws Exception {
         return Files.readString(Path.of("../../data/catalog-by-series/catalog.jadoo.json"));
+    }
+
+    @Test
+    void ranksExactSearchResultsAboveFuzzyResults() throws Exception {
+        String admin = token("catalog-fuzzy", Role.ROLE_ADMIN);
+        submit("import", admin, """
+                {"package":{"id":"fuzzy-ranking"},
+                 "series":[{"id":"typo-series","title":"Zeppar"},{"id":"exact-series","title":"Zepar"}],
+                 "episodes":[{"id":"typo-episode","series_id":"typo-series","title":"Different title"},
+                             {"id":"exact-episode","series_id":"exact-series","title":"Exact series episode"}]}
+                """).andExpect(status().isOk());
+
+        mvc.perform(get(CATALOG + "search").param("q", "zepar")).andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].id", contains("exact-series", "exact-episode", "typo-series", "typo-episode")));
+        mvc.perform(get("/api/movies/browse").param("query", "zepar").param("sort", "rating"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[*].id",
+                        contains("exact-episode", "exact-series", "typo-episode", "typo-series")));
     }
 
     private String token(String username, Role role) {

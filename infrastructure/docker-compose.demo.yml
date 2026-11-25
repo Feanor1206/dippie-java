@@ -1,0 +1,46 @@
+# Chế độ demo cục bộ (dùng H2 với tài khoản và dữ liệu mẫu), chỉ để chạy thử, không dùng chạy thật.
+# Chạy từ thư mục infrastructure/:
+#   docker compose -f docker-compose.demo.yml up -d --build
+# Sau đó mở http://localhost:3000 (tài khoản mẫu: admin hoặc user, mật khẩu: password123).
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: infrastructure/Dockerfile
+      args:
+        MAVEN_PROFILES: demo
+    restart: unless-stopped
+    stop_grace_period: 20s
+    environment:
+      SPRING_PROFILES_ACTIVE: demo
+      PORT: "3000"
+      DIPPIE_WEB_DIST: /app/web
+      DIPPIE_DATA_DIR: /app/data
+      DIPPIE_LLM_PROVIDER: ${DIPPIE_LLM_PROVIDER:-template}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    ports:
+      - "127.0.0.1:${DIPPIE_PORT:-3000}:3000"
+    volumes:
+      - dippie_demo_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null -T 4 http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
+    logging: *default-logging
+
+volumes:
+  dippie_demo_data:
