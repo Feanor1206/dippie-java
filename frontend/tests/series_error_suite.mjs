@@ -5,6 +5,13 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 
+const playbackSourceCode = ts.transpileModule(
+  fs.readFileSync(new URL('../lib/services/playbackSource.ts', import.meta.url), 'utf8'),
+  { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }
+).outputText;
+const playbackSourceModule = { exports: {} };
+vm.runInNewContext(playbackSourceCode, { module: playbackSourceModule, exports: playbackSourceModule.exports });
+
 function find(node, predicate) {
   if (!node || typeof node !== 'object') return null;
   if (Array.isArray(node)) return node.map((child) => find(child, predicate)).find(Boolean) || null;
@@ -46,6 +53,7 @@ test('Episode loading failure offers retry instead of claiming a missing video',
       };
       if (name.includes('useWatchProgress')) return { useWatchProgress: () => ({ records: [], saveProgress() {} }) };
       if (name.includes('watchProgressService')) return { readAutoNextPreference: () => false, isUsableResumeProgress: () => false };
+      if (name.includes('playbackSource')) return playbackSourceModule.exports;
       return {};
     },
   });
@@ -91,6 +99,7 @@ test('Episode playback defaults to video and honors an explicitly selected asset
         if (name.includes('mediaRouting')) return { resolveMediaSeekSeconds: () => null };
         if (name.includes('useWatchProgress')) return { useWatchProgress: () => ({ records: [], saveProgress() {} }) };
         if (name.includes('watchProgressService')) return { readAutoNextPreference: () => false, isUsableResumeProgress: () => false };
+        if (name.includes('playbackSource')) return playbackSourceModule.exports;
         return {};
       },
     });

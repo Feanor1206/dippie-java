@@ -59,6 +59,19 @@ record YoutubeSource(String videoId, boolean canEmbed) {
         return watchId == null ? null : new YoutubeSource(watchId, false);
     }
 
+    static YoutubeSource fallbackFrom(String episodeJson) {
+        JsonNode externalIds = externalIds(episodeJson);
+        if (externalIds != null) {
+            for (JsonNode item : externalIds) {
+                String id = validVideoId(item);
+                if (id != null && THUMBNAIL_ONLY_NAMESPACE.equals(item.path("namespace").textValue())) {
+                    return new YoutubeSource(id, true);
+                }
+            }
+        }
+        return null;
+    }
+
     private static JsonNode externalIds(String episodeJson) {
         return JsonText.parse(episodeJson)
                 .map(record -> record.path("external_ids"))

@@ -11,8 +11,23 @@ import {
   CatalogScene,
   CatalogMediaAsset,
 } from '@/lib/services/catalogService';
-import { resolveStreamUrl, requestPlaybackGrant, getStoredAuthToken } from '@/lib/services/mediaService';
+import {
+  resolveStreamUrl,
+  requestPlaybackGrant,
+  requestPlaybackGrantResult,
+  getStoredAuthToken,
+  type PlaybackGrantResult,
+} from '@/lib/services/mediaService';
 import { resolveFileTimestamp, resolveMediaSeekSeconds } from '@/lib/services/mediaRouting';
+import {
+  PLAYBACK_METADATA_TIMEOUT_MS,
+  classifyGrantFailureReason,
+  getUnavailableReasonMessage,
+  resolveFallbackStartTimeMs,
+  selectPlaybackSource,
+  type PlaybackFailureReason,
+  type PlaybackRuntimeFailure,
+} from '@/lib/services/playbackSource';
 import { useWatchProgress } from '@/lib/hooks/useWatchProgress';
 import { isUsableResumeProgress, readAutoNextPreference, writeAutoNextPreference, type WatchProgressDraft } from '@/lib/services/watchProgressService';
 import {
@@ -50,7 +65,12 @@ export default function SeriesDetailPage() {
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
   const [episodeQuery, setEpisodeQuery] = useState('');
   const [episodeDetail, setEpisodeDetail] = useState<CatalogEpisodeResponse | null>(null);
-  const [selectedAsset, setSelectedAsset] = useState<CatalogMediaAsset | null>(null);
+  const [preferredAssetId, setPreferredAssetId] = useState<string | null>(null);
+  const [manualAssetId, setManualAssetId] = useState<string | null>(null);
+  const [runtimeFailure, setRuntimeFailure] = useState<PlaybackRuntimeFailure | null>(null);
+  const [fallbackStartMs, setFallbackStartMs] = useState<number | null>(null);
+  const [fileRetryNonce, setFileRetryNonce] = useState<number>(0);
+  const [hasLoadedMetadata, setHasLoadedMetadata] = useState<boolean>(false);
   const [youtubeSeekMs, setYoutubeSeekMs] = useState<number | null>(null);
 
   const [isLoadingSeries, setIsLoadingSeries] = useState<boolean>(true);
@@ -74,12 +94,37 @@ export default function SeriesDetailPage() {
   const [autoNext, setAutoNext] = useState(false);
   const [nextCountdown, setNextCountdown] = useState<number | null>(null);
   const autoPlayEpisodeRef = useRef<string | null>(null);
+  const youtubeTargetMs = targetEpisodeId === selectedEpisode?.id
+    ? targetTimeMs ?? episodeDetail?.segments.find((segment) => segment.id === targetSegmentId)?.episodeStartMs
+      ?? episodeDetail?.scenes.find((scene) => scene.id === targetSceneId)?.startMs
+    : 0;
+  const effectiveYoutubeStartMs = youtubeSeekMs ?? fallbackStartMs ?? youtubeTargetMs;
+  const playbackSource = selectPlaybackSource({
+    episodeDetail,
+    selectedEpisodeId: selectedEpisode?.id,
+    episodeDurationMs: selectedEpisode?.durationMs,
+    preferredAssetId,
+    manualAssetId,
+    runtimeFailure,
+    startTimeMs: effectiveYoutubeStartMs,
+  });
+  const selectedAsset = playbackSource.kind === 'file' ? playbackSource.asset : null;
+  const youtubeVideoId = playbackSource.kind === 'youtube' ? playbackSource.youtube.videoId : null;
+  const youtubeEmbed = playbackSource.kind === 'youtube';
+  const youtubeUrl = playbackSource.kind === 'youtube'
+    ? playbackSource.watchUrl
+    : playbackSource.kind === 'unavailable'
+    ? playbackSource.youtubeWatchUrl
+    : null;
   const progressIdentity = `${selectedEpisode?.id || ''}:${selectedAsset?.id || ''}`;
   useEffect(() => setAutoNext(readAutoNextPreference()), []);
   useEffect(() => {
     setNextCountdown(null);
     setDismissedResume('');
   }, [progressIdentity]);
+  useEffect(() => {
+    setManualAssetId(null);
+  }, [selectedEpisode?.id]);
 
   interface PendingSeekIdentity {
     seriesId: string;
@@ -321,23 +366,100 @@ export default function SeriesDetailPage() {
   const previousEpisode = getAdjacentEpisode(seriesData?.episodes || [], selectedSeasonId, selectedEpisode?.id || null, -1, hasSeasons);
   const nextEpisode = getAdjacentEpisode(seriesData?.episodes || [], selectedSeasonId, selectedEpisode?.id || null, 1, hasSeasons);
   const savedProgress = progress.records.find(record => record.episodeId === selectedEpisode?.id && record.assetId === selectedAsset?.id);
-  const offerResume = !targetTimeMs && !targetSceneId && !targetSegmentId
+  const offerResume = playbackSource.kind === 'file' && !targetTimeMs && !targetSceneId && !targetSegmentId
     && dismissedResume !== progressIdentity && isUsableResumeProgress(savedProgress) && savedProgress.positionMs >= 5000;
-  const youtubeSource = !selectedAsset && episodeDetail?.episode.id === selectedEpisode?.id ? episodeDetail?.youtube : null;
-  const youtubeVideoId = /^[A-Za-z0-9_-]{11}$/.test(youtubeSource?.videoId || '') ? youtubeSource?.videoId : null;
-  const youtubeEmbed = youtubeVideoId && youtubeSource?.canEmbed;
-  const youtubeTargetMs = targetEpisodeId === selectedEpisode?.id
-    ? targetTimeMs ?? episodeDetail?.segments.find(segment => segment.id === targetSegmentId)?.episodeStartMs
-      ?? episodeDetail?.scenes.find(scene => scene.id === targetSceneId)?.startMs
-    : 0;
-  const youtubeTime = Number(youtubeSeekMs ?? youtubeTargetMs ?? 0);
-  const youtubeStart = Number.isSafeInteger(youtubeTime) && youtubeTime > 0
-    && (!selectedEpisode?.durationMs || youtubeTime < selectedEpisode.durationMs) ? Math.floor(youtubeTime / 1000) : 0;
-  const youtubeUrl = youtubeVideoId ? `https://www.youtube.com/watch?v=${youtubeVideoId}&t=${youtubeStart}` : null;
+
+  function handleFilePlaybackFailure(assetId: string, reason: PlaybackFailureReason) {
+    if (!selectedEpisode?.id || episodeDetail?.episode?.id !== selectedEpisode.id) return;
+    if (selectedAsset?.id !== assetId) return;
+    const isUrlEpisode = targetEpisodeId === selectedEpisode.id;
+    const matchingSegment = isUrlEpisode && targetSegmentId
+      ? episodeDetail.segments.find((segment) => segment.id === targetSegmentId)
+      : undefined;
+    const matchingScene = isUrlEpisode && targetSceneId
+      ? episodeDetail.scenes.find((scene) => scene.id === targetSceneId)
+      : undefined;
+    const pendingSeekSec =
+      pendingSeekRef.current &&
+      pendingSeekRef.current.episodeId === selectedEpisode.id &&
+      pendingSeekRef.current.assetId === assetId
+        ? pendingSeekRef.current.targetSec
+        : null;
+    const capturedStartMs = resolveFallbackStartTimeMs({
+      videoCurrentTimeSec: videoRef.current?.currentTime,
+      pendingSeekSec,
+      trackedTimeSec: currentTime,
+      manualSeekMs: youtubeSeekMs,
+      deepLinkTimeMs: isUrlEpisode ? targetTimeMs : null,
+      segmentStartMs: matchingSegment?.episodeStartMs,
+      sceneStartMs: matchingScene?.startMs,
+    });
+    setFallbackStartMs(capturedStartMs > 0 ? capturedStartMs : null);
+    setRuntimeFailure({
+      episodeId: selectedEpisode.id,
+      assetId,
+      reason,
+    });
+    setStreamUrl('');
+    setIsResolvingStream(false);
+    setHasLoadedMetadata(false);
+    setIsPlaying(false);
+  }
+
+  function handleRetryOriginalFile() {
+    setPlaybackWarning(null);
+    const failedAsset = playbackSource.kind === 'youtube' || playbackSource.kind === 'unavailable'
+      ? playbackSource.failedAsset
+      : null;
+    const carryStartMs = resolveFallbackStartTimeMs({
+      manualSeekMs: youtubeSeekMs,
+      deepLinkTimeMs: fallbackStartMs ?? (targetEpisodeId === selectedEpisode?.id ? targetTimeMs : null),
+    });
+
+    if (runtimeFailure) {
+      if (failedAsset && carryStartMs > 0 && selectedEpisode) {
+        pendingSeekRef.current = {
+          seriesId: String(seriesId),
+          episodeId: selectedEpisode.id,
+          assetId: failedAsset.id,
+          sceneId: null,
+          segmentId: null,
+          targetSec: carryStartMs / 1000,
+          generation: ++playGenRef.current,
+        };
+      }
+      setRuntimeFailure(null);
+      setHasLoadedMetadata(false);
+      setFileRetryNonce((value) => value + 1);
+      return;
+    }
+
+    if (selectedEpisode && carryStartMs > 0) {
+      pendingResumeRef.current = {
+        episodeId: selectedEpisode.id,
+        positionMs: carryStartMs,
+        assetId: failedAsset?.id || null,
+      };
+    }
+    setRuntimeFailure(null);
+    setHasLoadedMetadata(false);
+    setEpisodeRetry((value) => value + 1);
+  }
+
+  function handleSelectAsset(asset: CatalogMediaAsset) {
+    setPlaybackWarning(null);
+    setManualAssetId(asset.id);
+    setRuntimeFailure(null);
+    setHasLoadedMetadata(false);
+    setFileRetryNonce((value) => value + 1);
+    if (asset.available === false) {
+      setEpisodeRetry((value) => value + 1);
+    }
+  }
 
   function saveCurrentProgress(reason: 'interval' | 'pause' | 'ended' | 'episode-change') {
     const video = videoRef.current;
-    if (!video || !selectedEpisode || !selectedAsset || !seriesData
+    if (playbackSource.kind !== 'file' || !video || !selectedEpisode || !selectedAsset || !seriesData
         || episodeDetail?.episode?.id !== selectedEpisode.id || !Number.isFinite(video.currentTime)
         || video.currentTime < 1 || !(video.currentSrc || video.src).includes(encodeURIComponent(selectedAsset.id))) return;
     let fullEpisode = false;
@@ -389,7 +511,15 @@ export default function SeriesDetailPage() {
     setActiveSegmentId(null);
     setEpisodeError(null);
     setEpisodeDetail(null);
-    setSelectedAsset(null);
+    setPreferredAssetId(null);
+    setRuntimeFailure(null);
+    setFallbackStartMs(null);
+    setHasLoadedMetadata(false);
+    setStreamUrl('');
+    setIsResolvingStream(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
     setYoutubeSeekMs(null);
     setActiveSceneId(null);
 
@@ -414,23 +544,30 @@ export default function SeriesDetailPage() {
             pendingResumeRef.current = null;
           }
           const isUrlEpisode = targetEpisodeId ? detail.episode.id === targetEpisodeId : false;
-          let assetToSelect: CatalogMediaAsset | null = null;
-          if (pendingResume?.assetId && detail.mediaAssets) {
-            assetToSelect = detail.mediaAssets.find((a) => a.id === pendingResume.assetId) || null;
-          }
-          if (!assetToSelect && isUrlEpisode && targetAssetId && detail.mediaAssets) {
-            assetToSelect = detail.mediaAssets.find((a) => a.id === targetAssetId) || null;
-          }
-          if (!assetToSelect && isUrlEpisode && targetSceneId && detail.scenes && detail.mediaAssets) {
-            const sc = detail.scenes.find((s) => s.id === targetSceneId);
-            if (sc?.mediaAssetId) {
-              assetToSelect = detail.mediaAssets.find((a) => a.id === sc.mediaAssetId) || null;
-            }
-          }
-          if (!assetToSelect && detail.mediaAssets && detail.mediaAssets.length > 0) {
-            assetToSelect = detail.mediaAssets.find((a) => a.contentType === 'video') || null;
-          }
-          setSelectedAsset(assetToSelect);
+          const sc = isUrlEpisode && targetSceneId && detail.scenes
+            ? detail.scenes.find((s) => s.id === targetSceneId)
+            : undefined;
+          const seg = isUrlEpisode && targetSegmentId && detail.segments
+            ? detail.segments.find((s) => s.id === targetSegmentId)
+            : undefined;
+
+          const resolvedPreferredAssetId =
+            pendingResume?.assetId ||
+            (isUrlEpisode && targetAssetId ? targetAssetId : null) ||
+            (sc?.mediaAssetId ? sc.mediaAssetId : null);
+
+          setPreferredAssetId(resolvedPreferredAssetId);
+
+          const initialSelection = selectPlaybackSource({
+            episodeDetail: detail,
+            selectedEpisodeId: detail.episode.id,
+            episodeDurationMs: detail.episode.durationMs,
+            preferredAssetId: resolvedPreferredAssetId,
+            manualAssetId,
+            startTimeMs: pendingResume?.positionMs ?? (isUrlEpisode ? targetTimeMs ?? seg?.episodeStartMs ?? sc?.startMs : 0),
+          });
+          const assetToSelect = initialSelection.kind === 'file' ? initialSelection.asset : null;
+
           if (pendingResume && pendingResume.positionMs > 0) {
             if (assetToSelect) {
               setDismissedResume(`${detail.episode.id}:${assetToSelect.id}`);
@@ -443,49 +580,51 @@ export default function SeriesDetailPage() {
                 targetSec: pendingResume.positionMs / 1000,
                 generation: ++playGenRef.current,
               };
-            } else if (detail.youtube) {
+            } else if (initialSelection.kind === 'youtube') {
               setYoutubeSeekMs(pendingResume.positionMs);
             }
-          } else if (isUrlEpisode && !initialDeepLinkHandledRef.current && assetToSelect) {
+          } else if (isUrlEpisode && !initialDeepLinkHandledRef.current) {
             initialDeepLinkHandledRef.current = true;
-            const sc = targetSceneId && detail.scenes ? detail.scenes.find((s) => s.id === targetSceneId) : undefined;
-            const seg = targetSegmentId && detail.segments ? detail.segments.find((s) => s.id === targetSegmentId) : undefined;
-
-            const seekSec = resolveMediaSeekSeconds({
-              timeMs: targetTimeMs,
-              timeline: searchParams.get('timeline') || searchParams.get('timescale'),
-              isScene: !!targetSceneId,
-              isSegment: !!targetSegmentId,
-              asset: assetToSelect,
-              segmentId: targetSegmentId || undefined,
-              episodeId: detail.episode.id,
-              sceneStartMs: sc?.startMs,
-              segmentStartMs: seg?.episodeStartMs,
-            });
-
-            if (targetSegmentId && seg) {
-              setActiveSegmentId(seg.id);
-              if (seekSec === null) {
-                setPlaybackWarning(`Phân đoạn [${seg.title || seg.id}] chưa xác định thời điểm bắt đầu (episode_start_ms = null).`);
-              }
-            }
-            if (targetSceneId && sc) {
-              setActiveSceneId(sc.id);
-              if (seekSec === null) {
-                setPlaybackWarning(`Phân cảnh [${sc.title || sc.id}] chưa xác định thời điểm bắt đầu (start_ms = null).`);
-              }
-            }
-
-            if (seekSec !== null && !isNaN(seekSec) && isFinite(seekSec) && seekSec >= 0) {
-              pendingSeekRef.current = {
-                seriesId: String(seriesId),
+            if (assetToSelect) {
+              const seekSec = resolveMediaSeekSeconds({
+                timeMs: targetTimeMs,
+                timeline: searchParams.get('timeline') || searchParams.get('timescale'),
+                isScene: !!targetSceneId,
+                isSegment: !!targetSegmentId,
+                asset: assetToSelect,
+                segmentId: targetSegmentId || undefined,
                 episodeId: detail.episode.id,
-                assetId: assetToSelect.id,
-                sceneId: targetSceneId || null,
-                segmentId: targetSegmentId || null,
-                targetSec: seekSec,
-                generation: ++playGenRef.current,
-              };
+                sceneStartMs: sc?.startMs,
+                segmentStartMs: seg?.episodeStartMs,
+              });
+
+              if (targetSegmentId && seg) {
+                setActiveSegmentId(seg.id);
+                if (seekSec === null) {
+                  setPlaybackWarning(`Phân đoạn [${seg.title || seg.id}] chưa xác định thời điểm bắt đầu (episode_start_ms = null).`);
+                }
+              }
+              if (targetSceneId && sc) {
+                setActiveSceneId(sc.id);
+                if (seekSec === null) {
+                  setPlaybackWarning(`Phân cảnh [${sc.title || sc.id}] chưa xác định thời điểm bắt đầu (start_ms = null).`);
+                }
+              }
+
+              if (seekSec !== null && !isNaN(seekSec) && isFinite(seekSec) && seekSec >= 0) {
+                pendingSeekRef.current = {
+                  seriesId: String(seriesId),
+                  episodeId: detail.episode.id,
+                  assetId: assetToSelect.id,
+                  sceneId: targetSceneId || null,
+                  segmentId: targetSegmentId || null,
+                  targetSec: seekSec,
+                  generation: ++playGenRef.current,
+                };
+              }
+            } else {
+              if (targetSegmentId && seg) setActiveSegmentId(seg.id);
+              if (targetSceneId && sc) setActiveSceneId(sc.id);
             }
           }
         } else setEpisodeError('Không tìm thấy thông tin tập phim.');
@@ -506,6 +645,7 @@ export default function SeriesDetailPage() {
   }, [selectedEpisode?.id, targetAssetId, targetSceneId, targetSegmentId, targetTimeMs, seriesId, targetEpisodeId, episodeRetry]);
 
   useEffect(() => {
+    setHasLoadedMetadata(false);
     if (!selectedAsset?.id) {
       setStreamUrl('');
       setIsResolvingStream(false);
@@ -520,27 +660,28 @@ export default function SeriesDetailPage() {
       const ac = new AbortController();
       setStreamUrl('');
       setIsResolvingStream(true);
-      requestPlaybackGrant(currentAssetId, ac.signal)
-        .then((grant) => {
-          if (ac.signal.aborted) return;
-          if (grant?.streamUrl) {
+      const grantPromise: Promise<PlaybackGrantResult> = typeof requestPlaybackGrantResult === 'function'
+        ? requestPlaybackGrantResult(currentAssetId, ac.signal)
+        : requestPlaybackGrant(currentAssetId, ac.signal).then((grant) => (
+            grant?.streamUrl
+              ? { ok: true, status: 200, grant }
+              : { ok: false, status: isProtected ? 403 : 404, grant: null }
+          ));
+      grantPromise
+        .then((result) => {
+          if (ac.signal.aborted || result.aborted) return;
+          if (result.ok && result.grant?.streamUrl) {
             setPlaybackWarning(null);
-            setStreamUrl(grant.streamUrl);
-          } else if (isProtected) {
-            setStreamUrl('');
-            setPlaybackWarning('Video được bảo vệ (authenticated/private). Vui lòng đăng nhập với tài khoản có quyền để xem video.');
+            setStreamUrl(result.grant.streamUrl);
           } else {
-            setStreamUrl(defaultUrl);
+            setStreamUrl('');
+            handleFilePlaybackFailure(currentAssetId, classifyGrantFailureReason(result.status));
           }
         })
         .catch(() => {
           if (ac.signal.aborted) return;
-          if (isProtected) {
-            setStreamUrl('');
-            setPlaybackWarning('Không thể lấy quyền phát video bảo vệ. Vui lòng thử lại sau.');
-          } else {
-            setStreamUrl(defaultUrl);
-          }
+          setStreamUrl('');
+          handleFilePlaybackFailure(currentAssetId, isProtected ? 'forbidden' : 'stream_error');
         }).finally(() => {
           if (!ac.signal.aborted) setIsResolvingStream(false);
         });
@@ -551,7 +692,35 @@ export default function SeriesDetailPage() {
       setIsResolvingStream(false);
       setStreamUrl(defaultUrl);
     }
-  }, [selectedAsset?.id, selectedAsset?.accessPolicy]);
+  }, [selectedAsset?.id, selectedAsset?.accessPolicy, fileRetryNonce]);
+
+  useEffect(() => {
+    if (
+      !selectedAsset?.id ||
+      !streamUrl ||
+      isResolvingStream ||
+      hasLoadedMetadata ||
+      episodeDetail?.episode?.id !== selectedEpisode?.id
+    ) {
+      return;
+    }
+    if (videoRef.current && videoRef.current.readyState >= 1) {
+      setHasLoadedMetadata(true);
+      return;
+    }
+    if (typeof setTimeout !== 'function') return;
+    const assetId = selectedAsset.id;
+    const timer = setTimeout(() => {
+      if (videoRef.current && videoRef.current.readyState >= 1) {
+        setHasLoadedMetadata(true);
+        return;
+      }
+      handleFilePlaybackFailure(assetId, 'timeout');
+    }, PLAYBACK_METADATA_TIMEOUT_MS);
+    return () => {
+      if (typeof clearTimeout === 'function') clearTimeout(timer);
+    };
+  }, [selectedAsset?.id, streamUrl, isResolvingStream, hasLoadedMetadata, fileRetryNonce, selectedEpisode?.id, episodeDetail?.episode?.id]);
   const handleSeekScene = (scene: CatalogScene) => {
     setPlaybackWarning(null);
     if (youtubeVideoId) {
@@ -574,7 +743,9 @@ export default function SeriesDetailPage() {
           generation: currentGen,
         };
         setActiveSceneId(scene.id);
-        setSelectedAsset(matchingAsset);
+        setManualAssetId(matchingAsset.id);
+        setRuntimeFailure(null);
+        setHasLoadedMetadata(false);
         return;
       } else {
         setPlaybackWarning(
@@ -757,36 +928,71 @@ export default function SeriesDetailPage() {
             </div>
           )}
 
-          <div className={`relative overflow-hidden rounded-xl border border-surface-border bg-black shadow-2xl aspect-video flex items-center justify-center ${youtubeEmbed ? 'min-h-[200px]' : ''}`}>
+          {playbackSource.kind === 'youtube' && playbackSource.isFallback && (
+            <div
+              role="status"
+              aria-live="polite"
+              data-testid="playback-fallback-notice"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900"
+            >
+              <span>Tệp video chưa sẵn sàng, đang phát bản YouTube.</span>
+              <button
+                type="button"
+                data-testid="retry-original-file"
+                onClick={handleRetryOriginalFile}
+                className="btn-secondary min-h-9 shrink-0 px-3 py-1 text-xs font-semibold"
+              >
+                Thử lại tệp gốc
+              </button>
+            </div>
+          )}
+
+          <div
+            className={`relative overflow-hidden rounded-xl border border-surface-border shadow-2xl aspect-video flex items-center justify-center ${
+              !isLoadingEpisode && !isResolvingStream && !episodeError && playbackSource.kind === 'unavailable'
+                ? 'bg-surface'
+                : 'bg-black'
+            } ${youtubeEmbed ? 'min-h-[200px]' : ''}`}
+          >
             {isLoadingEpisode || isResolvingStream ? (
               <p role="status" className="p-6 text-center text-xs text-zinc-200">Đang tải tập phim…</p>
             ) : episodeError ? (
-              <div role="alert" className="p-6 text-center text-xs text-zinc-200">
+              <div role="alert" aria-live="assertive" className="p-6 text-center text-xs text-zinc-200">
                 <p>{episodeError}</p>
                 <button data-testid="retry-episode" onClick={() => setEpisodeRetry((value) => value + 1)} className="btn-secondary mt-3">Thử lại</button>
               </div>
-            ) : youtubeEmbed ? (
+            ) : playbackSource.kind === 'youtube' ? (
               <iframe
                 data-testid="series-youtube-player"
                 className="absolute inset-0 h-full w-full"
                 title={selectedEpisode?.title || 'Tập phim trên YouTube'}
-                src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}?start=${youtubeStart}`}
+                src={playbackSource.embedUrl}
                 allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share"
                 referrerPolicy="strict-origin-when-cross-origin"
                 allowFullScreen
               />
-            ) : youtubeUrl ? (
-              <a href={youtubeUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary">Mở trên YouTube</a>
-            ) : streamUrl ? (
+            ) : playbackSource.kind === 'file' && streamUrl ? (
               <video
                 ref={videoRef}
                 data-testid="series-video-player"
-                key={streamUrl}
+                key={`${streamUrl}:${fileRetryNonce}`}
                 src={streamUrl}
                 controls
                 playsInline
-                onLoadedMetadata={handleLoadedMetadata}
-                onCanPlay={handleLoadedMetadata}
+                onLoadedMetadata={() => {
+                  setHasLoadedMetadata(true);
+                  handleLoadedMetadata();
+                }}
+                onLoadedData={() => setHasLoadedMetadata(true)}
+                onCanPlay={() => {
+                  setHasLoadedMetadata(true);
+                  handleLoadedMetadata();
+                }}
+                onError={() => {
+                  if (selectedAsset) {
+                    handleFilePlaybackFailure(selectedAsset.id, 'file_unreachable');
+                  }
+                }}
                 onTimeUpdate={handleTimeUpdate}
                 onPlay={() => { setIsPlaying(true); setNextCountdown(null); }}
                 onPause={() => { setIsPlaying(false); saveCurrentProgress('pause'); }}
@@ -798,8 +1004,47 @@ export default function SeriesDetailPage() {
                 className="h-full w-full object-contain"
               />
             ) : (
-              <div className="flex flex-col items-center justify-center text-center p-6 text-zinc-200">
-                <p className="text-xs">{selectedAsset ? 'Không thể mở nguồn video này.' : 'Tập này chưa có video được cấu hình.'}</p>
+              <div
+                role="alert"
+                aria-live="assertive"
+                data-testid="playback-unavailable-card"
+                className="flex h-full w-full flex-col items-center justify-center p-6 text-center text-ink"
+              >
+                <p className="text-xs font-semibold text-brand-dark">
+                  {episodeDetail?.episode?.title || selectedEpisode?.title || series.title}
+                </p>
+                <h3 className="mt-1 text-base font-bold text-ink sm:text-lg">
+                  Không phát được tập này
+                </h3>
+                <p className="mt-2 max-w-md text-xs leading-relaxed text-muted">
+                  {getUnavailableReasonMessage(
+                    playbackSource.kind === 'unavailable' ? playbackSource.reason : 'file_unreachable'
+                  )}
+                </p>
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                  {playbackSource.kind === 'unavailable' && playbackSource.youtubeWatchUrl && (
+                    <a
+                      href={playbackSource.youtubeWatchUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="open-on-youtube-link"
+                      className="btn-primary inline-flex min-h-10 items-center justify-center px-4 py-2 text-xs font-semibold"
+                    >
+                      Mở trên YouTube
+                    </a>
+                  )}
+                  {((playbackSource.kind === 'unavailable' && playbackSource.canRetryFile) ||
+                    playbackSource.kind === 'file') && (
+                    <button
+                      type="button"
+                      data-testid="retry-original-file"
+                      onClick={handleRetryOriginalFile}
+                      className="btn-secondary inline-flex min-h-10 items-center justify-center px-4 py-2 text-xs font-semibold"
+                    >
+                      Thử lại tệp gốc
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -861,7 +1106,7 @@ export default function SeriesDetailPage() {
                       data-testid="media-asset-button"
                       data-asset-id={asset.id}
                       aria-pressed={selectedAsset?.id === asset.id}
-                      onClick={() => setSelectedAsset(asset)}
+                      onClick={() => handleSelectAsset(asset)}
                       className={`min-h-11 max-w-full break-words rounded px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer border ${
                         selectedAsset?.id === asset.id
                           ? 'border-brand bg-brand/10 text-brand-dark'
@@ -869,6 +1114,7 @@ export default function SeriesDetailPage() {
                       }`}
                     >
                       {asset.editionLabel || (asset.storageProvider === 'drive' ? 'Google Drive' : 'Tệp cục bộ')}
+                      {asset.available === false ? ' (Chưa sẵn sàng)' : ''}
                     </button>
                   ))}
                 </div>

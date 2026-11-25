@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
+    [Alias("Profile")]
     [ValidateSet("demo", "mysql")]
-    [string]$Profile = "demo"
+    [string]$SpringProfile = "demo",
+    [switch]$MountDrive
 )
 
 Set-StrictMode -Version Latest
@@ -32,6 +34,8 @@ if (!(Test-Path -LiteralPath $distDir -PathType Container) -or !(Test-Path -Lite
 }
 
 $javaProcess = $null
+$mountScript = Join-Path $root 'scripts\mount-drive.ps1'
+$driveMounted = $false
 
 function Stop-ChildProcess {
     param([System.Diagnostics.Process]$Process)
@@ -45,11 +49,15 @@ function Stop-ChildProcess {
 }
 
 try {
-    $env:SPRING_PROFILES_ACTIVE = $Profile
+    if ($MountDrive) {
+        & $mountScript
+        $driveMounted = $true
+    }
+    $env:SPRING_PROFILES_ACTIVE = $SpringProfile
     $env:DIPPIE_DATA_DIR = $javaDataDir
     $javaProcess = Start-Process `
         -FilePath $mvnw `
-        -ArgumentList @("-q", "spring-boot:run", "-Dspring-boot.run.profiles=$Profile") `
+        -ArgumentList @("-q", "spring-boot:run", "-Dspring-boot.run.profiles=$SpringProfile") `
         -WorkingDirectory $springbootDir `
         -NoNewWindow `
         -PassThru
@@ -57,4 +65,7 @@ try {
     Wait-Process -Id $javaProcess.Id
 } finally {
     Stop-ChildProcess -Process $javaProcess
+    if ($driveMounted) {
+        & $mountScript -Stop
+    }
 }

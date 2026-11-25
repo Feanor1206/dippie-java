@@ -26,10 +26,11 @@ public record CatalogMediaAssetView(
         String rawJson,
         int revision,
         Long optLockVersion,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        boolean available
 ) {
 
-    public static CatalogMediaAssetView from(CatalogMediaAsset entity) {
+    public static CatalogMediaAssetView from(CatalogMediaAsset entity, boolean available) {
         return new CatalogMediaAssetView(
                 entity.getId(),
                 entity.getContentType(),
@@ -54,6 +55,7 @@ public record CatalogMediaAssetView(
                 entity.getRawJson(),
                 entity.getRevision(),
                 entity.getOptLockVersion(),
-                entity.getUpdatedAt());
+                entity.getUpdatedAt(),
+                available);
     }
 }

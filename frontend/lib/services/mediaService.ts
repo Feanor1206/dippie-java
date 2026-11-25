@@ -159,17 +159,24 @@ export interface PlaybackGrantResponse {
   expiresIn: number;
 }
 
+export interface PlaybackGrantResult {
+  ok: boolean;
+  status: number;
+  grant: PlaybackGrantResponse | null;
+  aborted?: boolean;
+}
+
 export function getStoredAuthToken(): string | null {
   return typeof window !== 'undefined'
     ? localStorage.getItem('dippie_auth_token') || localStorage.getItem('token') || localStorage.getItem('auth_token')
     : null;
 }
 
-export async function requestPlaybackGrant(
+export async function requestPlaybackGrantResult(
   assetId: string,
   signal?: AbortSignal
-): Promise<PlaybackGrantResponse | null> {
-  if (!assetId) return null;
+): Promise<PlaybackGrantResult> {
+  if (!assetId) return { ok: false, status: 400, grant: null };
   const token = getStoredAuthToken();
   try {
     const res = await fetch(`${API}/media/grant/${assetId}`, {
@@ -177,10 +184,27 @@ export async function requestPlaybackGrant(
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       signal,
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { ok: false, status: res.status, grant: null };
     const d = await res.json();
-    return { assetId: d.assetId, grant: d.grant, streamUrl: resolveStreamUrl(d.streamUrl), expiresIn: d.expiresIn };
-  } catch {
-    return null;
+    const resolvedUrl = resolveStreamUrl(d?.streamUrl || '');
+    if (!resolvedUrl) return { ok: false, status: 502, grant: null };
+    return {
+      ok: true,
+      status: res.status,
+      grant: { assetId: d.assetId, grant: d.grant, streamUrl: resolvedUrl, expiresIn: d.expiresIn },
+    };
+  } catch (err: any) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, status: 0, grant: null, aborted: true };
+    }
+    return { ok: false, status: 0, grant: null };
   }
+}
+
+export async function requestPlaybackGrant(
+  assetId: string,
+  signal?: AbortSignal
+): Promise<PlaybackGrantResponse | null> {
+  const result = await requestPlaybackGrantResult(assetId, signal);
+  return result.grant;
 }
