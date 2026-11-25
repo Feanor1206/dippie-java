@@ -1,18 +1,20 @@
 package com.dippie.progress;
 
-import java.util.stream.Stream;
-
 public record WatchDuration(Long durationMs) {
 
     public static WatchDuration resolve(Long episodeDurationMs, Long assetDurationMs) {
-        Long resolved = Stream.of(episodeDurationMs, assetDurationMs)
-                .filter(value -> value != null && value > 0)
-                .min(Long::compareTo)
-                .orElse(null);
-        return new WatchDuration(resolved);
+        boolean episodeKnown = episodeDurationMs != null && episodeDurationMs > 0;
+        boolean assetKnown = assetDurationMs != null && assetDurationMs > 0;
+        if (episodeKnown && assetKnown) {
+            return new WatchDuration(Math.min(episodeDurationMs, assetDurationMs));
+        }
+        if (episodeKnown) {
+            return new WatchDuration(episodeDurationMs);
+        }
+        return new WatchDuration(assetKnown ? assetDurationMs : null);
     }
 
-    public boolean isKnown() {
+    private boolean isKnown() {
         return durationMs != null && durationMs > 0;
     }
 

@@ -1,0 +1,2056 @@
+{
+  "documents": 503,
+  "queries": [
+    {
+      "query": "Xin Chào Jadoo",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ep_jadoo_s04_0029",
+          "item_type": "episode",
+          "start_ms": 1333039,
+          "startMs": 1333039,
+          "episodeId": "ep_jadoo_s04_0029",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0029_cc_001333039",
+              "text": "Mimi tặng nhẫn tình bạn cho Jadoo và mong chị quay về nhà.",
+              "startMs": 1333039,
+              "endMs": 1368000,
+              "sourceStartMs": 1333039,
+              "sourceEndMs": 1368000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0014",
+          "item_type": "episode",
+          "start_ms": 342200,
+          "startMs": 342200,
+          "episodeId": "ep_jadoo_s03_0014",
+          "score": 0.016129032258064516,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s03_0014_cc_000342200",
+              "text": "Gia đình nhận ra mẹ đã kiểm soát mọi việc trong nhà.",
+              "startMs": 342200,
+              "endMs": 380000,
+              "sourceStartMs": 342200,
+              "sourceEndMs": 380000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0019",
+          "item_type": "episode",
+          "start_ms": 456900,
+          "startMs": 456900,
+          "episodeId": "ep_jadoo_s04_0019",
+          "score": 0.015873015873015872,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0019_cc_000456900",
+              "text": "Rumy viết một bài thơ dành riêng cho Jadoo để thể hiện tình cảm.",
+              "startMs": 456900,
+              "endMs": 494000,
+              "sourceStartMs": 456900,
+              "sourceEndMs": 494000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0010",
+          "item_type": "episode",
+          "start_ms": 1938960,
+          "startMs": 1938960,
+          "episodeId": "ep_jadoo_s03_0010",
+          "score": 0.015625,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s03_0010_cc_001938960",
+              "text": "Hai bạn cùng biểu diễn tiết mục ảo thuật cuối cùng trong lớp.",
+              "startMs": 1938960,
+              "endMs": 1974300,
+              "sourceStartMs": 1938960,
+              "sourceEndMs": 1974300,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0009",
+          "item_type": "episode",
+          "start_ms": 1406940,
+          "startMs": 1406940,
+          "episodeId": "ep_jadoo_s03_0009",
+          "score": 0.014925373134328358,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s03_0009_cc_001406940",
+              "text": "Mẹ nghi ngờ con đang giả vờ đau bụng để xin thuốc.",
+              "startMs": 1406940,
+              "endMs": 1444000,
+              "sourceStartMs": 1406940,
+              "sourceEndMs": 1444000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0023",
+          "item_type": "episode",
+          "start_ms": 646080,
+          "startMs": 646080,
+          "episodeId": "ep_jadoo_s04_0023",
+          "score": 0.014705882352941176,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0023_cc_000646080",
+              "text": "Jadoo và Yoon Suk làm hòa sau khi hiểu rõ cảm xúc của nhau.",
+              "startMs": 646080,
+              "endMs": 684000,
+              "sourceStartMs": 646080,
+              "sourceEndMs": 684000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0014",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s01_0014",
+          "score": 0.014285714285714285,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s01_0014",
+              "text": "Tập phim Tập hợp tập phim phổ biến 6 của bộ hoạt hình Xin Chào Jadoo Mùa 1.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s06_0010",
+          "item_type": "episode",
+          "start_ms": 78040,
+          "startMs": 78040,
+          "episodeId": "ep_jadoo_s06_0010",
+          "score": 0.014084507042253521,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s06_0010_cc_000078040",
+              "text": "Gia đình Jadoo đi ăn tại Mỹ và các con hào hứng chọn pizza và hamburger.",
+              "startMs": 78040,
+              "endMs": 114000,
+              "sourceStartMs": 78040,
+              "sourceEndMs": 114000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "xin chao jadoo",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ep_jadoo_s04_0029",
+          "item_type": "episode",
+          "start_ms": 1333039,
+          "startMs": 1333039,
+          "episodeId": "ep_jadoo_s04_0029",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0029_cc_001333039",
+              "text": "Mimi tặng nhẫn tình bạn cho Jadoo và mong chị quay về nhà.",
+              "startMs": 1333039,
+              "endMs": 1368000,
+              "sourceStartMs": 1333039,
+              "sourceEndMs": 1368000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0014",
+          "item_type": "episode",
+          "start_ms": 342200,
+          "startMs": 342200,
+          "episodeId": "ep_jadoo_s03_0014",
+          "score": 0.016129032258064516,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s03_0014_cc_000342200",
+              "text": "Gia đình nhận ra mẹ đã kiểm soát mọi việc trong nhà.",
+              "startMs": 342200,
+              "endMs": 380000,
+              "sourceStartMs": 342200,
+              "sourceEndMs": 380000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0019",
+          "item_type": "episode",
+          "start_ms": 456900,
+          "startMs": 456900,
+          "episodeId": "ep_jadoo_s04_0019",
+          "score": 0.015873015873015872,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0019_cc_000456900",
+              "text": "Rumy viết một bài thơ dành riêng cho Jadoo để thể hiện tình cảm.",
+              "startMs": 456900,
+              "endMs": 494000,
+              "sourceStartMs": 456900,
+              "sourceEndMs": 494000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0010",
+          "item_type": "episode",
+          "start_ms": 1938960,
+          "startMs": 1938960,
+          "episodeId": "ep_jadoo_s03_0010",
+          "score": 0.015625,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s03_0010_cc_001938960",
+              "text": "Hai bạn cùng biểu diễn tiết mục ảo thuật cuối cùng trong lớp.",
+              "startMs": 1938960,
+              "endMs": 1974300,
+              "sourceStartMs": 1938960,
+              "sourceEndMs": 1974300,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0009",
+          "item_type": "episode",
+          "start_ms": 1406940,
+          "startMs": 1406940,
+          "episodeId": "ep_jadoo_s03_0009",
+          "score": 0.014925373134328358,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s03_0009_cc_001406940",
+              "text": "Mẹ nghi ngờ con đang giả vờ đau bụng để xin thuốc.",
+              "startMs": 1406940,
+              "endMs": 1444000,
+              "sourceStartMs": 1406940,
+              "sourceEndMs": 1444000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0023",
+          "item_type": "episode",
+          "start_ms": 646080,
+          "startMs": 646080,
+          "episodeId": "ep_jadoo_s04_0023",
+          "score": 0.014705882352941176,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0023_cc_000646080",
+              "text": "Jadoo và Yoon Suk làm hòa sau khi hiểu rõ cảm xúc của nhau.",
+              "startMs": 646080,
+              "endMs": 684000,
+              "sourceStartMs": 646080,
+              "sourceEndMs": 684000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0014",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s01_0014",
+          "score": 0.014285714285714285,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s01_0014",
+              "text": "Tập phim Tập hợp tập phim phổ biến 6 của bộ hoạt hình Xin Chào Jadoo Mùa 1.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s06_0010",
+          "item_type": "episode",
+          "start_ms": 78040,
+          "startMs": 78040,
+          "episodeId": "ep_jadoo_s06_0010",
+          "score": 0.014084507042253521,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s06_0010_cc_000078040",
+              "text": "Gia đình Jadoo đi ăn tại Mỹ và các con hào hứng chọn pizza và hamburger.",
+              "startMs": 78040,
+              "endMs": 114000,
+              "sourceStartMs": 78040,
+              "sourceEndMs": 114000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "Hello Jadoo",
+      "constraints": {
+        "series_only": true
+      },
+      "results": [
+        {
+          "id": "ser_jadoo",
+          "item_type": "series",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": null,
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "ser_jadoo",
+              "text": "Bộ phim hoạt hình xoay quanh cuộc sống hàng ngày đầy hài hước, nghịch ngợm và ấm áp của cô bé Choi Jadoo cùng gia đình 5 người và bạn bè cùng lớp tại Seoul những năm 1980.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "series"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "Ấu trùng tinh nghịch",
+      "constraints": {
+        "series_only": true
+      },
+      "results": []
+    },
+    {
+      "query": "Larva",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ser_larva",
+          "item_type": "series",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": null,
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "ser_larva",
+              "text": "Red và Yellow sống dưới miệng cống thành phố. Những món đồ từ trên đường rơi xuống mở đầu cho các tình huống hài hình thể.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "series"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0017",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0017",
+          "score": 0.016129032258064516,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0017",
+              "text": "Episode 17: Airform",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0015",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0015",
+          "score": 0.015873015873015872,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0015",
+              "text": "Episode 15: Ruồi",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0087",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0087",
+          "score": 0.015625,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0087",
+              "text": "Episode 87: Nho",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0096",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0096",
+          "score": 0.015384615384615385,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0096",
+              "text": "Episode 96: Lặn",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0097",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0097",
+          "score": 0.015151515151515152,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0097",
+              "text": "Episode 97: Lửa",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0050",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0050",
+          "score": 0.014925373134328358,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0050",
+              "text": "Episode 50: Larvata 1",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0051",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0051",
+          "score": 0.014705882352941176,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0051",
+              "text": "Episode 51: Hip hop",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "Muốn ăn nhưng lại sợ tăng cân",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ep_jadoo_s01_0002",
+          "item_type": "episode",
+          "start_ms": 535200,
+          "startMs": 535200,
+          "episodeId": "ep_jadoo_s01_0002",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0002_cc_000535200",
+              "text": "Mẹ ép Jadoo phải ăn hết 100 con cá cơm để rèn luyện thói quen ăn uống đầy đủ.",
+              "startMs": 535200,
+              "endMs": 570000,
+              "sourceStartMs": 535200,
+              "sourceEndMs": 570000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0001",
+          "item_type": "episode",
+          "start_ms": 77240,
+          "startMs": 77240,
+          "episodeId": "ep_jadoo_s01_0001",
+          "score": 0.015384615384615385,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0001_cc_000077240",
+              "text": "Gia đình xảy ra mâu thuẫn dẫn đến việc phân chia ranh giới trong nhà.",
+              "startMs": 77240,
+              "endMs": 114000,
+              "sourceStartMs": 77240,
+              "sourceEndMs": 114000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0004",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0004",
+          "score": 0.014705882352941176,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0004",
+              "text": "Red thấy Yellow ăn nấm mọc từ chất lỏng kỳ lạ và cũng muốn ăn.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0012",
+          "item_type": "episode",
+          "start_ms": 460000,
+          "startMs": 460000,
+          "episodeId": "ep_jadoo_s01_0012",
+          "score": 0.014492753623188406,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_012b",
+              "text": "Baby được mời dự tiệc sinh nhật bạn Dongsoo. Jadoo và Mimi giúp em trai trang điểm để làm hot boy bữa tiệc nhưng lại biến khuôn mặt Baby thành một thảm họa hài hước.",
+              "startMs": 460000,
+              "endMs": 800000,
+              "sourceStartMs": 460000,
+              "sourceEndMs": 800000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0003",
+          "item_type": "episode",
+          "start_ms": 1258840,
+          "startMs": 1258840,
+          "episodeId": "ep_jadoo_s04_0003",
+          "score": 0.014084507042253521,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0003_cc_001258840",
+              "text": "Nhà hàng kết thúc chương trình giảm giá khiến gia đình Jadoo không thể tiếp tục ăn vì chi phí quá đắt đỏ.",
+              "startMs": 1258840,
+              "endMs": 1292000,
+              "sourceStartMs": 1258840,
+              "sourceEndMs": 1292000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0007",
+          "item_type": "episode",
+          "start_ms": 3498119,
+          "startMs": 3498119,
+          "episodeId": "ep_jadoo_s01_0007",
+          "score": 0.013888888888888888,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0007_cc_003498119",
+              "text": "Jadoo ăn quá nhiều món khiến bụng đau dữ dội và được bạn chỉ cách giảm đau.",
+              "startMs": 3498119,
+              "endMs": 3534000,
+              "sourceStartMs": 3498119,
+              "sourceEndMs": 3534000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0023",
+          "item_type": "episode",
+          "start_ms": 2358800,
+          "startMs": 2358800,
+          "episodeId": "ep_jadoo_s01_0023",
+          "score": 0.013157894736842105,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0023_cc_002358800",
+              "text": "Chadu tổ chức trò chơi để chọn ra người thua cuộc phải chịu trách nhiệm với số sữa còn lại.",
+              "startMs": 2358800,
+              "endMs": 2394000,
+              "sourceStartMs": 2358800,
+              "sourceEndMs": 2394000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0025",
+          "item_type": "episode",
+          "start_ms": 2322480,
+          "startMs": 2322480,
+          "episodeId": "ep_jadoo_s01_0025",
+          "score": 0.012987012987012988,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0025_cc_002322480",
+              "text": "Mẹ đưa Chadu đến trường dạy nghi thức để con gái trở nên xinh đẹp và giảm cân.",
+              "startMs": 2322480,
+              "endMs": 2356000,
+              "sourceStartMs": 2322480,
+              "sourceEndMs": 2356000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "nhay mua trong mua",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ep_larva_s01_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0003",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0003",
+              "text": "Ngày mưa, Red và Yellow tìm thấy nắp chai rồi nhảy múa.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0028",
+          "item_type": "episode",
+          "start_ms": 2280480,
+          "startMs": 2280480,
+          "episodeId": "ep_jadoo_s04_0028",
+          "score": 0.016129032258064516,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0028_cc_002280480",
+              "text": "Mimi mơ ước có búp bê và áo đầm mới trong mùa đông.",
+              "startMs": 2280480,
+              "endMs": 2318000,
+              "sourceStartMs": 2280480,
+              "sourceEndMs": 2318000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0052",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0052",
+          "score": 0.015873015873015872,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0052",
+              "text": "Red và Yellow gặp rắc rối với chất nhầy.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0022",
+          "item_type": "episode",
+          "start_ms": 1786200,
+          "startMs": 1786200,
+          "episodeId": "ep_jadoo_s04_0022",
+          "score": 0.015625,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0022_cc_001786200",
+              "text": "Jadoo thực hiện một thí nghiệm quan trọng và kêu gọi bạn bè cùng tham gia.",
+              "startMs": 1786200,
+              "endMs": 1824000,
+              "sourceStartMs": 1786200,
+              "sourceEndMs": 1824000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0026",
+          "item_type": "episode",
+          "start_ms": 532500,
+          "startMs": 532500,
+          "episodeId": "ep_jadoo_s04_0026",
+          "score": 0.015384615384615385,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0026_cc_000532500",
+              "text": "Người chồng quyết định giữ lại chiếc áo vì nó chứa đựng tình cảm của vợ.",
+              "startMs": 532500,
+              "endMs": 570000,
+              "sourceStartMs": 532500,
+              "sourceEndMs": 570000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0080",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0080",
+          "score": 0.015151515151515152,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0080",
+              "text": "Red và Yellow bị kẹt trong chai và tìm cách thoát ra.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0068",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0068",
+          "score": 0.014925373134328358,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0068",
+              "text": "Red và Yellow gặp chuyện với một cây non rồi đối phó với cây ăn thịt.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0034",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0034",
+          "score": 0.014705882352941176,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0034",
+              "text": "Các nhân vật gặp một cành cây trong ngày gió lớn.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "Mimi",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ep_jadoo_s04_0029",
+          "item_type": "episode",
+          "start_ms": 228360,
+          "startMs": 228360,
+          "episodeId": "ep_jadoo_s04_0029",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0029_cc_000228360",
+              "text": "Mimi muốn thoát khỏi cái bóng của chị gái và trở nên nổi tiếng hơn.",
+              "startMs": 228360,
+              "endMs": 266000,
+              "sourceStartMs": 228360,
+              "sourceEndMs": 266000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0018",
+          "item_type": "episode",
+          "start_ms": 2052040,
+          "startMs": 2052040,
+          "episodeId": "ep_jadoo_s04_0018",
+          "score": 0.015625,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0018_cc_002052040",
+              "text": "Mimi chăm chỉ tập luyện múa ba lê để tham gia cuộc thi tài năng.",
+              "startMs": 2052040,
+              "endMs": 2090000,
+              "sourceStartMs": 2052040,
+              "sourceEndMs": 2090000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0007",
+          "item_type": "episode",
+          "start_ms": 760480,
+          "startMs": 760480,
+          "episodeId": "ep_jadoo_s01_0007",
+          "score": 0.015384615384615385,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0007_cc_000760480",
+              "text": "Mimi bị đau mắt và phải cách ly trong phòng nhỏ để tránh lây nhiễm cho người khác.",
+              "startMs": 760480,
+              "endMs": 798000,
+              "sourceStartMs": 760480,
+              "sourceEndMs": 798000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0016",
+          "item_type": "episode",
+          "start_ms": 535399,
+          "startMs": 535399,
+          "episodeId": "ep_jadoo_s04_0016",
+          "score": 0.015151515151515152,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0016_cc_000535399",
+              "text": "Mimi nhờ Jadoo dạy múa ba lê để nổi tiếng hơn và thoát khỏi cái bóng là em gái của Jadoo.",
+              "startMs": 535399,
+              "endMs": 570000,
+              "sourceStartMs": 535399,
+              "sourceEndMs": 570000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0007",
+          "item_type": "episode",
+          "start_ms": 838399,
+          "startMs": 838399,
+          "episodeId": "ep_jadoo_s03_0007",
+          "score": 0.014925373134328358,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s03_0007_cc_000838399",
+              "text": "Mẹ nhắc nhở các con phải tiết kiệm và không được xin thêm tiền.",
+              "startMs": 838399,
+              "endMs": 874000,
+              "sourceStartMs": 838399,
+              "sourceEndMs": 874000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0003",
+          "item_type": "episode",
+          "start_ms": 77000,
+          "startMs": 77000,
+          "episodeId": "ep_jadoo_s01_0003",
+          "score": 0.014705882352941176,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0003_cc_000077000",
+              "text": "Gia đình Jadoo bàn bạc về việc đăng ký cho Mimi tham gia cuộc thi Bé Khỏe ở thị trấn.",
+              "startMs": 77000,
+              "endMs": 114000,
+              "sourceStartMs": 77000,
+              "sourceEndMs": 114000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0030",
+          "item_type": "episode",
+          "start_ms": 3458000,
+          "startMs": 3458000,
+          "episodeId": "ep_jadoo_s01_0030",
+          "score": 0.014492753623188406,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0030_cc_003458000",
+              "text": "Chadu cảm thấy ghen tị khi em gái Mimi được nghỉ học vì bị đau mắt.",
+              "startMs": 3458000,
+              "endMs": 3496000,
+              "sourceStartMs": 3458000,
+              "sourceEndMs": 3496000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0008",
+          "item_type": "episode",
+          "start_ms": 80520,
+          "startMs": 80520,
+          "episodeId": "ep_jadoo_s03_0008",
+          "score": 0.014285714285714285,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s03_0008_cc_000080520",
+              "text": "Mẹ yêu cầu con đi mua đồ nhưng con từ chối vì muốn xem tivi.",
+              "startMs": 80520,
+              "endMs": 114000,
+              "sourceStartMs": 80520,
+              "sourceEndMs": 114000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "vàng và đỏ",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ep_jadoo_s01_0008",
+          "item_type": "episode",
+          "start_ms": 0,
+          "startMs": 0,
+          "episodeId": "ep_jadoo_s01_0008",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_008a",
+              "text": "Jadoo cứu đàn cá vàng và quen được chàng hot boy Romy. Nhưng tình cảm vừa chớm nở thì Jadoo phát hiện Romy đạo nhái sáng chế và là con của kẻ thù bố mình.",
+              "startMs": 0,
+              "endMs": 650000,
+              "sourceStartMs": 0,
+              "sourceEndMs": 650000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0025",
+          "item_type": "episode",
+          "start_ms": 380120,
+          "startMs": 380120,
+          "episodeId": "ep_jadoo_s04_0025",
+          "score": 0.015873015873015872,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0025_cc_000380120",
+              "text": "Jadoo nghi ngờ về giá trị thực sự của nấm cục khi nghe nói nó rất đắt tiền.",
+              "startMs": 380120,
+              "endMs": 418000,
+              "sourceStartMs": 380120,
+              "sourceEndMs": 418000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0003",
+          "item_type": "episode",
+          "start_ms": 1258840,
+          "startMs": 1258840,
+          "episodeId": "ep_jadoo_s04_0003",
+          "score": 0.015625,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0003_cc_001258840",
+              "text": "Nhà hàng kết thúc chương trình giảm giá khiến gia đình Jadoo không thể tiếp tục ăn vì chi phí quá đắt đỏ.",
+              "startMs": 1258840,
+              "endMs": 1292000,
+              "sourceStartMs": 1258840,
+              "sourceEndMs": 1292000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0023",
+          "item_type": "episode",
+          "start_ms": 2167920,
+          "startMs": 2167920,
+          "episodeId": "ep_jadoo_s01_0023",
+          "score": 0.015151515151515152,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0023_cc_002167920",
+              "text": "Mẹ ép Chadu uống sữa dù cô bé không thích và thường bị đau bụng.",
+              "startMs": 2167920,
+              "endMs": 2204000,
+              "sourceStartMs": 2167920,
+              "sourceEndMs": 2204000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0010",
+          "item_type": "episode",
+          "start_ms": 39320,
+          "startMs": 39320,
+          "episodeId": "ep_jadoo_s04_0010",
+          "score": 0.014925373134328358,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0010_cc_000039320",
+              "text": "Các bạn nhỏ tranh cãi về độ tin cậy của cuốn sách bách khoa toàn thư về nhóm máu.",
+              "startMs": 39320,
+              "endMs": 76000,
+              "sourceStartMs": 39320,
+              "sourceEndMs": 76000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0026",
+          "item_type": "episode",
+          "start_ms": 1825760,
+          "startMs": 1825760,
+          "episodeId": "ep_jadoo_s01_0026",
+          "score": 0.014492753623188406,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0026_cc_001825760",
+              "text": "Chadu tự tin vào khả năng nấu nướng và muốn chăm sóc mẹ khi mẹ bị ốm.",
+              "startMs": 1825760,
+              "endMs": 1862000,
+              "sourceStartMs": 1825760,
+              "sourceEndMs": 1862000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0025",
+          "item_type": "episode",
+          "start_ms": 2322480,
+          "startMs": 2322480,
+          "episodeId": "ep_jadoo_s01_0025",
+          "score": 0.013157894736842105,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0025_cc_002322480",
+              "text": "Mẹ đưa Chadu đến trường dạy nghi thức để con gái trở nên xinh đẹp và giảm cân.",
+              "startMs": 2322480,
+              "endMs": 2356000,
+              "sourceStartMs": 2322480,
+              "sourceEndMs": 2356000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0004",
+          "item_type": "episode",
+          "start_ms": 2318116,
+          "startMs": 2318116,
+          "episodeId": "ep_jadoo_s04_0004",
+          "score": 0.012987012987012988,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0004_cc_002318116",
+              "text": "Jadoo giận dỗi mẹ và tuyên bố sẽ không nghe lời mẹ nữa.",
+              "startMs": 2318116,
+              "endMs": 2356000,
+              "sourceStartMs": 2318116,
+              "sourceEndMs": 2356000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "tập 3",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ep_larva_s01_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0003",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0003",
+              "text": "Ngày mưa, Red và Yellow tìm thấy nắp chai rồi nhảy múa.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s03_0003",
+          "score": 0.016129032258064516,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s03_0003",
+              "text": "Cha Doo ngượng ngùng khi nghe bạn nam khen ngợi mình là cô gái xinh xắn và dễ thương.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s06_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s06_0003",
+          "score": 0.015873015873015872,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s06_0003",
+              "text": "Bà ngoại bị chấn động não sau khi ngã và không còn nhận ra các thành viên trong gia đình. Jadoo đặt mật khẩu cổng nhà khó nhớ để ép mẹ phải vận động trí não.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s01_0003",
+          "score": 0.015625,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s01_0003",
+              "text": "Gia đình Jadoo bàn bạc về việc đăng ký cho Mimi tham gia cuộc thi Bé Khỏe ở thị trấn. Các thí sinh tham gia cuộc thi Bé Khỏe với thử thách chuyển gạo trong vòng 5 phút để giành chiến thắng.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s04_0003",
+          "score": 0.015384615384615385,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s04_0003",
+              "text": "Jadoo được nhắc nhở về việc ăn uống có chừng mực và giữ phẩm chất dù đang ở nhà hàng tự chọn. Nhà hàng kết thúc chương trình giảm giá khiến gia đình Jadoo không thể tiếp tục ăn vì chi phí quá đắt đỏ.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "Larva tap 3",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ep_larva_s01_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0003",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0003",
+              "text": "Ngày mưa, Red và Yellow tìm thấy nắp chai rồi nhảy múa.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "mùa 2 tập 5",
+      "constraints": {},
+      "results": []
+    },
+    {
+      "query": "Jadoo S03E05",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ep_jadoo_s03_0005",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s03_0005",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s03_0005",
+              "text": "Cha Doo hứa với huấn luyện viên sẽ không nhịn ăn nữa mà tập trung vào sức khỏe và tập luyện.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "tập 3 trừ Larva",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ep_jadoo_s03_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s03_0003",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s03_0003",
+              "text": "Cha Doo ngượng ngùng khi nghe bạn nam khen ngợi mình là cô gái xinh xắn và dễ thương.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s06_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s06_0003",
+          "score": 0.016129032258064516,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s06_0003",
+              "text": "Bà ngoại bị chấn động não sau khi ngã và không còn nhận ra các thành viên trong gia đình. Jadoo đặt mật khẩu cổng nhà khó nhớ để ép mẹ phải vận động trí não.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s01_0003",
+          "score": 0.015873015873015872,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s01_0003",
+              "text": "Gia đình Jadoo bàn bạc về việc đăng ký cho Mimi tham gia cuộc thi Bé Khỏe ở thị trấn. Các thí sinh tham gia cuộc thi Bé Khỏe với thử thách chuyển gạo trong vòng 5 phút để giành chiến thắng.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s04_0003",
+          "score": 0.015625,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s04_0003",
+              "text": "Jadoo được nhắc nhở về việc ăn uống có chừng mực và giữ phẩm chất dù đang ở nhà hàng tự chọn. Nhà hàng kết thúc chương trình giảm giá khiến gia đình Jadoo không thể tiếp tục ăn vì chi phí quá đắt đỏ.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "kem",
+      "constraints": {
+        "include_genres": [
+          "Hài hước"
+        ],
+        "exclude_genres": [
+          "school"
+        ]
+      },
+      "results": [
+        {
+          "id": "ep_larva_s01_0001",
+          "item_type": "episode",
+          "start_ms": 33000,
+          "startMs": 33000,
+          "episodeId": "ep_larva_s01_0001",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "seg_larva_s01_0001_01",
+              "text": "Red có một phần kem trên đầu, Yellow đứng cạnh.",
+              "startMs": 33000,
+              "endMs": 34000,
+              "sourceStartMs": 33000,
+              "sourceEndMs": 34000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0047",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0047",
+          "score": 0.015625,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0047",
+              "text": "Red và Yellow gặp tình huống với bánh kem và pháo trong dịp Giáng sinh.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0011",
+          "item_type": "episode",
+          "start_ms": 680000,
+          "startMs": 680000,
+          "episodeId": "ep_jadoo_s01_0011",
+          "score": 0.015384615384615385,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_011b",
+              "text": "Jadoo mê mẩn món bánh mì kem nổi tiếng mà Bố mua về mỗi khi có tiền thưởng, quyết tâm trở thành chuyên gia thẩm định bánh mì trước khi phát hiện ra nguồn gốc thật sự của nó.",
+              "startMs": 680000,
+              "endMs": 1350000,
+              "sourceStartMs": 680000,
+              "sourceEndMs": 1350000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0024",
+          "item_type": "episode",
+          "start_ms": 722120,
+          "startMs": 722120,
+          "episodeId": "ep_jadoo_s04_0024",
+          "score": 0.014925373134328358,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0024_cc_000722120",
+              "text": "Khách hàng phàn nàn về chất lượng bánh của bà do mắt bà ngày càng kém.",
+              "startMs": 722120,
+              "endMs": 760000,
+              "sourceStartMs": 722120,
+              "sourceEndMs": 760000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0012",
+          "item_type": "episode",
+          "start_ms": 0,
+          "startMs": 0,
+          "episodeId": "ep_jadoo_s01_0012",
+          "score": 0.014492753623188406,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_012a",
+              "text": "Jadoo và Mimi tìm cách mượn tiền tiết kiệm của Baby để mua kem nhưng bị Baby từ chối vì bài học con kiến và ve sầu lười biếng. Jadoo kể lại ký ức cay đắng khi tiền tiết kiệm của mình bị bố mẹ dùng xây nhà vệ sinh.",
+              "startMs": 0,
+              "endMs": 460000,
+              "sourceStartMs": 0,
+              "sourceEndMs": 460000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "Jadoo",
+      "constraints": {
+        "include_genres": [
+          "family"
+        ],
+        "year_min": 2011,
+        "year_max": 2015
+      },
+      "results": [
+        {
+          "id": "ep_jadoo_s03_0014",
+          "item_type": "episode",
+          "start_ms": 342200,
+          "startMs": 342200,
+          "episodeId": "ep_jadoo_s03_0014",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s03_0014_cc_000342200",
+              "text": "Gia đình nhận ra mẹ đã kiểm soát mọi việc trong nhà.",
+              "startMs": 342200,
+              "endMs": 380000,
+              "sourceStartMs": 342200,
+              "sourceEndMs": 380000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0018",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s03_0018",
+          "score": 0.016129032258064516,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s03_0018",
+              "text": "Gia đình Jadoo vui mừng khi tìm thấy Baby và hứa sẽ quan tâm đến em hơn.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0028",
+          "item_type": "episode",
+          "start_ms": 839079,
+          "startMs": 839079,
+          "episodeId": "ep_jadoo_s04_0028",
+          "score": 0.015873015873015872,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0028_cc_000839079",
+              "text": "Mẹ mặc trang phục múa ba lê và hỏi ý kiến các con.",
+              "startMs": 839079,
+              "endMs": 874000,
+              "sourceStartMs": 839079,
+              "sourceEndMs": 874000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0010",
+          "item_type": "episode",
+          "start_ms": 1938960,
+          "startMs": 1938960,
+          "episodeId": "ep_jadoo_s03_0010",
+          "score": 0.015625,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s03_0010_cc_001938960",
+              "text": "Hai bạn cùng biểu diễn tiết mục ảo thuật cuối cùng trong lớp.",
+              "startMs": 1938960,
+              "endMs": 1974300,
+              "sourceStartMs": 1938960,
+              "sourceEndMs": 1974300,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0014",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s01_0014",
+          "score": 0.014925373134328358,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s01_0014",
+              "text": "Tập phim Tập hợp tập phim phổ biến 6 của bộ hoạt hình Xin Chào Jadoo Mùa 1.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0017",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s03_0017",
+          "score": 0.014285714285714285,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s03_0017",
+              "text": "Jadoo lo lắng cho sức khỏe của ba sau khi nghe giải thích về hình ảnh đáng sợ trên bao thuốc lá.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0021",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s01_0021",
+          "score": 0.013888888888888888,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s01_0021",
+              "text": "Cha Doo và In Hui cùng nhận danh hiệu Hoa hậu Hàn Quốc nhí sau cuộc thi.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s03_0003",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s03_0003",
+          "score": 0.013157894736842105,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s03_0003",
+              "text": "Cha Doo ngượng ngùng khi nghe bạn nam khen ngợi mình là cô gái xinh xắn và dễ thương.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "Larva",
+      "constraints": {
+        "year_min": 2020
+      },
+      "results": []
+    },
+    {
+      "query": "Kem",
+      "constraints": {
+        "season_number": 1,
+        "episode_number": 2
+      },
+      "results": [
+        {
+          "id": "ep_jadoo_s01_0002",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_jadoo_s01_0002",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "ep_jadoo_s01_0002",
+              "text": "Mẹ mắng Jadoo vì cô bé lãng phí thức ăn và đổi phần cá cơm của mình với bạn khác. Mẹ ép Jadoo phải ăn hết 100 con cá cơm để rèn luyện thói quen ăn uống đầy đủ.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        },
+        {
+          "id": "ep_larva_s01_0002",
+          "item_type": "episode",
+          "start_ms": null,
+          "startMs": null,
+          "episodeId": "ep_larva_s01_0002",
+          "score": 0.016129032258064516,
+          "evidence": [
+            {
+              "documentId": "ep_larva_s01_0002",
+              "text": "Yellow xô Red khiến Red chảy máu mũi; một con muỗi xuất hiện và hút máu.",
+              "startMs": null,
+              "endMs": null,
+              "sourceStartMs": null,
+              "sourceEndMs": null,
+              "mediaAssetId": null,
+              "timeline": "file",
+              "itemType": "episode"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "hài hước",
+      "constraints": {
+        "series_only": true
+      },
+      "results": []
+    },
+    {
+      "query": "bữa tiệc ở phút nào",
+      "constraints": {},
+      "results": [
+        {
+          "id": "ep_jadoo_s04_0002",
+          "item_type": "episode",
+          "start_ms": 2775040,
+          "startMs": 2775040,
+          "episodeId": "ep_jadoo_s04_0002",
+          "score": 0.01639344262295082,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0002_cc_002775040",
+              "text": "Bạn bè tổ chức một bữa tiệc bất ngờ để chúc mừng sinh nhật Jadoo tại một địa điểm vui chơi.",
+              "startMs": 2775040,
+              "endMs": 2812000,
+              "sourceStartMs": 2775040,
+              "sourceEndMs": 2812000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0002",
+          "item_type": "episode",
+          "start_ms": 4524320,
+          "startMs": 4524320,
+          "episodeId": "ep_jadoo_s01_0002",
+          "score": 0.016129032258064516,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_0002_cc_004524320",
+              "text": "Jadoo và các bạn tổ chức một bữa tiệc bất ngờ để xin lỗi vì đã đến sinh nhật bạn chỉ vì đồ ăn.",
+              "startMs": 4524320,
+              "endMs": 4560000,
+              "sourceStartMs": 4524320,
+              "sourceEndMs": 4560000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s01_0012",
+          "item_type": "episode",
+          "start_ms": 460000,
+          "startMs": 460000,
+          "episodeId": "ep_jadoo_s01_0012",
+          "score": 0.015873015873015872,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s01_012b",
+              "text": "Baby được mời dự tiệc sinh nhật bạn Dongsoo. Jadoo và Mimi giúp em trai trang điểm để làm hot boy bữa tiệc nhưng lại biến khuôn mặt Baby thành một thảm họa hài hước.",
+              "startMs": 460000,
+              "endMs": 800000,
+              "sourceStartMs": 460000,
+              "sourceEndMs": 800000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s06_0007",
+          "item_type": "episode",
+          "start_ms": 1368360,
+          "startMs": 1368360,
+          "episodeId": "ep_jadoo_s06_0007",
+          "score": 0.015625,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s06_0007_cc_001368360",
+              "text": "Jadoo hứa sẽ mua tặng mẹ chiếc nhẫn đá quý thật khi cô bé lớn lên.",
+              "startMs": 1368360,
+              "endMs": 1403279,
+              "sourceStartMs": 1368360,
+              "sourceEndMs": 1403279,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s06_0010",
+          "item_type": "episode",
+          "start_ms": 78040,
+          "startMs": 78040,
+          "episodeId": "ep_jadoo_s06_0010",
+          "score": 0.014925373134328358,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s06_0010_cc_000078040",
+              "text": "Gia đình Jadoo đi ăn tại Mỹ và các con hào hứng chọn pizza và hamburger.",
+              "startMs": 78040,
+              "endMs": 114000,
+              "sourceStartMs": 78040,
+              "sourceEndMs": 114000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0024",
+          "item_type": "episode",
+          "start_ms": 2774360,
+          "startMs": 2774360,
+          "episodeId": "ep_jadoo_s04_0024",
+          "score": 0.014285714285714285,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0024_cc_002774360",
+              "text": "Jadoo cảm thấy ghen tị khi Yoon Suk quan tâm đến Min Chi hơn mình.",
+              "startMs": 2774360,
+              "endMs": 2812000,
+              "sourceStartMs": 2774360,
+              "sourceEndMs": 2812000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s06_0013",
+          "item_type": "episode",
+          "start_ms": 501039,
+          "startMs": 501039,
+          "episodeId": "ep_jadoo_s06_0013",
+          "score": 0.013513513513513514,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s06_0013_cc_000501039",
+              "text": "Nhân vật chính mời bạn thân dự tiệc thần giao cách cảm với yêu cầu hóa trang.",
+              "startMs": 501039,
+              "endMs": 532000,
+              "sourceStartMs": 501039,
+              "sourceEndMs": 532000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        },
+        {
+          "id": "ep_jadoo_s04_0027",
+          "item_type": "episode",
+          "start_ms": 2853880,
+          "startMs": 2853880,
+          "episodeId": "ep_jadoo_s04_0027",
+          "score": 0.013333333333333334,
+          "evidence": [
+            {
+              "documentId": "seg_jadoo_s04_0027_cc_002853880",
+              "text": "Bố đưa cả nhà đi ăn món ngon dù công việc gặp khó khăn.",
+              "startMs": 2853880,
+              "endMs": 2888000,
+              "sourceStartMs": 2853880,
+              "sourceEndMs": 2888000,
+              "mediaAssetId": null,
+              "timeline": "episode",
+              "itemType": "segment"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

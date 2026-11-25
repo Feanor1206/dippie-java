@@ -20,12 +20,8 @@ public class CatalogVisibility {
         return cache.current().visibleSeriesIds().contains(id);
     }
 
-    public boolean isEpisodeVisible(CatalogEpisode episode) {
+    boolean isEpisodeVisible(CatalogEpisode episode) {
         return cache.current().visibleEpisodeIds().contains(episode.getId());
-    }
-
-    public boolean isMovieVisible(String id) {
-        return id != null && !hiddenMovieIds().contains(id);
     }
 
     public Set<String> hiddenMovieIds() {

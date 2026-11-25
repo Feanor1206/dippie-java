@@ -11,6 +11,8 @@ import com.dippie.catalog.domain.CatalogSegment;
 import com.dippie.catalog.domain.CatalogSeries;
 import com.dippie.catalog.domain.CatalogSource;
 import com.dippie.catalog.domain.CatalogTextTrack;
+import com.dippie.common.json.JsonText;
+import com.dippie.common.text.UnicodeText;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 
@@ -19,7 +21,6 @@ import java.util.Locale;
 
 import static com.dippie.catalog.importing.CatalogJson.absent;
 import static com.dippie.catalog.importing.CatalogJson.or;
-import static com.dippie.catalog.importing.CatalogJson.truthy;
 
 final class CatalogRecordMapper {
 
@@ -113,7 +114,7 @@ final class CatalogRecordMapper {
                 text(row.prefer("edition_label", "edition")), null, null, provider, storageKey, relativePath,
                 text(storage.path("drive_file_id")), text(storage.path("drive_folder_id")), longNumber(size),
                 row.text("sha256"), row.longNumber("duration_ms"), row.json("technical"), row.json("coverage"),
-                null, row.text("access_policy", "public"), truthy(row.field("enabled")) || row.field("enabled").isMissingNode(),
+                null, row.text("access_policy", "public"), JsonText.isTruthy(row.field("enabled")) || row.field("enabled").isMissingNode(),
                 row.record(), row.raw(), row.revision());
     }
 
@@ -157,7 +158,7 @@ final class CatalogRecordMapper {
         if (node.isBoolean()) {
             return node.booleanValue() ? BigDecimal.ONE : BigDecimal.ZERO;
         }
-        return new BigDecimal(CatalogJson.strip(node.asText()));
+        return new BigDecimal(UnicodeText.strip(node.asText()));
     }
 
     private static Integer integer(JsonNode node) {

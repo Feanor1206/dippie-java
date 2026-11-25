@@ -1,26 +1,24 @@
 package com.dippie.catalog.query;
 
+import com.dippie.common.text.UnicodeText;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.regex.Pattern;
 
 @Service
-public class CatalogSearchService {
-
-    private static final Pattern SURROUNDING_SPACE = Pattern.compile("(?U)\\A[\\s\\x1c-\\x1f]+|[\\s\\x1c-\\x1f]+\\z");
+class CatalogSearchService {
 
     private final CatalogReadModelCache cache;
 
-    public CatalogSearchService(CatalogReadModelCache cache) {
+    CatalogSearchService(CatalogReadModelCache cache) {
         this.cache = cache;
     }
 
-    public List<Hit> search(String query, boolean authenticated, boolean admin) {
-        String term = query == null ? "" : lower(SURROUNDING_SPACE.matcher(query).replaceAll(""));
+    List<Hit> search(String query, boolean authenticated, boolean admin) {
+        String term = query == null ? "" : lower(UnicodeText.strip(query));
         if (term.isEmpty()) {
             return List.of();
         }

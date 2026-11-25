@@ -13,6 +13,7 @@ import com.dippie.media.MediaAsset;
 import com.dippie.media.MediaAssetRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
@@ -24,6 +25,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.stream.IntStream;
@@ -51,8 +53,8 @@ class MovieControllerTest {
     private final CatalogEpisodeRepository episodeRepository;
     private final CatalogMediaAssetRepository catalogMediaAssetRepository;
     private final EntityManagerFactory entityManagerFactory;
-    private final MovieGenreRepository movieGenres;
-    private final MovieGenreTermRepository genreTerms;
+    private final EntityManager entityManager;
+    private final TransactionTemplate transactions;
     private final CatalogReadModelCache cache;
 
     MovieControllerTest(
@@ -65,8 +67,8 @@ class MovieControllerTest {
             CatalogEpisodeRepository episodeRepository,
             CatalogMediaAssetRepository catalogMediaAssetRepository,
             EntityManagerFactory entityManagerFactory,
-            MovieGenreRepository movieGenres,
-            MovieGenreTermRepository genreTerms,
+            EntityManager entityManager,
+            TransactionTemplate transactions,
             CatalogReadModelCache cache
     ) {
         this.mockMvc = mockMvc;
@@ -78,8 +80,8 @@ class MovieControllerTest {
         this.episodeRepository = episodeRepository;
         this.catalogMediaAssetRepository = catalogMediaAssetRepository;
         this.entityManagerFactory = entityManagerFactory;
-        this.movieGenres = movieGenres;
-        this.genreTerms = genreTerms;
+        this.entityManager = entityManager;
+        this.transactions = transactions;
         this.cache = cache;
     }
 
@@ -102,10 +104,12 @@ class MovieControllerTest {
                 movie("mismatch", "100% Wrong genre", 2024, 10.0, "Family,Science Fiction", null),
                 movie("wildcard", "100X Wrong text", 2024, 10.0, "Family,Science Fiction", null)
         ));
-        genreTerms.saveAll(List.of(new MovieGenreTerm("Family"), new MovieGenreTerm("Science Fiction"),
-                new MovieGenreTerm("Comedy")));
-        movieGenres.saveAll(List.of(new MovieGenre("linked", "Family"), new MovieGenre("linked", "Science Fiction"),
-                new MovieGenre("mismatch", "Comedy")));
+        transactions.executeWithoutResult(status -> {
+            List.of("Family", "Science Fiction", "Comedy")
+                    .forEach(term -> entityManager.merge(new MovieGenreTerm(term)));
+            List.of(new MovieGenre("linked", "Family"), new MovieGenre("linked", "Science Fiction"),
+                    new MovieGenre("mismatch", "Comedy")).forEach(entityManager::merge);
+        });
 
         Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
         boolean previouslyEnabled = statistics.isStatisticsEnabled();

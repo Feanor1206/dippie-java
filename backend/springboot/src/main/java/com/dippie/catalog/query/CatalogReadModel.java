@@ -15,7 +15,6 @@ public final class CatalogReadModel {
 
     private final List<CatalogSeriesView> series;
     private final Set<String> visibleSeriesIds;
-    private final Map<String, String> publishedSeasonParents;
     private final Set<String> visibleEpisodeIds;
     private final Set<String> hiddenMovieIds;
     private final List<CatalogSearchService.SearchRow> searchRows;
@@ -26,13 +25,12 @@ public final class CatalogReadModel {
     private final Map<String, SeriesEpisode> episodesById;
 
     CatalogReadModel(List<CatalogSeriesView> series, Set<String> visibleSeriesIds,
-            Map<String, String> publishedSeasonParents, Set<String> visibleEpisodeIds, Set<String> hiddenMovieIds,
+            Set<String> visibleEpisodeIds, Set<String> hiddenMovieIds,
             List<CatalogSearchService.SearchRow> searchRows, List<RecommendationCandidate> candidates,
             Map<String, List<SeriesEpisode>> seriesEpisodes, List<SeriesCard> seriesCards,
             Map<String, SeriesEpisode> episodesById) {
         this.series = List.copyOf(series);
         this.visibleSeriesIds = Set.copyOf(visibleSeriesIds);
-        this.publishedSeasonParents = Map.copyOf(publishedSeasonParents);
         this.visibleEpisodeIds = Set.copyOf(visibleEpisodeIds);
         this.hiddenMovieIds = Set.copyOf(hiddenMovieIds);
         this.searchRows = List.copyOf(searchRows);
@@ -52,11 +50,7 @@ public final class CatalogReadModel {
         return visibleSeriesIds;
     }
 
-    public Map<String, String> publishedSeasonParents() {
-        return publishedSeasonParents;
-    }
-
-    public Set<String> visibleEpisodeIds() {
+    Set<String> visibleEpisodeIds() {
         return visibleEpisodeIds;
     }
 

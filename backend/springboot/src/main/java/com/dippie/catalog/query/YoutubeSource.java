@@ -4,52 +4,48 @@ import com.dippie.catalog.domain.SeriesArtwork;
 import com.dippie.common.json.JsonText;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import java.util.Optional;
 import java.util.regex.Pattern;
-import java.util.stream.StreamSupport;
 
-public record YoutubeSource(String videoId, boolean canEmbed) {
+record YoutubeSource(String videoId, boolean canEmbed) {
 
     private static final Pattern VIDEO_ID = Pattern.compile("[A-Za-z0-9_-]{11}");
     private static final String THUMBNAIL_ONLY_NAMESPACE = "youtube_video_id";
 
     static SeriesArtwork artworkFrom(String episodeJson) {
-        String videoId = Optional.ofNullable(from(episodeJson))
-                .map(YoutubeSource::videoId)
-                .orElseGet(() -> thumbnailOnlyVideoId(episodeJson));
-        if (videoId == null) {
+        JsonNode externalIds = externalIds(episodeJson);
+        if (externalIds == null) {
             return SeriesArtwork.EMPTY;
         }
-        String base = "https://i.ytimg.com/vi/" + videoId + "/";
-        return new SeriesArtwork(base + "hqdefault.jpg", base + "maxresdefault.jpg");
+        String watchId = null;
+        String thumbnailId = null;
+        for (JsonNode item : externalIds) {
+            String id = validVideoId(item);
+            if (id == null) {
+                continue;
+            }
+            String namespace = item.path("namespace").textValue();
+            if ("youtube_playback".equals(namespace)) {
+                return artworkFor(id);
+            }
+            if (watchId == null && "youtube_watch".equals(namespace)) {
+                watchId = id;
+            } else if (thumbnailId == null && THUMBNAIL_ONLY_NAMESPACE.equals(namespace)) {
+                thumbnailId = id;
+            }
+        }
+        String resolved = watchId != null ? watchId : thumbnailId;
+        return resolved == null ? SeriesArtwork.EMPTY : artworkFor(resolved);
     }
 
-    private static String thumbnailOnlyVideoId(String episodeJson) {
-        return externalIds(episodeJson).stream()
-                .flatMap(ids -> StreamSupport.stream(ids.spliterator(), false))
-                .filter(item -> THUMBNAIL_ONLY_NAMESPACE.equals(item.path("namespace").textValue()))
-                .map(item -> item.path("value").textValue())
-                .filter(id -> id != null && VIDEO_ID.matcher(id).matches())
-                .findFirst()
-                .orElse(null);
-    }
-
-    private static Optional<JsonNode> externalIds(String episodeJson) {
-        return JsonText.parse(episodeJson)
-                .map(record -> record.path("external_ids"))
-                .filter(JsonNode::isArray);
-    }
-
-    public static YoutubeSource from(String episodeJson) {
-        JsonNode externalIds = externalIds(episodeJson).orElse(null);
+    static YoutubeSource from(String episodeJson) {
+        JsonNode externalIds = externalIds(episodeJson);
         if (externalIds == null) {
             return null;
         }
-
         String watchId = null;
         for (JsonNode item : externalIds) {
-            String id = item.path("value").textValue();
-            if (id == null || !VIDEO_ID.matcher(id).matches()) {
+            String id = validVideoId(item);
+            if (id == null) {
                 continue;
             }
             String namespace = item.path("namespace").textValue();
@@ -61,5 +57,22 @@ public record YoutubeSource(String videoId, boolean canEmbed) {
             }
         }
         return watchId == null ? null : new YoutubeSource(watchId, false);
+    }
+
+    private static JsonNode externalIds(String episodeJson) {
+        return JsonText.parse(episodeJson)
+                .map(record -> record.path("external_ids"))
+                .filter(JsonNode::isArray)
+                .orElse(null);
+    }
+
+    private static String validVideoId(JsonNode item) {
+        String id = item.path("value").textValue();
+        return id != null && VIDEO_ID.matcher(id).matches() ? id : null;
+    }
+
+    private static SeriesArtwork artworkFor(String videoId) {
+        String base = "https://i.ytimg.com/vi/" + videoId + "/";
+        return new SeriesArtwork(base + "hqdefault.jpg", base + "maxresdefault.jpg");
     }
 }

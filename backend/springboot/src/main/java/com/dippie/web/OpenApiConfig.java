@@ -9,12 +9,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class OpenApiConfig {
+class OpenApiConfig {
 
-    public static final String BEARER_AUTH_SCHEME = "bearerAuth";
+    private static final String BEARER_AUTH_SCHEME = "bearerAuth";
 
     @Bean
-    public OpenAPI dippieOpenApi() {
+    OpenAPI dippieOpenApi() {
         return new OpenAPI()
                 .info(new Info()
                         .title("Dippie API")

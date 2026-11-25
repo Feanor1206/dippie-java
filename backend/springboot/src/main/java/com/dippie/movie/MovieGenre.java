@@ -51,14 +51,6 @@ public class MovieGenre {
         this.genreName = genreName;
     }
 
-    public String getMovieId() {
-        return movieId;
-    }
-
-    public String getGenreName() {
-        return genreName;
-    }
-
     public record Key(String movieId, String genreName) implements Serializable {
     }
 }

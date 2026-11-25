@@ -19,8 +19,4 @@ public class MovieGenreTerm {
     public MovieGenreTerm(String name) {
         this.name = name;
     }
-
-    public String getName() {
-        return name;
-    }
 }

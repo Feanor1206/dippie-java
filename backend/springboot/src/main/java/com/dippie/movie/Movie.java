@@ -120,14 +120,6 @@ public class Movie {
         return videoUrl;
     }
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
     public void updateCatalogSeries(String title, Integer releaseYear, String synopsis) {
         this.title = title;
         if (releaseYear != null && releaseYear != 0) {

@@ -1,9 +1,11 @@
 package com.dippie.admin;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
-public record AdminAuditEventView(
+record AdminAuditEventView(
         Long id,
         String actorUsername,
         String action,
@@ -12,4 +14,8 @@ public record AdminAuditEventView(
         Map<String, Object> details,
         LocalDateTime createdAt
 ) {
+
+    AdminAuditEventView {
+        details = details == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(details));
+    }
 }

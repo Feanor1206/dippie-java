@@ -14,14 +14,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class AdminUserService {
+class AdminUserService {
 
-    private static final int MAX_PAGE_SIZE = 100;
     private static final String TARGET_TYPE_USER = "USER";
 
     private final CurrentViewer currentViewer;
@@ -30,7 +28,7 @@ public class AdminUserService {
     private final AdminAuditService adminAuditService;
     private final Clock clock;
 
-    public AdminUserService(
+    AdminUserService(
             CurrentViewer currentViewer,
             UserRepository userRepository,
             AdminUserPolicy adminUserPolicy,
@@ -47,12 +45,10 @@ public class AdminUserService {
     @Transactional(readOnly = true)
     public AdminPageResponse<AdminUserView> listUsers(String query, int page, int size) {
         currentViewer.requireAdmin();
-        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
-            throw new InvalidRequestException("Tham số phân trang không hợp lệ.");
-        }
+        var pageable = AdminPageResponse.pageRequest(page, size);
         String term = (query == null || query.isBlank()) ? null : query.trim().toLowerCase(Locale.ROOT);
         Page<AdminUserView> result = userRepository
-                .searchByUsernameOrEmail(term, PageRequest.of(page, size))
+                .searchByUsernameOrEmail(term, pageable)
                 .map(AdminUserView::from);
         return AdminPageResponse.of(result);
     }

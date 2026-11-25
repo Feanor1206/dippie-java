@@ -2,10 +2,10 @@
 
 Spring Boot 3.5 · Java 21 · JPA/Hibernate · Spring Security (stateless JWT) · H2 (demo/test) · MySQL 8 (production).
 
-This module replaces the business backend that lived in `backend/fastapi/routers/core_api.py` and
-`backend/fastapi/services/database.py`. The React frontend (`frontend/`) is unchanged and is served by this
-application. AI features (CineBot chat, semantic search, frame search, embeddings) stay in the Python service
-`backend/fastapi`, which this application calls over HTTP.
+This module is the standalone Java backend for Dippie, serving both the core business API and the runtime AI
+assistant in a single JVM process: CineBot SSE (`/api/chat`), lexical catalog search/discovery (`/v1/search`,
+`/v1/discover`), mood and affinity recommendations (`/api/recommend`), and `/api/assistant/status`. The React frontend
+(`frontend/`) is served directly by this application; `ai/` remains the offline ML pipeline.
 
 ## Hard rules (every contributor, no exceptions)
 
@@ -38,23 +38,32 @@ com.dippie
 ├── common
 │   ├── error        DomainException hierarchy + GlobalExceptionHandler
 │   ├── web          ApiResponse envelope, ClockConfig
-│   └── json         JsonText helper (parse LONGTEXT JSON safely)
+│   ├── json         JsonText helper (parse LONGTEXT JSON safely)
+│   └── text         UnicodeText (Python-compatible case-folding & whitespace stripping)
 ├── security         SecurityConfig, JwtService, JwtAuthenticationFilter, Viewer, CurrentViewer, Role,
 │                    LoginRateLimiter, PasswordPolicy
-├── user             User entity, UserRepository, AuthService, AuthController, AdminBootstrap
-├── movie            Movie entity, MovieRepository, MovieVisibility, MovieQueryService, MovieController
+├── user             User entity, UserRepository, AuthService, AuthController, HealthController, AdminBootstrap,
+│                    DemoAccountSeeder
+├── account          AccountController, AccountService (profile update, password change + token version bump)
+├── admin            AdminUserController, AdminUserService, AdminUserPolicy, AdminAuditController, AdminAuditService,
+│                    AdminStatsController, AdminStatsService, AdminStatsQuery
+├── movie            Movie entity, MovieRepository, MovieVisibility, MovieQueryService, MovieController, MovieFilter
 ├── catalog
 │   ├── domain       Catalog* entities, PublicationStatus, AccessPolicy, repositories
-│   ├── query        CatalogQueryService, CatalogSearchService, CatalogController
+│   ├── query        CatalogQueryService, CatalogSearchService, CatalogController, CatalogReadModelCache
 │   └── importing    CatalogPackageValidator, CatalogDiff, CatalogImportService, CatalogExportService,
-│                    AdminCatalogController, snapshot lifecycle
-├── library          Watchlist / Favorite / Rating (shared LibraryEntry base)
-├── progress         WatchProgress entity, CompletionPolicy, WatchProgressService, controller
+│                    AdminCatalogController, CatalogSnapshotService, CatalogIndexPublisher
+├── library          Watchlist / Favorite / Rating (AbstractLibraryListService, shared LibraryEntry base)
+├── progress         WatchProgress entity, CompletionPolicy, WatchProgressService, NextEpisodePolicy, controllers
 ├── media            MediaAsset entity, PlaybackGrantService, ByteRange, MediaFileResolver (Strategy),
 │                    MediaStreamController
-├── recommendation   RecommendationService + scoring strategies (affinity, mood via AI)
-├── ai               AiServiceClient, ChatProxyController (SSE pass-through), CatalogIndexPublisher
-└── web              SpaController (serves frontend/dist), CORS
+├── recommendation   RecommendationService + AffinityRecommendationStrategy, MoodRecommendationStrategy (via CatalogSearch)
+├── assistant        AssistantProperties (dippie.assistant.*), AssistantStatusController (GET /api/assistant/status)
+│   ├── search       CatalogSearch (LocalCatalogSearch), LexicalIndex, SearchCatalogFlattener,
+│   │                LocalDiscoverController (/v1/search, /v1/discover), LocalIndexPublisher
+│   └── chat         IntentParser, ChatService, AnswerGenerator (TemplateAnswerGenerator, DeepSeekAnswerGenerator),
+│                    LocalChatController (/api/chat SSE), CatalogReplies, MoodEvidence, ChatConfiguration
+└── web              SpaController (serves frontend/dist), WebResourceConfig, OpenApiConfig
 ```
 
 Cross-package rule: a package may depend on `common`, `security` and on another feature's **domain/repository**
@@ -64,15 +73,14 @@ types, never on another feature's controller.
 
 | Pattern | Where |
 | --- | --- |
-| Strategy | `MediaFileResolver` (local / drive cache / drive mount), `RecommendationStrategy` (affinity / mood), `CatalogIndexPublisher` (HTTP / noop) |
-| Value Object | `ByteRange`, `PlaybackPosition`, `PublicationStatus`, `AccessPolicy`, `ContentHash` |
-| Template Method | `LibraryEntryService` for watchlist & favorites |
-| Facade | `AiServiceClient` hides the Python AI HTTP API |
+| Strategy | `MediaLocationStrategy` (`DriveCacheLocation`, `DriveMountLocation`, `LocalMediaLocation`) via `MediaFileResolver`; `RecommendationStrategy` (`AffinityRecommendationStrategy`, `MoodRecommendationStrategy`); `CatalogIndexPublisher` (`LocalIndexPublisher`); `CatalogSearch` (`LocalCatalogSearch`); `AnswerGenerator` (`TemplateAnswerGenerator` / `DeepSeekAnswerGenerator`) |
+| Value Object | `ByteRange`, `WatchDuration`, `WatchProgressCommand`, `PublicationStatus`, `AccessPolicy`, `ContentHash`, `ChatIntent`, `SearchConstraints` |
+| Template Method | `AbstractLibraryListService` (`WatchlistService`, `FavoriteService`) |
 | Optimistic locking | `WatchProgress` (`expectedVersion` protocol), catalog `opt_lock_version` |
-| Event listener | `CatalogIndexBootstrapper` reacts to `ApplicationReadyEvent` and publishes the latest snapshot to the AI index |
+| Event listener | `CatalogImportedEvent` (`CatalogReadModelCache`, `CatalogImportAuditListener`, `LocalCatalogSearch`) |
 
 ## Configuration
 
 `application.yml` defines `dippie.*` properties bound to `@ConfigurationProperties` records in each feature
-(`JwtProperties`, `MediaProperties`, `AiProperties`, ...). Profiles: `demo` (default, H2 file DB, seeds demo accounts),
-`mysql` (validate schema), `test` (H2 in-memory, used by tests).
+(`JwtProperties`, `MediaProperties`, `AssistantProperties`, ...). Profiles: `demo` (default, H2 file
+DB, seeds demo accounts), `mysql` (validate schema), `test` (H2 in-memory, used by tests).

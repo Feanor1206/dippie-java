@@ -99,7 +99,7 @@ Bản siêu dữ liệu video dùng cho API phát phim cũ.
 | `storage_key` | `varchar(100)` | Có | `NULL` | — | Mã cấu hình gốc lưu trữ chứa tệp. |
 | `relative_path` | `varchar(500)` | Không | — | — | Đường dẫn tương đối tới tệp trong kho lưu trữ. |
 | `version` | `varchar(50)` | Không | `v1` | UNIQUE `uq_movie_kind_version` | Mã phiên bản. |
-| `mime_type` | `varchar(100)` | Không | `video/mp4` | — | Kiểu nội dung khi FastAPI trả tệp legacy. |
+| `mime_type` | `varchar(100)` | Không | `video/mp4` | — | Kiểu nội dung khi backend trả tệp legacy. |
 | `byte_length` | `bigint` | Không | — | — | Số byte của tệp phát trong API cũ. |
 | `duration_seconds` | `double` | Có | `NULL` | — | Thời lượng tệp legacy tính theo giây. |
 | `is_public` | `tinyint(1)` | Không | `1` | — | Asset legacy được phép công khai. |

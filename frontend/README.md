@@ -1,23 +1,22 @@
 # Giao diện Dippie
 
-React và TypeScript được Vite build thành tệp tĩnh trong `dist/`. FastAPI phục vụ các tệp này cùng API.
+React và TypeScript được Vite build thành tệp tĩnh trong `dist/`. Backend Spring Boot phục vụ các tệp này cùng API tại cổng `3000`.
 
 ## Làm việc trên giao diện
 
-Chạy FastAPI ở cổng 8000 với [cấu hình cơ sở dữ liệu](../backend/fastapi/README.md#2-cấu-hình-biến-môi-trường). Từ thư mục `frontend`, chạy các lệnh sau và mở [Dippie](http://localhost:3000/).
+Khởi động backend Java ở cổng `3000` (ví dụ `.\start-java.ps1` ở thư mục gốc, xem thêm [tài liệu backend](../backend/springboot/README.md)). Từ thư mục `frontend`, chạy các lệnh sau và mở [Dippie](http://localhost:5173/):
 
 ```powershell
 npm ci
 npm run dev
 ```
 
-Vite chuyển `/api` tới cổng 8000. Có thể đặt `BACKEND_INTERNAL_URL` để dùng cổng khác.
+Máy chủ phát triển Vite chạy ở `http://127.0.0.1:5173` và chuyển tiếp `/api` tới `http://127.0.0.1:3000`. Có thể đặt biến môi trường `BACKEND_INTERNAL_URL` để trỏ tới địa chỉ backend khác.
 
 ## Kiểm thử và build
 
 ```powershell
-npm test
 npm run typecheck
+npm test
 npm run build
-node ../scripts/compute_build_bytes.cjs
 ```

@@ -16,7 +16,6 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -40,7 +39,7 @@ public class CatalogExportService {
     }
 
     public JsonNode exportEligibleCatalog(boolean includeDraft, boolean includePrivate) {
-        return exportEligibleCatalog(includeDraft, includePrivate, LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS));
+        return exportEligibleCatalog(includeDraft, includePrivate, CatalogDates.now(clock));
     }
 
     public JsonNode exportForIndex() {

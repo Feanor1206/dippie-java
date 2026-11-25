@@ -2,10 +2,10 @@ package com.dippie.catalog.domain;
 
 import java.util.Locale;
 
-public enum AccessPolicy {
+enum AccessPolicy {
     PUBLIC, AUTHENTICATED, PRIVATE, UNKNOWN;
 
-    public static AccessPolicy of(String raw) {
+    static AccessPolicy of(String raw) {
         if (raw == null || raw.isBlank()) {
             return PUBLIC;
         }
@@ -17,7 +17,7 @@ public enum AccessPolicy {
         };
     }
 
-    public boolean allows(boolean authenticated, boolean admin) {
+    boolean allows(boolean authenticated, boolean admin) {
         return switch (this) {
             case PUBLIC -> true;
             case AUTHENTICATED -> authenticated;

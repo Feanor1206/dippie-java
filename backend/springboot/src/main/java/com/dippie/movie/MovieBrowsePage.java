@@ -3,7 +3,7 @@ package com.dippie.movie;
 import java.math.BigInteger;
 import java.util.List;
 
-public record MovieBrowsePage(
+record MovieBrowsePage(
         List<MovieView> items,
         BigInteger page,
         int size,
@@ -13,7 +13,11 @@ public record MovieBrowsePage(
         boolean hasPrevious
 ) {
 
-    public static MovieBrowsePage of(List<MovieView> items, BigInteger page, int size, long totalElements) {
+    MovieBrowsePage {
+        items = items == null ? List.of() : List.copyOf(items);
+    }
+
+    static MovieBrowsePage of(List<MovieView> items, BigInteger page, int size, long totalElements) {
         long totalPages = totalElements > 0 ? (totalElements + size - 1) / size : 0;
         boolean hasNext = page.add(BigInteger.ONE).compareTo(BigInteger.valueOf(totalPages)) < 0;
         boolean hasPrevious = page.signum() > 0 && totalPages > 0;

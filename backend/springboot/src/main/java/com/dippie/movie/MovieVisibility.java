@@ -17,19 +17,11 @@ public class MovieVisibility {
         this.catalogVisibility = catalogVisibility;
     }
 
-    public Set<String> hiddenMovieIds() {
-        return catalogVisibility.hiddenMovieIds();
-    }
-
-    public boolean isVisible(String movieId) {
-        return catalogVisibility.isMovieVisible(movieId);
-    }
-
     public Optional<Movie> findVisibleById(String movieId) {
         if (movieId == null) {
             return Optional.empty();
         }
-        return findVisibleById(movieId, hiddenMovieIds());
+        return findVisibleById(movieId, catalogVisibility.hiddenMovieIds());
     }
 
     Optional<Movie> findVisibleById(String movieId, Set<String> hiddenIds) {

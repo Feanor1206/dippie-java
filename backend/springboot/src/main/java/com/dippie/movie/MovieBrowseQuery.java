@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-public record MovieBrowseQuery(
+record MovieBrowseQuery(
         String searchQuery,
         List<String> genreTokens,
         Integer yearMin,
@@ -18,6 +18,10 @@ public record MovieBrowseQuery(
         BigInteger page,
         int size
 ) {
+
+    MovieBrowseQuery {
+        genreTokens = genreTokens == null ? List.of() : List.copyOf(genreTokens);
+    }
 
     public enum SortField {
         RATING,

@@ -1,5 +1,7 @@
 package com.dippie.catalog.importing;
 
+import com.dippie.common.json.JsonText;
+import com.dippie.common.text.UnicodeText;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.IntNode;
 import org.springframework.stereotype.Component;
@@ -9,7 +11,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 @Component
-public class CatalogPackageValidator {
+class CatalogPackageValidator {
 
     private static final Pattern STORAGE_KEY = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}");
     private static final Pattern SHA256 = Pattern.compile("[a-fA-F0-9]{64}");
@@ -22,7 +24,7 @@ public class CatalogPackageValidator {
 
     PackageIdentity validate(JsonNode document) {
         JsonNode pkg = document.path("package");
-        if (!pkg.isObject() || !CatalogJson.truthy(pkg.path("id"))) {
+        if (!pkg.isObject() || !JsonText.isTruthy(pkg.path("id"))) {
             throw new CatalogInputException("package.id", "Thiếu mã gói danh mục.");
         }
         String id = checkId(pkg.path("id"), "package.id", 100);
@@ -49,7 +51,7 @@ public class CatalogPackageValidator {
                 throw new CatalogInputException(path, "Bản ghi không hợp lệ.");
             }
             String id = checkId(item.path("id"), path + ".id", collection == CatalogCollection.MEDIA_ASSETS ? 64 : 100);
-            if (!ids.add(CatalogJson.caseFold(id))) {
+            if (!ids.add(UnicodeText.caseFold(id))) {
                 throw new CatalogInputException(path + ".id", "Mã định danh bị trùng.");
             }
             validateRecord(item.path("record"), path, revision);
@@ -178,7 +180,7 @@ public class CatalogPackageValidator {
     }
 
     private static boolean isRelativeMediaPath(String path) {
-        if (path == null || CatalogJson.strip(path).isEmpty() || path.startsWith("/")
+        if (path == null || UnicodeText.strip(path).isEmpty() || path.startsWith("/")
                 || path.chars().anyMatch(ch -> ch == '\\' || ch == ':' || ch < 32 || ch == 127)) {
             return false;
         }
@@ -192,7 +194,7 @@ public class CatalogPackageValidator {
 
     private static String checkId(JsonNode node, String path, int maxLength) {
         String id = node.textValue();
-        if (id == null || id.isEmpty() || !id.equals(CatalogJson.strip(id)) || id.codePointCount(0, id.length()) > maxLength) {
+        if (id == null || id.isEmpty() || !id.equals(UnicodeText.strip(id)) || id.codePointCount(0, id.length()) > maxLength) {
             throw new CatalogInputException(path, "Mã định danh không hợp lệ.");
         }
         return id;

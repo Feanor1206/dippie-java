@@ -32,6 +32,10 @@ public record MovieView(
     private static final String SERIES = "series";
     private static final String EPISODE = "episode";
 
+    public MovieView {
+        genres = genres == null ? List.of() : List.copyOf(genres);
+    }
+
     @JsonAnyGetter
     public Map<String, Object> catalogPlacement() {
         if (itemType == null) {

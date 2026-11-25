@@ -1,10 +1,9 @@
 package com.dippie.recommendation;
 
-import com.dippie.ai.AiServiceClient;
-import com.dippie.ai.AiUnavailableException;
-import com.dippie.ai.AiUpstreamException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.dippie.assistant.search.CatalogSearch;
+import com.dippie.assistant.search.SearchConstraints;
+import com.dippie.assistant.search.SearchHit;
+import com.dippie.common.error.ServiceUnavailableException;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -15,40 +14,39 @@ import java.util.Map;
 @Component
 public class MoodRecommendationStrategy implements RecommendationStrategy {
 
-    private final AiServiceClient ai;
-    private final ObjectMapper mapper;
+    private final CatalogSearch search;
     private final AffinityRecommendationStrategy affinity;
 
-    public MoodRecommendationStrategy(AiServiceClient ai, ObjectMapper mapper, AffinityRecommendationStrategy affinity) {
-        this.ai = ai;
-        this.mapper = mapper;
+    public MoodRecommendationStrategy(CatalogSearch search, AffinityRecommendationStrategy affinity) {
+        this.search = search;
         this.affinity = affinity;
     }
 
     @Override
     public RecommendationResult recommend(RecommendationContext context) {
         var explicit = context.explicitGenres();
-        var request = mapper.createObjectNode().put("query", context.request().mood()).put("limit", 100);
-        var genres = request.putObject("constraints").putArray("include_genres");
-        explicit.stream().sorted().forEach(genres::add);
-
-        JsonNode response;
+        List<SearchHit> hits;
         try {
-            response = ai.search(request);
-        } catch (AiUnavailableException | AiUpstreamException exception) {
-            return affinity.recommend(context);
-        }
-        if (response == null || !response.path("results").isArray()) {
+            if (!search.isReady()) {
+                return affinity.recommend(context);
+            }
+            var constraints = new SearchConstraints(explicit.stream().sorted().toList(), List.of(), null,
+                    null, null, null, false);
+            hits = search.search(context.request().mood(), 100, constraints);
+        } catch (ServiceUnavailableException exception) {
             return affinity.recommend(context);
         }
 
         Map<String, RecommendationCandidate> candidates = new HashMap<>();
         context.candidates(explicit).forEach(item -> candidates.put(item.id(), item));
         List<RecommendedItem> movies = new ArrayList<>();
-        for (JsonNode hit : response.path("results")) {
-            RecommendationCandidate item = candidates.remove(hit.path("id").textValue());
+        for (SearchHit hit : hits) {
+            RecommendationCandidate item = candidates.remove(hit.id());
             if (item != null) {
-                movies.add(RecommendedItem.from(item, score(hit.path("score")), evidence(hit.path("evidence"))));
+                Double score = hit.score();
+                var evidence = hit.evidence().stream().map(entry -> new RecommendedItem.Evidence(entry.documentId(),
+                        entry.text(), entry.startMs(), entry.endMs(), entry.itemType())).toList();
+                movies.add(RecommendedItem.from(item, score != null && Double.isFinite(score) ? score : null, evidence));
                 if (movies.size() == context.request().limit()) {
                     break;
                 }
@@ -57,26 +55,4 @@ public class MoodRecommendationStrategy implements RecommendationStrategy {
         return new RecommendationResult(movies, "Dựa trên tâm trạng bạn chọn.");
     }
 
-    private static Double score(JsonNode score) {
-        return score.isNumber() && Double.isFinite(score.doubleValue()) ? score.doubleValue() : null;
-    }
-
-    private static List<RecommendedItem.Evidence> evidence(JsonNode entries) {
-        if (!entries.isArray()) {
-            return List.of();
-        }
-        List<RecommendedItem.Evidence> evidence = new ArrayList<>();
-        for (JsonNode entry : entries) {
-            if (entry.isObject()) {
-                evidence.add(new RecommendedItem.Evidence(entry.path("documentId").textValue(),
-                        entry.path("text").textValue(), timestamp(entry.path("startMs")), timestamp(entry.path("endMs")),
-                        entry.path("itemType").textValue()));
-            }
-        }
-        return evidence;
-    }
-
-    private static Long timestamp(JsonNode value) {
-        return value.isIntegralNumber() && value.canConvertToLong() ? value.longValue() : null;
-    }
 }

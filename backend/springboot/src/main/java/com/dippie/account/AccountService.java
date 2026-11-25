@@ -18,10 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class AccountService {
-
-    private static final int MAX_EMAIL_LENGTH = 100;
-    private static final int MAX_FULL_NAME_LENGTH = 100;
+class AccountService {
 
     private final CurrentViewer currentViewer;
     private final UserRepository userRepository;
@@ -29,7 +26,7 @@ public class AccountService {
     private final JwtService jwtService;
     private final Clock clock;
 
-    public AccountService(
+    AccountService(
             CurrentViewer currentViewer,
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
@@ -45,27 +42,15 @@ public class AccountService {
 
     @Transactional
     public UserProfileResponse updateProfile(UpdateProfileRequest request) {
-        Viewer viewer = currentViewer.require();
-        User user = userRepository.findById(viewer.userId())
-                .orElseThrow(() -> new UnauthorizedException("Chưa xác thực người dùng"));
+        User user = requireUser();
 
         UpdateProfileRequest payload = request == null ? new UpdateProfileRequest(null, null) : request;
-        String email = payload.rawEmail().trim();
-        String rawFullName = payload.fullName();
-
-        if (!email.contains("@") || email.length() > MAX_EMAIL_LENGTH) {
-            throw new InvalidRequestException("Định dạng email không hợp lệ");
-        }
-        if (rawFullName != null && rawFullName.length() > MAX_FULL_NAME_LENGTH) {
-            throw new InvalidRequestException("Họ tên tối đa 100 ký tự");
-        }
+        String email = User.validateEmail(payload.rawEmail());
+        String resolvedFullName = User.resolveFullName(payload.fullName(), user.getUsername());
         if (userRepository.existsByEmailAndIdNot(email, user.getId())) {
             throw new InvalidRequestException("Email đã được sử dụng!");
         }
 
-        String resolvedFullName = (rawFullName == null || rawFullName.trim().isEmpty())
-                ? user.getUsername()
-                : rawFullName.trim();
         user.updateProfile(resolvedFullName, email, LocalDateTime.now(clock));
 
         try {
@@ -78,9 +63,7 @@ public class AccountService {
 
     @Transactional
     public AuthResponse changePassword(ChangePasswordRequest request) {
-        Viewer viewer = currentViewer.require();
-        User user = userRepository.findById(viewer.userId())
-                .orElseThrow(() -> new UnauthorizedException("Chưa xác thực người dùng"));
+        User user = requireUser();
 
         ChangePasswordRequest payload = request == null ? new ChangePasswordRequest(null, null) : request;
         String currentPassword = payload.rawCurrentPassword();
@@ -100,5 +83,11 @@ public class AccountService {
         User saved = userRepository.saveAndFlush(user);
         String token = jwtService.issueLoginToken(saved.getUsername(), saved.getTokenVersion());
         return AuthResponse.of(saved, token);
+    }
+
+    private User requireUser() {
+        Viewer viewer = currentViewer.require();
+        return userRepository.findById(viewer.userId())
+                .orElseThrow(() -> new UnauthorizedException("Chưa xác thực người dùng"));
     }
 }

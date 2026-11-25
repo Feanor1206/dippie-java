@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.StreamSupport;
 
 public final class JsonText {
 
@@ -31,10 +30,26 @@ public final class JsonText {
     public static List<String> stringList(String text) {
         return parse(text)
                 .filter(JsonNode::isArray)
-                .map(array -> StreamSupport.stream(array.spliterator(), false)
+                .map(array -> array.valueStream()
                         .filter(JsonNode::isTextual)
                         .map(JsonNode::textValue)
                         .toList())
                 .orElseGet(List::of);
+    }
+
+    public static boolean isTruthy(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return false;
+        }
+        if (node.isBoolean()) {
+            return node.booleanValue();
+        }
+        if (node.isTextual()) {
+            return !node.textValue().isEmpty();
+        }
+        if (node.isNumber()) {
+            return node.doubleValue() != 0.0;
+        }
+        return !node.isEmpty();
     }
 }

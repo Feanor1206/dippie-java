@@ -5,7 +5,7 @@ import java.time.ZoneOffset;
 
 public record ApiResponse<T>(boolean success, String message, T data, LocalDateTime timestamp) {
 
-    public static final String DEFAULT_SUCCESS_MESSAGE = "Thành công";
+    private static final String DEFAULT_SUCCESS_MESSAGE = "Thành công";
 
     public static <T> ApiResponse<T> ok(T data) {
         return ok(data, DEFAULT_SUCCESS_MESSAGE);

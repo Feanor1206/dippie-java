@@ -2,8 +2,12 @@ package com.dippie.catalog.importing;
 
 import java.util.List;
 
-public record CatalogValidation(boolean valid, String packageId, Integer revision, String contentHash,
+record CatalogValidation(boolean valid, String packageId, Integer revision, String contentHash,
         int toCreate, int toUpdate, int unchanged, int conflicts, List<FieldError> errors) {
+
+    CatalogValidation {
+        errors = errors == null ? List.of() : List.copyOf(errors);
+    }
 
     static CatalogValidation valid(CatalogPackageValidator.PackageIdentity identity, ContentHash hash,
             CatalogDiff.Counts counts) {

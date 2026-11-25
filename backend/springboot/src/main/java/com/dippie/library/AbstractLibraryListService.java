@@ -41,7 +41,7 @@ public abstract class AbstractLibraryListService<E extends LibraryEntry> {
 
     public List<LibraryItemView> list() {
         Viewer viewer = currentViewer.require();
-        return readTransaction.execute(status -> findViewsByUserId(viewer.userId()));
+        return List.copyOf(readTransaction.execute(status -> findViewsByUserId(viewer.userId())));
     }
 
     public LibraryItemView add(String rawMovieId) {

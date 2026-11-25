@@ -34,9 +34,7 @@ class CatalogPersistenceTest {
     private final CatalogSeasonRepository seasons;
     private final CatalogEpisodeRepository episodes;
     private final CatalogMediaAssetRepository assets;
-    private final CatalogEpisodeAssetRepository episodeAssets;
     private final CatalogSceneRepository scenes;
-    private final AuditLogRepository auditLogs;
     private final MovieRepository movies;
     private final MediaAssetRepository media;
     private final JsonMapper json = JsonMapper.builder()
@@ -47,16 +45,13 @@ class CatalogPersistenceTest {
     @Autowired
     CatalogPersistenceTest(TestEntityManager entities, CatalogSeriesRepository series, CatalogSeasonRepository seasons,
                            CatalogEpisodeRepository episodes, CatalogMediaAssetRepository assets,
-                           CatalogEpisodeAssetRepository episodeAssets, CatalogSceneRepository scenes,
-                           AuditLogRepository auditLogs, MovieRepository movies, MediaAssetRepository media) {
+                           CatalogSceneRepository scenes, MovieRepository movies, MediaAssetRepository media) {
         this.entities = entities;
         this.series = series;
         this.seasons = seasons;
         this.episodes = episodes;
         this.assets = assets;
-        this.episodeAssets = episodeAssets;
         this.scenes = scenes;
-        this.auditLogs = auditLogs;
         this.movies = movies;
         this.media = media;
     }
@@ -71,7 +66,7 @@ class CatalogPersistenceTest {
         assets.saveAndFlush(new CatalogMediaAsset("asset-1", "video", "feature", null, null, null,
                 "local", "library", "episode.mp4", null, null, 1024L, null, 60_000L,
                 null, coverage, null, "public", true, READY, null, 1));
-        episodeAssets.saveAndFlush(new CatalogEpisodeAsset("episode-1", "asset-1"));
+        entities.persistAndFlush(new CatalogEpisodeAsset("episode-1", "asset-1"));
         scenes.saveAndFlush(new CatalogScene("scene-1", "asset-1", "episode-1", null, 1_000, 2_000,
                 "Opening", null, null, null, null, null, null, null, null, null, null, READY, null, 1));
         entities.clear();
@@ -82,7 +77,8 @@ class CatalogPersistenceTest {
         assertThat(reloadedSeries.getUpdatedAt()).isNotNull();
         assertThat(seasons.findBySeriesIdOrderByNumberAsc("series-1"))
                 .extracting(CatalogSeason::getId).containsExactly("season-1");
-        assertThat(episodeAssets.existsById(new CatalogEpisodeAsset.Key("episode-1", "asset-1"))).isTrue();
+        assertThat(entities.find(CatalogEpisodeAsset.class, new CatalogEpisodeAsset.Key("episode-1", "asset-1")))
+                .isNotNull();
         assertThat(assets.findByEpisodeId("episode-1"))
                 .singleElement().satisfies(asset -> assertThat(asset.coversFullEpisode("episode-1")).isTrue());
         assertThat(scenes.findByEpisodeIdOrderByStartMsAsc("episode-1"))
@@ -144,14 +140,15 @@ class CatalogPersistenceTest {
     @Test
     void preservesAuditJsonAndSourceDateTimePrecision() throws Exception {
         JsonNode oldValues = json.readTree("{\"title\":\"Original\"}");
-        AuditLog entry = auditLogs.saveAndFlush(new AuditLog("movies", "movie-1", "DELETE",
+        AuditLog entry = entities.persistAndFlush(new AuditLog("movies", "movie-1", "DELETE",
                 oldValues, null, "test@localhost"));
         LocalDateTime retrievedAt = LocalDateTime.of(2025, 1, 1, 1, 2, 3, 456_789_000);
         entities.persistAndFlush(new CatalogSource("source-1", "manual", "Source", null, null,
                 retrievedAt, null, null, 1));
         entities.clear();
 
-        AuditLog reloaded = auditLogs.findById(entry.getId()).orElseThrow();
+        AuditLog reloaded = entities.find(AuditLog.class, entry.getId());
+        assertThat(reloaded).isNotNull();
         assertThat(reloaded.getOldValues()).isEqualTo(oldValues);
         assertThat(reloaded.getNewValues()).isNull();
         assertThat(reloaded.getActionAt()).isNotNull();

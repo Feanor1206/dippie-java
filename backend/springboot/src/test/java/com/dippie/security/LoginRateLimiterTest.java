@@ -2,11 +2,9 @@ package com.dippie.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Clock;
+import com.dippie.security.JwtServiceTest.MutableClock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 
 class LoginRateLimiterTest {
@@ -55,33 +53,5 @@ class LoginRateLimiterTest {
         assertThat(limiter.retryAfterSeconds("10.0.0.1", "alice")).isPositive();
         assertThat(limiter.retryAfterSeconds("10.0.0.2", "alice")).isZero();
         assertThat(limiter.retryAfterSeconds("10.0.0.1", "bob")).isZero();
-    }
-
-    private static final class MutableClock extends Clock {
-
-        private Instant current;
-
-        private MutableClock(Instant initial) {
-            this.current = initial;
-        }
-
-        void advance(Duration duration) {
-            this.current = this.current.plus(duration);
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return this;
-        }
-
-        @Override
-        public Instant instant() {
-            return current;
-        }
     }
 }

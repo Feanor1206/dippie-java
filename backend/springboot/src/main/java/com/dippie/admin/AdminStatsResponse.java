@@ -2,7 +2,7 @@ package com.dippie.admin;
 
 import java.util.List;
 
-public record AdminStatsResponse(
+record AdminStatsResponse(
         long totalUsers,
         long activeUsers,
         long totalMovies,
@@ -14,4 +14,9 @@ public record AdminStatsResponse(
         List<TopRatedMovieView> topRatedMovies,
         long newUsersLast7Days
 ) {
+
+    AdminStatsResponse {
+        topWatchedEpisodes = topWatchedEpisodes == null ? List.of() : List.copyOf(topWatchedEpisodes);
+        topRatedMovies = topRatedMovies == null ? List.of() : List.copyOf(topRatedMovies);
+    }
 }

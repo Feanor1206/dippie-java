@@ -1,6 +1,6 @@
 # Cơ sở dữ liệu
 
-Dippie dùng MySQL 8.0 và có chế độ demo SQLite. `schema/01_init.sql` là nguồn chuẩn của lược đồ MySQL. Bộ kiểm thử đối chiếu các bảng, cột, kiểu, chỉ mục, khóa ngoại và CHECK với SQLAlchemy trên MySQL thật.
+Dippie dùng MySQL 8.0 cho môi trường vận hành và H2 (chế độ tương thích MySQL) cho chế độ `demo`. `schema/01_init.sql` là nguồn chuẩn của lược đồ MySQL.
 
 | Thư mục | Nội dung |
 | --- | --- |
@@ -13,15 +13,15 @@ Dippie dùng MySQL 8.0 và có chế độ demo SQLite. `schema/01_init.sql` là
 ## Dựng MySQL mới
 
 1. Tạo schema trống với `utf8mb4`, sau đó nạp `schema/01_init.sql` vào schema đó.
-2. Nạp `views.sql`, `functions.sql`, `procedures.sql`, `triggers.sql` và `security.sql` theo thứ tự. Script PowerShell và Compose thực hiện bước này. Chạy `transactions_demo.sql` theo bài thực hành riêng.
+2. Nạp `views.sql`, `functions.sql`, `procedures.sql`, `triggers.sql` và `security.sql` theo thứ tự. Script PowerShell và Docker Compose thực hiện bước này. Chạy `transactions_demo.sql` theo bài thực hành riêng.
 3. Với schema demo, nạp `seeds/01_seed_movies.sql` rồi `seeds/02_seed_50_users.sql`.
-4. Khởi động FastAPI và gọi `GET /api/health`. Nhập gói danh mục từ trang quản trị, rồi đối chiếu trạng thái snapshot và một tập vừa nhập.
+4. Khởi động backend Spring Boot ở profile `mysql` và gọi `GET /api/health`. Nhập gói danh mục từ trang quản trị `/admin/import` hoặc `scripts/import_preview_catalog.ps1`, rồi đối chiếu trạng thái snapshot và một tập vừa nhập.
 
-Compose thực hiện các bước SQL khi khởi tạo volume MySQL mới. `docker-compose.dev.yml` nạp thêm seed demo.
+Docker Compose trong `infrastructure/docker-compose.yml` thực hiện các bước khởi tạo `01_init.sql` và `database/objects/*.sql` khi tạo volume MySQL mới.
 
 ## Đối tượng MySQL và quyền tài khoản
 
-Compose nạp `01_init.sql`, bốn tệp định nghĩa đối tượng, quyền người dùng, rồi mới đến seed của bản dev. Điền `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD` dành cho `dippie_app`, `DIPPIE_DB_READONLY_PASSWORD` và `DIPPIE_DB_ADMIN_PASSWORD` trong cấu hình Compose. Khi dùng volume cũ, tải các migration theo thứ tự số, rồi nạp lại đối tượng bằng script PowerShell. Chuẩn bị tệp cấu hình MySQL của tài khoản cài đặt bên ngoài Git và đặt ba biến `DIPPIE_DB_APP_PASSWORD`, `DIPPIE_DB_READONLY_PASSWORD`, `DIPPIE_DB_ADMIN_PASSWORD` trong phiên PowerShell.
+Docker Compose nạp `01_init.sql`, bốn tệp định nghĩa đối tượng và quyền người dùng. Điền `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD` dành cho `dippie_app`, `DIPPIE_DB_READONLY_PASSWORD` và `DIPPIE_DB_ADMIN_PASSWORD` trong tệp `.env` của Compose. Khi dùng volume cũ, tải các migration theo thứ tự số, rồi nạp lại đối tượng bằng script PowerShell. Chuẩn bị tệp cấu hình MySQL của tài khoản cài đặt bên ngoài Git và đặt ba biến `DIPPIE_DB_APP_PASSWORD`, `DIPPIE_DB_READONLY_PASSWORD`, `DIPPIE_DB_ADMIN_PASSWORD` trong phiên PowerShell.
 
 ```powershell
 .\scripts\load_database_objects.ps1 -Database movie_rcm_db -Port 3306 -DefaultsFile $dippieClientOptions
@@ -61,7 +61,7 @@ Mở hai kết nối Workbench tới **schema demo có seed** và kiểm tra phi
 
 ## Nâng cấp MySQL đang sử dụng
 
-Tạm dừng FastAPI và các tiến trình ghi danh mục. Sao lưu bằng tài khoản cài đặt, rồi áp dụng các migration còn thiếu theo thứ tự số. Đối với schema đã qua 06, thứ tự là `07_catalog_publication_and_tracks.sql`, `08_catalog_value_domains.sql`, `09_audit_log.sql`, `10_catalog_query_indexes.sql`. Sau 10, nạp lại các đối tượng rồi khởi động FastAPI với tài khoản ứng dụng. [Sao lưu và khôi phục](../docs/database/backup-restore.md)
+Tạm dừng backend và các tiến trình ghi danh mục. Sao lưu bằng tài khoản cài đặt, rồi áp dụng các migration còn thiếu theo thứ tự số. Đối với schema đã qua 06, thứ tự là `07_catalog_publication_and_tracks.sql`, `08_catalog_value_domains.sql`, `09_audit_log.sql`, `10_catalog_query_indexes.sql`. Sau 10, nạp lại các đối tượng rồi khởi động backend Spring Boot với tài khoản ứng dụng. [Sao lưu và khôi phục](../docs/database/backup-restore.md)
 
 Trong MySQL Workbench, chọn đúng schema và kiểm tra các tập có mùa bị thiếu hoặc khác bộ.
 
@@ -74,13 +74,11 @@ WHERE e.season_id IS NOT NULL AND s.id IS NULL;
 
 Khi truy vấn trả về 0 dòng, chạy tệp [migration 06](migrations/06_catalog_integrity.sql) trên schema đó. Migration có thể chạy lại. Nếu MySQL báo lỗi liên kết, kiểm tra và sửa các mã ở truy vấn trên theo nguồn trước khi chạy lại.
 
-Khi khởi động sau migration, FastAPI tạo lại các liên kết tập–tệp từ `coverage_json`. FastAPI cập nhật liên kết bị thiếu hoặc lệch và ghi log khi gặp JSON cũ không đọc được hoặc tham chiếu thiếu tập. Kiểm tra một tập có tệp và số liên kết trong bảng `catalog_episode_assets`.
-
 [Migration 07](migrations/07_catalog_publication_and_tracks.sql) cập nhật phần catalog trên MySQL 8.0.16 trở lên. Kết quả đầu tiên liệt kê `table_name`, `row_id`, `reference_column` và `missing_id` của các dòng mồ côi. Nếu danh sách có dòng, MySQL CLI dừng ở bảng kiểm tra tạm. Đối chiếu mã với nguồn và sửa trên đúng schema trước khi chạy lại. Chạy theo chế độ dừng khi có lỗi của MySQL CLI. Script điền các bảng nối từ mã tìm thấy trong dữ liệu cũ và bỏ hai cột tiêu đề/ảnh đã chuyển sang JOIN.
 
 [Migration 08](migrations/08_catalog_value_domains.sql) đổi `release_date` của mùa/tập sang `DATE` và `retrieved_at` của nguồn sang `DATETIME(6)` theo UTC. Kết quả kiểm tra đầu tiên liệt kê mã và giá trị ngày giờ sai trước khi thay kiểu cột. Ngày phát hành yêu cầu đủ năm, tháng và ngày. Năm đứng riêng trong gói mới vẫn có trong bản gốc. Cột ngày phát hành để trống nếu chưa xác định được ngày. Thời điểm có múi giờ được đổi sang UTC. Chuỗi thời điểm cũ thiếu múi giờ được hiểu là UTC. Hai tên loại cũ `standard` và `episode` được chuyển sang `regular` ở các cột trước đây dùng chúng.
 
-Các loại nội dung và trạng thái xuất bản lấy từ [hợp đồng catalog](../docs/contracts/animation-catalog-v1/dippie.catalog.v1.schema.json). Trạng thái gói `COMMITTED`, các trạng thái của snapshot và vai trò tài khoản lấy từ luồng ghi của FastAPI. So sánh theo `HEX` giữ đúng chữ hoa/thường và khoảng trắng trên cả MySQL và SQLite. Migration khai báo thêm các CHECK về giá trị số, khoảng thời gian và cận thang đo.
+Các loại nội dung và trạng thái xuất bản lấy từ [hợp đồng catalog](../docs/contracts/animation-catalog-v1/dippie.catalog.v1.schema.json). Trạng thái gói `COMMITTED`, các trạng thái của snapshot và vai trò tài khoản khớp với luồng ghi của backend. So sánh theo `HEX` giữ đúng chữ hoa/thường và khoảng trắng. Migration khai báo thêm các CHECK về giá trị số, khoảng thời gian và cận thang đo.
 
 MySQL 8.0.18 trở lên có thể chạy `EXPLAIN ANALYZE` trong truy vấn bên dưới.
 
@@ -102,17 +100,15 @@ SELECT id, raw_json FROM catalog_episodes WHERE publication_status = 'ready';
 
 Migration 09 thêm `audit_log`. Migration 10 thêm chỉ mục phục vụ tổng hợp tập theo trạng thái, bộ và thời lượng, đồng thời bỏ năm chỉ mục trùng tiền tố của UNIQUE. Chạy lại bộ nạp đối tượng để cập nhật `v_genre_stats`. [Truy vấn và phép đo](queries/README.md)
 
-Muốn quay lại bản ứng dụng cũ, khôi phục bản sao lưu trước migration vào schema mới và kiểm thử ứng dụng với schema đó. Bản SQLite demo dùng SQLAlchemy để thêm cấu trúc còn thiếu và giữ dữ liệu hiện có khi khởi động.
+Muốn quay lại bản ứng dụng cũ, khôi phục bản sao lưu trước migration vào schema mới và kiểm thử ứng dụng với schema đó. Chế độ demo dùng H2 với `ddl-auto: update` để tự khởi tạo lược đồ cục bộ.
 
 ## Kiểm thử
 
-```powershell
-python -m pytest -q tests backend/fastapi/tests
-$env:DIPPIE_RUN_MYSQL_TESTS = '1'
-python -m pytest -q -rs tests backend/fastapi/tests
-```
+Kiểm thử lược đồ và tầng dữ liệu thông qua bộ kiểm thử backend Spring Boot (từ `backend/springboot/`):
 
-Đặt `DIPPIE_TEST_MYSQL_BIN` tới thư mục `bin` nếu trình chạy chưa tìm thấy MySQL 8.0. Bộ kiểm thử MySQL dựng một máy chủ vòng lặp và schema tạm cho từng ca. Các ca chính của ứng dụng tiếp tục dùng SQLite.
+```powershell
+.\mvnw.cmd -B test
+```
 
 ## Tài liệu lược đồ
 
@@ -121,21 +117,9 @@ python -m pytest -q -rs tests backend/fastapi/tests
 - [Từ điển dữ liệu từng cột](../docs/database/data-dictionary.md)
 - [Quy trình và kết quả sao lưu–khôi phục](../docs/database/backup-restore.md)
 
-## Kiểm tra độ phủ trước khi nhập
-
-Chạy từ thư mục gốc của repo.
-
-```powershell
-python docs/contracts/animation-catalog-v1/validate_catalog.py data/catalog.jadoo_all.json --report
-```
-
-Kết quả đếm số tập có tóm tắt, từ khóa, chủ đề, nhân vật, nguồn phát được khai báo và mốc thời gian có bản ghi đã duyệt. Chỉ số `with_normalized_metadata` đếm tập `ready` có bộ, nhóm mùa, số tập, thời lượng, tóm tắt riêng, từ khóa nội dung, chủ đề, nhân vật và nguồn phát. Phép đếm nhận biết câu tóm tắt chỉ lặp tên tập theo mẫu và từ khóa chỉ lặp nhãn thể loại.
-
-Theo dõi mục tiêu 100.000 tập theo `with_normalized_metadata`. Dùng `with_reviewed_timecodes` để theo dõi phần mốc đã đối chiếu. Kiểm tra phát, lời thoại và tình tiết bằng video gốc trước khi duyệt nội dung do mô hình tạo.
-
 ## Mốc kiểm thử 100.000 tập
 
-Phép đo dùng MySQL 8.0.46 cục bộ trên schema riêng, với 100.000 tập giả lập, 1.000 bộ, 100.000 liên kết tập–tệp và khoảng 7,7% tập nháp. Mỗi trường hợp gọi API qua TestClient, chạy 2 lần làm nóng rồi lấy trung vị của 7 lần đo. Bản đối chiếu là commit `539ac26`. Các số đo tập trung vào API đọc MySQL, với bước tải chỉ mục CineBot được tách khỏi phép thử.
+Phép đo dùng MySQL 8.0.46 cục bộ trên schema riêng, với 100.000 tập giả lập, 1.000 bộ, 100.000 liên kết tập–tệp và khoảng 7,7% tập nháp. Mỗi trường hợp chạy 2 lần làm nóng rồi lấy trung vị của 7 lần đo. Các số đo tập trung vào đường đọc MySQL, với bước tải chỉ mục CineBot được tách khỏi phép thử.
 
 | Truy vấn ở 100.000 tập | Trước | Sau | Số bản ghi phim được nạp sau |
 | --- | ---: | ---: | ---: |
@@ -144,14 +128,10 @@ Phép đo dùng MySQL 8.0.46 cục bộ trên schema riêng, với 100.000 tập
 | Tìm theo một tiêu đề tập | 2.768 ms | 1.940 ms | 1 |
 | Lấy tập và danh sách tệp theo mã | 6,2 ms | 6,4 ms | Không tải bảng `movies` |
 
-Truy vấn chỉ mục tập–tệp ổn định cả ở 10.000 và 100.000 tập. Duyệt kho sắp xếp ở MySQL và đọc theo lô các cột cần lọc. Cách này giảm dữ liệu được nạp thành đối tượng nhưng bộ lọc chuỗi và số kết quả chính xác vẫn phải duyệt các dòng đủ điều kiện. Kết quả là phép đo một người dùng với dữ liệu giả lập.
-
-Ở mốc 100.000 tập, giao dịch thêm 1.000 tập cùng 1.000 liên kết mất khoảng 1,06 giây. Nhập lại gói trả kết quả cũ trong khoảng 0,19 giây. Gói có quan hệ sai bị chặn, tổng sau thử nghiệm là 101.000 tập và 101.000 liên kết. Thời gian này đo phần ghi database, gồm kiểm tra và commit, trước khi đồng bộ chỉ mục.
-
-Ngày 23/11/2026, FastAPI đồng bộ và khôi phục thành công chỉ mục từ khóa của 100.000 tập trong bản thử riêng. Dữ liệu gồm 755 tập thật và 99.245 tập giả lập. Đồng bộ qua API mất 30,59 giây, khôi phục sau khởi động lại mất 30,08 giây. Trung vị ba truy vấn tiêu đề mẫu là 86,74 ms với một tập có thật và 320,70 ms với một tập giả lập. Các số đo dùng chế độ `light` và một người gọi API.
+Truy vấn chỉ mục tập–tệp ổn định cả ở 10.000 và 100.000 tập. Duyệt kho sắp xếp ở MySQL và phân trang trực tiếp trên SQL. Ở mốc 100.000 tập, giao dịch thêm 1.000 tập cùng 1.000 liên kết mất khoảng 1,06 giây; nhập lại gói trả kết quả lũy đẳng trong khoảng 0,19 giây; gói có quan hệ sai bị chặn.
 
 ## Nhập danh mục thật
 
-Chạy thử trên bản sao MySQL sau khi áp dụng migration. Chia nội dung thành gói tự chứa theo bộ hoặc nhóm mùa, giữ nguyên mã của bản ghi đã có và tăng `revision` khi sửa. Dùng `--report` để biết phần metadata còn thiếu trước khi nhập.
+Chạy thử trên bản sao MySQL sau khi áp dụng migration. Chia nội dung thành gói tự chứa theo bộ hoặc nhóm mùa theo [schema `dippie.catalog.v1`](../docs/contracts/animation-catalog-v1/dippie.catalog.v1.schema.json), giữ nguyên mã của bản ghi đã có và tăng `revision` khi sửa. Dùng endpoint `POST /api/admin/catalog/validate` (hoặc `scripts/import_preview_catalog.ps1`) để kiểm tra hợp lệ và xung đột trước khi nhập.
 
-Sau mỗi gói, đối chiếu số tập và phiên bản gói trong lịch sử nhập. Kiểm tra trạng thái `catalog_snapshots`, một truy vấn lấy tập theo mã và một vài nguồn phát mẫu. Đo lại độ trễ theo hình dạng dữ liệu thật, mức truy cập đồng thời và thời gian đồng bộ chỉ mục trước khi đưa toàn bộ kho vào sử dụng.
+Sau mỗi gói, đối chiếu số tập và phiên bản gói trong lịch sử nhập. Kiểm tra trạng thái `catalog_snapshots`, một truy vấn lấy tập theo mã và một vài nguồn phát mẫu.

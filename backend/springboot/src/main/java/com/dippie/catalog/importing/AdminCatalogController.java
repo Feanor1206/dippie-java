@@ -23,7 +23,7 @@ import java.util.Locale;
 
 @RestController
 @RequestMapping("/api/admin/catalog")
-public class AdminCatalogController {
+class AdminCatalogController {
 
     private final CurrentViewer currentViewer;
     private final CatalogImportService imports;

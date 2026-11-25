@@ -18,6 +18,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
@@ -49,6 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @RecordApplicationEvents
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 class CatalogHttpTest {
@@ -97,7 +99,7 @@ class CatalogHttpTest {
 
         JsonNode imported = body(submit("import", admin, fixture).andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.indexStatus").value("SYNC_FAILED"))
+                .andExpect(jsonPath("$.indexStatus").value("READY"))
                 .andExpect(jsonPath("$.counts.episodes").value(99))
                 .andExpect(jsonPath("$.counts.mediaAssets").value(198)));
         String snapshot = imported.path("importId").asText();
@@ -112,6 +114,7 @@ class CatalogHttpTest {
                 .andExpect(jsonPath("$[0].status").value("COMMITTED"));
         JsonNode snapshots = body(mvc.perform(auth(get(ADMIN + "snapshots"), admin)).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(snapshot))
+                .andExpect(jsonPath("$[0].status").value("READY"))
                 .andExpect(jsonPath("$[0].totalItems").value(714)));
         mvc.perform(auth(get(ADMIN + "export"), admin)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.schema_version").value("dippie.catalog.v1"))

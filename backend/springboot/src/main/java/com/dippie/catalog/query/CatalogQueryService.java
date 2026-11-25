@@ -26,7 +26,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
-public class CatalogQueryService {
+class CatalogQueryService {
 
     private final CatalogSeriesRepository series;
     private final CatalogSeasonRepository seasons;
@@ -91,11 +91,22 @@ public class CatalogQueryService {
                 YoutubeSource.from(episode.getRawJson()));
     }
 
-    public record SeriesDetail(CatalogSeriesView series, List<CatalogSeasonView> seasons,
+    record SeriesDetail(CatalogSeriesView series, List<CatalogSeasonView> seasons,
             List<CatalogEpisodeView> episodes) {
+
+        SeriesDetail {
+            seasons = seasons == null ? List.of() : List.copyOf(seasons);
+            episodes = episodes == null ? List.of() : List.copyOf(episodes);
+        }
     }
 
-    public record EpisodeDetail(CatalogEpisodeView episode, List<CatalogSegmentView> segments,
+    record EpisodeDetail(CatalogEpisodeView episode, List<CatalogSegmentView> segments,
             List<CatalogMediaAssetView> mediaAssets, List<CatalogSceneView> scenes, YoutubeSource youtube) {
+
+        EpisodeDetail {
+            segments = segments == null ? List.of() : List.copyOf(segments);
+            mediaAssets = mediaAssets == null ? List.of() : List.copyOf(mediaAssets);
+            scenes = scenes == null ? List.of() : List.copyOf(scenes);
+        }
     }
 }
