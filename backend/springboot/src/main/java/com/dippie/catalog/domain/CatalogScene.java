@@ -14,10 +14,12 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.util.Set;
 
+// Phân cảnh cắt theo mốc startMs và endMs trong một tập phim (kế thừa CatalogRecord); DB có check start_ms >= 0 và end_ms > start_ms.
 @Entity
 @Table(name = "catalog_scenes",
         indexes = {
                 @Index(name = "idx_cat_scene_ep", columnList = "episode_id"),
+                @Index(name = "idx_cat_scene_ep_start", columnList = "episode_id, start_ms"),
                 @Index(name = "idx_cat_scene_asset", columnList = "media_asset_id")
         })
 @Check(name = "ck_catalog_scene_time_range", constraints = "start_ms >= 0 AND end_ms > start_ms")
@@ -92,6 +94,7 @@ public class CatalogScene extends CatalogRecord {
     protected CatalogScene() {
     }
 
+    // Nạp đè nội dung phân cảnh, mốc thời gian và liên kết từ gói mới (keywords, themes, attributes, provenance giữ nguyên).
     public void applyImport(CatalogScene imported) {
         replaceRecordFrom(imported);
         mediaAssetId = imported.mediaAssetId;
@@ -196,6 +199,7 @@ public class CatalogScene extends CatalogRecord {
         return provenanceJson;
     }
 
+    // Admin thấy hết phân cảnh; người xem thường chỉ thấy phân cảnh đã xuất bản và không gắn vào media asset bị khóa.
     public boolean isVisibleTo(boolean admin, Set<String> accessibleAssets) {
         return admin || (isPublished()
                 && (mediaAssetId == null || mediaAssetId.isEmpty() || accessibleAssets.contains(mediaAssetId)));

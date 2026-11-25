@@ -3,26 +3,26 @@ package com.dippie.web;
 import java.nio.file.Path;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+// Đường dẫn tới thư mục dist đã build của frontend, đọc từ dippie.web.
 @ConfigurationProperties("dippie.web")
-record WebProperties(String dist) {
+final class WebProperties {
 
     private static final String DEFAULT_DIST = "../../frontend/dist";
 
-    WebProperties {
-        if (dist == null || dist.isBlank()) {
-            dist = DEFAULT_DIST;
-        }
-    }
+    private final Path distDirectory;
+    private final Path indexHtml;
 
-    private Path distDirectory() {
-        return Path.of(dist).toAbsolutePath().normalize();
+    WebProperties(String dist) {
+        String resolved = dist == null || dist.isBlank() ? DEFAULT_DIST : dist;
+        this.distDirectory = Path.of(resolved).toAbsolutePath().normalize();
+        this.indexHtml = this.distDirectory.resolve("index.html");
     }
 
     Path indexHtml() {
-        return distDirectory().resolve("index.html");
+        return indexHtml;
     }
 
     Path subDirectory(String name) {
-        return distDirectory().resolve(name);
+        return distDirectory.resolve(name);
     }
 }

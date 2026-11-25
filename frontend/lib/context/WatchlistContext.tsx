@@ -5,14 +5,49 @@ import React, {
   useState,
   useRef,
   useCallback,
+  useMemo,
   lazy,
   Suspense,
   ReactNode,
 } from 'react';
 import { useAuth } from './AuthContext';
+import { GuestSyncDialog } from '@/features/library/components/GuestSyncDialog';
+import {
+  clearGuestSyncData,
+  deleteUserRating,
+  fetchUserLibrary,
+  hasGuestSyncData,
+  isUncertainNetworkError,
+  LibraryApiError,
+  updateLibraryList,
+  notifyRatingChanged,
+  notifyWatchProgressSynced,
+  RATING_CHANGED_EVENT,
+  readGuestLibrary,
+  readGuestSyncSummary,
+  reconcileLibrarySnapshot,
+  saveUserRating,
+  syncGuestDataToAccount,
+  WATCH_PROGRESS_SYNCED_EVENT,
+  writeGuestLibrary,
+  type GuestLibraryData,
+  type GuestSyncSummary,
+  type LibraryActionIntent,
+  type LibraryActionKind,
+  type OperationRecord,
+} from '@/lib/services/libraryService';
 
-const CineBot = lazy(() => import('@/features/chat/components/CineBot').then(({ CineBot }) => ({ default: CineBot })));
-const AuthModal = lazy(() => import('@/features/auth/components/AuthModal').then(({ AuthModal }) => ({ default: AuthModal })));
+export { WATCH_PROGRESS_SYNCED_EVENT, RATING_CHANGED_EVENT };
+
+const CineBot = lazy(() =>
+  import('@/features/chat/components/CineBot').then(({ CineBot }) => ({ default: CineBot }))
+);
+const AuthModal = lazy(() =>
+  import('@/features/auth/components/AuthModal').then(({ AuthModal }) => ({ default: AuthModal }))
+);
+
+const TOAST_DURATION_MS = 3800;
+const MAX_VISIBLE_TOASTS = 4;
 
 export type Toast = {
   id: string;
@@ -31,14 +66,19 @@ type WatchlistContextType = {
   isWatchlisted: (id: string) => boolean;
   isFavorite: (id: string) => boolean;
   getRating: (id: string) => number | undefined;
-  isActionPending: (id: string, action?: 'watchlist' | 'favorite' | 'rating') => boolean;
-  isActionUnconfirmed: (id: string, action?: 'watchlist' | 'favorite' | 'rating') => boolean;
-  getActionIntent: (id: string, action?: 'watchlist' | 'favorite' | 'rating') => 'add' | 'remove' | 'rate' | 'remove_rating' | null;
+  isActionPending: (id: string, action?: LibraryActionKind) => boolean;
+  isActionUnconfirmed: (id: string, action?: LibraryActionKind) => boolean;
+  getActionIntent: (id: string, action?: LibraryActionKind) => LibraryActionIntent | null;
   getUnconfirmedRating: (id: string) => number | undefined;
   isLibraryLoading: boolean;
   libraryError: string | null;
   refetchLibrary: () => Promise<void>;
   isGuestMode: boolean;
+  guestSyncPrompt: GuestSyncSummary | null;
+  isGuestSyncing: boolean;
+  confirmGuestSync: () => Promise<void>;
+  declineGuestSync: () => void;
+  dismissGuestSyncPrompt: () => void;
   toasts: Toast[];
   showToast: (message: string, type?: 'success' | 'info' | 'error') => void;
   dismissToast: (id: string) => void;
@@ -48,185 +88,186 @@ type WatchlistContextType = {
   toggleChat: () => void;
 };
 
+type LibrarySnapshot = GuestLibraryData & { ownerKey: string };
+
 const WatchlistContext = createContext<WatchlistContextType | undefined>(undefined);
 
-const API = '/api';
-const GUEST_STORAGE_KEY = 'dippie_guest_library_v1';
-const REQUEST_TIMEOUT_MS = 7000;
-
-type GuestStorageData = {
-  watchlist: string[];
-  favorites: string[];
-  ratings: Record<string, number>;
-};
-
-type LibrarySnapshot = {
-  ownerKey: string;
-  watchlist: string[];
-  favorites: string[];
-  ratings: Record<string, number>;
-};
-
-type OperationRecord = {
-  id: number;
-  action: 'watchlist' | 'favorite' | 'rating';
-  movieId: string;
-  readVersionAtStart: number;
-  committedAtReadVersion: number | null;
-  status: 'pending' | 'committed' | 'uncertain';
-  desiredValue: any;
-};
-
-function readGuestStorage(): GuestStorageData {
-  if (typeof window === 'undefined') {
-    return { watchlist: [], favorites: [], ratings: {} };
-  }
-  try {
-    const raw = localStorage.getItem(GUEST_STORAGE_KEY);
-    if (!raw) return { watchlist: [], favorites: [], ratings: {} };
-    const parsed = JSON.parse(raw);
-    const validWatchlist = Array.isArray(parsed.watchlist)
-      ? parsed.watchlist.filter((id: unknown) => typeof id === 'string' && id.trim().length > 0)
-      : [];
-    const validFavorites = Array.isArray(parsed.favorites)
-      ? parsed.favorites.filter((id: unknown) => typeof id === 'string' && id.trim().length > 0)
-      : [];
-    const validRatings: Record<string, number> = {};
-    if (typeof parsed.ratings === 'object' && parsed.ratings !== null && !Array.isArray(parsed.ratings)) {
-      Object.entries(parsed.ratings).forEach(([k, v]) => {
-        if (
-          typeof k === 'string' &&
-          k.trim().length > 0 &&
-          typeof v === 'number' &&
-          Number.isFinite(v) &&
-          v >= 1 &&
-          v <= 10
-        ) {
-          validRatings[k] = Math.round(v);
-        }
-      });
-    }
-    return {
-      watchlist: validWatchlist,
-      favorites: validFavorites,
-      ratings: validRatings,
-    };
-  } catch {
-    return { watchlist: [], favorites: [], ratings: {} };
-  }
-}
-
-function writeGuestStorage(data: GuestStorageData): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(data));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function getActorKey(status: string, user: { id: number } | null, token: string | null): string {
-  if (status === 'authenticated' && user && token) {
-    return `user:${user.id}:${token}`;
-  }
-  if (status === 'guest') {
-    return 'guest';
-  }
+  if (status === 'authenticated' && user && token) return `user:${user.id}:${token}`;
+  if (status === 'guest') return 'guest';
   return `status:${status}`;
 }
 
-export function WatchlistProvider({ children }: { children: ReactNode }) {
-  const { user, token, status, isAuthenticated, handleSessionExpired, isAuthModalOpen } = useAuth();
+function abortSafe(controller: AbortController | null): void {
+  if (!controller) return;
+  try {
+    controller.abort();
+  } catch {}
+}
 
+export function WatchlistProvider({ children }: { children: ReactNode }) {
+  const { user, token, status, isAuthenticated, isAuthModalOpen } = useAuth();
   const currentActorKey = getActorKey(status, user, token);
+
   const [snapshot, setSnapshot] = useState<LibrarySnapshot>(() => {
     if (typeof window !== 'undefined' && status === 'guest') {
-      const g = readGuestStorage();
-      return {
-        ownerKey: 'guest',
-        watchlist: g.watchlist,
-        favorites: g.favorites,
-        ratings: g.ratings,
-      };
+      return { ownerKey: 'guest', ...readGuestLibrary() };
     }
-    return {
-      ownerKey: currentActorKey,
-      watchlist: [],
-      favorites: [],
-      ratings: {},
-    };
+    return { ownerKey: currentActorKey, watchlist: [], favorites: [], ratings: {} };
   });
 
-  const [isLibraryLoading, setIsLibraryLoading] = useState<boolean>(true);
+  const [isLibraryLoading, setIsLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState<string | null>(null);
-  const [, setPendingUpdateTick] = useState<number>(0);
-
+  const [, setPendingUpdateTick] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const sessionGenRef = useRef<number>(0);
-  const readGenRef = useRef<number>(0);
-  const lastKnownActorKeyRef = useRef<string>(currentActorKey);
-  const operationCounterRef = useRef<number>(0);
-  const operationsJournalRef = useRef<Map<string, OperationRecord>>(new Map());
-  const syncPendingLocksRef = useRef<Set<string>>(new Set());
-  const activeMutationAbortControllersRef = useRef<Map<number, AbortController>>(new Map());
-  const activeReadAbortControllerRef = useRef<AbortController | null>(null);
-  if (lastKnownActorKeyRef.current !== currentActorKey) {
-    sessionGenRef.current += 1;
-    lastKnownActorKeyRef.current = currentActorKey;
-    operationsJournalRef.current.clear();
-    syncPendingLocksRef.current.clear();
-    readGenRef.current = 0;
-    for (const ctrl of activeMutationAbortControllersRef.current.values()) {
-      try {
-        ctrl.abort();
-      } catch {}
+  const [hasOpenedChat, setHasOpenedChat] = useState(false);
+  const [guestSyncPrompt, setGuestSyncPrompt] = useState<GuestSyncSummary | null>(null);
+  const [isGuestSyncing, setIsGuestSyncing] = useState(false);
+
+  const sessionVersionRef = useRef(0);
+  const readVersionRef = useRef(0);
+  const activeActorKeyRef = useRef(currentActorKey);
+  const promptedSyncActorRef = useRef<string | null>(null);
+  const approvedSyncActorRef = useRef<string | null>(null);
+  const serverLibraryRef = useRef<{ actorKey: string; data: GuestLibraryData } | null>(null);
+  const operationCounterRef = useRef(0);
+  const journalRef = useRef<Map<string, OperationRecord>>(new Map());
+  const pendingLocksRef = useRef<Set<string>>(new Set());
+  const mutationRequestsRef = useRef<Map<number, AbortController>>(new Map());
+  const readRequestRef = useRef<AbortController | null>(null);
+  const guestSyncRequestRef = useRef<AbortController | null>(null);
+  const toastTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  useEffect(() => {
+    if (activeActorKeyRef.current === currentActorKey) return;
+    sessionVersionRef.current += 1;
+    activeActorKeyRef.current = currentActorKey;
+    journalRef.current.clear();
+    pendingLocksRef.current.clear();
+    readVersionRef.current = 0;
+    serverLibraryRef.current = null;
+    approvedSyncActorRef.current = null;
+    promptedSyncActorRef.current = null;
+    for (const controller of mutationRequestsRef.current.values()) abortSafe(controller);
+    mutationRequestsRef.current.clear();
+    abortSafe(readRequestRef.current);
+    readRequestRef.current = null;
+    abortSafe(guestSyncRequestRef.current);
+    guestSyncRequestRef.current = null;
+    setGuestSyncPrompt(null);
+    setIsGuestSyncing(false);
+  }, [currentActorKey]);
+
+  const visibleLibrary: GuestLibraryData = useMemo(() => {
+    if (snapshot.ownerKey === currentActorKey) {
+      return {
+        watchlist: snapshot.watchlist,
+        favorites: snapshot.favorites,
+        ratings: snapshot.ratings,
+      };
     }
-    activeMutationAbortControllersRef.current.clear();
-    if (activeReadAbortControllerRef.current) {
-      try {
-        activeReadAbortControllerRef.current.abort();
-      } catch {}
-      activeReadAbortControllerRef.current = null;
+    if (status === 'guest' && typeof window !== 'undefined') {
+      return readGuestLibrary();
     }
-  }
-  const isOwnerCurrent = snapshot.ownerKey === currentActorKey;
-  const visibleWatchlist: string[] = isOwnerCurrent
-    ? snapshot.watchlist
-    : status === 'guest' && typeof window !== 'undefined'
-    ? readGuestStorage().watchlist
-    : [];
+    return { watchlist: [], favorites: [], ratings: {} };
+  }, [snapshot, currentActorKey, status]);
 
-  const visibleFavorites: string[] = isOwnerCurrent
-    ? snapshot.favorites
-    : status === 'guest' && typeof window !== 'undefined'
-    ? readGuestStorage().favorites
-    : [];
-
-  const visibleRatings: Record<string, number> = isOwnerCurrent
-    ? snapshot.ratings
-    : status === 'guest' && typeof window !== 'undefined'
-    ? readGuestStorage().ratings
-    : {};
-
-  const showToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'success') => {
-    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    setToasts((prev) => [...prev.slice(-3), { id, message, type }]);
-    setTimeout(() => {
-      setToasts((current) => current.filter((t) => t.id !== id));
-    }, 3200);
-  }, []);
+  const { watchlist: visibleWatchlist, favorites: visibleFavorites, ratings: visibleRatings } = visibleLibrary;
 
   const dismissToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    const timer = toastTimersRef.current.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      toastTimersRef.current.delete(id);
+    }
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
-  const performFetchLibrary = useCallback(
+
+  const showToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'success') => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setToasts((prev) => [...prev.slice(-(MAX_VISIBLE_TOASTS - 1)), { id, message, type }]);
+    const timer = setTimeout(() => {
+      toastTimersRef.current.delete(id);
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, TOAST_DURATION_MS);
+    toastTimersRef.current.set(id, timer);
+  }, []);
+
+  useEffect(() => {
+    const timers = toastTimersRef.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+
+  const syncGuestLibrary = useCallback(
+    async (
+      authToken: string,
+      baseServerLibrary: GuestLibraryData,
+      actorKey: string,
+      sessionVersion: number,
+      readVersion: number,
+      signal: AbortSignal
+    ): Promise<boolean> => {
+      const isCurrent = () =>
+        sessionVersionRef.current === sessionVersion && activeActorKeyRef.current === actorKey;
+      const workingLibrary: GuestLibraryData = {
+        watchlist: [...baseServerLibrary.watchlist],
+        favorites: [...baseServerLibrary.favorites],
+        ratings: { ...baseServerLibrary.ratings },
+      };
+
+      const syncResult = await syncGuestDataToAccount(authToken, workingLibrary, signal, isCurrent);
+      if (syncResult.aborted || !isCurrent()) return false;
+
+      if (syncResult.hasGuestItems) {
+        if (syncResult.mergedProgressCount > 0) notifyWatchProgressSynced();
+        if (syncResult.mergedRatingsCount > 0) notifyRatingChanged();
+
+        serverLibraryRef.current = { actorKey, data: workingLibrary };
+        setSnapshot((prev) => {
+          if (!isCurrent()) return prev;
+          const reconciled = reconcileLibrarySnapshot(workingLibrary, journalRef.current, readVersion);
+          return { ownerKey: actorKey, ...reconciled };
+        });
+
+        if (syncResult.authExpired) {
+          setLibraryError('Phiên đăng nhập đã hết hạn. Bạn đăng nhập lại nhé.');
+          return true;
+        }
+        if (syncResult.failedCount > 0) {
+          const total = syncResult.syncedWriteCount + syncResult.failedCount;
+          if (syncResult.syncedWriteCount > 0) {
+            showToast(
+              `Đã đồng bộ một phần (${syncResult.syncedWriteCount}/${total} mục) từ máy này. Còn ${syncResult.failedCount} mục chưa chuyển được vẫn được giữ lại.`,
+              'info'
+            );
+          } else {
+            showToast(
+              `Chưa thể đồng bộ ${syncResult.failedCount} mục từ máy này vào tài khoản. Dữ liệu vẫn được giữ lại để thử lại sau.`,
+              'error'
+            );
+          }
+        } else {
+          showToast('Đã đồng bộ thư viện và lịch sử xem từ máy này vào tài khoản.', 'success');
+        }
+      }
+      return true;
+    },
+    [showToast]
+  );
+
+  const loadLibrary = useCallback(
     async (options?: { isBackgroundReconcile?: boolean }) => {
-      const thisActorKey = currentActorKey;
-      const thisSessionGen = sessionGenRef.current;
-      readGenRef.current += 1;
-      const thisReadVersion = readGenRef.current;
+      const actorKey = currentActorKey;
+      const sessionVersion = sessionVersionRef.current;
+      readVersionRef.current += 1;
+      const readVersion = readVersionRef.current;
+      const isCurrent = () =>
+        sessionVersionRef.current === sessionVersion && activeActorKeyRef.current === actorKey;
+
       if (!isAuthenticated || !token || !user) {
         if (status === 'checking') {
           setIsLibraryLoading(true);
@@ -234,1010 +275,576 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
         }
         if (status === 'unavailable') {
           setIsLibraryLoading(false);
-          setLibraryError('Dịch vụ xác thực tạm thời không khả dụng.');
-          setSnapshot({
-            ownerKey: thisActorKey,
-            watchlist: [],
-            favorites: [],
-            ratings: {},
-          });
+          setLibraryError('Chưa kết nối được máy chủ tài khoản.');
+          setSnapshot({ ownerKey: actorKey, watchlist: [], favorites: [], ratings: {} });
           return;
         }
-        const guestData = readGuestStorage();
-        if (sessionGenRef.current === thisSessionGen && lastKnownActorKeyRef.current === thisActorKey) {
-          setSnapshot({
-            ownerKey: 'guest',
-            watchlist: guestData.watchlist,
-            favorites: guestData.favorites,
-            ratings: guestData.ratings,
-          });
+        const guestData = readGuestLibrary();
+        if (isCurrent()) {
+          setSnapshot({ ownerKey: 'guest', ...guestData });
           setIsLibraryLoading(false);
           setLibraryError(null);
         }
         return;
       }
-      if (!options?.isBackgroundReconcile) {
-        setIsLibraryLoading(true);
-      }
 
-      if (activeReadAbortControllerRef.current) {
-        try {
-          activeReadAbortControllerRef.current.abort();
-        } catch {}
-        activeReadAbortControllerRef.current = null;
-      }
+      if (!options?.isBackgroundReconcile) setIsLibraryLoading(true);
 
-      const abortCtrl = new AbortController();
-      activeReadAbortControllerRef.current = abortCtrl;
-
-      let timeoutId: NodeJS.Timeout | null = setTimeout(() => {
-        abortCtrl.abort();
-      }, REQUEST_TIMEOUT_MS);
+      abortSafe(readRequestRef.current);
+      const controller = new AbortController();
+      readRequestRef.current = controller;
 
       try {
-        const headers = {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
+        const serverLibrary = await fetchUserLibrary(token, controller.signal);
+        if (!isCurrent()) return;
+
+        serverLibraryRef.current = {
+          actorKey,
+          data: {
+            watchlist: [...serverLibrary.watchlist],
+            favorites: [...serverLibrary.favorites],
+            ratings: { ...serverLibrary.ratings },
+          },
         };
 
-        const [resWatchlist, resFavorites, resRatings] = await Promise.all([
-          fetch(`${API}/users/watchlist`, { headers, signal: abortCtrl.signal }),
-          fetch(`${API}/users/favorites`, { headers, signal: abortCtrl.signal }),
-          fetch(`${API}/users/ratings`, { headers, signal: abortCtrl.signal }),
-        ]);
-        if (resWatchlist.status === 401 || resFavorites.status === 401 || resRatings.status === 401) {
-          if (sessionGenRef.current === thisSessionGen && lastKnownActorKeyRef.current === thisActorKey) {
-            handleSessionExpired();
-            setLibraryError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-          }
-          setIsLibraryLoading(false);
-          return;
-        }
-
-        if (!resWatchlist.ok || !resFavorites.ok || !resRatings.ok) {
-          setLibraryError('Không thể tải toàn bộ thư viện cá nhân từ máy chủ.');
-          setIsLibraryLoading(false);
-          return;
-        }
-
-        const [jsonWatchlist, jsonFavorites, jsonRatings] = await Promise.all([
-          resWatchlist.json(),
-          resFavorites.json(),
-          resRatings.json(),
-        ]);
-
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        if (sessionGenRef.current !== thisSessionGen || lastKnownActorKeyRef.current !== thisActorKey) {
-          return;
-        }
-
-        const isWatchlistValid = jsonWatchlist?.success === true && Array.isArray(jsonWatchlist?.data);
-        const isFavoritesValid = jsonFavorites?.success === true && Array.isArray(jsonFavorites?.data);
-        const isRatingsValid = jsonRatings?.success === true && Array.isArray(jsonRatings?.data);
-
-        if (!isWatchlistValid || !isFavoritesValid || !isRatingsValid) {
-          setLibraryError('Dữ liệu phản hồi từ máy chủ không hợp lệ.');
-          setIsLibraryLoading(false);
-          return;
-        }
-
-        const nextWatchlist: string[] = jsonWatchlist.data.map((item: any) => item.movieId).filter(Boolean);
-        const nextFavorites: string[] = jsonFavorites.data.map((item: any) => item.movieId).filter(Boolean);
-        const nextRatings: Record<string, number> = {};
-        jsonRatings.data.forEach((r: any) => {
-          if (r.movieId && typeof r.rating === 'number') {
-            nextRatings[r.movieId] = r.rating;
-          }
-        });
         setSnapshot((prev) => {
-          if (sessionGenRef.current !== thisSessionGen || lastKnownActorKeyRef.current !== thisActorKey) {
-            return prev;
-          }
-
-          const resolvedWatchlist = new Set<string>();
-          const resolvedFavorites = new Set<string>();
-          const resolvedRatings: Record<string, number> = { ...nextRatings };
-          for (const id of nextWatchlist) {
-            const op = operationsJournalRef.current.get(`watchlist:${id}`);
-            if (!op) {
-              resolvedWatchlist.add(id);
-            } else {
-              const isAcknowledged =
-                op.status === 'committed' &&
-                op.committedAtReadVersion !== null &&
-                thisReadVersion > op.committedAtReadVersion;
-
-              if (isAcknowledged) {
-                resolvedWatchlist.add(id);
-              } else if (op.status === 'uncertain') {
-                if (op.desiredValue === true) {
-                  op.status = 'committed';
-                  op.committedAtReadVersion = thisReadVersion;
-                  resolvedWatchlist.add(id);
-                } else {
-                  if (thisReadVersion > op.readVersionAtStart) {
-                    operationsJournalRef.current.delete(`watchlist:${id}`);
-                    resolvedWatchlist.add(id);
-                  }
-                }
-              } else {
-                if (op.desiredValue === true) resolvedWatchlist.add(id);
-              }
-            }
-          }
-          for (const [key, op] of operationsJournalRef.current.entries()) {
-            if (op.action === 'watchlist') {
-              const isAcknowledged =
-                op.status === 'committed' &&
-                op.committedAtReadVersion !== null &&
-                thisReadVersion > op.committedAtReadVersion;
-
-              if (!isAcknowledged) {
-                if (op.status === 'uncertain') {
-                  if (thisReadVersion > op.readVersionAtStart) {
-                    operationsJournalRef.current.delete(key);
-                  } else {
-                    if (op.desiredValue === true) resolvedWatchlist.add(op.movieId);
-                    else if (op.desiredValue === false) resolvedWatchlist.delete(op.movieId);
-                  }
-                } else if (op.desiredValue === true) {
-                  resolvedWatchlist.add(op.movieId);
-                } else if (op.desiredValue === false) {
-                  resolvedWatchlist.delete(op.movieId);
-                }
-              }
-            }
-          }
-          for (const id of nextFavorites) {
-            const op = operationsJournalRef.current.get(`favorite:${id}`);
-            if (!op) {
-              resolvedFavorites.add(id);
-            } else {
-              const isAcknowledged =
-                op.status === 'committed' &&
-                op.committedAtReadVersion !== null &&
-                thisReadVersion > op.committedAtReadVersion;
-
-              if (isAcknowledged) {
-                resolvedFavorites.add(id);
-              } else if (op.status === 'uncertain') {
-                if (op.desiredValue === true) {
-                  op.status = 'committed';
-                  op.committedAtReadVersion = thisReadVersion;
-                  resolvedFavorites.add(id);
-                } else {
-                  if (thisReadVersion > op.readVersionAtStart) {
-                    operationsJournalRef.current.delete(`favorite:${id}`);
-                    resolvedFavorites.add(id);
-                  }
-                }
-              } else {
-                if (op.desiredValue === true) resolvedFavorites.add(id);
-              }
-            }
-          }
-          for (const [key, op] of operationsJournalRef.current.entries()) {
-            if (op.action === 'favorite') {
-              const isAcknowledged =
-                op.status === 'committed' &&
-                op.committedAtReadVersion !== null &&
-                thisReadVersion > op.committedAtReadVersion;
-
-              if (!isAcknowledged) {
-                if (op.status === 'uncertain') {
-                  if (thisReadVersion > op.readVersionAtStart) {
-                    operationsJournalRef.current.delete(key);
-                  } else {
-                    if (op.desiredValue === true) resolvedFavorites.add(op.movieId);
-                    else if (op.desiredValue === false) resolvedFavorites.delete(op.movieId);
-                  }
-                } else if (op.desiredValue === true) {
-                  resolvedFavorites.add(op.movieId);
-                } else if (op.desiredValue === false) {
-                  resolvedFavorites.delete(op.movieId);
-                }
-              }
-            }
-          }
-          for (const [key, op] of operationsJournalRef.current.entries()) {
-            if (op.action === 'rating') {
-              const isAcknowledged =
-                op.status === 'committed' &&
-                op.committedAtReadVersion !== null &&
-                thisReadVersion > op.committedAtReadVersion;
-
-              if (!isAcknowledged) {
-                if (op.status === 'uncertain') {
-                  if (thisReadVersion > op.readVersionAtStart) {
-                    operationsJournalRef.current.delete(key);
-                  } else {
-                    if (typeof op.desiredValue === 'number') {
-                      resolvedRatings[op.movieId] = op.desiredValue;
-                    } else if (op.desiredValue === undefined) {
-                      delete resolvedRatings[op.movieId];
-                    }
-                  }
-                } else if (typeof op.desiredValue === 'number') {
-                  resolvedRatings[op.movieId] = op.desiredValue;
-                } else if (op.desiredValue === undefined) {
-                  delete resolvedRatings[op.movieId];
-                }
-              }
-            }
-          }
-          for (const [key, op] of operationsJournalRef.current.entries()) {
-            if (
-              op.status === 'committed' &&
-              op.committedAtReadVersion !== null &&
-              thisReadVersion > op.committedAtReadVersion
-            ) {
-              operationsJournalRef.current.delete(key);
-            }
-          }
-
-          return {
-            ownerKey: thisActorKey,
-            watchlist: Array.from(resolvedWatchlist),
-            favorites: Array.from(resolvedFavorites),
-            ratings: resolvedRatings,
-          };
+          if (!isCurrent()) return prev;
+          const reconciled = reconcileLibrarySnapshot(serverLibrary, journalRef.current, readVersion);
+          return { ownerKey: actorKey, ...reconciled };
         });
 
+        if (!options?.isBackgroundReconcile && hasGuestSyncData()) {
+          if (approvedSyncActorRef.current === actorKey) {
+            setIsGuestSyncing(true);
+            try {
+              await syncGuestLibrary(
+                token,
+                serverLibrary,
+                actorKey,
+                sessionVersion,
+                readVersion,
+                controller.signal
+              );
+            } finally {
+              if (isCurrent()) setIsGuestSyncing(false);
+            }
+          } else if (promptedSyncActorRef.current !== actorKey) {
+            promptedSyncActorRef.current = actorKey;
+            setGuestSyncPrompt(readGuestSyncSummary());
+          }
+        }
+
+        if (!isCurrent()) return;
         setIsLibraryLoading(false);
         setLibraryError(null);
       } catch (err: unknown) {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        if (sessionGenRef.current !== thisSessionGen || lastKnownActorKeyRef.current !== thisActorKey) {
-          return;
-        }
+        if (!isCurrent()) return;
         setIsLibraryLoading(false);
-        if (
-          (err instanceof DOMException && err.name === 'AbortError') ||
-          (err as any)?.name === 'AbortError'
-        ) {
-          setLibraryError('Thời gian tải thư viện quá hạn (timeout).');
+        if (err instanceof LibraryApiError) {
+          setLibraryError(err.message);
+        } else if (err instanceof Error && err.name === 'TimeoutError') {
+          setLibraryError(err.message);
         } else {
-          setLibraryError('Không thể tải toàn bộ thư viện cá nhân từ máy chủ.');
+          setLibraryError('Chưa tải được thư viện của bạn từ máy chủ.');
         }
       } finally {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        if (activeReadAbortControllerRef.current === abortCtrl) {
-          activeReadAbortControllerRef.current = null;
+        if (readRequestRef.current === controller) {
+          readRequestRef.current = null;
         }
       }
     },
-    [isAuthenticated, token, user, status, currentActorKey, handleSessionExpired]
+    [isAuthenticated, token, user, status, currentActorKey, syncGuestLibrary]
   );
 
   useEffect(() => {
-    performFetchLibrary();
+    void loadLibrary();
     return () => {
-      if (activeReadAbortControllerRef.current) {
-        try {
-          activeReadAbortControllerRef.current.abort();
-        } catch {}
-      }
-      for (const ctrl of activeMutationAbortControllersRef.current.values()) {
-        try {
-          ctrl.abort();
-        } catch {}
-      }
-      activeMutationAbortControllersRef.current.clear();
+      abortSafe(readRequestRef.current);
+      abortSafe(guestSyncRequestRef.current);
+      for (const controller of mutationRequestsRef.current.values()) abortSafe(controller);
+      mutationRequestsRef.current.clear();
     };
-  }, [performFetchLibrary]);
+  }, [loadLibrary]);
+
+  const confirmGuestSync = useCallback(async () => {
+    if (!isAuthenticated || !token || !user || guestSyncRequestRef.current) return;
+    const actorKey = currentActorKey;
+    const sessionVersion = sessionVersionRef.current;
+    const isCurrent = () =>
+      sessionVersionRef.current === sessionVersion && activeActorKeyRef.current === actorKey;
+
+    approvedSyncActorRef.current = actorKey;
+    promptedSyncActorRef.current = actorKey;
+
+    const controller = new AbortController();
+    guestSyncRequestRef.current = controller;
+    setIsGuestSyncing(true);
+
+    try {
+      let baseLibrary: GuestLibraryData;
+      if (serverLibraryRef.current?.actorKey === actorKey) {
+        baseLibrary = serverLibraryRef.current.data;
+      } else {
+        baseLibrary = await fetchUserLibrary(token, controller.signal);
+        if (!isCurrent()) return;
+      }
+
+      readVersionRef.current += 1;
+      await syncGuestLibrary(token, baseLibrary, actorKey, sessionVersion, readVersionRef.current, controller.signal);
+      if (isCurrent()) {
+        setGuestSyncPrompt(null);
+      }
+    } catch {
+      if (isCurrent()) {
+        showToast('Chưa thể đồng bộ dữ liệu tạm lúc này. Dữ liệu vẫn được giữ lại để thử lại sau.', 'error');
+        setGuestSyncPrompt(null);
+      }
+    } finally {
+      if (guestSyncRequestRef.current === controller) {
+        guestSyncRequestRef.current = null;
+      }
+      if (isCurrent()) {
+        setIsGuestSyncing(false);
+      }
+    }
+  }, [isAuthenticated, token, user, currentActorKey, syncGuestLibrary, showToast]);
+
+  const declineGuestSync = useCallback(() => {
+    if (guestSyncRequestRef.current) return;
+    promptedSyncActorRef.current = currentActorKey;
+    if (approvedSyncActorRef.current === currentActorKey) {
+      approvedSyncActorRef.current = null;
+    }
+    clearGuestSyncData();
+    setGuestSyncPrompt(null);
+    showToast('Đã xóa dữ liệu tạm trên máy này.', 'info');
+  }, [currentActorKey, showToast]);
+
+  const dismissGuestSyncPrompt = useCallback(() => {
+    if (guestSyncRequestRef.current) return;
+    promptedSyncActorRef.current = currentActorKey;
+    setGuestSyncPrompt(null);
+  }, [currentActorKey]);
 
   const isActionPending = useCallback(
-    (id: string, action?: 'watchlist' | 'favorite' | 'rating') => {
-      const prefix = `${sessionGenRef.current}:${currentActorKey}`;
+    (id: string, action?: LibraryActionKind) => {
+      const prefix = `${sessionVersionRef.current}:${currentActorKey}`;
       if (!action) {
         return (
-          syncPendingLocksRef.current.has(`${prefix}:watchlist:${id}`) ||
-          syncPendingLocksRef.current.has(`${prefix}:favorite:${id}`) ||
-          syncPendingLocksRef.current.has(`${prefix}:rating:${id}`)
+          pendingLocksRef.current.has(`${prefix}:watchlist:${id}`) ||
+          pendingLocksRef.current.has(`${prefix}:favorite:${id}`) ||
+          pendingLocksRef.current.has(`${prefix}:rating:${id}`)
         );
       }
-      return syncPendingLocksRef.current.has(`${prefix}:${action}:${id}`);
+      return pendingLocksRef.current.has(`${prefix}:${action}:${id}`);
     },
     [currentActorKey]
   );
 
-  const isActionUnconfirmed = useCallback(
-    (id: string, action?: 'watchlist' | 'favorite' | 'rating') => {
-      const act = action || 'watchlist';
-      const op = operationsJournalRef.current.get(`${act}:${id}`);
-      return op?.status === 'uncertain';
-    },
-    []
-  );
+  const isActionUnconfirmed = useCallback((id: string, action: LibraryActionKind = 'watchlist') => {
+    return journalRef.current.get(`${action}:${id}`)?.status === 'uncertain';
+  }, []);
 
   const getActionIntent = useCallback(
-    (id: string, action?: 'watchlist' | 'favorite' | 'rating'): 'add' | 'remove' | 'rate' | 'remove_rating' | null => {
-      const act = action || 'watchlist';
-      const op = operationsJournalRef.current.get(`${act}:${id}`);
-      if (!op || op.status !== 'uncertain') return null;
-      if (act === 'watchlist' || act === 'favorite') {
-        return op.desiredValue === true ? 'add' : 'remove';
+    (id: string, action: LibraryActionKind = 'watchlist'): LibraryActionIntent | null => {
+      const operation = journalRef.current.get(`${action}:${id}`);
+      if (!operation || operation.status !== 'uncertain') return null;
+      if (operation.action === 'rating') {
+        return typeof operation.desiredValue === 'number' ? 'rate' : 'remove_rating';
       }
-      if (act === 'rating') {
-        return typeof op.desiredValue === 'number' ? 'rate' : 'remove_rating';
-      }
-      return null;
+      return operation.desiredValue ? 'add' : 'remove';
     },
     []
   );
 
-  const getUnconfirmedRating = useCallback(
-    (id: string): number | undefined => {
-      const op = operationsJournalRef.current.get(`rating:${id}`);
-      if (op && op.status === 'uncertain' && typeof op.desiredValue === 'number') {
-        return op.desiredValue;
-      }
-      return undefined;
-    },
-    []
-  );
+  const getUnconfirmedRating = useCallback((id: string): number | undefined => {
+    const operation = journalRef.current.get(`rating:${id}`);
+    return operation && operation.action === 'rating' && operation.status === 'uncertain' && typeof operation.desiredValue === 'number'
+      ? operation.desiredValue
+      : undefined;
+  }, []);
 
-  const toggleLibraryItem = async (
-    action: 'watchlist' | 'favorite',
-    id: string,
-    title?: string,
-    poster?: string
-  ): Promise<boolean> => {
-    const isWatchlist = action === 'watchlist';
-    const listKey = isWatchlist ? 'watchlist' : 'favorites';
-    const listName = isWatchlist ? 'Danh sách xem' : 'Yêu thích';
-    const addVerb = isWatchlist ? 'lưu' : 'thêm';
-    const visibleItems = isWatchlist ? visibleWatchlist : visibleFavorites;
-    const mutationActorKey = currentActorKey;
-    const mutationSessionGen = sessionGenRef.current;
-    const lockKey = `${mutationSessionGen}:${mutationActorKey}:${action}:${id}`;
-    const opKey = `${action}:${id}`;
+  const runLibraryMutation = useCallback(
+    async (config: {
+      action: LibraryActionKind;
+      movieId: string;
+      desiredValue: boolean | number | undefined;
+      guestNext: () => GuestLibraryData;
+      guestToast: { message: string; type: 'success' | 'info' };
+      optimisticUpdate: (base: GuestLibraryData) => GuestLibraryData;
+      rollbackUpdate: (base: GuestLibraryData) => GuestLibraryData;
+      request: (authToken: string, signal: AbortSignal) => Promise<void>;
+      successToast: { message: string; type: 'success' | 'info' };
+      failureToastMessage: string;
+      notifyRating?: boolean;
+    }): Promise<boolean> => {
+      const { action, movieId } = config;
+      const actorKey = currentActorKey;
+      const sessionVersion = sessionVersionRef.current;
+      const lockKey = `${sessionVersion}:${actorKey}:${action}:${movieId}`;
+      const operationKey = `${action}:${movieId}`;
 
-    if (syncPendingLocksRef.current.has(lockKey)) return false;
-    syncPendingLocksRef.current.add(lockKey);
-    setPendingUpdateTick((t) => t + 1);
+      if (pendingLocksRef.current.has(lockKey)) return false;
+      pendingLocksRef.current.add(lockKey);
+      setPendingUpdateTick((tick) => tick + 1);
 
-    const existingOp = operationsJournalRef.current.get(opKey);
-    const isAdding =
-      existingOp && existingOp.status === 'uncertain'
-        ? existingOp.desiredValue
-        : !visibleItems.includes(id);
-
-    const alreadyInList = !isAdding;
-    const displayTitle = title || id;
-
-    const isStillCurrentSession = () => {
-      return (
-        sessionGenRef.current === mutationSessionGen &&
-        lastKnownActorKeyRef.current === mutationActorKey
-      );
-    };
-
-    if (status === 'checking') {
-      showToast('Đang kiểm tra phiên đăng nhập, vui lòng đợi...', 'info');
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-      return false;
-    }
-    if (status === 'unavailable') {
-      showToast('Dịch vụ xác thực tạm thời không khả dụng. Vui lòng thử lại sau.', 'error');
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-      return false;
-    }
-    if (status === 'guest' || !isAuthenticated || !token) {
-      const nextItems = alreadyInList
-        ? visibleItems.filter((item) => item !== id)
-        : [...visibleItems, id];
-
-      const guestLibrary = {
-        watchlist: visibleWatchlist,
-        favorites: visibleFavorites,
-        ratings: visibleRatings,
-        [listKey]: nextItems,
+      const releaseLock = () => {
+        pendingLocksRef.current.delete(lockKey);
+        setPendingUpdateTick((tick) => tick + 1);
       };
-      const saved = writeGuestStorage(guestLibrary);
 
-      if (!saved) {
-        showToast('Không thể lưu vào bộ nhớ thiết bị.', 'error');
-        syncPendingLocksRef.current.delete(lockKey);
-        setPendingUpdateTick((t) => t + 1);
+      const isStillCurrent = () =>
+        sessionVersionRef.current === sessionVersion && activeActorKeyRef.current === actorKey;
+
+      if (status === 'checking') {
+        showToast('Đang kiểm tra tài khoản, bạn chờ chút nhé…', 'info');
+        releaseLock();
         return false;
       }
-
-      setSnapshot({ ownerKey: 'guest', ...guestLibrary });
-
-      if (alreadyInList) {
-        showToast(`Đã xóa ${displayTitle} khỏi ${listName} (trên thiết bị)`, 'info');
-      } else {
-        showToast(`Đã ${addVerb} ${displayTitle} vào ${listName} (trên thiết bị)`, 'success');
+      if (status === 'unavailable') {
+        showToast('Chưa kết nối được máy chủ tài khoản. Bạn thử lại sau nhé.', 'error');
+        releaseLock();
+        return false;
       }
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-      return true;
-    }
-    const opId = ++operationCounterRef.current;
-    operationsJournalRef.current.set(opKey, {
-      id: opId,
-      action,
-      movieId: id,
-      readVersionAtStart: readGenRef.current,
-      committedAtReadVersion: null,
-      status: 'pending',
-      desiredValue: isAdding,
-    });
-
-    setSnapshot((prev) => {
-      const isSameActor = prev.ownerKey === mutationActorKey;
-      const baseItems = isSameActor ? prev[listKey] : [];
-      const nextItems = isAdding
-        ? (baseItems.includes(id) ? baseItems : [...baseItems, id])
-        : baseItems.filter((item) => item !== id);
-
-      return {
-        ownerKey: mutationActorKey,
-        watchlist: isSameActor ? prev.watchlist : [],
-        favorites: isSameActor ? prev.favorites : [],
-        ratings: isSameActor ? prev.ratings : {},
-        [listKey]: nextItems,
-      };
-    });
-
-    const abortCtrl = new AbortController();
-    activeMutationAbortControllersRef.current.set(opId, abortCtrl);
-
-    let timeoutId: NodeJS.Timeout | null = setTimeout(() => {
-      abortCtrl.abort();
-    }, REQUEST_TIMEOUT_MS);
-
-    try {
-      const res = alreadyInList
-        ? await fetch(`${API}/users/${listKey}/${encodeURIComponent(id)}`, {
-            method: 'DELETE',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: 'application/json',
-            },
-            signal: abortCtrl.signal,
-          })
-        : await fetch(`${API}/users/${listKey}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-              Accept: 'application/json',
-            },
-            body: JSON.stringify({
-              movieId: id,
-              movieTitle: displayTitle,
-              posterUrl: poster || '',
-            }),
-            signal: abortCtrl.signal,
-          });
-
-      if (res.status === 401) {
-        if (isStillCurrentSession()) {
-          handleSessionExpired();
-          showToast('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'error');
+      if (status === 'guest' || !isAuthenticated || !token) {
+        const nextGuest = config.guestNext();
+        if (!writeGuestLibrary(nextGuest)) {
+          showToast('Chưa lưu được vào bộ nhớ máy này.', 'error');
+          releaseLock();
+          return false;
         }
-        throw new Error('Phiên đăng nhập đã hết hạn.');
-      }
-      if (res.status === 403) {
-        throw new Error('Bạn không có quyền thực hiện thao tác này.');
-      }
-      if (!res.ok) {
-        const operation = alreadyInList ? 'Xóa khỏi' : 'Lưu vào';
-        throw new Error(`${operation} ${listName} thất bại (HTTP ${res.status})`);
-      }
-
-      const json = await res.json();
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-
-      if (!json || json.success !== true) throw new Error('Phản hồi từ máy chủ không hợp lệ.');
-
-      if (isStillCurrentSession()) {
-        const op = operationsJournalRef.current.get(opKey);
-        if (op && op.id === opId) {
-          op.status = 'committed';
-          op.committedAtReadVersion = readGenRef.current;
-        }
-        if (alreadyInList) {
-          showToast(`Đã xóa ${displayTitle} khỏi ${listName}`, 'info');
-        } else {
-          showToast(`Đã ${addVerb} ${displayTitle} vào ${listName}`, 'success');
-        }
+        setSnapshot({ ownerKey: 'guest', ...nextGuest });
+        showToast(config.guestToast.message, config.guestToast.type);
+        releaseLock();
         return true;
       }
-      return false;
-    } catch (err: unknown) {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      if (isStillCurrentSession()) {
-        const isTimeout =
-          (err instanceof DOMException && err.name === 'AbortError') ||
-          (err as any)?.name === 'AbortError';
-        const isNetworkError =
-          err instanceof TypeError || (err as any)?.name === 'TypeError';
 
-        if (isTimeout || isNetworkError) {
-          const op = operationsJournalRef.current.get(opKey);
-          if (op && op.id === opId) {
-            op.status = 'uncertain';
-          }
-          showToast('Thời gian gửi yêu cầu quá hạn hoặc mất kết nối. Đang kiểm tra lại trạng thái...', 'error');
-          performFetchLibrary({ isBackgroundReconcile: true });
-        } else {
-          const op = operationsJournalRef.current.get(opKey);
-          if (op && op.id === opId) {
-            operationsJournalRef.current.delete(opKey);
-          }
-          setSnapshot((prev) => {
-            if (prev.ownerKey !== mutationActorKey) return prev;
-            return {
-              ...prev,
-              [listKey]: alreadyInList
-                ? (prev[listKey].includes(id) ? prev[listKey] : [...prev[listKey], id])
-                : prev[listKey].filter((item) => item !== id),
+      const operationId = ++operationCounterRef.current;
+      const record: OperationRecord =
+        action === 'rating'
+          ? {
+              id: operationId,
+              action: 'rating',
+              movieId,
+              readVersionAtStart: readVersionRef.current,
+              committedAtReadVersion: null,
+              status: 'pending',
+              desiredValue: config.desiredValue as number | undefined,
+            }
+          : {
+              id: operationId,
+              action,
+              movieId,
+              readVersionAtStart: readVersionRef.current,
+              committedAtReadVersion: null,
+              status: 'pending',
+              desiredValue: Boolean(config.desiredValue),
             };
-          });
-          showToast(`Không thể cập nhật ${listName}. Vui lòng thử lại.`, 'error');
+      journalRef.current.set(operationKey, record);
+
+      setSnapshot((prev) => {
+        const base: GuestLibraryData =
+          prev.ownerKey === actorKey
+            ? { watchlist: prev.watchlist, favorites: prev.favorites, ratings: prev.ratings }
+            : { watchlist: [], favorites: [], ratings: {} };
+        return { ownerKey: actorKey, ...config.optimisticUpdate(base) };
+      });
+
+      const controller = new AbortController();
+      mutationRequestsRef.current.set(operationId, controller);
+
+      try {
+        await config.request(token, controller.signal);
+        if (!isStillCurrent()) return false;
+        const operation = journalRef.current.get(operationKey);
+        if (operation && operation.id === operationId) {
+          operation.status = 'committed';
+          operation.committedAtReadVersion = readVersionRef.current;
         }
-      }
-      return false;
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      activeMutationAbortControllersRef.current.delete(opId);
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-    }
-  };
-
-  const toggleWatchlist = (id: string, title?: string, poster?: string) =>
-    toggleLibraryItem('watchlist', id, title, poster);
-
-  const toggleFavorite = (id: string, title?: string, poster?: string) =>
-    toggleLibraryItem('favorite', id, title, poster);
-  const rateMovie = async (
-    id: string,
-    rating: number,
-    title?: string
-  ): Promise<boolean> => {
-    const validRating = Math.max(1, Math.min(10, Math.round(rating)));
-    const mutationActorKey = currentActorKey;
-    const mutationSessionGen = sessionGenRef.current;
-    const lockKey = `${mutationSessionGen}:${mutationActorKey}:rating:${id}`;
-    const opKey = `rating:${id}`;
-
-    if (syncPendingLocksRef.current.has(lockKey)) return false;
-    syncPendingLocksRef.current.add(lockKey);
-    setPendingUpdateTick((t) => t + 1);
-
-    const displayTitle = title || id;
-    const prevRating = visibleRatings[id];
-
-    const isStillCurrentSession = () => {
-      return (
-        sessionGenRef.current === mutationSessionGen &&
-        lastKnownActorKeyRef.current === mutationActorKey
-      );
-    };
-
-    if (status === 'checking') {
-      showToast('Đang kiểm tra phiên đăng nhập, vui lòng đợi...', 'info');
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-      return false;
-    }
-    if (status === 'unavailable') {
-      showToast('Dịch vụ xác thực tạm thời không khả dụng. Vui lòng thử lại sau.', 'error');
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-      return false;
-    }
-    if (status === 'guest' || !isAuthenticated || !token) {
-      const nextRatings = { ...visibleRatings, [id]: validRating };
-      const saved = writeGuestStorage({
-        watchlist: visibleWatchlist,
-        favorites: visibleFavorites,
-        ratings: nextRatings,
-      });
-
-      if (!saved) {
-        showToast('Không thể lưu vào bộ nhớ thiết bị.', 'error');
-        syncPendingLocksRef.current.delete(lockKey);
-        setPendingUpdateTick((t) => t + 1);
+        if (config.notifyRating) notifyRatingChanged(movieId);
+        showToast(config.successToast.message, config.successToast.type);
+        return true;
+      } catch (err: unknown) {
+        if (isStillCurrent()) {
+          if (isUncertainNetworkError(err)) {
+            const operation = journalRef.current.get(operationKey);
+            if (operation && operation.id === operationId) operation.status = 'uncertain';
+            showToast('Mạng chập chờn hoặc hết thời gian chờ. Dippie đang kiểm tra lại…', 'error');
+            void loadLibrary({ isBackgroundReconcile: true });
+          } else {
+            const operation = journalRef.current.get(operationKey);
+            if (operation && operation.id === operationId) journalRef.current.delete(operationKey);
+            setSnapshot((prev) => {
+              if (prev.ownerKey !== actorKey) return prev;
+              return { ownerKey: actorKey, ...config.rollbackUpdate(prev) };
+            });
+            if (!(err instanceof LibraryApiError && (err.status === 401 || err.status === 403))) {
+              showToast(config.failureToastMessage, 'error');
+            }
+          }
+        }
         return false;
+      } finally {
+        mutationRequestsRef.current.delete(operationId);
+        releaseLock();
       }
+    },
+    [currentActorKey, status, isAuthenticated, token, showToast, loadLibrary]
+  );
 
-      setSnapshot({
-        ownerKey: 'guest',
-        watchlist: visibleWatchlist,
-        favorites: visibleFavorites,
-        ratings: nextRatings,
-      });
+  const toggleLibraryItem = useCallback(
+    (action: 'watchlist' | 'favorite', id: string, title?: string, poster?: string): Promise<boolean> => {
+      const isWatchlist = action === 'watchlist';
+      const listKey = isWatchlist ? 'watchlist' : 'favorites';
+      const listName = isWatchlist ? 'Xem sau' : 'Yêu thích';
+      const visibleItems = isWatchlist ? visibleWatchlist : visibleFavorites;
+      const existingOperation = journalRef.current.get(`${action}:${id}`);
+      const isAdding =
+        existingOperation && existingOperation.action !== 'rating' && existingOperation.status === 'uncertain'
+          ? existingOperation.desiredValue
+          : !visibleItems.includes(id);
+      const alreadyInList = !isAdding;
+      const displayTitle = title || id;
 
-      showToast(`Đã chấm ${displayTitle} ${validRating}/10 điểm ★ (trên thiết bị)`, 'success');
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-      return true;
-    }
-    const opId = ++operationCounterRef.current;
-    operationsJournalRef.current.set(opKey, {
-      id: opId,
-      action: 'rating',
-      movieId: id,
-      readVersionAtStart: readGenRef.current,
-      committedAtReadVersion: null,
-      status: 'pending',
-      desiredValue: validRating,
-    });
-
-    setSnapshot((prev) => {
-      const isSameActor = prev.ownerKey === mutationActorKey;
-      const baseRatings = isSameActor ? prev.ratings : {};
-      return {
-        ownerKey: mutationActorKey,
-        watchlist: isSameActor ? prev.watchlist : [],
-        favorites: isSameActor ? prev.favorites : [],
-        ratings: { ...baseRatings, [id]: validRating },
-      };
-    });
-
-    const abortCtrl = new AbortController();
-    activeMutationAbortControllersRef.current.set(opId, abortCtrl);
-
-    let timeoutId: NodeJS.Timeout | null = setTimeout(() => {
-      abortCtrl.abort();
-    }, REQUEST_TIMEOUT_MS);
-
-    try {
-      const res = await fetch(`${API}/users/ratings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          movieId: id,
-          rating: validRating,
+      return runLibraryMutation({
+        action,
+        movieId: id,
+        desiredValue: isAdding,
+        guestNext: () => ({
+          watchlist: visibleWatchlist,
+          favorites: visibleFavorites,
+          ratings: visibleRatings,
+          [listKey]: alreadyInList ? visibleItems.filter((existingId) => existingId !== id) : [...visibleItems, id],
         }),
-        signal: abortCtrl.signal,
+        guestToast: alreadyInList
+          ? { message: `Đã bỏ ${displayTitle} khỏi ${listName} (trên máy này)`, type: 'info' }
+          : { message: `Đã thêm ${displayTitle} vào ${listName} (trên máy này)`, type: 'success' },
+        optimisticUpdate: (base) => ({
+          ...base,
+          [listKey]: isAdding
+            ? base[listKey].includes(id) ? base[listKey] : [...base[listKey], id]
+            : base[listKey].filter((existingId) => existingId !== id),
+        }),
+        rollbackUpdate: (base) => ({
+          ...base,
+          [listKey]: alreadyInList
+            ? base[listKey].includes(id) ? base[listKey] : [...base[listKey], id]
+            : base[listKey].filter((existingId) => existingId !== id),
+        }),
+        request: (authToken, signal) =>
+          updateLibraryList(listKey, authToken, id, {
+            remove: alreadyInList,
+            title: displayTitle,
+            poster: poster || '',
+            signal,
+          }),
+        successToast: alreadyInList
+          ? { message: `Đã bỏ ${displayTitle} khỏi ${listName}`, type: 'info' }
+          : { message: `Đã thêm ${displayTitle} vào ${listName}`, type: 'success' },
+        failureToastMessage: `Chưa cập nhật được mục ${listName}. Bạn thử lại nhé.`,
       });
+    },
+    [visibleWatchlist, visibleFavorites, visibleRatings, runLibraryMutation]
+  );
 
-      if (res.status === 401) {
-        if (isStillCurrentSession()) {
-          handleSessionExpired();
-          showToast('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'error');
-        }
-        throw new Error('Phiên đăng nhập đã hết hạn.');
-      }
-      if (res.status === 403) {
-        throw new Error('Bạn không có quyền thực hiện thao tác này.');
-      }
-      if (!res.ok) throw new Error(`Lưu điểm đánh giá thất bại (HTTP ${res.status})`);
+  const toggleWatchlist = useCallback(
+    (id: string, title?: string, poster?: string) => toggleLibraryItem('watchlist', id, title, poster),
+    [toggleLibraryItem]
+  );
 
-      const json = await res.json();
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
+  const toggleFavorite = useCallback(
+    (id: string, title?: string, poster?: string) => toggleLibraryItem('favorite', id, title, poster),
+    [toggleLibraryItem]
+  );
 
-      if (!json || json.success !== true) throw new Error('Phản hồi từ máy chủ không hợp lệ.');
-
-      if (isStillCurrentSession()) {
-        const op = operationsJournalRef.current.get(opKey);
-        if (op && op.id === opId) {
-          op.status = 'committed';
-          op.committedAtReadVersion = readGenRef.current;
-        }
-        showToast(`Đã chấm ${displayTitle} ${validRating}/10 điểm ★`, 'success');
-        return true;
-      }
-      return false;
-    } catch (err: unknown) {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      if (isStillCurrentSession()) {
-        const isTimeout =
-          (err instanceof DOMException && err.name === 'AbortError') ||
-          (err as any)?.name === 'AbortError';
-        const isNetworkError =
-          err instanceof TypeError || (err as any)?.name === 'TypeError';
-
-        if (isTimeout || isNetworkError) {
-          const op = operationsJournalRef.current.get(opKey);
-          if (op && op.id === opId) {
-            op.status = 'uncertain';
-          }
-          showToast('Thời gian gửi yêu cầu quá hạn hoặc mất kết nối. Đang kiểm tra lại trạng thái...', 'error');
-          performFetchLibrary({ isBackgroundReconcile: true });
-        } else {
-          const op = operationsJournalRef.current.get(opKey);
-          if (op && op.id === opId) {
-            operationsJournalRef.current.delete(opKey);
-          }
-          setSnapshot((prev) => {
-            if (prev.ownerKey !== mutationActorKey) return prev;
-            const nextR = { ...prev.ratings };
-            if (prevRating !== undefined) {
-              nextR[id] = prevRating;
-            } else {
-              delete nextR[id];
-            }
-            return { ...prev, ratings: nextR };
-          });
-          showToast('Không thể lưu điểm đánh giá. Vui lòng thử lại.', 'error');
-        }
-      }
-      return false;
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      activeMutationAbortControllersRef.current.delete(opId);
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-    }
-  };
-  const removeRating = async (id: string, title?: string): Promise<boolean> => {
-    const mutationActorKey = currentActorKey;
-    const mutationSessionGen = sessionGenRef.current;
-    const lockKey = `${mutationSessionGen}:${mutationActorKey}:rating:${id}`;
-    const opKey = `rating:${id}`;
-
-    if (syncPendingLocksRef.current.has(lockKey)) return false;
-    syncPendingLocksRef.current.add(lockKey);
-    setPendingUpdateTick((t) => t + 1);
-
-    const displayTitle = title || id;
-    const prevRating = visibleRatings[id];
-
-    const isStillCurrentSession = () => {
-      return (
-        sessionGenRef.current === mutationSessionGen &&
-        lastKnownActorKeyRef.current === mutationActorKey
-      );
-    };
-
-    if (status === 'checking') {
-      showToast('Đang kiểm tra phiên đăng nhập, vui lòng đợi...', 'info');
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-      return false;
-    }
-    if (status === 'unavailable') {
-      showToast('Dịch vụ xác thực tạm thời không khả dụng. Vui lòng thử lại sau.', 'error');
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-      return false;
-    }
-    if (status === 'guest' || !isAuthenticated || !token) {
-      const nextRatings = { ...visibleRatings };
-      delete nextRatings[id];
-      const saved = writeGuestStorage({
-        watchlist: visibleWatchlist,
-        favorites: visibleFavorites,
-        ratings: nextRatings,
-      });
-
-      if (!saved) {
-        showToast('Không thể lưu vào bộ nhớ thiết bị.', 'error');
-        syncPendingLocksRef.current.delete(lockKey);
-        setPendingUpdateTick((t) => t + 1);
-        return false;
-      }
-
-      setSnapshot({
-        ownerKey: 'guest',
-        watchlist: visibleWatchlist,
-        favorites: visibleFavorites,
-        ratings: nextRatings,
-      });
-
-      showToast(`Đã xóa đánh giá của ${displayTitle} (trên thiết bị)`, 'info');
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-      return true;
-    }
-    const opId = ++operationCounterRef.current;
-    operationsJournalRef.current.set(opKey, {
-      id: opId,
-      action: 'rating',
-      movieId: id,
-      readVersionAtStart: readGenRef.current,
-      committedAtReadVersion: null,
-      status: 'pending',
-      desiredValue: undefined,
-    });
-
-    setSnapshot((prev) => {
-      const isSameActor = prev.ownerKey === mutationActorKey;
-      const baseRatings = isSameActor ? { ...prev.ratings } : {};
-      delete baseRatings[id];
-      return {
-        ownerKey: mutationActorKey,
-        watchlist: isSameActor ? prev.watchlist : [],
-        favorites: isSameActor ? prev.favorites : [],
-        ratings: baseRatings,
-      };
-    });
-
-    const abortCtrl = new AbortController();
-    activeMutationAbortControllersRef.current.set(opId, abortCtrl);
-
-    let timeoutId: NodeJS.Timeout | null = setTimeout(() => {
-      abortCtrl.abort();
-    }, REQUEST_TIMEOUT_MS);
-
-    try {
-      const res = await fetch(`${API}/users/ratings/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
+  const rateMovie = useCallback(
+    (id: string, rating: number, title?: string): Promise<boolean> => {
+      const validRating = Math.max(1, Math.min(10, Math.round(rating)));
+      const displayTitle = title || id;
+      const prevRating = visibleRatings[id];
+      return runLibraryMutation({
+        action: 'rating',
+        movieId: id,
+        desiredValue: validRating,
+        guestNext: () => ({
+          watchlist: visibleWatchlist,
+          favorites: visibleFavorites,
+          ratings: { ...visibleRatings, [id]: validRating },
+        }),
+        guestToast: { message: `Đã chấm ${displayTitle} ${validRating}/10 điểm (trên máy này)`, type: 'success' },
+        optimisticUpdate: (base) => ({ ...base, ratings: { ...base.ratings, [id]: validRating } }),
+        rollbackUpdate: (base) => {
+          const nextRatings = { ...base.ratings };
+          if (prevRating !== undefined) nextRatings[id] = prevRating;
+          else delete nextRatings[id];
+          return { ...base, ratings: nextRatings };
         },
-        signal: abortCtrl.signal,
+        request: (authToken, signal) => saveUserRating(authToken, id, validRating, signal),
+        successToast: { message: `Đã chấm ${displayTitle} ${validRating}/10 điểm`, type: 'success' },
+        failureToastMessage: 'Chưa lưu được điểm. Bạn thử lại nhé.',
+        notifyRating: true,
       });
+    },
+    [visibleWatchlist, visibleFavorites, visibleRatings, runLibraryMutation]
+  );
 
-      if (res.status === 401) {
-        if (isStillCurrentSession()) {
-          handleSessionExpired();
-          showToast('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'error');
-        }
-        throw new Error('Phiên đăng nhập đã hết hạn.');
-      }
-      if (res.status === 403) {
-        throw new Error('Bạn không có quyền thực hiện thao tác này.');
-      }
-      if (!res.ok) throw new Error(`Xóa đánh giá thất bại (HTTP ${res.status})`);
-
-      const json = await res.json();
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-
-      if (!json || json.success !== true) throw new Error('Phản hồi từ máy chủ không hợp lệ.');
-
-      if (isStillCurrentSession()) {
-        const op = operationsJournalRef.current.get(opKey);
-        if (op && op.id === opId) {
-          op.status = 'committed';
-          op.committedAtReadVersion = readGenRef.current;
-        }
-        showToast(`Đã xóa đánh giá của ${displayTitle}`, 'info');
-        return true;
-      }
-      return false;
-    } catch (err: unknown) {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      if (isStillCurrentSession()) {
-        const isTimeout =
-          (err instanceof DOMException && err.name === 'AbortError') ||
-          (err as any)?.name === 'AbortError';
-        const isNetworkError =
-          err instanceof TypeError || (err as any)?.name === 'TypeError';
-
-        if (isTimeout || isNetworkError) {
-          const op = operationsJournalRef.current.get(opKey);
-          if (op && op.id === opId) {
-            op.status = 'uncertain';
-          }
-          showToast('Thời gian gửi yêu cầu quá hạn hoặc mất kết nối. Đang kiểm tra lại trạng thái...', 'error');
-          performFetchLibrary({ isBackgroundReconcile: true });
-        } else {
-          const op = operationsJournalRef.current.get(opKey);
-          if (op && op.id === opId) {
-            operationsJournalRef.current.delete(opKey);
-          }
-          setSnapshot((prev) => {
-            if (prev.ownerKey !== mutationActorKey) return prev;
-            const nextR = { ...prev.ratings };
-            if (prevRating !== undefined) {
-              nextR[id] = prevRating;
-            }
-            return { ...prev, ratings: nextR };
-          });
-          showToast(`Không thể xóa đánh giá của ${displayTitle}. Vui lòng thử lại.`, 'error');
-        }
-      }
-      return false;
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      activeMutationAbortControllersRef.current.delete(opId);
-      syncPendingLocksRef.current.delete(lockKey);
-      setPendingUpdateTick((t) => t + 1);
-    }
-  };
+  const removeRating = useCallback(
+    (id: string, title?: string): Promise<boolean> => {
+      const displayTitle = title || id;
+      const prevRating = visibleRatings[id];
+      return runLibraryMutation({
+        action: 'rating',
+        movieId: id,
+        desiredValue: undefined,
+        guestNext: () => {
+          const nextRatings = { ...visibleRatings };
+          delete nextRatings[id];
+          return { watchlist: visibleWatchlist, favorites: visibleFavorites, ratings: nextRatings };
+        },
+        guestToast: { message: `Đã xóa điểm của ${displayTitle} (trên máy này)`, type: 'info' },
+        optimisticUpdate: (base) => {
+          const nextRatings = { ...base.ratings };
+          delete nextRatings[id];
+          return { ...base, ratings: nextRatings };
+        },
+        rollbackUpdate: (base) => {
+          const nextRatings = { ...base.ratings };
+          if (prevRating !== undefined) nextRatings[id] = prevRating;
+          return { ...base, ratings: nextRatings };
+        },
+        request: (authToken, signal) => deleteUserRating(authToken, id, signal),
+        successToast: { message: `Đã xóa điểm của ${displayTitle}`, type: 'info' },
+        failureToastMessage: `Chưa xóa được điểm của ${displayTitle}. Bạn thử lại nhé.`,
+        notifyRating: true,
+      });
+    },
+    [visibleWatchlist, visibleFavorites, visibleRatings, runLibraryMutation]
+  );
 
   const isWatchlisted = useCallback((id: string) => visibleWatchlist.includes(id), [visibleWatchlist]);
   const isFavorite = useCallback((id: string) => visibleFavorites.includes(id), [visibleFavorites]);
   const getRating = useCallback((id: string) => visibleRatings[id], [visibleRatings]);
+  const refetchLibrary = useCallback(() => loadLibrary(), [loadLibrary]);
+  const openChat = useCallback(() => {
+    setHasOpenedChat(true);
+    setIsChatOpen(true);
+  }, []);
+  const closeChat = useCallback(() => setIsChatOpen(false), []);
+  const toggleChat = useCallback(() => {
+    setHasOpenedChat(true);
+    setIsChatOpen((prev) => !prev);
+  }, []);
 
-  const [hasOpenedChat, setHasOpenedChat] = useState(false);
-  const openChat = () => { setHasOpenedChat(true); setIsChatOpen(true); };
-  const closeChat = () => setIsChatOpen(false);
-  const toggleChat = () => { setHasOpenedChat(true); setIsChatOpen((prev) => !prev); };
+  const contextValue = useMemo<WatchlistContextType>(
+    () => ({
+      watchlist: visibleWatchlist,
+      favorites: visibleFavorites,
+      ratings: visibleRatings,
+      toggleWatchlist,
+      toggleFavorite,
+      rateMovie,
+      removeRating,
+      isWatchlisted,
+      isFavorite,
+      getRating,
+      isActionPending,
+      isActionUnconfirmed,
+      getActionIntent,
+      getUnconfirmedRating,
+      isLibraryLoading,
+      libraryError,
+      refetchLibrary,
+      isGuestMode: status === 'guest',
+      guestSyncPrompt,
+      isGuestSyncing,
+      confirmGuestSync,
+      declineGuestSync,
+      dismissGuestSyncPrompt,
+      toasts,
+      showToast,
+      dismissToast,
+      isChatOpen,
+      openChat,
+      closeChat,
+      toggleChat,
+    }),
+    [
+      visibleWatchlist,
+      visibleFavorites,
+      visibleRatings,
+      toggleWatchlist,
+      toggleFavorite,
+      rateMovie,
+      removeRating,
+      isWatchlisted,
+      isFavorite,
+      getRating,
+      isActionPending,
+      isActionUnconfirmed,
+      getActionIntent,
+      getUnconfirmedRating,
+      isLibraryLoading,
+      libraryError,
+      refetchLibrary,
+      status,
+      guestSyncPrompt,
+      isGuestSyncing,
+      confirmGuestSync,
+      declineGuestSync,
+      dismissGuestSyncPrompt,
+      toasts,
+      showToast,
+      dismissToast,
+      isChatOpen,
+      openChat,
+      closeChat,
+      toggleChat,
+    ]
+  );
 
   return (
-    <WatchlistContext.Provider
-      value={{
-        watchlist: visibleWatchlist,
-        favorites: visibleFavorites,
-        ratings: visibleRatings,
-        toggleWatchlist,
-        toggleFavorite,
-        rateMovie,
-        removeRating,
-        isWatchlisted,
-        isFavorite,
-        getRating,
-        isActionPending,
-        isActionUnconfirmed,
-        getActionIntent,
-        getUnconfirmedRating,
-        isLibraryLoading,
-        libraryError,
-        refetchLibrary: () => performFetchLibrary(),
-        isGuestMode: status === 'guest',
-        toasts,
-        showToast,
-        dismissToast,
-        isChatOpen,
-        openChat,
-        closeChat,
-        toggleChat,
-      }}
-    >
+    <WatchlistContext.Provider value={contextValue}>
       {children}
       <Suspense fallback={null}>
         {isAuthModalOpen && <AuthModal />}
         {hasOpenedChat && <CineBot isOpen={isChatOpen} onClose={closeChat} />}
       </Suspense>
+      {guestSyncPrompt && (
+        <GuestSyncDialog
+          summary={guestSyncPrompt}
+          busy={isGuestSyncing}
+          onConfirm={() => void confirmGuestSync()}
+          onDecline={declineGuestSync}
+          onDismiss={dismissGuestSyncPrompt}
+        />
+      )}
       <div
         role="region"
-        aria-label="Thông báo hệ thống"
-        className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"
+        aria-label="Thông báo"
+        data-testid="toast-region"
+        className={`fixed z-50 flex flex-col gap-2 pointer-events-none sm:max-w-md ${
+          isChatOpen
+            ? 'top-20 left-4 right-4 sm:left-auto sm:right-5'
+            : 'bottom-5 left-4 right-4 sm:left-auto sm:right-5'
+        }`}
       >
         {toasts.map((toast) => (
           <div
             key={toast.id}
             role="status"
-            className={`pointer-events-auto flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5 text-xs sm:text-sm font-medium shadow-2xl backdrop-blur-xl animate-slide-up transition-all ${
+            className={`pointer-events-auto flex items-center justify-between gap-2 rounded-lg border-2 px-4 py-2 text-xs sm:text-sm font-medium shadow-brand-sm animate-slide-up transition-all ${
               toast.type === 'error'
-                ? 'border-red-800 bg-surface text-red-800'
+                ? 'border-red-800 bg-paper-white text-red-900'
                 : toast.type === 'success'
-                ? 'border-ink bg-mint text-ink shadow-brand-sm'
-                : 'border-ink bg-surface text-ink'
+                ? 'border-ink bg-mint text-ink'
+                : 'border-ink bg-paper-white text-ink'
             }`}
           >
-            <span>{toast.message}</span>
+            <span className="min-w-0 flex-1 break-words py-1">{toast.message}</span>
             <button
+              type="button"
               onClick={() => dismissToast(toast.id)}
-              className="ml-2 text-muted hover:text-ink cursor-pointer"
+              className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-elevated hover:text-ink cursor-pointer"
               aria-label="Đóng thông báo"
             >
               ✕

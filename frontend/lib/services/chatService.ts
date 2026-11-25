@@ -1,3 +1,4 @@
+import { withRequestTimeout } from '@/lib/services/apiRequest';
 import type { Movie } from '@/types/movie';
 
 export interface StructuredIntent {
@@ -19,6 +20,7 @@ export interface ChatMessage {
   sender: 'user' | 'bot';
   text: string;
   timestamp: string;
+  isError?: boolean;
   movies?: Movie[];
   followUps?: string[];
   structuredIntent?: StructuredIntent | null;
@@ -35,28 +37,70 @@ export interface ChatServiceResponse {
 
 function parseResponse(value: unknown, requireText: boolean): ChatServiceResponse {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Phản hồi CineBot không hợp lệ.');
-  const data = value as Record<string, unknown>;
-  if ((requireText && (typeof data.text !== 'string' || !data.text.trim()))
-    || (data.text !== undefined && typeof data.text !== 'string')
-    || (data.recommendedMovies !== undefined && !Array.isArray(data.recommendedMovies))
-    || (data.followUps !== undefined && (!Array.isArray(data.followUps) || !data.followUps.every((item) => typeof item === 'string')))
-    || (data.structuredIntent !== undefined && data.structuredIntent !== null && (typeof data.structuredIntent !== 'object' || Array.isArray(data.structuredIntent)))
-    || (data.pipelineStages !== undefined && data.pipelineStages !== null && (typeof data.pipelineStages !== 'object' || Array.isArray(data.pipelineStages)))) {
+  const payload = value as Record<string, unknown>;
+  if ((requireText && (typeof payload.text !== 'string' || !payload.text.trim()))
+    || (payload.text !== undefined && typeof payload.text !== 'string')
+    || (payload.recommendedMovies !== undefined && !Array.isArray(payload.recommendedMovies))
+    || (payload.followUps !== undefined && (!Array.isArray(payload.followUps) || !payload.followUps.every((item) => typeof item === 'string')))
+    || (payload.structuredIntent !== undefined && payload.structuredIntent !== null && (typeof payload.structuredIntent !== 'object' || Array.isArray(payload.structuredIntent)))
+    || (payload.pipelineStages !== undefined && payload.pipelineStages !== null && (typeof payload.pipelineStages !== 'object' || Array.isArray(payload.pipelineStages)))) {
     throw new Error('Phản hồi CineBot không hợp lệ.');
   }
   return {
-    text: typeof data.text === 'string' ? data.text : '',
-    recommendedMovies: (data.recommendedMovies as Movie[] | undefined) || [],
-    followUps: (data.followUps as string[] | undefined) || [],
-    structuredIntent: (data.structuredIntent as StructuredIntent | undefined) || null,
-    pipelineStages: (data.pipelineStages as Record<string, unknown> | undefined) || {},
+    text: typeof payload.text === 'string' ? payload.text : '',
+    recommendedMovies: (payload.recommendedMovies as Movie[] | undefined) || [],
+    followUps: (payload.followUps as string[] | undefined) || [],
+    structuredIntent: (payload.structuredIntent as StructuredIntent | undefined) || null,
+    pipelineStages: (payload.pipelineStages as Record<string, unknown> | undefined) || {},
   };
+}
+
+function buildHistoryPayload(history: ChatMessage[]) {
+  return history.slice(-20).map((entry) => {
+    if (entry.sender === 'user') {
+      return {
+        role: 'user',
+        content: entry.text,
+      };
+    }
+    const movies = Array.isArray(entry.movies) ? entry.movies : [];
+    const itemIds: string[] = [];
+    const documentIds: string[] = [];
+    for (const movie of movies) {
+      const movieId = typeof movie?.id === 'string' ? movie.id.trim() : '';
+      if (movieId) {
+        itemIds.push(movieId);
+      }
+      if (Array.isArray(movie?.evidence)) {
+        for (const evidenceItem of movie.evidence) {
+          const documentId = typeof evidenceItem?.documentId === 'string' ? evidenceItem.documentId.trim() : '';
+          if (documentId && !documentIds.includes(documentId)) {
+            documentIds.push(documentId);
+          }
+        }
+      }
+    }
+    return {
+      role: 'assistant',
+      content: entry.text,
+      ...(itemIds.length > 0 ? { itemIds, documentIds } : {}),
+    };
+  });
 }
 
 export async function sendChatMessage(
   message: string,
   history: ChatMessage[] = [],
   options: { sessionId?: string; signal?: AbortSignal; onUpdate?: (response: ChatServiceResponse) => void } = {}
+): Promise<ChatServiceResponse> {
+  return withRequestTimeout((signal) => readChatMessage(message, history, { ...options, signal }),
+    { signal: options.signal, timeoutMs: 75_000 }, 'CineBot phản hồi chậm. Bạn thử lại nhé.');
+}
+
+async function readChatMessage(
+  message: string,
+  history: ChatMessage[],
+  options: { sessionId?: string; signal: AbortSignal; onUpdate?: (response: ChatServiceResponse) => void },
 ): Promise<ChatServiceResponse> {
   const response = await fetch('/api/chat', {
     method: 'POST',
@@ -68,19 +112,25 @@ export async function sendChatMessage(
     body: JSON.stringify({
       message,
       sessionId: options.sessionId,
-      messages: history.slice(-20).map((m) => ({
-        role: m.sender === 'user' ? 'user' : 'assistant',
-        content: m.text,
-      })),
+      messages: buildHistoryPayload(history),
     }),
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     const fallback = response.status === 429
-      ? 'CineBot đang bận. Thử lại sau.'
-      : 'Không thể kết nối CineBot. Vui lòng thử lại.';
-    throw new Error(errorData?.text || fallback);
+      ? 'CineBot đang bận. Bạn chờ chút rồi hỏi lại nhé.'
+      : 'Chưa kết nối được CineBot. Bạn thử lại nhé.';
+    if (response.status === 429) {
+      const detail = typeof errorData?.detail === 'string' ? errorData.detail.trim() : '';
+      throw new Error(detail || fallback);
+    }
+    const serverMessage =
+      (typeof errorData?.text === 'string' && errorData.text.trim()) ||
+      (typeof errorData?.detail === 'string' && errorData.detail.trim()) ||
+      (typeof errorData?.message === 'string' && errorData.message.trim()) ||
+      '';
+    throw new Error(serverMessage || fallback);
   }
 
   if (!response.headers?.get('Content-Type')?.toLowerCase().includes('text/event-stream')) {
@@ -114,25 +164,29 @@ export async function sendChatMessage(
           else if (line.startsWith('data:')) lines.push(line.slice(5).replace(/^ /, ''));
         }
         if (!lines.length) continue;
-        let data;
-        try { data = JSON.parse(lines.join('\n')); } catch { throw new Error('Phản hồi CineBot không hợp lệ.'); }
+        let payload;
+        try { payload = JSON.parse(lines.join('\n')); } catch { throw new Error('Phản hồi CineBot không hợp lệ.'); }
         if (type === 'metadata') {
-          result = { ...parseResponse(data, false), text: result.text };
+          result = { ...parseResponse(payload, false), text: result.text };
         } else if (type === 'token') {
-          if (!data || typeof data.text !== 'string') throw new Error('Phản hồi CineBot không hợp lệ.');
-          result = { ...result, text: result.text + data.text };
+          if (!payload || typeof payload.text !== 'string') throw new Error('Phản hồi CineBot không hợp lệ.');
+          result = { ...result, text: result.text + payload.text };
           if (result.text.length > 128_000) throw new Error('Phản hồi CineBot vượt giới hạn.');
         } else if (type === 'done') {
-          result = parseResponse(data, true);
+          result = parseResponse(payload, true);
           completed = true;
         } else if (type === 'error') {
-          throw new Error(typeof data?.text === 'string' ? data.text : 'CineBot không thể hoàn tất phản hồi.');
+          const streamErrorText =
+            (typeof payload?.text === 'string' && payload.text.trim()) ||
+            (typeof payload?.detail === 'string' && payload.detail.trim()) ||
+            '';
+          throw new Error(streamErrorText || 'CineBot chưa trả lời trọn vẹn. Bạn thử lại nhé.');
         } else continue;
         options.onUpdate?.(result);
         if (completed) break;
       }
       if (buffer.length > 256_000) throw new Error('Phản hồi CineBot vượt giới hạn.');
-      if (done && !completed) throw new Error('Luồng phản hồi CineBot bị gián đoạn. Vui lòng thử lại.');
+      if (done && !completed) throw new Error('Kết nối với CineBot bị gián đoạn. Bạn hỏi lại nhé.');
     }
     return result;
   } finally {

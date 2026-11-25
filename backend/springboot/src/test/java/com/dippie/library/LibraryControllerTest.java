@@ -40,6 +40,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// Test tích hợp cho tủ phim cá nhân (xem sau, yêu thích, chấm điểm), gồm cả tình huống bấm thêm trùng lúc hai luồng chạy song song.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -124,21 +125,21 @@ class LibraryControllerTest {
         for (String endpoint : List.of("/api/users/watchlist", "/api/users/favorites", "/api/users/ratings")) {
             mockMvc.perform(get(endpoint))
                     .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                    .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
             mockMvc.perform(get(endpoint).header(HttpHeaders.AUTHORIZATION, "Bearer " + grantToken))
                     .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                    .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
             mockMvc.perform(post(endpoint)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"movieId\":\"the-last-orbit\",\"rating\":8}"))
                     .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                    .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
             mockMvc.perform(delete(endpoint + "/the-last-orbit"))
                     .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                    .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
         }
     }
 
@@ -149,7 +150,7 @@ class LibraryControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"movieId\":\"the-last-orbit\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Đã thêm phim vào danh sách xem sau"))
+                .andExpect(jsonPath("$.message").value("Đã thêm vào danh sách xem sau."))
                 .andExpect(jsonPath("$.data.movieId").value("the-last-orbit"))
                 .andExpect(jsonPath("$.data.movieTitle").value("The Last Orbit"))
                 .andExpect(jsonPath("$.data.posterUrl").value("https://cdn/orbit.jpg"))
@@ -173,7 +174,7 @@ class LibraryControllerTest {
         mockMvc.perform(delete("/api/users/watchlist/the-last-orbit")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Đã xóa phim khỏi danh sách xem sau"));
+                .andExpect(jsonPath("$.message").value("Đã xóa khỏi danh sách xem sau."));
 
         mockMvc.perform(get("/api/users/watchlist").header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
@@ -184,26 +185,26 @@ class LibraryControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"movieId\":\"   \"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Movie ID is required"));
+                .andExpect(jsonPath("$.message").value("Bạn chưa chọn phim."));
 
         mockMvc.perform(post("/api/users/favorites")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"movieId\":\"draft-series\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Phim không tồn tại trong danh mục: draft-series"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy phim: draft-series"));
 
         mockMvc.perform(post("/api/users/favorites")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"movieId\":\"spirited-away\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Đã thêm phim vào danh sách yêu thích"));
+                .andExpect(jsonPath("$.message").value("Đã thêm vào danh sách yêu thích."));
 
         mockMvc.perform(delete("/api/users/favorites/spirited-away")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Đã xóa phim khỏi danh sách yêu thích"));
+                .andExpect(jsonPath("$.message").value("Đã xóa khỏi danh sách yêu thích."));
     }
 
     @ParameterizedTest
@@ -281,7 +282,7 @@ class LibraryControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.message").value("Điểm đánh giá phải từ 1 đến 10"));
+                    .andExpect(jsonPath("$.message").value("Điểm đánh giá cần từ 1 đến 10."));
         }
 
         mockMvc.perform(post("/api/users/ratings")
@@ -289,14 +290,14 @@ class LibraryControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"movieId\":\"draft-series\",\"rating\":9}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Phim không tồn tại trong danh mục: draft-series"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy phim: draft-series"));
 
         mockMvc.perform(post("/api/users/ratings")
                         .header(HttpHeaders.AUTHORIZATION, authHeader)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"movieId\":\"the-last-orbit\",\"rating\":7}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Đã ghi nhận đánh giá phim"))
+                .andExpect(jsonPath("$.message").value("Đã lưu đánh giá của bạn."))
                 .andExpect(jsonPath("$.data.rating").value(7));
 
         mockMvc.perform(post("/api/users/ratings")
@@ -314,7 +315,7 @@ class LibraryControllerTest {
         mockMvc.perform(delete("/api/users/ratings/the-last-orbit")
                         .header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Đã xóa đánh giá phim"));
+                .andExpect(jsonPath("$.message").value("Đã xóa đánh giá của bạn."));
 
         mockMvc.perform(get("/api/users/ratings").header(HttpHeaders.AUTHORIZATION, authHeader))
                 .andExpect(status().isOk())

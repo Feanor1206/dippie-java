@@ -34,6 +34,7 @@ import org.springframework.test.context.TestConstructor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+// Bộ test MockMvc cho đăng ký, đăng nhập, /api/auth/me, giới hạn tần suất và đăng ký trùng song song.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -68,13 +69,15 @@ class AuthControllerTest {
         userRepository.deleteAll();
     }
 
+    // Đăng ký phải giữ nguyên khoảng trắng đầu/cuối trong mật khẩu, và đăng nhập được bằng cả username lẫn email.
     @Test
     void registersUserPreservingRawPasswordAndAllowsLoginByUsernameAndEmail() throws Exception {
         Map<String, Object> registerPayload = Map.of(
                 "username", "viewer",
                 "email", "viewer@example.com",
                 "password", " abcdef ",
-                "fullName", "Viewer One"
+                "fullName", "Viewer One",
+                "acceptedTerms", true
         );
 
         MvcResult registerResult = mockMvc.perform(post("/api/auth/register")
@@ -132,6 +135,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.username").value("viewer"));
     }
 
+    // Trùng username hay trùng email đều trả chung một câu lỗi để tránh dò tài khoản, đồng thời cấm @ trong username.
     @Test
     void rejectsDuplicateUsernameAndEmail() throws Exception {
         registerUser("alice", "alice@example.com", "secret123");
@@ -141,24 +145,39 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "alice",
                                 "email", "other@example.com",
-                                "password", "secret123"
+                                "password", "secret123",
+                                "acceptedTerms", true
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Tên đăng nhập đã tồn tại!"));
+                .andExpect(jsonPath("$.message").value(AuthService.DUPLICATE_ACCOUNT_MESSAGE));
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "bob",
                                 "email", "alice@example.com",
-                                "password", "secret123"
+                                "password", "secret123",
+                                "acceptedTerms", true
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Email đã được sử dụng!"));
+                .andExpect(jsonPath("$.message").value(AuthService.DUPLICATE_ACCOUNT_MESSAGE));
+
+        // Cấm @ trong username để lúc đăng nhập không bị nhầm với email của người khác.
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "username", "bob@example.com",
+                                "email", "bob2@example.com",
+                                "password", "secret123",
+                                "acceptedTerms", true
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
     }
 
+    // Kiểm tra các mốc biên độ dài của username, mật khẩu (kể cả giới hạn 72 byte UTF-8), email và họ tên.
     @Test
     void rejectsInvalidRegistrationBoundaries() throws Exception {
         mockMvc.perform(post("/api/auth/register")
@@ -166,37 +185,41 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "ab",
                                 "email", "ab@example.com",
-                                "password", "secret123"
+                                "password", "secret123",
+                                "acceptedTerms", true
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Tên đăng nhập phải từ 3 đến 50 ký tự"));
+                .andExpect(jsonPath("$.message").value("Tên đăng nhập cần dài từ 3 đến 50 ký tự."));
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "shortpw",
                                 "email", "short@example.com",
-                                "password", "12345"
+                                "password", "12345",
+                                "acceptedTerms", true
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Mật khẩu phải có ít nhất 6 ký tự"));
+                .andExpect(jsonPath("$.message").value("Mật khẩu cần ít nhất 6 ký tự."));
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "longpw",
                                 "email", "longpw@example.com",
-                                "password", "ế".repeat(25)
+                                "password", "ế".repeat(25),
+                                "acceptedTerms", true
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Mật khẩu được dùng tối đa 72 byte UTF-8."));
+                .andExpect(jsonPath("$.message").value("Mật khẩu không được dài quá 72 byte UTF-8."));
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "longmail",
                                 "email", "x".repeat(101) + "@example.com",
-                                "password", "secret123"
+                                "password", "secret123",
+                                "acceptedTerms", true
                         ))))
                 .andExpect(status().isBadRequest());
 
@@ -206,11 +229,13 @@ class AuthControllerTest {
                                 "username", "longname",
                                 "email", "longname@example.com",
                                 "password", "secret123",
-                                "fullName", "x".repeat(101)
+                                "fullName", "x".repeat(101),
+                                "acceptedTerms", true
                         ))))
                 .andExpect(status().isBadRequest());
     }
 
+    // Nhập sai mật khẩu hoặc gửi mật khẩu vượt 72 byte UTF-8 lúc đăng nhập đều trả 401.
     @Test
     void rejectsWrongPasswordAndOverlongPasswordOnLoginWith401() throws Exception {
         registerUser("alice", "alice@example.com", "secret123");
@@ -223,7 +248,7 @@ class AuthControllerTest {
                         ))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Sai tên đăng nhập hoặc mật khẩu"));
+                .andExpect(jsonPath("$.message").value("Tên đăng nhập hoặc mật khẩu chưa đúng."));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -232,22 +257,23 @@ class AuthControllerTest {
                                 "password", "ế".repeat(25)
                         ))))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Sai tên đăng nhập hoặc mật khẩu"));
+                .andExpect(jsonPath("$.message").value("Tên đăng nhập hoặc mật khẩu chưa đúng."));
     }
 
+    // /api/auth/me phải từ chối request không token, vé phát video, token ký bằng khóa cũ và token của user đã bị xóa.
     @Test
     void rejectsUnauthenticatedForgedPlaybackGrantAndDeletedUserOnMe() throws Exception {
         String token = registerUser("alice", "alice@example.com", "secret123");
 
         mockMvc.perform(get("/api/auth/me"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
         String playbackGrant = jwtService.issuePlaybackGrant("asset-1", "alice", Role.ROLE_USER);
         mockMvc.perform(get("/api/auth/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + playbackGrant))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
         String forged = Jwts.builder()
                 .subject("alice")
@@ -258,15 +284,16 @@ class AuthControllerTest {
         mockMvc.perform(get("/api/auth/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + forged))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
         userRepository.deleteAll();
         mockMvc.perform(get("/api/auth/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
     }
 
+    // Vượt ngưỡng 30 lần thử sẽ nhận 429 kèm Retry-After, trong khi /api/health vẫn mở để probe hoạt động.
     @Test
     void enforcesRateLimitWithRetryAfterWhileHealthStaysAvailable() throws Exception {
         for (int attempt = 0; attempt < 30; attempt++) {
@@ -282,7 +309,7 @@ class AuthControllerTest {
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists(HttpHeaders.RETRY_AFTER))
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Bạn đã thử đăng nhập quá nhiều lần. Vui lòng chờ một phút."))
+                .andExpect(jsonPath("$.message").value("Bạn đã thử quá nhiều lần. Hãy đợi một phút rồi thử lại."))
                 .andReturn();
 
         int retryAfter = Integer.parseInt(limited.getResponse().getHeader(HttpHeaders.RETRY_AFTER));
@@ -294,15 +321,17 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.status").value("UP"))
                 .andExpect(jsonPath("$.data.service").value("Dippie MovieRCM Backend"))
                 .andExpect(jsonPath("$.data.version").value("1.0.0"))
-                .andExpect(jsonPath("$.message").value("Dịch vụ đang hoạt động."));
+                .andExpect(jsonPath("$.message").value("Hệ thống đang hoạt động."));
     }
 
+    // Hai request đăng ký cùng username/email bắn song song phải cho đúng một 201 và một 400 (không văng 500).
     @Test
     void concurrentDuplicateRegistrationReturnsOne201AndOne400() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of(
                 "username", "parallel",
                 "email", "parallel@example.com",
-                "password", "abcdef"
+                "password", "abcdef",
+                "acceptedTerms", true
         ));
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             Callable<Integer> call = () -> mockMvc.perform(post("/api/auth/register")
@@ -326,7 +355,8 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", username,
                                 "email", email,
-                                "password", password
+                                "password", password,
+                                "acceptedTerms", true
                         ))))
                 .andExpect(status().isCreated())
                 .andReturn();

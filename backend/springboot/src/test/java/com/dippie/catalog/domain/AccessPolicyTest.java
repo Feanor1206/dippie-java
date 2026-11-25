@@ -7,6 +7,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+// Test parse chuỗi AccessPolicy (rỗng về PUBLIC, chuỗi lạ về UNKNOWN) và ma trận phân quyền cho từng nhóm người xem.
 class AccessPolicyTest {
 
     @ParameterizedTest
@@ -23,6 +24,7 @@ class AccessPolicyTest {
         assertThat(AccessPolicy.of(raw)).isEqualTo(expected);
     }
 
+    // Kiểm tra đủ 4 tổ hợp: khách, user thường, admin đã đăng nhập và cờ admin nhưng chưa xác thực.
     @ParameterizedTest
     @CsvSource({
             "PUBLIC, true, true, true, true",

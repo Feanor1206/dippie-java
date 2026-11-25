@@ -1,14 +1,19 @@
 package com.dippie.assistant.search;
 
+import com.dippie.catalog.domain.CatalogImportedEvent;
 import com.dippie.catalog.importing.CatalogDocument;
 import com.dippie.catalog.importing.CatalogImportService;
-import com.dippie.catalog.importing.CatalogImportedEvent;
+import com.dippie.security.JwtService;
+import com.dippie.security.Role;
+import com.dippie.user.User;
+import com.dippie.user.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -26,6 +31,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// Bài test tích hợp kiểm tra API trạng thái trợ lý, nạp gói dữ liệu mẫu và đối chiếu kết quả xếp hạng trên /v1/search với /v1/discover.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -37,20 +43,38 @@ class CatalogSearchParityTest {
     private final ObjectMapper mapper;
     private final CatalogImportService imports;
     private final ApplicationEventPublisher events;
+    private final UserRepository userRepository;
+    private final JwtService jwtService;
 
     CatalogSearchParityTest(MockMvc mvc, ObjectMapper mapper, CatalogImportService imports,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events, UserRepository userRepository, JwtService jwtService) {
         this.mvc = mvc;
         this.mapper = mapper;
         this.imports = imports;
         this.events = events;
+        this.userRepository = userRepository;
+        this.jwtService = jwtService;
     }
 
     @Test
-    void matchesPythonRankingsAfterImportAndReportsSnapshotReadiness() throws Exception {
+    void matchesCatalogRankingsAfterImportAndReportsSnapshotReadiness() throws Exception {
+        userRepository.deleteAll();
+        User admin = userRepository.saveAndFlush(new User(
+                "parity_admin", "parity.admin@dippie.com", "pw", "Admin",
+                Role.ROLE_ADMIN, LocalDateTime.of(2026, 1, 1, 0, 0)
+        ));
+        String adminAuthHeader = "Bearer " + jwtService.issueLoginToken(admin.getUsername(), admin.getTokenVersion());
+
+        // Khách chưa đăng nhập chỉ xem được cờ searchReady, không thấy llmProvider hay tổng số tài liệu nội bộ.
         mvc.perform(get("/api/assistant/status"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.mode").doesNotExist())
+                .andExpect(jsonPath("$.data.llmProvider").isEmpty())
+                .andExpect(jsonPath("$.data.searchReady").value(true))
+                .andExpect(jsonPath("$.data.documents").isEmpty());
+
+        mvc.perform(get("/api/assistant/status").header(HttpHeaders.AUTHORIZATION, adminAuthHeader))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.llmProvider").value("template"))
                 .andExpect(jsonPath("$.data.searchReady").value(true))
                 .andExpect(jsonPath("$.data.documents").value(0));
@@ -67,7 +91,7 @@ class CatalogSearchParityTest {
         try (var input = getClass().getResourceAsStream("/search-parity/jadoo-larva.json")) {
             fixture = mapper.readTree(input);
         }
-        mvc.perform(get("/api/assistant/status"))
+        mvc.perform(get("/api/assistant/status").header(HttpHeaders.AUTHORIZATION, adminAuthHeader))
                 .andExpect(jsonPath("$.data.searchReady").value(true))
                 .andExpect(jsonPath("$.data.documents").value(fixture.path("documents").intValue()));
 
@@ -111,18 +135,19 @@ class CatalogSearchParityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.results[0].title").value("Nhảy múa trong mưa"))
                 .andExpect(jsonPath("$.followUps[0]").isString())
-                .andExpect(jsonPath("$.explanation").value("Đã tìm trong catalog hiện tại."));
+                .andExpect(jsonPath("$.explanation").value("Đã tìm trong kho phim hiện có."));
     }
 
     @Test
     void rejectsBlankAndInvalidDiscoverRequests() throws Exception {
         mvc.perform(post("/v1/search").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\" \"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value("Thiếu trường query."));
+                .andExpect(jsonPath("$.detail").value("Nội dung tìm kiếm đang bị bỏ trống."));
         mvc.perform(post("/v1/discover").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"query\":\"Larva\",\"constraints\":{\"year_min\":\"2011\"}}"))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.detail[0].loc[2]").value("year_min"));
+                .andExpect(jsonPath("$.detail[0].loc[2]").value("year_min"))
+                .andExpect(jsonPath("$.detail[0].msg").value("Giá trị này phải là số nguyên."));
         mvc.perform(post("/v1/discover").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"query\":\"Larva\",\"limit\":null,\"extra\":true}"))
                 .andExpect(status().isUnprocessableEntity())

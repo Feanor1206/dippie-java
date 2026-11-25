@@ -17,6 +17,7 @@ import org.hibernate.annotations.OnDeleteAction;
 import java.util.Locale;
 import java.util.Objects;
 
+// Tài nguyên video hoặc âm thanh gắn với tập phim (kế thừa CatalogRecord), có cột related_asset_id tự nối tới bản gốc cho track lồng tiếng hay thuyết minh.
 @Entity
 @Table(name = "catalog_media_assets")
 @Check(name = "ck_catalog_asset_policy", constraints = "access_policy IN ('private', 'authenticated', 'public')")
@@ -94,6 +95,7 @@ public class CatalogMediaAsset extends CatalogRecord {
     protected CatalogMediaAsset() {
     }
 
+    // Nạp lại thông tin lưu trữ, kỹ thuật và policy khi re-import; ngôn ngữ nói, phụ đề nhúng và relatedAssetId giữ nguyên.
     public void applyImport(CatalogMediaAsset imported) {
         replaceRecordFrom(imported);
         contentType = imported.contentType;
@@ -117,6 +119,7 @@ public class CatalogMediaAsset extends CatalogRecord {
         relatedAssetId = assetId;
     }
 
+    // Ép mặc định contentType = video, role = feature, accessPolicy = public nếu null để qua các ràng buộc @Check dưới DB.
     public CatalogMediaAsset(String id, String contentType, String role, String editionLabel,
             String spokenLanguagesJson, String embeddedSubtitleLanguagesJson, String storageProvider, String storageKey,
             String relativePath, String driveFileId, String driveFolderId, Long sizeBytes, String sha256,
@@ -215,17 +218,20 @@ public class CatalogMediaAsset extends CatalogRecord {
         return enabled;
     }
 
+    // Media chỉ mở được khi đang bật (enabled), thỏa AccessPolicy, và hoặc là admin đã đăng nhập hoặc bản ghi đã xuất bản.
     public boolean isAccessibleBy(boolean authenticated, boolean admin) {
         return enabled
                 && ((authenticated && admin) || PublicationStatus.of(getRecordJson()).isPublished())
                 && AccessPolicy.of(accessPolicy).allows(authenticated, admin);
     }
 
+    // Phân biệt file video chính của tập với các track phụ như dub hoặc audio_description.
     public boolean isEpisodeVideo() {
         return "video".equalsIgnoreCase(contentType)
                 && !"dub".equalsIgnoreCase(role) && !"audio_description".equalsIgnoreCase(role);
     }
 
+    // Đọc mảng coverageJson để xem file này có bao phủ nguyên tập (scope = full_episode) đúng với episodeId truyền vào không.
     public boolean coversFullEpisode(String episodeId) {
         if (episodeId == null) {
             return false;

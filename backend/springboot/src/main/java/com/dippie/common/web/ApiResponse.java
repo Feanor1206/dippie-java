@@ -3,6 +3,7 @@ package com.dippie.common.web;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
+// Khung phản hồi JSON dùng chung cho toàn bộ API, gom các hàm khởi tạo tĩnh ok/failure và luôn gắn timestamp theo UTC.
 public record ApiResponse<T>(boolean success, String message, T data, LocalDateTime timestamp) {
 
     private static final String DEFAULT_SUCCESS_MESSAGE = "Thành công";

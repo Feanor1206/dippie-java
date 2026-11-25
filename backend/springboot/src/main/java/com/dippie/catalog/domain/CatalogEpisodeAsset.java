@@ -15,6 +15,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.io.Serializable;
 
+// Liên kết nhiều-nhiều giữa tập phim và file media; xóa tập hoặc xóa media thì DB tự cascade xóa dòng nối.
 @Entity
 @Table(name = "catalog_episode_assets",
         indexes = {
@@ -51,14 +52,7 @@ public class CatalogEpisodeAsset {
         this.mediaAssetId = mediaAssetId;
     }
 
-    public String getEpisodeId() {
-        return episodeId;
-    }
-
-    public String getMediaAssetId() {
-        return mediaAssetId;
-    }
-
+    // Cặp khóa ghép (episodeId, mediaAssetId) dùng cho @IdClass.
     public record Key(String episodeId, String mediaAssetId) implements Serializable {
     }
 }

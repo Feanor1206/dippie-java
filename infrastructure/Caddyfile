@@ -1,0 +1,57 @@
+# Cấu hình reverse proxy Caddy 2 cho Dippie.
+# Nếu đặt DOMAIN (ví dụ: dippie.example.com), Caddy tự cấp và gia hạn HTTPS (Let's Encrypt / ZeroSSL).
+# Nếu để trống DOMAIN, Caddy chạy HTTP trên cổng 80 cho localhost.
+# Header HSTS chỉ gửi khi kết nối đi qua HTTPS.
+
+{$DOMAIN::80} {
+	# Header bảo mật chung cho mọi phản hồi
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://i.ytimg.com https://img.youtube.com https://*.ytimg.com; font-src 'self' data:; frame-src 'self' https://www.youtube-nocookie.com https://www.youtube.com; connect-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' blob:; worker-src 'self' blob:"
+	}
+
+	# Chỉ bật HSTS khi kết nối là HTTPS để không khóa trình duyệt ở http://localhost
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# Luồng SSE của CineBot: tắt nén và đẩy từng sự kiện ra ngay không đệm
+	handle /api/chat {
+		request_body {
+			max_size 2MB
+		}
+		reverse_proxy app:3000 {
+			flush_interval -1
+			transport http {
+				read_timeout 180s
+				write_timeout 180s
+			}
+		}
+	}
+
+	# Các endpoint nhập và kiểm tra gói danh mục JSON cỡ lớn
+	handle /api/admin/catalog/* {
+		request_body {
+			max_size 25MB
+		}
+		encode zstd gzip
+		reverse_proxy app:3000 {
+			transport http {
+				read_timeout 180s
+				write_timeout 180s
+			}
+		}
+	}
+
+	# Toàn bộ giao diện SPA, tài nguyên tĩnh, media và API còn lại
+	handle {
+		request_body {
+			max_size 2MB
+		}
+		encode zstd gzip
+		reverse_proxy app:3000
+	}
+}

@@ -10,6 +10,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+// Test đơn vị cho WatchProgressCommand, chặn mấy kiểu JSON hay bị Jackson âm thầm ép kiểu như boolean, số thập phân hay chuỗi số.
 class WatchProgressCommandTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -38,7 +39,7 @@ class WatchProgressCommandTest {
         JsonNode node = mapper.readTree(json);
         assertThatThrownBy(() -> WatchProgressCommand.from(node))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Dữ liệu tiến độ xem không hợp lệ.");
+                .hasMessage("Thông tin tiến độ xem chưa hợp lệ.");
     }
 
     @ParameterizedTest
@@ -54,7 +55,7 @@ class WatchProgressCommandTest {
         JsonNode node = mapper.readTree(json);
         assertThatThrownBy(() -> WatchProgressCommand.from(node))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Cần mã video và phiên bản tiến độ xem.");
+                .hasMessage("Thiếu mã video hoặc phiên bản tiến độ xem.");
     }
 
     @ParameterizedTest
@@ -76,7 +77,7 @@ class WatchProgressCommandTest {
         JsonNode node = mapper.readTree("{\"assetId\":\"ast-1\",\"expectedVersion\":-2,\"positionMs\":0}");
         assertThatThrownBy(() -> WatchProgressCommand.from(node))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Dùng phiên bản -1 khi tạo mới hoặc phiên bản hiện tại khi cập nhật.");
+                .hasMessage("Phiên bản cần là -1 khi lưu lần đầu hoặc khớp phiên bản hiện tại khi cập nhật.");
     }
 
     @ParameterizedTest
@@ -95,6 +96,6 @@ class WatchProgressCommandTest {
         JsonNode node = mapper.readTree(json);
         assertThatThrownBy(() -> WatchProgressCommand.from(node))
                 .isInstanceOf(InvalidRequestException.class)
-                .hasMessage("Vị trí xem phải là số nguyên từ 0 đến 24 giờ, tính bằng mili giây.");
+                .hasMessage("Thời điểm xem phải là số nguyên từ 0 đến 24 giờ, tính bằng mili giây.");
     }
 }

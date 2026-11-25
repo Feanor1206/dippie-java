@@ -14,6 +14,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+// Bộ ca test cho IntentParser: tách thể loại cần/tránh, mốc năm, số lượng, hỏi thông tin bộ phim, câu chỉnh bộ lọc và JSON snake_case.
 class IntentParserTest {
 
     private final IntentParser parser = new IntentParser();
@@ -40,11 +41,11 @@ class IntentParserTest {
                 Arguments.of("recommend_basic", "gợi ý phim hoạt hình gia đình", List.of(),
                         intent("DISCOVERY", "recommend", "episode", "gợi ý phim hoạt hình gia đình",
                                 mapOf("include_genres", List.of("animation", "family")),
-                                8, null, List.of("animation", "family"), List.of(), false, "cheerful")),
+                                6, null, List.of("animation", "family"), List.of(), false, "cheerful")),
                 Arguments.of("recommend_en", "recommend comedy animation", List.of(),
                         intent("DISCOVERY", "recommend", "episode", "recommend comedy animation",
                                 mapOf("include_genres", List.of("animation", "comedy")),
-                                8, null, List.of("animation", "comedy"), List.of(), false, "cheerful")),
+                                6, null, List.of("animation", "comedy"), List.of(), false, "cheerful")),
                 Arguments.of("genre_include_exclude", "tìm phim hoạt hình hài hước không kinh dị và tránh lãng mạn", List.of(),
                         intent("DISCOVERY", "recommend", "episode", "tìm phim hoạt hình hài hước không kinh dị và tránh lãng mạn",
                                 mapOf("include_genres", List.of("animation", "comedy"), "exclude_genres", List.of("horror", "romance")),
@@ -133,7 +134,7 @@ class IntentParserTest {
                                 Map.of(), 1, null, List.of(), List.of(), false, "cheerful")),
                 Arguments.of("series_blocked_by_recommend", "gợi ý phim có bao nhiêu tập", List.of(),
                         intent("DISCOVERY", "recommend", "episode", "gợi ý phim có bao nhiêu tập",
-                                Map.of(), 8, null, List.of(), List.of(), false, "cheerful")),
+                                Map.of(), 6, null, List.of(), List.of(), false, "cheerful")),
                 Arguments.of("mood_cheerful", "hôm nay tôi stress căng thẳng quá", List.of(),
                         intent("DISCOVERY", "recommend", "episode", "hôm nay tôi stress căng thẳng quá",
                                 Map.of(), 1, null, List.of(), List.of(), true, "cheerful")),
@@ -157,7 +158,7 @@ class IntentParserTest {
                         ),
                         intent("CONVERSATIONAL_PATCH", "recommend", "episode", "gợi ý phim hoạt hình không kinh dị",
                                 mapOf("include_genres", List.of("animation"), "exclude_genres", List.of("horror")),
-                                8, null, List.of("animation"), List.of("horror"), false, "cheerful")),
+                                6, null, List.of("animation"), List.of("horror"), false, "cheerful")),
                 Arguments.of("patch_non_matching_prefix", "trước 2018",
                         List.of(
                                 new ChatHistoryMessage("user", "tìm phim hoạt hình"),
@@ -183,7 +184,7 @@ class IntentParserTest {
                         ),
                         intent("CONVERSATIONAL_PATCH", "recommend", "episode", "gợi ý phim gia đình bỏ kinh dị",
                                 mapOf("include_genres", List.of("family"), "exclude_genres", List.of("horror")),
-                                8, null, List.of("family"), List.of("horror"), false, "cheerful")),
+                                6, null, List.of("family"), List.of("horror"), false, "cheerful")),
                 Arguments.of("patch_duplicate_query_ignored", "không kinh dị",
                         List.of(new ChatHistoryMessage("user", "không kinh dị")),
                         intent("DISCOVERY", "find_moment", "episode", "không kinh dị",
@@ -217,7 +218,7 @@ class IntentParserTest {
         assertThat(json.get("mode").asText()).isEqualTo("recommend");
         assertThat(json.get("scope").asText()).isEqualTo("episode");
         assertThat(json.get("semantic_query").asText()).isEqualTo("gợi ý phim hoạt hình từ 2010 đến 2020 không kinh dị");
-        assertThat(json.get("requested_k").asInt()).isEqualTo(8);
+        assertThat(json.get("requested_k").asInt()).isEqualTo(6);
         assertThat(json.get("series_info").isNull()).isTrue();
         assertThat(json.get("include_genres").get(0).asText()).isEqualTo("animation");
         assertThat(json.get("exclude_genres").get(0).asText()).isEqualTo("horror");

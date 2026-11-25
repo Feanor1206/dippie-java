@@ -1,6 +1,7 @@
 package com.dippie.movie;
 
 import com.dippie.catalog.domain.CatalogEpisode;
+import com.dippie.catalog.domain.CatalogEpisodeAsset;
 import com.dippie.catalog.domain.CatalogEpisodeRepository;
 import com.dippie.catalog.domain.CatalogMediaAsset;
 import com.dippie.catalog.domain.CatalogMediaAssetRepository;
@@ -19,14 +20,19 @@ import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -35,6 +41,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// Test tích hợp cho MovieController: lọc thể loại bảng nối lẫn cột CSV cũ, ẩn phim nháp, tìm tiếng Việt và kiểm tra số câu SQL không phình theo dữ liệu.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -43,6 +50,9 @@ class MovieControllerTest {
 
     private static final String READY = "{\"status\":\"ready\"}";
     private static final String DRAFT = "{\"status\":\"draft\"}";
+
+    @TempDir
+    static Path mediaRoot;
 
     private final MockMvc mockMvc;
     private final ObjectMapper objectMapper;
@@ -85,8 +95,14 @@ class MovieControllerTest {
         this.cache = cache;
     }
 
+    @DynamicPropertySource
+    static void configureMediaRoot(DynamicPropertyRegistry registry) {
+        registry.add("dippie.media.root", () -> mediaRoot.toString());
+    }
+
     @BeforeEach
     void setUp() {
+        transactions.executeWithoutResult(status -> entityManager.createQuery("delete from CatalogEpisodeAsset").executeUpdate());
         mediaAssetRepository.deleteAll();
         episodeRepository.deleteAll();
         seasonRepository.deleteAll();
@@ -111,22 +127,23 @@ class MovieControllerTest {
                     new MovieGenre("mismatch", "Comedy")).forEach(entityManager::merge);
         });
 
+        // Đo số câu SQL trước và sau khi bơm thêm 160 phim để chắc chắn bộ lọc không dính lỗi N+1
         Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
         boolean previouslyEnabled = statistics.isStatisticsEnabled();
         statistics.setStatisticsEnabled(true);
         try {
-            browseFilteredPage(2);
+            browseFilteredPage(2, "linked");
             long before = statistics.getPrepareStatementCount();
-            browseFilteredPage(2);
-            long small = statistics.getPrepareStatementCount() - before;
+            browseFilteredPage(2, "linked");
+            long baselineQueries = statistics.getPrepareStatementCount() - before;
 
             movieRepository.saveAll(IntStream.range(0, 160)
                     .mapToObj(i -> movie("legacy-" + i, "100% film " + i, 2024, 7.0, "Family, Science Fiction", null))
                     .toList());
             before = statistics.getPrepareStatementCount();
-            browseFilteredPage(162);
-            assertThat(statistics.getPrepareStatementCount() - before).isEqualTo(small);
-            assertThat(small).isBetween(2L, 4L);
+            browseFilteredPage(162, "legacy-0");
+            assertThat(statistics.getPrepareStatementCount() - before).isEqualTo(baselineQueries);
+            assertThat(baselineQueries).isBetween(2L, 4L);
         } finally {
             statistics.setStatisticsEnabled(previouslyEnabled);
         }
@@ -136,13 +153,13 @@ class MovieControllerTest {
                 .andExpect(jsonPath("$.data[0].id").value("linked"));
     }
 
-    private void browseFilteredPage(int total) throws Exception {
+    private void browseFilteredPage(int total, String expectedId) throws Exception {
         mockMvc.perform(get("/api/movies/browse").param("q", "100%").param("genres", "family,science fiction")
                         .param("yearMin", "2024").param("yearMax", "2024").param("page", "1").param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalElements").value(total))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
-                .andExpect(jsonPath("$.data.items[0].id").value("legacy"));
+                .andExpect(jsonPath("$.data.items[0].id").value(expectedId));
     }
 
     @Test
@@ -309,40 +326,41 @@ class MovieControllerTest {
                         .param("q", "bo bien")
                         .param("size", "1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.totalElements").value(0))
-                .andExpect(jsonPath("$.data.items.length()").value(0));
+                .andExpect(jsonPath("$.data.totalElements").value(2))
+                .andExpect(jsonPath("$.data.items[0].id").value("a"));
     }
 
     @Test
     void browseReturnsValidationErrorsWithExactMessages() throws Exception {
         mockMvc.perform(get("/api/movies/browse").param("page", "-1"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Chỉ số trang (page) không được âm: -1"));
+                .andExpect(jsonPath("$.message").value("Số trang không được nhỏ hơn 0: -1"));
 
         mockMvc.perform(get("/api/movies/browse").param("size", "0"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Kích thước trang (size) phải nằm trong khoảng 1 đến 100: 0"));
+                .andExpect(jsonPath("$.message").value("Số phim mỗi trang phải từ 1 đến 100: 0"));
 
         mockMvc.perform(get("/api/movies/browse").param("size", "101"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Kích thước trang (size) phải nằm trong khoảng 1 đến 100: 101"));
+                .andExpect(jsonPath("$.message").value("Số phim mỗi trang phải từ 1 đến 100: 101"));
 
         mockMvc.perform(get("/api/movies/browse").param("yearMin", "2024").param("yearMax", "2020"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message")
-                        .value("Năm tối thiểu (yearMin: 2024) không được lớn hơn năm tối đa (yearMax: 2020)"));
+                        .value("Năm bắt đầu (2024) không được lớn hơn năm kết thúc (2020)."));
 
         mockMvc.perform(get("/api/movies/browse").param("sort", "views"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Trường sắp xếp không hợp lệ: 'views'"));
+                .andExpect(jsonPath("$.message").value("Kiểu sắp xếp không hỗ trợ: 'views'."));
 
         mockMvc.perform(get("/api/movies/browse").param("direction", "sideways"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Chiều sắp xếp không hợp lệ: 'sideways'"));
+                .andExpect(jsonPath("$.message").value("Thứ tự sắp xếp không hợp lệ: 'sideways'."));
     }
 
     @Test
     void mediaDescriptorSelectsAllowedAssetsAndBuildsLegacyFallbackTrailer() throws Exception {
+        Files.writeString(mediaRoot.resolve("orbit.mp4"), "test video");
         Movie orbit = new Movie(
                 "the-last-orbit",
                 "The Last Orbit",
@@ -356,17 +374,28 @@ class MovieControllerTest {
                 "https://cdn.example.com/orbit-trailer.mp4"
         );
         movieRepository.save(orbit);
+        seriesRepository.save(series("ser-orbit", "The Last Orbit", READY));
+        episodeRepository.save(episode("ep-orbit-1", "ser-orbit", null, 1, READY));
         mediaAssetRepository.saveAll(List.of(
                 new MediaAsset("ast-orbit-feat", "the-last-orbit", "feature", "local", null,
                         "orbit.mp4", "v1", "video/mp4", 2048L, 120.0, true, true),
                 new MediaAsset("ast-orbit-private", "the-last-orbit", "trailer", "local", null,
                         "orbit-trailer.mp4", "v1", "video/mp4", 512L, 30.0, true, true)
         ));
-        catalogMediaAssetRepository.save(new CatalogMediaAsset(
-                "ast-orbit-private", "video", "trailer", null, null, null,
-                "local", "main", "orbit-trailer.mp4", null, null, 512L, null, 30_000L,
-                null, null, null, "private", true, READY, null, 1
+        catalogMediaAssetRepository.saveAll(List.of(
+                new CatalogMediaAsset("ast-orbit-feat", "video", "feature", null, null, null,
+                        "local", "main", "orbit.mp4", null, null, 2048L, null, 120_000L,
+                        null, "[{\"episode_id\":\"ep-orbit-1\",\"scope\":\"full_episode\"}]", null,
+                        "public", true, READY, null, 1),
+                new CatalogMediaAsset("ast-orbit-private", "video", "trailer", null, null, null,
+                        "local", "main", "orbit-trailer.mp4", null, null, 512L, null, 30_000L,
+                        null, "[{\"episode_id\":\"ep-orbit-1\",\"scope\":\"full_episode\"}]", null,
+                        "private", true, READY, null, 1)
         ));
+        transactions.executeWithoutResult(status -> {
+            entityManager.persist(new CatalogEpisodeAsset("ep-orbit-1", "ast-orbit-feat"));
+            entityManager.persist(new CatalogEpisodeAsset("ep-orbit-1", "ast-orbit-private"));
+        });
 
         mockMvc.perform(get("/api/movies/the-last-orbit/media-descriptor"))
                 .andExpect(status().isOk())
@@ -382,7 +411,7 @@ class MovieControllerTest {
 
         mockMvc.perform(get("/api/movies/missing-movie/media-descriptor"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Không tìm thấy phim với mã: missing-movie"));
+                .andExpect(jsonPath("$.message").value("Không tìm thấy phim: missing-movie"));
     }
 
     private static Movie movie(String id, String title, int year, double rating, String genres, String description) {

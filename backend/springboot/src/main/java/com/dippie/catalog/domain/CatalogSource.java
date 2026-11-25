@@ -7,6 +7,7 @@ import org.hibernate.annotations.Check;
 
 import java.time.LocalDateTime;
 
+// Nguồn tham chiếu dữ liệu biên tập (nhập tay, phụ đề, transcript, model_output...), kế thừa khung chung từ CatalogRecord.
 @Entity
 @Table(name = "catalog_sources")
 @Check(name = "ck_catalog_source_kind",
@@ -32,6 +33,7 @@ public class CatalogSource extends CatalogRecord {
     protected CatalogSource() {
     }
 
+    // Chép đè loại nguồn, tiêu đề, đường dẫn, ghi chú và mốc giờ thu thập từ gói mới.
     public void applyImport(CatalogSource imported) {
         replaceRecordFrom(imported);
         kind = imported.kind;
@@ -49,22 +51,6 @@ public class CatalogSource extends CatalogRecord {
         this.uri = uri;
         this.note = note;
         this.retrievedAt = retrievedAt;
-    }
-
-    public String getKind() {
-        return kind;
-    }
-
-    public String getTitle() {
-        return title;
-    }
-
-    public String getUri() {
-        return uri;
-    }
-
-    public String getNote() {
-        return note;
     }
 
     public LocalDateTime getRetrievedAt() {

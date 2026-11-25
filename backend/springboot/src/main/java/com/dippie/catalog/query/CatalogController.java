@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Optional;
 
+// Controller REST cho nhóm API /api/catalog (danh sách bộ phim, chi tiết bộ/tập và tìm kiếm nhanh).
+// Mọi endpoint đều lấy quyền người xem từ CurrentViewer rồi chuyển xuống tầng service lọc dữ liệu.
 @RestController
 @RequestMapping("/api/catalog")
 public class CatalogController {
@@ -36,21 +38,31 @@ public class CatalogController {
         return catalog.listSeriesCards();
     }
 
+    // Lấy chi tiết một bộ phim kèm các mùa và lát cắt tập phim theo offset/limit tùy chọn.
     @GetMapping("/series/{seriesId}")
-    public CatalogQueryService.SeriesDetail seriesDetail(@PathVariable String seriesId) {
-        return catalog.seriesDetail(seriesId, isAdmin(currentViewer.find()));
+    public CatalogQueryService.SeriesDetail seriesDetail(
+            @PathVariable String seriesId,
+            @RequestParam(required = false) Integer episodeOffset,
+            @RequestParam(required = false) Integer episodeLimit
+    ) {
+        return catalog.seriesDetail(seriesId, isAdmin(currentViewer.find()), episodeOffset, episodeLimit);
     }
 
+    // Lấy chi tiết tập phim kèm phân đoạn, tệp video khả dụng, phân cảnh và nguồn phát YouTube.
     @GetMapping("/episodes/{episodeId}")
     public CatalogQueryService.EpisodeDetail episodeDetail(@PathVariable String episodeId) {
         Optional<Viewer> viewer = currentViewer.find();
         return catalog.episodeDetail(episodeId, viewer.isPresent(), isAdmin(viewer));
     }
 
+    // Tìm nhanh trong danh mục theo phạm vi hiển thị của khách, thành viên hoặc quản trị viên.
     @GetMapping("/search")
-    public List<CatalogSearchService.Hit> search(@RequestParam(defaultValue = "") String q) {
+    public List<CatalogSearchService.Hit> search(
+            @RequestParam(defaultValue = "") String q,
+            @RequestParam(required = false) Integer limit
+    ) {
         Optional<Viewer> viewer = currentViewer.find();
-        return search.search(q, viewer.isPresent(), isAdmin(viewer));
+        return search.search(q, viewer.isPresent(), isAdmin(viewer), limit);
     }
 
     private static boolean isAdmin(Optional<Viewer> viewer) {

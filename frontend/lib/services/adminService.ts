@@ -1,3 +1,4 @@
+import { apiFetch, PERMISSION_MESSAGE } from '@/lib/services/apiRequest';
 const API = '/api';
 const DEFAULT_TIMEOUT_MS = 7000;
 
@@ -108,7 +109,7 @@ function buildAuthHeaders(token: string, hasJsonBody = false): Record<string, st
   };
 }
 
-async function executeWithLifecycle<T>(
+async function runAdminRequest<T>(
   action: (signal: AbortSignal) => Promise<T>,
   options: AdminRequestOptions = {}
 ): Promise<T> {
@@ -117,7 +118,7 @@ async function executeWithLifecycle<T>(
     : DEFAULT_TIMEOUT_MS;
 
   if (options.signal?.aborted) {
-    throw new AdminApiError('Yêu cầu đã bị hủy bởi người dùng.', 499, undefined, { isCanceled: true });
+    throw new AdminApiError('Yêu cầu đã được hủy.', 499, undefined, { isCanceled: true });
   }
 
   const controller = new AbortController();
@@ -143,16 +144,16 @@ async function executeWithLifecycle<T>(
     return await action(controller.signal);
   } catch (err: any) {
     if (callerCanceled || options.signal?.aborted) {
-      throw new AdminApiError('Yêu cầu đã bị hủy bởi người dùng.', 499, undefined, { isCanceled: true });
+      throw new AdminApiError('Yêu cầu đã được hủy.', 499, undefined, { isCanceled: true });
     }
     if (timedOut || (err?.name === 'AbortError' && !callerCanceled)) {
-      throw new AdminApiError('Yêu cầu quản trị quá thời gian phản hồi.', 408, undefined, { isTimeout: true });
+      throw new AdminApiError('Yêu cầu quản trị phản hồi chậm.', 408, undefined, { isTimeout: true });
     }
     if (err instanceof AdminApiError) {
       throw err;
     }
     throw new AdminApiError(
-      err?.message ? `Không thể kết nối đến máy chủ quản trị: ${err.message}` : 'Không thể kết nối đến máy chủ quản trị.',
+      err?.message ? `Chưa kết nối được máy chủ quản trị: ${err.message}` : 'Chưa kết nối được máy chủ quản trị.',
       0,
       err
     );
@@ -167,6 +168,7 @@ async function executeWithLifecycle<T>(
 }
 
 async function readEnvelope<T>(res: Response, fallbackLabel: string): Promise<T> {
+  if (res.status === 403) throw new AdminApiError(PERMISSION_MESSAGE, 403);
   if (!res.ok) {
     let errBody: any = null;
     try {
@@ -214,7 +216,7 @@ function normalizeAdminUser(raw: any): AdminUserView {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new AdminApiError('Dữ liệu người dùng không hợp lệ.', 502);
   }
-  const id = parseFiniteNumber(raw.id, 'ID người dùng');
+  const id = parseFiniteNumber(raw.id, 'mã người dùng');
   const username = parseRequiredString(raw.username, 'tên đăng nhập');
   const email = parseRequiredString(raw.email, 'email');
   const role = parseRequiredString(raw.role, 'vai trò');
@@ -236,9 +238,9 @@ function normalizeAdminUser(raw: any): AdminUserView {
 
 function normalizeAuditEvent(raw: any): AdminAuditEventView {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new AdminApiError('Dữ liệu sự kiện kiểm toán không hợp lệ.', 502);
+    throw new AdminApiError('Dữ liệu sự kiện nhật ký không hợp lệ.', 502);
   }
-  const id = parseFiniteNumber(raw.id, 'ID sự kiện');
+  const id = parseFiniteNumber(raw.id, 'mã sự kiện');
   const actorUsername = parseRequiredString(raw.actorUsername, 'người thực hiện');
   const action = parseRequiredString(raw.action, 'hành động');
   const targetType = typeof raw.targetType === 'string' ? raw.targetType.trim() : '';
@@ -290,25 +292,25 @@ function normalizeAdminStats(raw: any): AdminStatsResponse {
   if (!Array.isArray(raw.topWatchedEpisodes) || !Array.isArray(raw.topRatedMovies)) {
     throw new AdminApiError('Dữ liệu bảng xếp hạng thống kê không hợp lệ.', 502);
   }
-  const topWatchedEpisodes: TopWatchedEpisodeView[] = raw.topWatchedEpisodes.map((item: any) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      throw new AdminApiError('Dữ liệu tập phim xem nhiều không hợp lệ.', 502);
+  const topWatchedEpisodes: TopWatchedEpisodeView[] = raw.topWatchedEpisodes.map((episode: any) => {
+    if (!episode || typeof episode !== 'object' || Array.isArray(episode)) {
+      throw new AdminApiError('Dữ liệu tập xem nhiều không hợp lệ.', 502);
     }
     return {
-      episodeId: parseRequiredString(item.episodeId, 'ID tập phim'),
-      title: parseRequiredString(item.title, 'tên tập phim'),
-      viewers: parseFiniteNumber(item.viewers, 'số lượt xem'),
+      episodeId: parseRequiredString(episode.episodeId, 'mã tập'),
+      title: parseRequiredString(episode.title, 'tên tập'),
+      viewers: parseFiniteNumber(episode.viewers, 'số lượt xem'),
     };
   });
-  const topRatedMovies: TopRatedMovieView[] = raw.topRatedMovies.map((item: any) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      throw new AdminApiError('Dữ liệu phim đánh giá cao không hợp lệ.', 502);
+  const topRatedMovies: TopRatedMovieView[] = raw.topRatedMovies.map((movie: any) => {
+    if (!movie || typeof movie !== 'object' || Array.isArray(movie)) {
+      throw new AdminApiError('Dữ liệu phim có điểm cao không hợp lệ.', 502);
     }
     return {
-      movieId: parseRequiredString(item.movieId, 'ID phim'),
-      title: parseRequiredString(item.title, 'tên phim'),
-      averageRating: parseFiniteNumber(item.averageRating, 'điểm trung bình'),
-      ratingCount: parseFiniteNumber(item.ratingCount, 'số lượt đánh giá'),
+      movieId: parseRequiredString(movie.movieId, 'mã phim'),
+      title: parseRequiredString(movie.title, 'tên phim'),
+      averageRating: parseFiniteNumber(movie.averageRating, 'điểm trung bình'),
+      ratingCount: parseFiniteNumber(movie.ratingCount, 'số lượt chấm'),
     };
   });
   return {
@@ -338,10 +340,10 @@ export async function listAdminUsers(
   params.set('size', String(typeof options.size === 'number' && Number.isFinite(options.size) ? options.size : 20));
   const url = `${baseUrl}/admin/users?${params.toString()}`;
 
-  return executeWithLifecycle(async (signal) => {
-    const res = await fetch(url, { method: 'GET', headers, signal });
-    const data = await readEnvelope<any>(res, 'Tải danh sách người dùng');
-    return normalizePageResponse(data, normalizeAdminUser);
+  return runAdminRequest(async (signal) => {
+    const res = await apiFetch(url, { method: 'GET', headers, signal });
+    const payload = await readEnvelope<any>(res, 'Tải danh sách người dùng');
+    return normalizePageResponse(payload, normalizeAdminUser);
   }, options);
 }
 
@@ -353,20 +355,20 @@ export async function updateAdminUserRole(
   baseUrl = API
 ): Promise<AdminUserView> {
   if (!Number.isSafeInteger(userId) || userId <= 0) {
-    throw new AdminApiError('ID người dùng không hợp lệ.', 400);
+    throw new AdminApiError('Mã người dùng không hợp lệ.', 400);
   }
   const headers = buildAuthHeaders(token, true);
   const url = `${baseUrl}/admin/users/${encodeURIComponent(String(userId))}/role`;
 
-  return executeWithLifecycle(async (signal) => {
-    const res = await fetch(url, {
+  return runAdminRequest(async (signal) => {
+    const res = await apiFetch(url, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ role }),
       signal,
     });
-    const data = await readEnvelope<any>(res, 'Cập nhật vai trò người dùng');
-    return normalizeAdminUser(data);
+    const payload = await readEnvelope<any>(res, 'Cập nhật vai trò người dùng');
+    return normalizeAdminUser(payload);
   }, options);
 }
 
@@ -378,20 +380,20 @@ export async function updateAdminUserStatus(
   baseUrl = API
 ): Promise<AdminUserView> {
   if (!Number.isSafeInteger(userId) || userId <= 0) {
-    throw new AdminApiError('ID người dùng không hợp lệ.', 400);
+    throw new AdminApiError('Mã người dùng không hợp lệ.', 400);
   }
   const headers = buildAuthHeaders(token, true);
   const url = `${baseUrl}/admin/users/${encodeURIComponent(String(userId))}/status`;
 
-  return executeWithLifecycle(async (signal) => {
-    const res = await fetch(url, {
+  return runAdminRequest(async (signal) => {
+    const res = await apiFetch(url, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ enabled }),
       signal,
     });
-    const data = await readEnvelope<any>(res, 'Cập nhật trạng thái người dùng');
-    return normalizeAdminUser(data);
+    const payload = await readEnvelope<any>(res, 'Cập nhật trạng thái người dùng');
+    return normalizeAdminUser(payload);
   }, options);
 }
 
@@ -403,10 +405,10 @@ export async function getAdminStats(
   const headers = buildAuthHeaders(token);
   const url = `${baseUrl}/admin/stats`;
 
-  return executeWithLifecycle(async (signal) => {
-    const res = await fetch(url, { method: 'GET', headers, signal });
-    const data = await readEnvelope<any>(res, 'Tải dữ liệu thống kê');
-    return normalizeAdminStats(data);
+  return runAdminRequest(async (signal) => {
+    const res = await apiFetch(url, { method: 'GET', headers, signal });
+    const payload = await readEnvelope<any>(res, 'Tải dữ liệu thống kê');
+    return normalizeAdminStats(payload);
   }, options);
 }
 
@@ -421,9 +423,9 @@ export async function listAdminAuditEvents(
   params.set('size', String(typeof options.size === 'number' && Number.isFinite(options.size) ? options.size : 20));
   const url = `${baseUrl}/admin/audit-events?${params.toString()}`;
 
-  return executeWithLifecycle(async (signal) => {
-    const res = await fetch(url, { method: 'GET', headers, signal });
-    const data = await readEnvelope<any>(res, 'Tải nhật ký kiểm toán');
-    return normalizePageResponse(data, normalizeAuditEvent);
+  return runAdminRequest(async (signal) => {
+    const res = await apiFetch(url, { method: 'GET', headers, signal });
+    const payload = await readEnvelope<any>(res, 'Tải nhật ký hệ thống');
+    return normalizePageResponse(payload, normalizeAuditEvent);
   }, options);
 }

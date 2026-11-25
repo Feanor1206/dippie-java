@@ -5,55 +5,74 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.dippie.catalog.domain.CatalogMediaAsset;
 import com.dippie.common.error.NotFoundException;
+import com.dippie.security.PlaybackPrincipal;
 import com.dippie.security.Role;
 import com.dippie.security.Viewer;
 import org.junit.jupiter.api.Test;
 
+// Kiểm tra quy tắc phân quyền xem video theo danh mục, chuỗi bộ/mùa/tập đã xuất bản và vai trò người xem.
 class PlaybackAccessTest {
 
     private static final String READY = "{\"status\":\"ready\"}";
     private static final String DRAFT = "{\"status\":\"draft\"}";
     private static final Viewer USER = new Viewer(1L, "user", Role.ROLE_USER);
     private static final Viewer ADMIN = new Viewer(2L, "admin", Role.ROLE_ADMIN);
+    private static final PlaybackPrincipal GRANT_USER = new PlaybackPrincipal.Authenticated(Role.ROLE_USER);
+    private static final PlaybackPrincipal GRANT_ADMIN = new PlaybackPrincipal.Authenticated(Role.ROLE_ADMIN);
+    private static final PlaybackPrincipal GRANT_ANON = PlaybackPrincipal.Anonymous.INSTANCE;
 
     private final PlaybackAccess playbackAccess = new PlaybackAccess();
 
     @Test
-    void rejectsMissingOrUnavailableAssetEvenForAdmin() {
-        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("missing", null, null, ADMIN))
+    void rejectsMissingUnavailableOrNonCatalogAssetsEvenForAdmin() {
+        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("missing", null, null, true, ADMIN))
                 .isInstanceOf(NotFoundException.class)
-                .hasMessage("Không tìm thấy tài nguyên media: missing");
+                .hasMessage("Không tìm thấy video: missing");
 
         MediaAsset unavailable = mediaAsset("ast-1", true, false);
-        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-1", unavailable, null, ADMIN, "ROLE_ADMIN"))
+        CatalogMediaAsset catalog = catalogAsset("ast-1", "public", true, READY);
+        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-1", unavailable, catalog, true, ADMIN, GRANT_ADMIN))
                 .isInstanceOf(NotFoundException.class)
-                .hasMessage("Không tìm thấy tài nguyên media: ast-1");
+                .hasMessage("Không tìm thấy video: ast-1");
+
+        // Tệp không nằm trong catalog_media_assets (catalogAsset == null) bị chặn với mọi vai trò, kể cả admin.
+        MediaAsset nonCatalogPublic = mediaAsset("ast-noncat", true, true);
+        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-noncat", nonCatalogPublic, null, false, null))
+                .isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-noncat", nonCatalogPublic, null, false, USER))
+                .isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-noncat", nonCatalogPublic, null, false, ADMIN))
+                .isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-noncat", nonCatalogPublic, null, false, null, GRANT_ADMIN))
+                .isInstanceOf(NotFoundException.class);
     }
 
     @Test
-    void allowsPublicAssetWithoutCatalogRecordForAnonymous() {
+    void rejectsUnpublishedParentChainForAnonymousAndRegularUserButAllowsAdminPreview() {
+        MediaAsset asset = mediaAsset("ast-unpub", true, true);
+        CatalogMediaAsset catalogAsset = catalogAsset("ast-unpub", "public", true, READY);
+
+        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-unpub", asset, catalogAsset, false, null))
+                .isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-unpub", asset, catalogAsset, false, USER))
+                .isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-unpub", asset, catalogAsset, false, null, GRANT_ANON))
+                .isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-unpub", asset, catalogAsset, false, null, GRANT_USER))
+                .isInstanceOf(NotFoundException.class);
+
+        assertThat(playbackAccess.authorizeForGrant("ast-unpub", asset, catalogAsset, false, ADMIN)).isSameAs(asset);
+        assertThat(playbackAccess.authorizeForStream("ast-unpub", asset, catalogAsset, false, null, GRANT_ADMIN))
+                .isSameAs(asset);
+    }
+
+    @Test
+    void allowsPublicCatalogAssetWithPublishedParentForAnonymous() {
         MediaAsset asset = mediaAsset("ast-pub", true, true);
+        CatalogMediaAsset catalogAsset = catalogAsset("ast-pub", "public", true, READY);
 
-        assertThat(playbackAccess.authorizeForGrant("ast-pub", asset, null, null)).isSameAs(asset);
-        assertThat(playbackAccess.authorizeForStream("ast-pub", asset, null, null, null)).isSameAs(asset);
-    }
-
-    @Test
-    void requiresAuthenticatedViewerOrGrantForNonPublicAssetWithoutCatalogRecord() {
-        MediaAsset asset = mediaAsset("ast-nonpub", false, true);
-
-        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-nonpub", asset, null, null))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessage("Không tìm thấy tài nguyên media: ast-nonpub");
-
-        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-nonpub", asset, null, null, "ROLE_ANONYMOUS"))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessage("Không tìm thấy tài nguyên media: ast-nonpub");
-
-        assertThat(playbackAccess.authorizeForGrant("ast-nonpub", asset, null, USER)).isSameAs(asset);
-        assertThat(playbackAccess.authorizeForGrant("ast-nonpub", asset, null, ADMIN)).isSameAs(asset);
-        assertThat(playbackAccess.authorizeForStream("ast-nonpub", asset, null, null, "ROLE_USER")).isSameAs(asset);
-        assertThat(playbackAccess.authorizeForStream("ast-nonpub", asset, null, null, "ROLE_ADMIN")).isSameAs(asset);
+        assertThat(playbackAccess.authorizeForGrant("ast-pub", asset, catalogAsset, true, null)).isSameAs(asset);
+        assertThat(playbackAccess.authorizeForStream("ast-pub", asset, catalogAsset, true, null, null)).isSameAs(asset);
     }
 
     @Test
@@ -61,20 +80,20 @@ class PlaybackAccessTest {
         MediaAsset asset = mediaAsset("ast-priv", false, true);
         CatalogMediaAsset catalogAsset = catalogAsset("ast-priv", "private", true, READY);
 
-        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-priv", asset, catalogAsset, null))
+        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-priv", asset, catalogAsset, true, null))
                 .isInstanceOf(NotFoundException.class)
-                .hasMessage("Không tìm thấy tài nguyên media: ast-priv");
+                .hasMessage("Không tìm thấy video: ast-priv");
 
-        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-priv", asset, catalogAsset, USER))
+        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-priv", asset, catalogAsset, true, USER))
                 .isInstanceOf(NotFoundException.class)
-                .hasMessage("Không tìm thấy tài nguyên media: ast-priv");
+                .hasMessage("Không tìm thấy video: ast-priv");
 
-        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-priv", asset, catalogAsset, null, "ROLE_USER"))
+        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-priv", asset, catalogAsset, true, null, GRANT_USER))
                 .isInstanceOf(NotFoundException.class)
-                .hasMessage("Không tìm thấy tài nguyên media: ast-priv");
+                .hasMessage("Không tìm thấy video: ast-priv");
 
-        assertThat(playbackAccess.authorizeForGrant("ast-priv", asset, catalogAsset, ADMIN)).isSameAs(asset);
-        assertThat(playbackAccess.authorizeForStream("ast-priv", asset, catalogAsset, null, "ROLE_ADMIN"))
+        assertThat(playbackAccess.authorizeForGrant("ast-priv", asset, catalogAsset, true, ADMIN)).isSameAs(asset);
+        assertThat(playbackAccess.authorizeForStream("ast-priv", asset, catalogAsset, true, null, GRANT_ADMIN))
                 .isSameAs(asset);
     }
 
@@ -83,18 +102,18 @@ class PlaybackAccessTest {
         MediaAsset asset = mediaAsset("ast-cat", true, true);
 
         CatalogMediaAsset authOnly = catalogAsset("ast-cat", "authenticated", true, READY);
-        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-cat", asset, authOnly, null))
+        assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-cat", asset, authOnly, true, null))
                 .isInstanceOf(NotFoundException.class);
-        assertThat(playbackAccess.authorizeForGrant("ast-cat", asset, authOnly, USER)).isSameAs(asset);
-        assertThat(playbackAccess.authorizeForStream("ast-cat", asset, authOnly, null, "ROLE_USER")).isSameAs(asset);
+        assertThat(playbackAccess.authorizeForGrant("ast-cat", asset, authOnly, true, USER)).isSameAs(asset);
+        assertThat(playbackAccess.authorizeForStream("ast-cat", asset, authOnly, true, null, GRANT_USER)).isSameAs(asset);
 
         CatalogMediaAsset draft = catalogAsset("ast-cat", "public", true, DRAFT);
-        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-cat", asset, draft, USER, null))
+        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-cat", asset, draft, true, USER, null))
                 .isInstanceOf(NotFoundException.class);
-        assertThat(playbackAccess.authorizeForStream("ast-cat", asset, draft, null, "ROLE_ADMIN")).isSameAs(asset);
+        assertThat(playbackAccess.authorizeForStream("ast-cat", asset, draft, true, null, GRANT_ADMIN)).isSameAs(asset);
 
         CatalogMediaAsset disabled = catalogAsset("ast-cat", "public", false, READY);
-        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-cat", asset, disabled, ADMIN, "ROLE_ADMIN"))
+        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-cat", asset, disabled, true, ADMIN, GRANT_ADMIN))
                 .isInstanceOf(NotFoundException.class);
     }
 
@@ -103,9 +122,9 @@ class PlaybackAccessTest {
         MediaAsset asset = mediaAsset("ast-priv", false, true);
         CatalogMediaAsset privateAsset = catalogAsset("ast-priv", "private", true, READY);
 
-        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-priv", asset, privateAsset, USER, "ROLE_ADMIN"))
+        assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-priv", asset, privateAsset, true, USER, GRANT_ADMIN))
                 .isInstanceOf(NotFoundException.class)
-                .hasMessage("Không tìm thấy tài nguyên media: ast-priv");
+                .hasMessage("Không tìm thấy video: ast-priv");
     }
 
     private static MediaAsset mediaAsset(String id, boolean publicAsset, boolean available) {

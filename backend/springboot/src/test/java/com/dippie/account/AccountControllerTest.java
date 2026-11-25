@@ -23,6 +23,7 @@ import org.springframework.test.context.TestConstructor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+// Test end-to-end cho sửa hồ sơ, đổi mật khẩu kèm thu hồi JWT cũ và hành vi khi tài khoản bị khóa.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -52,6 +53,7 @@ class AccountControllerTest {
         userRepository.deleteAll();
     }
 
+    // Kiểm tra đổi họ tên/email, giữ nguyên email của chính mình và chặn trùng hoặc sai giới hạn dữ liệu.
     @Test
     void updatesOwnProfileAndValidatesEmailUniquenessAndBounds() throws Exception {
         String aliceToken = register("alice", "alice@example.com", "secret123", "Alice One");
@@ -64,7 +66,7 @@ class AccountControllerTest {
                                 "email", "unauth@example.com"
                         ))))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
         mockMvc.perform(put("/api/users/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + aliceToken)
@@ -105,7 +107,7 @@ class AccountControllerTest {
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Email đã được sử dụng!"));
+                .andExpect(jsonPath("$.message").value("Email này đã có người dùng."));
 
         mockMvc.perform(put("/api/users/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + aliceToken)
@@ -115,7 +117,7 @@ class AccountControllerTest {
                                 "email", "not-an-email"
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Định dạng email không hợp lệ"));
+                .andExpect(jsonPath("$.message").value("Địa chỉ email chưa đúng định dạng."));
 
         mockMvc.perform(put("/api/users/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + aliceToken)
@@ -125,9 +127,10 @@ class AccountControllerTest {
                                 "email", "alice.updated@example.com"
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Họ tên tối đa 100 ký tự"));
+                .andExpect(jsonPath("$.message").value("Họ tên không quá 100 ký tự."));
     }
 
+    // Đổi mật khẩu thành công phải vô hiệu hóa token cũ ngay và cấp token mới dùng được liền.
     @Test
     void changesPasswordRevokesOldTokenAndReturnsWorkingNewToken() throws Exception {
         String oldToken = register("alice", "alice@example.com", "secret123", "Alice");
@@ -140,7 +143,7 @@ class AccountControllerTest {
                                 "newPassword", "newsecret123"
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Mật khẩu hiện tại không đúng."));
+                .andExpect(jsonPath("$.message").value("Mật khẩu hiện tại chưa đúng."));
 
         mockMvc.perform(post("/api/users/me/password")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + oldToken)
@@ -150,7 +153,7 @@ class AccountControllerTest {
                                 "newPassword", "12345"
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Mật khẩu phải có ít nhất 6 ký tự"));
+                .andExpect(jsonPath("$.message").value("Mật khẩu cần ít nhất 6 ký tự."));
 
         mockMvc.perform(post("/api/users/me/password")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + oldToken)
@@ -160,7 +163,7 @@ class AccountControllerTest {
                                 "newPassword", "secret123"
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Mật khẩu mới phải khác mật khẩu hiện tại."));
+                .andExpect(jsonPath("$.message").value("Mật khẩu mới cần khác mật khẩu hiện tại."));
 
         MvcResult changeResult = mockMvc.perform(post("/api/users/me/password")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + oldToken)
@@ -181,7 +184,7 @@ class AccountControllerTest {
         mockMvc.perform(get("/api/auth/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + oldToken))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
         mockMvc.perform(get("/api/auth/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + newToken))
@@ -198,6 +201,7 @@ class AccountControllerTest {
                 .andExpect(jsonPath("$.data.token").isNotEmpty());
     }
 
+    // Tài khoản bị khóa phải rớt JWT cũ, nhận 401 khi nhập sai mật khẩu (tránh lộ trạng thái khóa) và nhận 403 khi đúng mật khẩu.
     @Test
     void disabledUserReceives403OnValidLogin401OnWrongPasswordAndExistingTokenIsRevoked() throws Exception {
         String existingToken = register("locked", "locked@example.com", "secret123", "Locked User");
@@ -209,7 +213,7 @@ class AccountControllerTest {
         mockMvc.perform(get("/api/auth/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + existingToken))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Chưa xác thực người dùng"));
+                .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -218,7 +222,7 @@ class AccountControllerTest {
                                 "password", "wrongpass"
                         ))))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Sai tên đăng nhập hoặc mật khẩu"));
+                .andExpect(jsonPath("$.message").value("Tên đăng nhập hoặc mật khẩu chưa đúng."));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -228,7 +232,7 @@ class AccountControllerTest {
                         ))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên."));
+                .andExpect(jsonPath("$.message").value("Tài khoản này đang bị khóa. Hãy liên hệ quản trị viên để được hỗ trợ."));
     }
 
     private String register(String username, String email, String password, String fullName) throws Exception {
@@ -238,7 +242,8 @@ class AccountControllerTest {
                                 "username", username,
                                 "email", email,
                                 "password", password,
-                                "fullName", fullName
+                                "fullName", fullName,
+                                "acceptedTerms", true
                         ))))
                 .andExpect(status().isCreated())
                 .andReturn();

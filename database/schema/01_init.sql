@@ -8,15 +8,17 @@ CREATE TABLE IF NOT EXISTS users (
     role VARCHAR(20) NOT NULL DEFAULT 'ROLE_USER',
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     token_version BIGINT NOT NULL DEFAULT 0,
+    terms_accepted_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_users_role_enabled (role, enabled),
     CONSTRAINT ck_user_role CHECK (HEX(role) IN (HEX('ROLE_USER'), HEX('ROLE_ADMIN')))
 );
 
 CREATE TABLE IF NOT EXISTS movies (
     id VARCHAR(100) PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
-    release_year INT NOT NULL,
+    release_year INT NULL,
     rating DOUBLE NOT NULL,
     runtime VARCHAR(20),
     genres LONGTEXT,
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS watchlist_items (
     CONSTRAINT fk_watchlist_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT uq_user_movie_watchlist UNIQUE (user_id, movie_id),
     INDEX idx_watchlist_movie (movie_id),
+    INDEX idx_watchlist_user_added (user_id, added_at),
     CONSTRAINT fk_watchlist_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
 );
 
@@ -54,6 +57,7 @@ CREATE TABLE IF NOT EXISTS movie_ratings (
     CONSTRAINT fk_rating_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT uq_user_movie_rating UNIQUE (user_id, movie_id),
     INDEX idx_ratings_movie (movie_id),
+    INDEX idx_ratings_user_updated (user_id, updated_at),
     CONSTRAINT fk_rating_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
 );
 
@@ -65,6 +69,7 @@ CREATE TABLE IF NOT EXISTS favorite_items (
     CONSTRAINT fk_favorite_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT uq_user_movie_favorite UNIQUE (user_id, movie_id),
     INDEX idx_favorite_movie (movie_id),
+    INDEX idx_favorite_user_added (user_id, added_at),
     CONSTRAINT fk_favorite_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
 );
 
@@ -103,6 +108,7 @@ CREATE TABLE IF NOT EXISTS catalog_packages (
     opt_lock_version BIGINT DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_cat_pkg_imported (imported_at),
     CONSTRAINT ck_catalog_package_status CHECK (HEX(status) IN (HEX('COMMITTED')))
 );
 
@@ -200,6 +206,7 @@ CREATE TABLE IF NOT EXISTS catalog_seasons (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_season_series FOREIGN KEY (series_id) REFERENCES catalog_series(id) ON DELETE CASCADE,
     CONSTRAINT uq_cat_season_series_id UNIQUE (series_id, id),
+    INDEX idx_cat_season_series_num (series_id, number),
     CONSTRAINT ck_catalog_season_kind CHECK (kind IS NULL OR HEX(kind) IN (HEX('regular'), HEX('specials'), HEX('collection'), HEX('unknown')))
 );
 
@@ -240,6 +247,7 @@ CREATE TABLE IF NOT EXISTS catalog_episodes (
     INDEX idx_cat_ep_season (season_id),
     INDEX idx_cat_ep_publication (publication_status),
     INDEX idx_cat_ep_status_series_duration (publication_status, series_id, duration_ms),
+    INDEX idx_cat_ep_series_pub_num (series_id, publication_status, number),
     CONSTRAINT ck_catalog_episode_kind CHECK (HEX(kind) IN (HEX('regular'), HEX('special'), HEX('ova'), HEX('ona'), HEX('recap'), HEX('short'), HEX('pilot'), HEX('movie'), HEX('unknown'))),
     CONSTRAINT ck_catalog_episode_duration CHECK (duration_ms > 0)
 );
@@ -406,6 +414,7 @@ CREATE TABLE IF NOT EXISTS catalog_scenes (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_scene_episode FOREIGN KEY (episode_id) REFERENCES catalog_episodes(id) ON DELETE CASCADE,
     INDEX idx_cat_scene_ep (episode_id),
+    INDEX idx_cat_scene_ep_start (episode_id, start_ms),
     INDEX idx_cat_scene_asset (media_asset_id),
     CONSTRAINT fk_scene_asset FOREIGN KEY (media_asset_id) REFERENCES catalog_media_assets(id) ON DELETE CASCADE,
     CONSTRAINT fk_scene_segment FOREIGN KEY (segment_id) REFERENCES catalog_segments(id) ON DELETE SET NULL,
@@ -424,6 +433,7 @@ CREATE TABLE IF NOT EXISTS catalog_snapshots (
     completed_at TIMESTAMP NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_cat_snap_status (status),
+    INDEX idx_cat_snap_hash_version (content_hash, snapshot_version),
     UNIQUE INDEX uq_cat_snap_version (snapshot_version),
     CONSTRAINT ck_catalog_snapshot_status CHECK (HEX(status) IN (HEX('PENDING'), HEX('BUILDING'), HEX('READY'), HEX('BLOCKED'), HEX('SYNC_FAILED')))
 );
@@ -441,7 +451,7 @@ CREATE TABLE IF NOT EXISTS watch_progress (
     CONSTRAINT fk_watch_progress_episode FOREIGN KEY (episode_id) REFERENCES catalog_episodes(id) ON DELETE CASCADE,
     CONSTRAINT uq_watch_progress_user_episode UNIQUE (user_id, episode_id),
     INDEX idx_watch_progress_user_updated (user_id, updated_at),
-    CONSTRAINT fk_watch_progress_asset FOREIGN KEY (asset_id) REFERENCES catalog_media_assets(id) ON DELETE CASCADE
+    INDEX idx_watch_progress_episode (episode_id)
 );
 
 CREATE TABLE IF NOT EXISTS movie_genre_terms (
@@ -508,4 +518,37 @@ CREATE TABLE IF NOT EXISTS admin_audit_events (
     INDEX idx_admin_audit_created (created_at),
     INDEX idx_admin_audit_target (target_type, target_id),
     CONSTRAINT fk_admin_audit_actor FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS playback_reports (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    episode_id VARCHAR(100) NOT NULL,
+    asset_id VARCHAR(100) NULL,
+    reporter_user_id BIGINT NULL,
+    reason VARCHAR(40) NOT NULL,
+    note VARCHAR(500) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'open',
+    resolved_by_user_id BIGINT NULL,
+    resolved_at TIMESTAMP NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_playback_reports_status_created (status, created_at),
+    INDEX idx_playback_reports_episode (episode_id),
+    CONSTRAINT fk_playback_reports_reporter FOREIGN KEY (reporter_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_playback_reports_resolver FOREIGN KEY (resolved_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT ck_playback_report_reason CHECK (HEX(reason) IN (HEX('khong_phat'), HEX('sai_tap'), HEX('am_thanh'), HEX('noi_dung_khong_phu_hop'), HEX('khac'))),
+    CONSTRAINT ck_playback_report_status CHECK (HEX(status) IN (HEX('open'), HEX('resolved'), HEX('dismissed')))
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    token_hash VARCHAR(64) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    used_at TIMESTAMP NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_password_reset_token_hash UNIQUE (token_hash),
+    INDEX idx_password_reset_user (user_id),
+    INDEX idx_password_reset_expires (expires_at),
+    CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

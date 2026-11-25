@@ -8,10 +8,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
+// Cặp URL poster và backdrop của một phim bộ, kèm quy tắc chọn ảnh ưu tiên và lọc link hợp lệ.
 public record SeriesArtwork(String posterUrl, String backdropUrl) {
 
     public static final SeriesArtwork EMPTY = new SeriesArtwork(null, null);
 
+    // Trích ảnh từ artworksJson theo thứ tự ưu tiên poster > thumbnail > YouTube cho ảnh dọc, backdrop > banner > YouTube > chính poster cho ảnh ngang; bỏ qua link không phải http/https.
     public static SeriesArtwork fromSeries(String artworksJson, SeriesArtwork youtube) {
         Map<String, String> urls = new HashMap<>();
         JsonText.parse(artworksJson).filter(JsonNode::isArray).ifPresent(items -> items.forEach(item -> {
@@ -26,16 +28,18 @@ public record SeriesArtwork(String posterUrl, String backdropUrl) {
         return new SeriesArtwork(poster, backdrop);
     }
 
+    // Việt chú ý chiều gọi hàm này: this là ảnh dự phòng, còn poster và backdrop truyền vào là giá trị đang có, thiếu trường nào (null) thì mới lấy từ this bù sang.
     public SeriesArtwork fillMissing(String poster, String backdrop) {
         return new SeriesArtwork(Objects.toString(poster, posterUrl), Objects.toString(backdrop, backdropUrl));
     }
 
-    private static boolean isHttpUri(String value) {
-        if (value == null) {
+    // Chỉ nhận URL http hoặc https có host rõ ràng, chặn mấy chuỗi kiểu javascript: hay file:///.
+    private static boolean isHttpUri(String rawUri) {
+        if (rawUri == null) {
             return false;
         }
         try {
-            URI uri = URI.create(value);
+            URI uri = URI.create(rawUri);
             return uri.getRawAuthority() != null && ("https".equalsIgnoreCase(uri.getScheme())
                     || "http".equalsIgnoreCase(uri.getScheme()));
         } catch (IllegalArgumentException ignored) {

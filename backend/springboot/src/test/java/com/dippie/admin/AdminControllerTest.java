@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.dippie.catalog.importing.CatalogImportedEvent;
+import com.dippie.catalog.domain.CatalogImportedEvent;
 import com.dippie.security.JwtService;
 import com.dippie.security.LoginRateLimiter;
 import com.dippie.security.Role;
@@ -35,6 +35,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.web.servlet.MockMvc;
 
+// Bộ test tích hợp cho các API quản trị: kiểm tra phân quyền, phân trang tìm user, chặn hạ quyền admin cuối cùng khi chạy song song và ghi nhật ký.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -80,6 +81,7 @@ class AdminControllerTest {
         userRepository.deleteAll();
     }
 
+    // Chặn khách chưa đăng nhập lẫn tài khoản thường trên toàn bộ endpoint quản trị.
     @Test
     void rejectsNonAdminAndAnonymousAcrossAdminEndpoints() throws Exception {
         User regular = saveUser("viewer", "viewer@example.com", Role.ROLE_USER);
@@ -105,6 +107,7 @@ class AdminControllerTest {
                 .andExpect(status().isForbidden());
     }
 
+    // Kiểm tra phân trang và tìm kiếm không phân biệt hoa thường theo username hoặc email.
     @Test
     void listsSearchesAndPagesUsers() throws Exception {
         User admin = saveUser("boss", "boss@dippie.com", Role.ROLE_ADMIN);
@@ -142,6 +145,7 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.data.items[0].username").value("alice"));
     }
 
+    // Chạy trọn vòng đổi quyền, khóa mở tài khoản, thu hồi JWT cũ và xác minh thứ tự dòng nhật ký.
     @Test
     void enforcesRoleAndStatusRulesRevokesTokensAndRecordsAuditEvents() throws Exception {
         User admin = saveUser("admin1", "admin1@dippie.com", Role.ROLE_ADMIN);
@@ -205,7 +209,7 @@ class AdminControllerTest {
                                 "password", "secret123"
                         ))))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên."));
+                .andExpect(jsonPath("$.message").value("Tài khoản này đang bị khóa. Hãy liên hệ quản trị viên để được hỗ trợ."));
 
         mockMvc.perform(patch("/api/admin/users/" + viewer.getId() + "/status")
                         .header(HttpHeaders.AUTHORIZATION, adminAuth)
@@ -241,6 +245,7 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.data.items[3].details.newRole").value("ROLE_ADMIN"));
     }
 
+    // Cho hai admin hạ quyền nhau cùng lúc để xác nhận khóa DB luôn giữ lại đúng một admin đang hoạt động.
     @Test
     void concurrentMutualAdminDemotionAlwaysLeavesAtLeastOneEnabledAdmin() throws Exception {
         User admin1 = saveUser("admin1", "admin1@dippie.com", Role.ROLE_ADMIN);
@@ -274,12 +279,15 @@ class AdminControllerTest {
                         .getStatus();
             };
 
-            Future<Integer> f1 = executor.submit(demoteAdmin2);
-            Future<Integer> f2 = executor.submit(demoteAdmin1);
+            Future<Integer> demoteAdmin2Future = executor.submit(demoteAdmin2);
+            Future<Integer> demoteAdmin1Future = executor.submit(demoteAdmin1);
             ready.await();
             start.countDown();
 
-            List<Integer> statuses = List.of(f1.get(), f2.get()).stream().sorted().toList();
+            List<Integer> statuses = List.of(demoteAdmin2Future.get(), demoteAdmin1Future.get())
+                    .stream()
+                    .sorted()
+                    .toList();
             assertThat(statuses).containsExactly(200, 409);
         }
 

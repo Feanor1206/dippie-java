@@ -1,7 +1,5 @@
 package com.dippie.security;
 
-import com.dippie.user.User;
-import com.dippie.user.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,19 +13,21 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+// Filter đọc Bearer JWT một lần mỗi request rồi nạp Viewer vào SecurityContext nếu tài khoản còn hoạt động.
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtService jwtService;
-    private final UserRepository userRepository;
+    private final ActiveViewerLookup viewerLookup;
 
-    public JwtAuthenticationFilter(JwtService jwtService, UserRepository userRepository) {
+    public JwtAuthenticationFilter(JwtService jwtService, ActiveViewerLookup viewerLookup) {
         this.jwtService = jwtService;
-        this.userRepository = userRepository;
+        this.viewerLookup = viewerLookup;
     }
 
+    // Tách token từ header Authorization, kiểm tra chữ ký và tokenVersion trong DB trước khi cho đi tiếp.
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -38,22 +38,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith(BEARER_PREFIX)) {
             String token = header.substring(BEARER_PREFIX.length()).trim();
             if (!token.isEmpty()) {
-                jwtService.parseLoginToken(token).ifPresent(loginToken ->
-                        userRepository.findByUsername(loginToken.username())
-                                .filter(user -> user.isEnabled() && user.getTokenVersion() == loginToken.tokenVersion())
-                                .ifPresent(this::authenticate)
-                );
+                jwtService.parseLoginToken(token)
+                        .flatMap(loginToken -> viewerLookup.findActiveViewer(
+                                loginToken.username(), loginToken.tokenVersion()))
+                        .ifPresent(this::authenticate);
             }
         }
         filterChain.doFilter(request, response);
     }
 
-    private void authenticate(User user) {
-        Viewer viewer = new Viewer(user.getId(), user.getUsername(), user.getRole());
+    private void authenticate(Viewer viewer) {
         UsernamePasswordAuthenticationToken authentication = UsernamePasswordAuthenticationToken.authenticated(
                 viewer,
                 null,
-                List.of(new SimpleGrantedAuthority(user.getRole().name()))
+                List.of(new SimpleGrantedAuthority(viewer.role().name()))
         );
         SecurityContextHolder.getContext().setAuthentication(authentication);
     }

@@ -8,129 +8,83 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+// Chuẩn hóa và kiểm tra bộ tham số duyệt phim (tìm kiếm, thể loại, năm, sắp xếp, phân trang).
 record MovieBrowseQuery(
-        String searchQuery,
-        List<String> genreTokens,
-        Integer yearMin,
-        Integer yearMax,
-        SortField sortField,
-        SortDirection sortDirection,
-        BigInteger page,
-        int size
+        String searchQuery, List<String> genreTokens, Integer yearMin, Integer yearMax, SortField sortField,
+        SortDirection sortDirection, boolean explicitSort, BigInteger page, int size
 ) {
+
+    private static final int MIN_PAGE_SIZE = 1;
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final String ANIMATION_GENRE = "animation";
 
     MovieBrowseQuery {
         genreTokens = genreTokens == null ? List.of() : List.copyOf(genreTokens);
     }
 
+    // Các tiêu chí sắp xếp được hỗ trợ trên màn hình duyệt phim.
     public enum SortField {
-        RATING,
-        YEAR,
-        TITLE;
+        RATING, YEAR, TITLE;
 
+        // Chuỗi rỗng hoặc null mặc định về RATING, còn chuỗi chỉ có khoảng trắng thì bị coi là sai để báo lỗi rõ.
         public static SortField parse(String raw) {
-            String source = (raw == null || raw.isEmpty()) ? "rating" : raw;
-            String normalized = source.strip().toLowerCase(Locale.ROOT);
+            String normalized = (raw == null || raw.isEmpty() ? "rating" : raw).strip().toLowerCase(Locale.ROOT);
             return switch (normalized) {
                 case "rating" -> RATING;
                 case "year" -> YEAR;
                 case "title" -> TITLE;
-                default -> throw new InvalidRequestException("Trường sắp xếp không hợp lệ: '" + raw + "'");
+                default -> throw new InvalidRequestException("Kiểu sắp xếp không hỗ trợ: '" + raw + "'.");
             };
         }
     }
 
+    // Thứ tự sắp xếp tăng dần hoặc giảm dần.
     public enum SortDirection {
-        ASC,
-        DESC;
+        ASC, DESC;
 
+        // Mặc định giảm dần khi client bỏ trống tham số direction.
         public static SortDirection parse(String raw) {
-            String source = (raw == null || raw.isEmpty()) ? "desc" : raw;
-            String normalized = source.strip().toLowerCase(Locale.ROOT);
+            String normalized = (raw == null || raw.isEmpty() ? "desc" : raw).strip().toLowerCase(Locale.ROOT);
             return switch (normalized) {
                 case "asc" -> ASC;
                 case "desc" -> DESC;
-                default -> throw new InvalidRequestException("Chiều sắp xếp không hợp lệ: '" + raw + "'");
+                default -> throw new InvalidRequestException("Thứ tự sắp xếp không hợp lệ: '" + raw + "'.");
             };
         }
     }
 
-    public static MovieBrowseQuery of(
-            String query,
-            String search,
-            String q,
-            String genre,
-            String genres,
-            Boolean animationOnly,
-            Integer yearMin,
-            Integer yearMax,
-            String sort,
-            String direction,
-            BigInteger page,
-            int size
-    ) {
+    // Gom 3 alias query/search/q, chuẩn hóa danh sách thể loại rồi chặn sớm các tham số phân trang hoặc khoảng năm vô lý.
+    public static MovieBrowseQuery of(String query, String search, String q, String genre, String genres,
+            Boolean animationOnly, Integer yearMin, Integer yearMax, String sort, String direction,
+            BigInteger page, int size) {
         BigInteger resolvedPage = page == null ? BigInteger.ZERO : page;
         if (resolvedPage.signum() < 0) {
-            throw new InvalidRequestException("Chỉ số trang (page) không được âm: " + resolvedPage);
+            throw new InvalidRequestException("Số trang không được nhỏ hơn 0: " + resolvedPage);
         }
-        if (size < 1 || size > 100) {
-            throw new InvalidRequestException("Kích thước trang (size) phải nằm trong khoảng 1 đến 100: " + size);
+        if (size < MIN_PAGE_SIZE || size > MAX_PAGE_SIZE) {
+            throw new InvalidRequestException("Số phim mỗi trang phải từ 1 đến 100: " + size);
         }
         if (yearMin != null && yearMax != null && yearMin > yearMax) {
             throw new InvalidRequestException(
-                    "Năm tối thiểu (yearMin: " + yearMin + ") không được lớn hơn năm tối đa (yearMax: " + yearMax + ")"
-            );
+                    "Năm bắt đầu (" + yearMin + ") không được lớn hơn năm kết thúc (" + yearMax + ").");
         }
-        SortField resolvedSort = SortField.parse(sort);
-        SortDirection resolvedDirection = SortDirection.parse(direction);
-        String effectiveQuery = firstNonBlank(query, search, q);
-        List<String> resolvedGenres = collectGenreTokens(genre, genres, animationOnly);
-        return new MovieBrowseQuery(
-                effectiveQuery,
-                resolvedGenres,
-                yearMin,
-                yearMax,
-                resolvedSort,
-                resolvedDirection,
-                resolvedPage,
-                size
-        );
+        return new MovieBrowseQuery(firstNonBlank(query, search, q), collectGenreTokens(genre, genres, animationOnly),
+                yearMin, yearMax, SortField.parse(sort), SortDirection.parse(direction),
+                sort != null && !sort.isEmpty(), resolvedPage, size);
     }
 
-    public static MovieBrowseQuery of(
-            String query,
-            String search,
-            String q,
-            String genre,
-            String genres,
-            Boolean animationOnly,
-            Integer yearMin,
-            Integer yearMax,
-            String sort,
-            String direction,
-            int page,
-            int size
-    ) {
-        return of(
-                query,
-                search,
-                q,
-                genre,
-                genres,
-                animationOnly,
-                yearMin,
-                yearMax,
-                sort,
-                direction,
-                BigInteger.valueOf(page),
-                size
-        );
+    public static MovieBrowseQuery of(String query, String search, String q, String genre, String genres,
+            Boolean animationOnly, Integer yearMin, Integer yearMax, String sort, String direction,
+            int page, int size) {
+        return of(query, search, q, genre, genres, animationOnly, yearMin, yearMax, sort, direction,
+                BigInteger.valueOf(page), size);
     }
 
-    public MovieFilter toFilter() {
-        return new MovieFilter(searchQuery, genreTokens);
+    MovieFilter genreFilter() {
+        return new MovieFilter(null, genreTokens);
     }
 
+    // Lấy chuỗi đầu tiên không rỗng theo thứ tự ưu tiên tham số truyền vào.
     public static String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -149,7 +103,7 @@ record MovieBrowseQuery(
             }
         }
         if (Boolean.TRUE.equals(animationOnly)) {
-            tokens.add("animation");
+            tokens.add(ANIMATION_GENRE);
         }
         return List.copyOf(tokens);
     }

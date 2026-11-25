@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+// Kiểm tra thứ tự ưu tiên chọn poster và backdrop của phim bộ, lọc URL không phải http/https và cách fillMissing bù trường bị thiếu.
 class SeriesArtworkTest {
 
     private static final SeriesArtwork YOUTUBE = new SeriesArtwork(
@@ -21,6 +22,7 @@ class SeriesArtworkTest {
                         "http://example.com/poster.jpg", "https://example.com/backdrop.jpg"));
     }
 
+    // Bỏ qua URL nguy hiểm hoặc thiếu host (javascript:, //..., https:missing-host) để rơi xuống thumbnail và banner.
     @Test
     void acceptsBannerAndThumbnailWhenPreferredRolesHaveInvalidUris() {
         assertThat(SeriesArtwork.fromSeries("""

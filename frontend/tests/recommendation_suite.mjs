@@ -1,14 +1,14 @@
+import { runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
 import ts from '../node_modules/typescript/lib/typescript.js';
 
 function load(fetch) {
   const source = fs.readFileSync(new URL('../lib/services/recommendationService.ts', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   const module = { exports: {} };
-  vm.runInNewContext(code, { module, exports: module.exports, fetch, process: { env: {} }, Error });
+  runWithSharedModules(code, { module, exports: module.exports, fetch, process: { env: {} }, Error });
   return module.exports;
 }
 
@@ -37,4 +37,32 @@ test('guest suggestions send only local film IDs and no authorization', async ()
 test('recommendations reject malformed server responses', async () => {
   const service = load(async () => ({ ok: true, json: async () => ({ recommendedMovies: null }) }));
   await assert.rejects(service.getRecommendations(null));
+});
+
+test('recommendations send moodPreset per C3 and surface server 400 Vietnamese message', async () => {
+  const bodies = [];
+  const service = load(async (_url, options) => {
+    const parsed = JSON.parse(options.body);
+    bodies.push(parsed);
+    if (parsed.moodPreset === 'unknown') {
+      return { ok: false, status: 400, json: async () => ({ message: 'Tâm trạng không hợp lệ.' }) };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        recommendedMovies: [{ id: 'ep_peppa_1', title: 'Giờ đi ngủ', item_type: 'episode', series_id: 'ser_peppa' }],
+        reasoning: 'Gợi ý nhẹ nhàng trước giờ ngủ.',
+      }),
+    };
+  });
+
+  assert.equal(service.MOOD_PRESETS.length, 6);
+  const res = await service.getRecommendations('tok', undefined, [], { moodPreset: 'bedtime' });
+  assert.deepEqual(bodies[0], { limit: 6, likedMovieIds: [], moodPreset: 'bedtime' });
+  assert.equal(res.movies[0].id, 'ep_peppa_1');
+
+  await assert.rejects(
+    service.getRecommendations(null, undefined, [], { moodPreset: 'unknown' }),
+    /Tâm trạng không hợp lệ\./
+  );
 });

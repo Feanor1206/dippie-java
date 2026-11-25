@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Alias("Profile")]
-    [ValidateSet("demo", "mysql")]
+    [ValidateSet("demo", "mysql", "prod")]
     [string]$SpringProfile = "demo",
     [switch]$MountDrive
 )
@@ -55,9 +55,14 @@ try {
     }
     $env:SPRING_PROFILES_ACTIVE = $SpringProfile
     $env:DIPPIE_DATA_DIR = $javaDataDir
+    $mavenArgs = @("-q")
+    if ($SpringProfile -eq "demo") {
+        $mavenArgs += "-Pdemo"
+    }
+    $mavenArgs += @("spring-boot:run", "-Dspring-boot.run.profiles=$SpringProfile")
     $javaProcess = Start-Process `
         -FilePath $mvnw `
-        -ArgumentList @("-q", "spring-boot:run", "-Dspring-boot.run.profiles=$SpringProfile") `
+        -ArgumentList $mavenArgs `
         -WorkingDirectory $springbootDir `
         -NoNewWindow `
         -PassThru

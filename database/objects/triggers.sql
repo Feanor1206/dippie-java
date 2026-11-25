@@ -84,7 +84,7 @@ BEFORE INSERT ON watch_progress
 FOR EACH ROW
 BEGIN
     DECLARE episode_duration_ms BIGINT;
-    SELECT duration_ms INTO episode_duration_ms FROM catalog_episodes WHERE id = NEW.episode_id FOR SHARE;
+    SELECT duration_ms INTO episode_duration_ms FROM catalog_episodes WHERE id = NEW.episode_id;
     IF NEW.position_ms > episode_duration_ms THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Watch position exceeds episode duration_ms.';
     END IF;
@@ -95,7 +95,7 @@ BEFORE UPDATE ON watch_progress
 FOR EACH ROW
 BEGIN
     DECLARE episode_duration_ms BIGINT;
-    SELECT duration_ms INTO episode_duration_ms FROM catalog_episodes WHERE id = NEW.episode_id FOR SHARE;
+    SELECT duration_ms INTO episode_duration_ms FROM catalog_episodes WHERE id = NEW.episode_id;
     IF NEW.position_ms > episode_duration_ms THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Watch position exceeds episode duration_ms.';
     END IF;

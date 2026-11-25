@@ -24,9 +24,13 @@ import static com.dippie.catalog.importing.CatalogCollection.MEDIA_ASSETS;
 import static com.dippie.catalog.importing.CatalogCollection.SOURCES;
 import static com.dippie.catalog.importing.CatalogCollection.TEXT_TRACKS;
 
+// Xuất dữ liệu danh mục từ CSDL ra định dạng JSON chuẩn theo cờ lọc bản nháp và tệp riêng tư.
 @Service
 @Transactional(readOnly = true)
 public class CatalogExportService {
+
+    private static final String SCHEMA_VERSION = "dippie.catalog.v1";
+    private static final String PUBLIC_ACCESS_POLICY = "public";
 
     private final CatalogPackageRepository packages;
     private final EntityManager entities;
@@ -38,21 +42,24 @@ public class CatalogExportService {
         this.clock = clock;
     }
 
-    public JsonNode exportEligibleCatalog(boolean includeDraft, boolean includePrivate) {
-        return exportEligibleCatalog(includeDraft, includePrivate, CatalogDates.now(clock));
+    // Dùng cho API admin, cho phép chọn giữ hoặc bỏ bản nháp và tệp riêng tư.
+    public JsonNode exportCatalog(boolean includeDraft, boolean includePrivate) {
+        return exportCatalog(includeDraft, includePrivate, CatalogDates.now(clock));
     }
 
+    // Chỉ xuất nội dung công khai đã xuất bản cho bộ tìm kiếm; ghim mốc created_at về epoch lúc CSDL trống để JSON ổn định.
     public JsonNode exportForIndex() {
-        return exportEligibleCatalog(false, false, LocalDateTime.ofEpochSecond(0, 0, ZoneOffset.UTC));
+        return exportCatalog(false, false, LocalDateTime.ofEpochSecond(0, 0, ZoneOffset.UTC));
     }
 
-    private JsonNode exportEligibleCatalog(boolean includeDraft, boolean includePrivate, LocalDateTime defaultCreated) {
+    private JsonNode exportCatalog(boolean includeDraft, boolean includePrivate, LocalDateTime defaultCreated) {
         CatalogPackage latest = packages.findFirstByOrderByImportedAtDesc().orElse(null);
-        ObjectNode catalog = JsonNodeFactory.instance.objectNode().put("schema_version", "dippie.catalog.v1");
+        ObjectNode catalog = JsonNodeFactory.instance.objectNode().put("schema_version", SCHEMA_VERSION);
         catalog.set("package", metadata(latest, defaultCreated));
         for (CatalogCollection collection : CatalogCollection.values()) {
             catalog.set(collection.field, exportRows(collection, includeDraft, includePrivate));
         }
+        // Khi bỏ bản nháp thì nhớ lọc lại phụ đề trỏ vào nguồn nháp, nếu không JSON xuất ra sẽ dính source_id không tồn tại.
         if (!includeDraft) {
             filterTrackSources(catalog);
         }
@@ -77,34 +84,34 @@ public class CatalogExportService {
     }
 
     private ArrayNode exportRows(CatalogCollection collection, boolean includeDraft, boolean includePrivate) {
+        // Dựng câu JPQL lọc theo trạng thái xuất bản, quyền public và quan hệ tập/tệp của phụ đề.
         boolean publishedEpisode = collection == EPISODES && !includeDraft;
         boolean checkRecord = collection != EPISODES && !includeDraft;
         String projection = checkRecord ? "row.rawJson, row.recordJson" : "row.rawJson";
         StringBuilder query = new StringBuilder("select ").append(projection).append(" from ")
                 .append(collection.entityType.getSimpleName()).append(" row where row.rawJson is not null");
         if (publishedEpisode) {
-            query.append(" and row.publicationStatus = 'ready'");
+            query.append(" and row.publicationStatus = '").append(PublicationStatus.READY_VALUE).append("'");
         }
         if (checkRecord) {
-            query.append(" and lower(row.recordJson) like '%ready%'");
+            query.append(" and lower(row.recordJson) like '%").append(PublicationStatus.READY_VALUE).append("%'");
         }
         if (collection == MEDIA_ASSETS && !includePrivate) {
-            query.append(" and lower(row.accessPolicy) = 'public'");
+            query.append(" and lower(row.accessPolicy) = '").append(PUBLIC_ACCESS_POLICY).append("'");
         }
         if (collection == TEXT_TRACKS) {
             if (!includeDraft) {
-                query.append("""
-                         and (row.episodeId is null or row.episodeId in
-                           (select episode.id from CatalogEpisode episode where episode.publicationStatus = 'ready'))
-                        """);
+                query.append(" and (row.episodeId is null or row.episodeId in"
+                        + " (select episode.id from CatalogEpisode episode where episode.publicationStatus = '"
+                        + PublicationStatus.READY_VALUE + "'))");
             }
             if (!includePrivate) {
-                query.append("""
-                         and (row.mediaAssetId is null or row.mediaAssetId in
-                           (select asset.id from CatalogMediaAsset asset where asset.accessPolicy = 'public'))
-                        """);
+                query.append(" and (row.mediaAssetId is null or row.mediaAssetId in"
+                        + " (select asset.id from CatalogMediaAsset asset where asset.accessPolicy = '"
+                        + PUBLIC_ACCESS_POLICY + "'))");
             }
         }
+        // Lọc sơ bằng LIKE ở tầng SQL xong vẫn phải parse recordJson để kiểm tra chính xác trạng thái xuất bản.
         ArrayNode exported = JsonNodeFactory.instance.arrayNode();
         query.append(" order by row.id");
         for (Object[] row : entities.createQuery(query.toString(), Object[].class).getResultList()) {
@@ -113,7 +120,7 @@ public class CatalogExportService {
             }
             JsonText.parse((String) row[0]).ifPresent(document -> {
                 if (publishedEpisode && document.path("record") instanceof ObjectNode record) {
-                    record.put("status", "ready");
+                    record.put("status", PublicationStatus.READY_VALUE);
                 }
                 exported.add(document);
             });
@@ -121,6 +128,7 @@ public class CatalogExportService {
         return exported;
     }
 
+    // Chỉ giữ lại các bản phụ đề không gắn nguồn hoặc có source_id nằm trong tập nguồn đã xuất.
     private static void filterTrackSources(ObjectNode catalog) {
         Set<JsonNode> sources = new HashSet<>();
         catalog.path(SOURCES.field).forEach(source -> sources.add(source.path("id")));

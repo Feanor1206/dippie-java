@@ -1,7 +1,8 @@
+import { labels } from './labels_fixture.mjs';
+import { createInternalResolver, shouldInlineComponent, runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
 import ts from '../node_modules/typescript/lib/typescript.js';
 
 function loadTsModule(relativePath, globals = {}) {
@@ -15,9 +16,7 @@ function loadTsModule(relativePath, globals = {}) {
     },
   }).outputText;
   const module = { exports: {} };
-  vm.runInNewContext(code, {
-    module,
-    exports: module.exports,
+  const baseContext = {
     console,
     AbortController,
     DOMException,
@@ -25,6 +24,13 @@ function loadTsModule(relativePath, globals = {}) {
     setTimeout,
     clearTimeout,
     ...globals,
+  };
+  const customRequire = typeof globals.require === 'function' ? globals.require : () => ({});
+  runWithSharedModules(code, {
+    ...baseContext,
+    module,
+    exports: module.exports,
+    require: createInternalResolver(baseContext, customRequire),
   });
   return module.exports;
 }
@@ -228,7 +234,7 @@ test('formatResumeTime and formatNextEpisodeLabel format RESUME and NEXT_UNWATCH
         resumePositionMs: 125000,
       }),
     },
-    { label: 'Tiếp tục xem T3', resumeTime: '02:05' }
+    { label: 'Xem tiếp tập 3', resumeTime: '02:05' }
   );
 
   assert.deepEqual(
@@ -239,7 +245,7 @@ test('formatResumeTime and formatNextEpisodeLabel format RESUME and NEXT_UNWATCH
         resumePositionMs: 45000,
       }),
     },
-    { label: 'Tiếp tục xem', resumeTime: '00:45' }
+    { label: 'Xem tiếp', resumeTime: '00:45' }
   );
 
   assert.deepEqual(
@@ -283,7 +289,7 @@ test('formatResumeTime and formatNextEpisodeLabel format RESUME and NEXT_UNWATCH
   );
 });
 
-test('NextEpisodeAction hides for guests, renders action/completed states, stays silent on 500, expires on 401, and refreshes on focus', async () => {
+test('NextEpisodeAction hides for guests, renders action/completed states, stays silent on 500, leaves 401 handling to the session observer, and refreshes on focus', async () => {
   let fetchCount = 0;
   let currentResponse = jsonResponse({
     success: true,
@@ -349,7 +355,7 @@ test('NextEpisodeAction hides for guests, renders action/completed states, stays
   let tree = view.render();
   const button = findNode(tree, (n) => n.props?.['data-testid'] === 'next-episode-action');
   assert.ok(button);
-  assert.match(JSON.stringify(button), /Tiếp tục xem T2/);
+  assert.match(JSON.stringify(button), /Xem tiếp tập 2/);
   assert.match(JSON.stringify(button), /02:05/);
   button.props.onClick();
   assert.equal(selected.length, 1);
@@ -386,8 +392,188 @@ test('NextEpisodeAction hides for guests, renders action/completed states, stays
   });
   await tick();
   tree = view.render();
-  assert.equal(expiredCalls, 1);
+  assert.equal(expiredCalls, 0);
   assert.equal(tree, null);
 
   view.unmount();
+});
+
+test('R5: nextEpisodeService preserves backend assetId and chooses episode vs file resume timeline cleanly', async () => {
+  const service = loadTsModule('../lib/services/nextEpisodeService.ts', {
+    fetch: async () =>
+      jsonResponse({
+        success: true,
+        message: 'Thành công',
+        data: {
+          seriesId: 'ser_doraemon',
+          episodeId: 'ep_doraemon_s05_0209',
+          episodeTitle: 'Cuộc Chiến Của tay Vua Súng',
+          seasonNumber: 5,
+          episodeNumber: 209,
+          resumePositionMs: 60000,
+          reason: 'RESUME',
+          assetId: 'youtube:0FHNLZszGiU',
+        },
+      }),
+  });
+
+  const result = await service.getNextEpisode('tok-123', 'ser_doraemon');
+  assert.equal(result.status, 'ready');
+  assert.equal(result.recommendation.assetId, 'youtube:0FHNLZszGiU');
+  assert.equal(
+    service.buildNextEpisodeHref(result.recommendation),
+    '/series/ser_doraemon?episode=ep_doraemon_s05_0209&t=60000&timeline=episode'
+  );
+  assert.equal(
+    service.buildNextEpisodeHref({
+      seriesId: 'ser_jadoo',
+      episodeId: 'ep_1',
+      reason: 'RESUME',
+      resumePositionMs: 45000,
+      assetId: 'asset_local_1',
+    }),
+    '/series/ser_jadoo?episode=ep_1&asset=asset_local_1&t=45000&timeline=file'
+  );
+
+  const replacedUrls = [];
+  const slots = [];
+  let cursor = 0;
+  let effects = [];
+  const sameDeps = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+  const react = {
+    useState(init) {
+      const i = cursor++;
+      if (!(i in slots)) slots[i] = { value: typeof init === 'function' ? init() : init };
+      return [
+        slots[i].value,
+        (next) => {
+          slots[i].value = typeof next === 'function' ? next(slots[i].value) : next;
+        },
+      ];
+    },
+    useRef(init) {
+      const i = cursor++;
+      return (slots[i] ||= { current: init });
+    },
+    useMemo(factory, deps) {
+      const i = cursor++;
+      if (!slots[i] || !sameDeps(slots[i].deps, deps)) slots[i] = { value: factory(), deps };
+      return slots[i].value;
+    },
+    useCallback(fn, deps) {
+      return react.useMemo(() => fn, deps);
+    },
+    useEffect(fn, deps) {
+      const i = cursor++;
+      const prev = slots[i];
+      if (!prev || !deps || !sameDeps(prev.deps, deps)) {
+        slots[i] = { deps, cleanup: prev?.cleanup };
+        effects.push(() => {
+          slots[i].cleanup?.();
+          slots[i].cleanup = fn();
+        });
+      }
+    },
+    createElement(type, props, ...children) {
+      if (shouldInlineComponent(type)) return type(props || {});
+      return { type, props: { ...props, children } };
+    },
+  };
+
+  const playbackSource = loadTsModule('../lib/services/playbackSource.ts', {});
+  const mediaRouting = loadTsModule('../lib/services/mediaRouting.ts', {});
+  const episodeNavigation = loadTsModule('../lib/services/episodeNavigation.ts', {});
+  const ep1 = { id: 'ep_1', seriesId: 'ser_doraemon', seasonId: 's5', number: 1, title: 'Tập 1', durationMs: 600000 };
+  const ep209 = { id: 'ep_doraemon_s05_0209', seriesId: 'ser_doraemon', seasonId: 's5', number: 209, title: 'Tập 209', durationMs: 600000 };
+
+  const pageMod = loadTsModule('../app/series/[id]/page.tsx', {
+    URL,
+    window: {
+      location: { href: 'http://localhost:3000/series/ser_doraemon?episode=ep_1' },
+      history: { replaceState: (_s, _t, url) => replacedUrls.push(String(url)) },
+      setTimeout,
+      clearTimeout,
+    },
+    document: { title: '', hidden: false, addEventListener() {}, removeEventListener() {} },
+    require(name) {
+      if (name === '@/lib/labels') return labels;
+      if (name === 'react') return { __esModule: true, default: react, ...react };
+      if (name === 'react-router') {
+        return {
+          Link: 'route-link',
+          useParams: () => ({ id: 'ser_doraemon' }),
+          useSearchParams: () => [new URLSearchParams('episode=ep_1'), (params, options) => {
+            assert.equal(options.replace, true);
+            replacedUrls.push('http://localhost/series/ser_doraemon?' + params);
+          }],
+        };
+      }
+      if (name.includes('catalogService')) {
+        return {
+          getCatalogSeriesDetail: async () => ({
+            series: { id: 'ser_doraemon', title: 'Doraemon' },
+            seasons: [{ id: 's5', seriesId: 'ser_doraemon', number: 5, title: 'Mùa 5' }],
+            episodes: [ep1, ep209],
+          }),
+          getCatalogEpisodeDetail: async (id) => ({
+            episode: id === 'ep_1' ? ep1 : ep209,
+            segments: [],
+            mediaAssets: [],
+            scenes: [],
+            youtube: { videoId: '0FHNLZszGiU', canEmbed: true },
+          }),
+        };
+      }
+      if (name.includes('episodeNavigation')) return episodeNavigation;
+      if (name.includes('playbackSource')) return playbackSource;
+      if (name.includes('mediaRouting')) return mediaRouting;
+      if (name.includes('mediaService')) return { resolveStreamUrl: (u) => u, getStoredAuthToken: () => null };
+      if (name.includes('useWatchProgress')) return { useWatchProgress: () => ({ records: [], saveProgress() {} }) };
+      if (name.includes('watchProgressService')) {
+        return {
+          readAutoNextPreference: () => false,
+          writeAutoNextPreference() {},
+          isUsableResumeProgress: () => false,
+          toYoutubeAssetId: (id) => `youtube:${id}`,
+          isYoutubeAssetId: (id) => Boolean(id?.startsWith('youtube:')),
+        };
+      }
+      if (name.includes('seriesCardService')) return { getSeriesCardById: async () => null };
+      if (name.includes('SeriesDetailBanner')) return { SeriesDetailBanner: 'SeriesDetailBanner' };
+      if (name.includes('NextEpisodeAction')) return { NextEpisodeAction: 'NextEpisodeAction' };
+      if (name.includes('LibraryControls')) return { ItemLibraryPanel: 'ItemLibraryPanel', QuickSaveButtons: 'QuickSaveButtons' };
+      if (name.includes('YouTubePlayer')) return { YouTubePlayer: 'YouTubePlayer' };
+      return {};
+    },
+  });
+
+  let tree;
+  for (let i = 0; i < 6; i++) {
+    cursor = 0;
+    tree = pageMod.default();
+    const pending = effects;
+    effects = [];
+    pending.forEach((fn) => fn());
+    await tick();
+  }
+  const banner = findNode(tree, (n) => n.type === 'SeriesDetailBanner');
+  const nextAction = banner.props.nextEpisodeAction;
+  nextAction.props.onSelectRecommendation(result.recommendation);
+
+  const lastUrl = replacedUrls.at(-1);
+  assert.ok(lastUrl, 'Selecting next episode recommendation must update URL');
+  const parsed = new URL(lastUrl);
+  assert.equal(parsed.searchParams.get('episode'), 'ep_doraemon_s05_0209');
+  assert.equal(parsed.searchParams.get('t'), '60000');
+  assert.equal(parsed.searchParams.get('timeline'), 'episode');
+  assert.equal(parsed.searchParams.get('asset'), null);
+
+  nextAction.props.onSelectRecommendation({
+    ...result.recommendation,
+    assetId: 'asset_file_42',
+  });
+  const fileUrl = new URL(replacedUrls.at(-1));
+  assert.equal(fileUrl.searchParams.get('timeline'), 'file');
+  assert.equal(fileUrl.searchParams.get('asset'), 'asset_file_42');
+  slots.forEach((slot) => slot?.cleanup?.());
 });

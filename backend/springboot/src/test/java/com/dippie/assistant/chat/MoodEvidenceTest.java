@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+// Test chấm điểm tâm trạng vui/buồn trong MoodEvidence, gồm cả việc gỡ tiêu đề khỏi mô tả và đọc các trường tâm trạng phụ.
 class MoodEvidenceTest {
 
     @Test

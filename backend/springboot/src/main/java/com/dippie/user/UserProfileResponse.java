@@ -1,5 +1,6 @@
 package com.dippie.user;
 
+// Hồ sơ công khai trả về cho client, tách riêng khỏi entity User để không bao giờ lộ mật khẩu hay tokenVersion.
 public record UserProfileResponse(
         Long id,
         String username,

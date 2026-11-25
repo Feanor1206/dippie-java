@@ -1,7 +1,9 @@
 package com.dippie.progress;
 
+// Gói thời lượng hiệu dụng của một tập phim để kiểm tra vượt giới hạn thời gian và ngưỡng xem xong.
 public record WatchDuration(Long durationMs) {
 
+    // Lấy giá trị dương nhỏ hơn giữa thời lượng ghi ở tập và thời lượng file thật để tránh trường hợp file ngắn hơn metadata làm người xem không bao giờ chạm ngưỡng hoàn thành.
     public static WatchDuration resolve(Long episodeDurationMs, Long assetDurationMs) {
         boolean episodeKnown = episodeDurationMs != null && episodeDurationMs > 0;
         boolean assetKnown = assetDurationMs != null && assetDurationMs > 0;

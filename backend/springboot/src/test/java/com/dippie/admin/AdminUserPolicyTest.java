@@ -13,10 +13,12 @@ import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+// Unit test cho các luật trong AdminUserPolicy và hành vi tăng token_version trên entity User.
 class AdminUserPolicyTest {
 
     private final AdminUserPolicy policy = new AdminUserPolicy();
 
+    // Nhận các vai trò hợp lệ sau khi trim và báo lỗi 400 với giá trị trống hoặc lạ.
     @Test
     void parsesValidRolesAndRejectsInvalidValues() {
         assertThat(policy.parseRole("ROLE_USER")).isEqualTo(Role.ROLE_USER);
@@ -30,6 +32,7 @@ class AdminUserPolicyTest {
                 .isInstanceOf(InvalidRequestException.class);
     }
 
+    // Admin không được tự hạ quyền hoặc tự khóa tài khoản của chính mình.
     @Test
     void forbidsAdminFromChangingOwnRoleOrStatus() {
         Viewer actor = new Viewer(1L, "admin1", Role.ROLE_ADMIN);
@@ -44,6 +47,7 @@ class AdminUserPolicyTest {
                 .hasMessage(AdminUserPolicy.SELF_CHANGE_MESSAGE);
     }
 
+    // Khi hệ thống chỉ còn một admin đang mở thì chặn cả hạ quyền lẫn khóa tài khoản đó.
     @Test
     void forbidsDemotingOrDisablingLastEnabledAdmin() {
         Viewer actor = new Viewer(1L, "admin1", Role.ROLE_ADMIN);
@@ -58,6 +62,7 @@ class AdminUserPolicyTest {
                 .hasMessage(AdminUserPolicy.LAST_ADMIN_MESSAGE);
     }
 
+    // Còn từ 2 admin đang mở trở lên thì cho phép hạ quyền hoặc khóa một admin khác.
     @Test
     void allowsDemotingOrDisablingAdminWhenAnotherEnabledAdminRemains() {
         Viewer actor = new Viewer(1L, "admin1", Role.ROLE_ADMIN);
@@ -69,6 +74,7 @@ class AdminUserPolicyTest {
                 .doesNotThrowAnyException();
     }
 
+    // Sửa user thường hoặc admin đã bị khóa sẵn không làm giảm số admin hoạt động nên vẫn hợp lệ.
     @Test
     void allowsModifyingDisabledAdminOrRegularUserWhenOnlyOneEnabledAdminExists() {
         Viewer actor = new Viewer(1L, "admin1", Role.ROLE_ADMIN);
@@ -86,6 +92,7 @@ class AdminUserPolicyTest {
                 .doesNotThrowAnyException();
     }
 
+    // Đổi mật khẩu, khóa, mở hoặc đổi quyền phải tăng token_version để đá phiên cũ; riêng sửa hồ sơ thì giữ nguyên.
     @Test
     void userLifecycleMutationsIncrementTokenVersionWhileProfileUpdateDoesNot() {
         User user = createUser(10L, "alice", Role.ROLE_USER);

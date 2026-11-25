@@ -6,6 +6,8 @@ import java.util.Arrays;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
+// Strategy tìm video trên ổ Drive gắn kết (như X: trên Windows).
+// Một số máy gắn thẳng vào thư mục con nên nếu tìm nguyên đường dẫn không thấy thì thử bỏ tiền tố VideoDieppie/.
 @Component
 public class DriveMountLocation implements MediaLocationStrategy {
 
@@ -23,26 +25,26 @@ public class DriveMountLocation implements MediaLocationStrategy {
         if (driveRoot == null || asset == null) {
             return Optional.empty();
         }
-        String relativePath = asset.getRelativePath();
-        if (!MediaPathPolicy.isValidRelativePath(relativePath)) {
+        Optional<MediaPathPolicy.ValidatedRelativePath> validated = MediaPathPolicy.parse(asset.getRelativePath());
+        if (validated.isEmpty()) {
             return Optional.empty();
         }
+        // Trên Windows phải kiểm tra ổ đĩa đã thực sự gắn chưa trước khi đọc tệp bên trong.
         if (File.separatorChar == '\\' && driveRoot.equals(driveRoot.getRoot())
                 && driveRoot.toString().charAt(1) == ':'
                 && !Arrays.asList(File.listRoots()).contains(driveRoot.toFile())) {
             return Optional.empty();
         }
-        Optional<Path> direct = MediaPathPolicy.resolveRegularFile(driveRoot, relativePath);
+        // Tìm nguyên đường dẫn trước, không thấy mới thử cắt tiền tố thư mục gốc trên Drive.
+        Optional<Path> direct = MediaPathPolicy.resolveRegularFile(driveRoot, validated.get());
         if (direct.isPresent()) {
             return direct;
         }
-        if (relativePath.startsWith(DRIVE_PREFIX)) {
-            String stripped = relativePath.substring(DRIVE_PREFIX.length());
-            return MediaPathPolicy.resolveRegularFile(driveRoot, stripped);
-        }
-        return Optional.empty();
+        return validated.get().stripPrefix(DRIVE_PREFIX)
+                .flatMap(stripped -> MediaPathPolicy.resolveRegularFile(driveRoot, stripped));
     }
 
+    // Thêm dấu / sau tên ổ kiểu "X:" để Java hiểu là gốc ổ đĩa chứ không phải thư mục hiện hành của ổ đó.
     private static Path normalizeMountRoot(String configured) {
         if (configured == null || configured.isBlank()) {
             return null;

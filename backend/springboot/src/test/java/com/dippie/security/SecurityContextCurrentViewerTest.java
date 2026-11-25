@@ -12,6 +12,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+// Test đơn vị cho SecurityContextCurrentViewer khi chưa đăng nhập, đăng nhập user thường và đăng nhập admin.
 class SecurityContextCurrentViewerTest {
 
     private final CurrentViewer currentViewer = new SecurityContextCurrentViewer();
@@ -26,10 +27,10 @@ class SecurityContextCurrentViewerTest {
         assertThat(currentViewer.find()).isEmpty();
         assertThatThrownBy(currentViewer::require)
                 .isInstanceOf(UnauthorizedException.class)
-                .hasMessage("Chưa xác thực người dùng");
+                .hasMessage("Bạn cần đăng nhập để tiếp tục.");
         assertThatThrownBy(currentViewer::requireAdmin)
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessage("Quyền truy cập bị từ chối (Yêu cầu ROLE_ADMIN)");
+                .hasMessage("Chỉ tài khoản quản trị mới dùng được mục này.");
     }
 
     @Test
@@ -39,7 +40,7 @@ class SecurityContextCurrentViewerTest {
         assertThat(currentViewer.require().isAdmin()).isFalse();
         assertThatThrownBy(currentViewer::requireAdmin)
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessage("Quyền truy cập bị từ chối (Yêu cầu ROLE_ADMIN)");
+                .hasMessage("Chỉ tài khoản quản trị mới dùng được mục này.");
 
         setViewer(new Viewer(2L, "admin", Role.ROLE_ADMIN));
 
@@ -47,11 +48,11 @@ class SecurityContextCurrentViewerTest {
     }
 
     private static void setViewer(Viewer viewer) {
-        UsernamePasswordAuthenticationToken auth = UsernamePasswordAuthenticationToken.authenticated(
+        UsernamePasswordAuthenticationToken authentication = UsernamePasswordAuthenticationToken.authenticated(
                 viewer,
                 null,
                 List.of(new SimpleGrantedAuthority(viewer.role().name()))
         );
-        SecurityContextHolder.getContext().setAuthentication(auth);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
     }
 }

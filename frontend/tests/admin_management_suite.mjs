@@ -1,8 +1,8 @@
+import { runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
@@ -50,7 +50,7 @@ function loadAdminService(mockFetch) {
     JSON,
     console,
   };
-  vm.runInNewContext(compiled, sandbox);
+  runWithSharedModules(compiled, sandbox);
   const api = sandbox.module.exports.listAdminUsers ? sandbox.module.exports : sandbox.exports;
   return { api, timers };
 }
@@ -70,7 +70,7 @@ function loadAdminFormat() {
     Boolean,
     JSON,
   };
-  vm.runInNewContext(compiled, sandbox);
+  runWithSharedModules(compiled, sandbox);
   return sandbox.module.exports.getAuditActionLabel ? sandbox.module.exports : sandbox.exports;
 }
 
@@ -297,7 +297,7 @@ test('4. Admin service: propagates backend error messages (409, 403) and rejects
     forbiddenApi.getAdminStats('tok'),
     (err) => {
       assert.equal(err.status, 403);
-      assert.equal(err.message, 'Quyền truy cập bị từ chối (Yêu cầu ROLE_ADMIN)');
+      assert.equal(err.message, 'Tài khoản của bạn không có quyền thực hiện việc này.');
       return true;
     }
   );
@@ -325,10 +325,10 @@ test('5. Admin format helpers: audit action labels, role and status labels', () 
   assert.equal(fmt.getAuditActionLabel('USER_ROLE_CHANGED'), 'Đổi vai trò');
   assert.equal(fmt.getAuditActionLabel('USER_DISABLED'), 'Khóa tài khoản');
   assert.equal(fmt.getAuditActionLabel('USER_ENABLED'), 'Mở khóa tài khoản');
-  assert.equal(fmt.getAuditActionLabel('CATALOG_IMPORTED'), 'Nhập danh mục');
+  assert.equal(fmt.getAuditActionLabel('CATALOG_IMPORTED'), 'Nhập dữ liệu');
   assert.equal(fmt.getAuditActionLabel('CUSTOM_ACTION_CODE'), 'CUSTOM_ACTION_CODE');
-  assert.equal(fmt.getAuditActionLabel(''), '—');
-  assert.equal(fmt.getAuditActionLabel(null), '—');
+  assert.equal(fmt.getAuditActionLabel(''), 'Không có');
+  assert.equal(fmt.getAuditActionLabel(null), 'Không có');
 
   assert.equal(fmt.getRoleLabel('ROLE_ADMIN'), 'Quản trị viên');
   assert.equal(fmt.getRoleLabel('ROLE_USER'), 'Người dùng');
@@ -357,7 +357,7 @@ test('6. Admin format helpers: percentage, rating, vi-VN date/datetime, details,
   });
   assert.match(formattedDateTime, /25\/11\/2026/);
   assert.match(formattedDateTime, /08:52:09/);
-  assert.equal(fmt.formatViDate(null), '—');
+  assert.equal(fmt.formatViDate(null), 'Chưa có');
   assert.equal(fmt.formatViDate('not-a-date'), 'not-a-date');
 
   const pagingMid = fmt.getPagingSummary({
@@ -447,7 +447,7 @@ test('8. AdminUsersPage gates non-admins, disables self actions with tooltip, up
   };
 
   const module = { exports: {} };
-  vm.runInNewContext(compileModule('app/admin/users/page.tsx'), {
+  runWithSharedModules(compileModule('app/admin/users/page.tsx'), {
     module,
     exports: module.exports,
     AbortController,

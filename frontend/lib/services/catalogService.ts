@@ -1,4 +1,12 @@
+import { getStoredAuthToken, SESSION_RESET_EVENT } from '@/lib/services/sessionStorage';
+import { apiFetch, PERMISSION_MESSAGE, RequestTimeoutError, withRequestTimeout } from '@/lib/services/apiRequest';
 import type { Movie } from '@/types/movie';
+
+export type CatalogGenreOption = {
+  id: string;
+  label: string;
+  count: number;
+};
 
 export type PageResponse<T> = {
   items: T[];
@@ -46,323 +54,6 @@ export class CatalogApiError extends Error {
     this.isTimeout = Boolean(options?.isTimeout);
   }
 }
-
-const DEFAULT_TIMEOUT_MS = 7000;
-const API = '/api';
-
-export function normalizeCatalogMovie(raw: any): Movie {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new CatalogApiError('Dữ liệu phim từ máy chủ không hợp lệ (không phải object)', 502);
-  }
-
-  if (typeof raw.id !== 'string' || !raw.id.trim()) {
-    throw new CatalogApiError('Dữ liệu phim thiếu hoặc sai định dạng ID bắt buộc', 502);
-  }
-  const id = raw.id.trim();
-
-  if (typeof raw.title !== 'string' || !raw.title.trim()) {
-    throw new CatalogApiError(`Phim [${id}] thiếu hoặc sai tiêu đề bắt buộc`, 502);
-  }
-  const title = raw.title.trim();
-
-  if (typeof raw.year !== 'number' || !Number.isFinite(raw.year) || raw.year <= 1800) {
-    throw new CatalogApiError(`Phim [${id}] thiếu hoặc sai định dạng năm phát hành (year)`, 502);
-  }
-  const year = Math.round(raw.year);
-
-  if (typeof raw.rating !== 'number' || !Number.isFinite(raw.rating) || raw.rating < 0 || raw.rating > 10) {
-    throw new CatalogApiError(`Phim [${id}] thiếu hoặc sai định dạng điểm đánh giá (rating: 0..10)`, 502);
-  }
-  const rating = Number(raw.rating.toFixed(1));
-
-  let genres: string[] = [];
-  if (Array.isArray(raw.genres)) {
-    genres = raw.genres
-      .map((g: unknown) => (typeof g === 'string' ? g.trim() : ''))
-      .filter((g: string) => g.length > 0);
-  } else if (typeof raw.genres === 'string' && raw.genres.trim()) {
-    genres = raw.genres
-      .split(',')
-      .map((g: string) => g.trim())
-      .filter((g: string) => g.length > 0);
-  }
-
-  const runtime = (typeof raw.runtime === 'string' || typeof raw.runtime === 'number')
-    ? String(raw.runtime).trim()
-    : '';
-  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
-  const poster = typeof raw.poster === 'string' && raw.poster.trim() ? raw.poster.trim() : '';
-  const backdrop = typeof raw.backdrop === 'string' && raw.backdrop.trim() ? raw.backdrop.trim() : '';
-  const videoUrl = typeof raw.videoUrl === 'string' && raw.videoUrl.trim() ? raw.videoUrl.trim() : undefined;
-  const navigation: Partial<Movie> = {};
-  if (raw.item_type === 'series' || raw.item_type === 'episode') {
-    navigation.item_type = raw.item_type;
-    if (typeof raw.series_id === 'string' && raw.series_id.trim()) navigation.series_id = raw.series_id.trim();
-    if (typeof raw.series_title === 'string' && raw.series_title.trim()) navigation.series_title = raw.series_title.trim();
-    else if (typeof raw.seriesTitle === 'string' && raw.seriesTitle.trim()) navigation.series_title = raw.seriesTitle.trim();
-    if (typeof raw.episode_id === 'string' && raw.episode_id.trim()) navigation.episode_id = raw.episode_id.trim();
-    if (Number.isSafeInteger(raw.episode_number) && raw.episode_number > 0) navigation.episode_number = raw.episode_number;
-  } else if (typeof raw.series_title === 'string' && raw.series_title.trim()) {
-    navigation.series_title = raw.series_title.trim();
-  }
-
-  return {
-    id,
-    title,
-    year,
-    rating,
-    runtime,
-    genres,
-    description,
-    poster,
-    backdrop,
-    videoUrl,
-    ...navigation,
-  };
-}
-
-async function executeWithLifecycle<T>(
-  action: (signal: AbortSignal) => Promise<T>,
-  options: {
-    timeoutMs?: number;
-    signal?: AbortSignal;
-  } = {}
-): Promise<T> {
-  const timeoutMs = typeof options.timeoutMs === 'number' && options.timeoutMs > 0
-    ? options.timeoutMs
-    : DEFAULT_TIMEOUT_MS;
-
-  if (options.signal?.aborted) {
-    throw new CatalogApiError('Yêu cầu đã bị hủy bởi người dùng', 499, undefined, { isCanceled: true });
-  }
-
-  const controller = new AbortController();
-  let timedOut = false;
-  let callerCanceled = false;
-
-  const abortListener = () => {
-    callerCanceled = true;
-    controller.abort(options.signal?.reason || new Error('Request aborted by caller'));
-  };
-
-  if (options.signal) {
-    options.signal.addEventListener('abort', abortListener);
-  }
-
-  let timer: any = null;
-  timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort(new Error(`Catalog request timed out after ${timeoutMs}ms`));
-  }, timeoutMs);
-
-  try {
-    return await action(controller.signal);
-  } catch (err: any) {
-    if (callerCanceled || options.signal?.aborted) {
-      throw new CatalogApiError('Yêu cầu đã bị hủy bởi người dùng', 499, undefined, { isCanceled: true });
-    }
-    if (timedOut || (err?.name === 'AbortError' && !callerCanceled)) {
-      throw new CatalogApiError('Yêu cầu danh mục quá thời gian phản hồi (timeout)', 408, undefined, { isTimeout: true });
-    }
-    if (err instanceof CatalogApiError) {
-      throw err;
-    }
-    throw new CatalogApiError(
-      err?.message ? `Không thể kết nối đến máy chủ danh mục phim: ${err.message}` : 'Không thể kết nối đến máy chủ danh mục phim',
-      0,
-      err
-    );
-  } finally {
-    if (timer !== null) {
-      clearTimeout(timer);
-    }
-    if (options.signal) {
-      options.signal.removeEventListener('abort', abortListener);
-    }
-  }
-}
-
-export async function browseCatalog(
-  options: CatalogBrowseOptions = {},
-  baseUrl = API
-): Promise<PageResponse<Movie>> {
-  const params = new URLSearchParams();
-
-  const qTrim = typeof options.query === 'string' ? options.query.trim() : '';
-  const sTrim = typeof options.search === 'string' ? options.search.trim() : '';
-  const effectiveQuery = qTrim || sTrim;
-  if (effectiveQuery) {
-    params.set('query', effectiveQuery);
-  }
-
-  if (typeof options.genre === 'string' && options.genre.trim()) {
-    params.set('genre', options.genre.trim());
-  }
-
-  if (options.genres) {
-    const genresStr = Array.isArray(options.genres)
-      ? options.genres.map((g) => (typeof g === 'string' ? g.trim() : '')).filter(Boolean).join(',')
-      : typeof options.genres === 'string' ? options.genres.trim() : '';
-    if (genresStr) {
-      params.set('genres', genresStr);
-    }
-  }
-
-  if (options.animationOnly) {
-    params.set('animationOnly', 'true');
-  }
-
-  if (typeof options.yearMin === 'number' && Number.isFinite(options.yearMin)) {
-    params.set('yearMin', String(options.yearMin));
-  }
-
-  if (typeof options.yearMax === 'number' && Number.isFinite(options.yearMax)) {
-    params.set('yearMax', String(options.yearMax));
-  }
-
-  if (options.sort) {
-    params.set('sort', options.sort);
-  }
-
-  if (options.direction) {
-    params.set('direction', options.direction);
-  }
-
-  if (typeof options.page === 'number' && Number.isFinite(options.page)) {
-    params.set('page', String(options.page));
-  }
-
-  if (typeof options.size === 'number' && Number.isFinite(options.size)) {
-    params.set('size', String(options.size));
-  }
-
-  const queryString = params.toString();
-  const url = `${baseUrl}/movies/browse${queryString ? `?${queryString}` : ''}`;
-
-  return executeWithLifecycle(
-    async (signal) => {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        signal,
-      });
-
-      if (!res.ok) {
-        let errorMsg = `Lỗi danh mục phim (${res.status})`;
-        try {
-          const errBody = await res.json();
-          if (errBody?.message) errorMsg = errBody.message;
-        } catch {
-        }
-        throw new CatalogApiError(errorMsg, res.status);
-      }
-
-      let body: any;
-      try {
-        body = await res.json();
-      } catch {
-        throw new CatalogApiError('Máy chủ phản hồi định dạng dữ liệu không hợp lệ (không phải JSON)', res.status);
-      }
-
-      if (!body || typeof body !== 'object' || body.success !== true) {
-        throw new CatalogApiError(body?.message || 'Phản hồi danh mục phim không thành công (success != true)', res.status, body);
-      }
-
-      const data = body.data;
-      if (!data || typeof data !== 'object' || Array.isArray(data)) {
-        throw new CatalogApiError('Dữ liệu phân trang không hợp lệ (data không phải object)', 502);
-      }
-
-      if (!Array.isArray(data.items)) {
-        throw new CatalogApiError('Dữ liệu phân trang thiếu mảng items bắt buộc', 502);
-      }
-
-      if (
-        typeof data.page !== 'number' || !Number.isFinite(data.page) || data.page < 0 ||
-        typeof data.size !== 'number' || !Number.isFinite(data.size) || data.size < 1 ||
-        typeof data.totalElements !== 'number' || !Number.isFinite(data.totalElements) || data.totalElements < 0 ||
-        typeof data.totalPages !== 'number' || !Number.isFinite(data.totalPages) || data.totalPages < 0 ||
-        typeof data.hasNext !== 'boolean' || typeof data.hasPrevious !== 'boolean'
-      ) {
-        throw new CatalogApiError('Dữ liệu phân trang không hợp lệ', 502);
-      }
-
-      const items = data.items.map(normalizeCatalogMovie);
-
-      return {
-        items,
-        page: data.page,
-        size: data.size,
-        totalElements: data.totalElements,
-        totalPages: data.totalPages,
-        hasNext: data.hasNext,
-        hasPrevious: data.hasPrevious,
-      };
-    },
-    options
-  );
-}
-
-export async function getCatalogMovieById(
-  id: string,
-  options: { signal?: AbortSignal; timeoutMs?: number } = {},
-  baseUrl = API
-): Promise<Movie | null> {
-  const cleanId = typeof id === 'string' ? id.trim() : '';
-  if (!cleanId) {
-    throw new CatalogApiError('ID phim không hợp lệ', 400);
-  }
-
-  const url = `${baseUrl}/movies/${encodeURIComponent(cleanId)}`;
-
-  return executeWithLifecycle(
-    async (signal) => {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        signal,
-      });
-
-      if (res.status === 404) {
-        return null;
-      }
-
-      if (!res.ok) {
-        let errorMsg = `Lỗi xem chi tiết phim (${res.status})`;
-        try {
-          const errBody = await res.json();
-          if (errBody?.message) errorMsg = errBody.message;
-        } catch {
-        }
-        throw new CatalogApiError(errorMsg, res.status);
-      }
-
-      let body: any;
-      try {
-        body = await res.json();
-      } catch {
-        throw new CatalogApiError('Máy chủ phản hồi định dạng dữ liệu không hợp lệ (không phải JSON)', res.status);
-      }
-
-      if (!body || typeof body !== 'object' || body.success !== true || !body.data) {
-        throw new CatalogApiError(body?.message || 'Phản hồi chi tiết phim không thành công', res.status, body);
-      }
-
-      const movie = normalizeCatalogMovie(body.data);
-
-      if (movie.id !== cleanId) {
-        throw new CatalogApiError(
-          `ID phim trong phản hồi (${movie.id}) không khớp với ID yêu cầu (${cleanId})`,
-          502
-        );
-      }
-
-      return movie;
-    },
-    options
-  );
-}
-
 
 export interface CatalogValidationError {
   path: string;
@@ -422,6 +113,11 @@ export interface CatalogSeason {
   episodeCount?: number;
 }
 
+export interface CatalogYoutubeSource {
+  videoId: string;
+  canEmbed: boolean;
+}
+
 export interface CatalogEpisode {
   id: string;
   seriesId: string;
@@ -436,6 +132,15 @@ export interface CatalogEpisode {
   keywords?: string;
   themes?: string;
   primaryMediaAssetId?: string;
+  rawJson?: string;
+  canEmbed?: boolean;
+  externalOnly?: boolean;
+  youtubeWatchUrl?: string | null;
+  youtubeVideoId?: string | null;
+  youtube?: CatalogYoutubeSource | null;
+  youtubeFallback?: CatalogYoutubeSource | null;
+  averageRating?: number | null;
+  ratingCount?: number;
 }
 
 export interface CatalogSegment {
@@ -478,11 +183,6 @@ export interface CatalogMediaAsset {
   available?: boolean;
 }
 
-export interface CatalogYoutubeSource {
-  videoId: string;
-  canEmbed: boolean;
-}
-
 export interface CatalogSnapshot {
   id: string;
   snapshotVersion: number;
@@ -509,6 +209,8 @@ export interface CatalogEpisodeResponse {
   scenes: CatalogScene[];
   youtube?: CatalogYoutubeSource | null;
   youtubeFallback?: CatalogYoutubeSource | null;
+  averageRating?: number | null;
+  ratingCount?: number;
 }
 
 export interface CatalogSearchResult {
@@ -525,81 +227,395 @@ export interface CatalogSearchResult {
   releaseYearStart?: number;
 }
 
+const DEFAULT_TIMEOUT_MS = 7000;
+const GENRES_CACHE_TTL_MS = 60_000;
+const MIN_VALID_YEAR = 1800;
+const API = '/api';
+
+const genresCache = new Map<string, { expiresAt: number; data: CatalogGenreOption[] }>();
+
+export function clearCatalogGenresCache(): void {
+  genresCache.clear();
+}
+
+if (typeof window !== 'undefined') window.addEventListener?.(SESSION_RESET_EVENT, clearCatalogGenresCache);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nonEmptyTrimmed(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
 function getAuthHeader(): Record<string, string> {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('dippie_auth_token') || localStorage.getItem('token');
-    if (token) {
-      return { Authorization: `Bearer ${token}` };
+  const token = getStoredAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  if (res.status === 403) return PERMISSION_MESSAGE;
+  try {
+    const errBody = await res.json();
+    if (isRecord(errBody) && typeof errBody.message === 'string' && errBody.message) {
+      return errBody.message;
+    }
+  } catch {}
+  return fallback;
+}
+
+async function parseJsonOrThrow(res: Response, errorMessage: string, status = res.status): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch {
+    throw new CatalogApiError(errorMessage, status);
+  }
+}
+
+export function normalizeCatalogMovie(raw: unknown): Movie {
+  if (!isRecord(raw)) {
+    throw new CatalogApiError('Dữ liệu phim từ máy chủ không hợp lệ.', 502);
+  }
+  const id = nonEmptyTrimmed(raw.id);
+  if (!id) throw new CatalogApiError('Dữ liệu phim thiếu mã phim.', 502);
+  const title = nonEmptyTrimmed(raw.title);
+  if (!title) throw new CatalogApiError(`Phim [${id}] thiếu tiêu đề.`, 502);
+
+  let year: number | null = null;
+  if (raw.year === null) {
+    year = null;
+  } else if (typeof raw.year === 'number' && Number.isFinite(raw.year) && raw.year > MIN_VALID_YEAR) {
+    year = Math.round(raw.year);
+  } else {
+    throw new CatalogApiError(`Phim [${id}] có năm phát hành không hợp lệ.`, 502);
+  }
+
+  if (typeof raw.rating !== 'number' || !Number.isFinite(raw.rating) || raw.rating < 0 || raw.rating > 10) {
+    throw new CatalogApiError(`Phim [${id}] có điểm không hợp lệ.`, 502);
+  }
+  const rating = Number(raw.rating.toFixed(1));
+  const averageRating =
+    raw.averageRating === null
+      ? null
+      : typeof raw.averageRating === 'number' &&
+        Number.isFinite(raw.averageRating) &&
+        raw.averageRating >= 0 &&
+        raw.averageRating <= 10
+      ? Number(raw.averageRating.toFixed(1))
+      : undefined;
+  const ratingCount =
+    typeof raw.ratingCount === 'number' && Number.isFinite(raw.ratingCount) && raw.ratingCount >= 0
+      ? Math.floor(raw.ratingCount)
+      : undefined;
+
+  let genres: string[] = [];
+  if (Array.isArray(raw.genres)) {
+    genres = raw.genres.map((g) => (typeof g === 'string' ? g.trim() : '')).filter(Boolean);
+  } else if (typeof raw.genres === 'string' && raw.genres.trim()) {
+    genres = raw.genres.split(',').map((g) => g.trim()).filter(Boolean);
+  }
+
+  const runtime = typeof raw.runtime === 'string' || typeof raw.runtime === 'number' ? String(raw.runtime).trim() : '';
+  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
+  const poster = nonEmptyTrimmed(raw.poster) ?? '';
+  const backdrop = nonEmptyTrimmed(raw.backdrop) ?? '';
+  const videoUrl = nonEmptyTrimmed(raw.videoUrl);
+
+  const navigation: Partial<Movie> = {};
+  if (raw.item_type === 'series' || raw.item_type === 'episode') {
+    navigation.item_type = raw.item_type;
+    const seriesId = nonEmptyTrimmed(raw.series_id);
+    if (seriesId) navigation.series_id = seriesId;
+    const seriesTitle = nonEmptyTrimmed(raw.series_title) ?? nonEmptyTrimmed(raw.seriesTitle);
+    if (seriesTitle) navigation.series_title = seriesTitle;
+    const episodeId = nonEmptyTrimmed(raw.episode_id);
+    if (episodeId) navigation.episode_id = episodeId;
+    if (typeof raw.episode_number === 'number' && Number.isSafeInteger(raw.episode_number) && raw.episode_number > 0) {
+      navigation.episode_number = raw.episode_number;
+    }
+  } else {
+    const seriesTitle = nonEmptyTrimmed(raw.series_title);
+    if (seriesTitle) navigation.series_title = seriesTitle;
+  }
+
+  if (typeof raw.externalOnly === 'boolean') navigation.externalOnly = raw.externalOnly;
+  else if (typeof raw.external_only === 'boolean') navigation.externalOnly = raw.external_only;
+  if (typeof raw.canEmbed === 'boolean') navigation.canEmbed = raw.canEmbed;
+  else if (typeof raw.can_embed === 'boolean') navigation.canEmbed = raw.can_embed;
+
+  const youtubeWatchUrl = nonEmptyTrimmed(raw.youtubeWatchUrl) ?? nonEmptyTrimmed(raw.youtube_watch_url);
+  if (youtubeWatchUrl) navigation.youtubeWatchUrl = youtubeWatchUrl;
+  const youtubeVideoId = nonEmptyTrimmed(raw.youtubeVideoId) ?? nonEmptyTrimmed(raw.youtube_video_id);
+  if (youtubeVideoId) navigation.youtubeVideoId = youtubeVideoId;
+
+  return {
+    id,
+    title,
+    year,
+    rating,
+    ...(averageRating !== undefined ? { averageRating } : {}),
+    ...(ratingCount !== undefined ? { ratingCount } : {}),
+    runtime,
+    genres,
+    description,
+    poster,
+    backdrop,
+    videoUrl,
+    ...navigation,
+  };
+}
+
+async function runCatalogRequest<T>(
+  action: (signal: AbortSignal) => Promise<T>,
+  options: { timeoutMs?: number; signal?: AbortSignal } = {}
+): Promise<T> {
+  try {
+    return await withRequestTimeout(action, { ...options, timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS },
+      'Tải kho phim quá chậm. Bạn thử lại nhé.');
+  } catch (error) {
+    if (options.signal?.aborted) throw new CatalogApiError('Yêu cầu đã được hủy.', 499, undefined, { isCanceled: true });
+    if (error instanceof RequestTimeoutError) throw new CatalogApiError(error.message, 408, undefined, { isTimeout: true });
+    if (error instanceof CatalogApiError) throw error;
+    throw new CatalogApiError('Chưa kết nối được kho phim.', 0, error);
+  }
+}
+
+function resolveGenreDisplayLabel(
+  id: string,
+  explicitLabel?: string,
+  labelResolver?: (genreId: string) => string
+): string {
+  const cleanLabel = typeof explicitLabel === 'string' ? explicitLabel.trim() : '';
+  if (cleanLabel) return cleanLabel;
+  return typeof labelResolver === 'function' ? labelResolver(id) : id;
+}
+
+export function normalizeCatalogGenres(
+  raw: unknown,
+  labelResolver?: (genreId: string) => string
+): CatalogGenreOption[] {
+  const list = Array.isArray(raw)
+    ? raw
+    : isRecord(raw) && Array.isArray(raw.data)
+    ? raw.data
+    : null;
+  if (!list) throw new CatalogApiError('Danh sách thể loại không hợp lệ', 502);
+
+  const byKey = new Map<string, CatalogGenreOption>();
+  for (const item of list) {
+    if (!isRecord(item)) continue;
+    const id = nonEmptyTrimmed(item.id);
+    const count = typeof item.count === 'number' && Number.isFinite(item.count) ? Math.floor(item.count) : 0;
+    if (!id || count <= 0) continue;
+    const key = id.toLocaleLowerCase('vi');
+    if (byKey.has(key)) continue;
+    byKey.set(key, {
+      id,
+      label: resolveGenreDisplayLabel(id, typeof item.label === 'string' ? item.label : undefined, labelResolver),
+      count,
+    });
+  }
+  return [...byKey.values()];
+}
+
+export function deriveGenresFromMovies(
+  movies: Movie[],
+  labelResolver?: (genreId: string) => string
+): CatalogGenreOption[] {
+  const counts = new Map<string, CatalogGenreOption>();
+  for (const movie of movies) {
+    const seenInMovie = new Set<string>();
+    for (const rawGenre of movie.genres || []) {
+      const clean = nonEmptyTrimmed(rawGenre);
+      if (!clean) continue;
+      const label = resolveGenreDisplayLabel(clean, undefined, labelResolver);
+      const key = label.toLocaleLowerCase('vi');
+      if (seenInMovie.has(key)) continue;
+      seenInMovie.add(key);
+      const existing = counts.get(key);
+      if (existing) existing.count += 1;
+      else counts.set(key, { id: clean, label, count: 1 });
     }
   }
-  return {};
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'vi'));
+}
+
+export async function getCatalogGenres(
+  options: { signal?: AbortSignal; timeoutMs?: number; forceRefresh?: boolean } = {},
+  baseUrl = API
+): Promise<CatalogGenreOption[]> {
+  const cached = genresCache.get(baseUrl);
+  if (!options.forceRefresh && cached && cached.expiresAt > Date.now()) return cached.data;
+
+  const genres = await runCatalogRequest(async (signal) => {
+    const res = await apiFetch(`${baseUrl}/movies/genres`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+    if (!res.ok) throw new CatalogApiError(`Chưa tải được danh sách thể loại (${res.status}).`, res.status);
+    const body = await parseJsonOrThrow(res, 'Dữ liệu danh sách thể loại không hợp lệ.', 502);
+    return normalizeCatalogGenres(body);
+  }, options);
+
+  genresCache.set(baseUrl, { data: genres, expiresAt: Date.now() + GENRES_CACHE_TTL_MS });
+  return genres;
+}
+
+export async function browseCatalog(
+  options: CatalogBrowseOptions = {},
+  baseUrl = API
+): Promise<PageResponse<Movie>> {
+  const params = new URLSearchParams();
+  const effectiveQuery = nonEmptyTrimmed(options.query) || nonEmptyTrimmed(options.search);
+  if (effectiveQuery) params.set('query', effectiveQuery);
+  const genre = nonEmptyTrimmed(options.genre);
+  if (genre) params.set('genre', genre);
+  if (options.genres) {
+    const genresParam = Array.isArray(options.genres)
+      ? options.genres.map((g) => (typeof g === 'string' ? g.trim() : '')).filter(Boolean).join(',')
+      : nonEmptyTrimmed(options.genres) ?? '';
+    if (genresParam) params.set('genres', genresParam);
+  }
+  if (options.animationOnly) params.set('animationOnly', 'true');
+  if (typeof options.yearMin === 'number' && Number.isFinite(options.yearMin)) params.set('yearMin', String(options.yearMin));
+  if (typeof options.yearMax === 'number' && Number.isFinite(options.yearMax)) params.set('yearMax', String(options.yearMax));
+  if (options.sort) params.set('sort', options.sort);
+  if (options.direction) params.set('direction', options.direction);
+  if (typeof options.page === 'number' && Number.isFinite(options.page)) params.set('page', String(options.page));
+  if (typeof options.size === 'number' && Number.isFinite(options.size)) params.set('size', String(options.size));
+
+  const queryString = params.toString();
+  const url = `${baseUrl}/movies/browse${queryString ? `?${queryString}` : ''}`;
+
+  return runCatalogRequest(async (signal) => {
+    const res = await apiFetch(url, { method: 'GET', headers: { Accept: 'application/json' }, signal });
+    if (!res.ok) throw new CatalogApiError(await readErrorMessage(res, `Chưa tải được kho phim (${res.status}).`), res.status);
+
+    const body = await parseJsonOrThrow(res, 'Dữ liệu kho phim từ máy chủ không hợp lệ.');
+    if (!isRecord(body) || body.success !== true) {
+      const message = isRecord(body) && typeof body.message === 'string' ? body.message : 'Chưa tải được kho phim.';
+      throw new CatalogApiError(message, res.status, body);
+    }
+
+    const pageData = body.data;
+    if (!isRecord(pageData)) throw new CatalogApiError('Dữ liệu phân trang không hợp lệ.', 502);
+    if (!Array.isArray(pageData.items)) throw new CatalogApiError('Dữ liệu phân trang thiếu danh sách phim.', 502);
+
+    if (
+      typeof pageData.page !== 'number' || !Number.isFinite(pageData.page) || pageData.page < 0 ||
+      typeof pageData.size !== 'number' || !Number.isFinite(pageData.size) || pageData.size < 1 ||
+      typeof pageData.totalElements !== 'number' || !Number.isFinite(pageData.totalElements) || pageData.totalElements < 0 ||
+      typeof pageData.totalPages !== 'number' || !Number.isFinite(pageData.totalPages) || pageData.totalPages < 0 ||
+      typeof pageData.hasNext !== 'boolean' || typeof pageData.hasPrevious !== 'boolean'
+    ) {
+      throw new CatalogApiError('Dữ liệu phân trang không hợp lệ.', 502);
+    }
+
+    return {
+      items: pageData.items.map(normalizeCatalogMovie),
+      page: pageData.page,
+      size: pageData.size,
+      totalElements: pageData.totalElements,
+      totalPages: pageData.totalPages,
+      hasNext: pageData.hasNext,
+      hasPrevious: pageData.hasPrevious,
+    };
+  }, options);
+}
+
+export async function getCatalogMovieById(
+  id: string,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  baseUrl = API
+): Promise<Movie | null> {
+  const cleanId = nonEmptyTrimmed(id);
+  if (!cleanId) throw new CatalogApiError('Mã phim không hợp lệ.', 400);
+
+  return runCatalogRequest(async (signal) => {
+    const res = await apiFetch(`${baseUrl}/movies/${encodeURIComponent(cleanId)}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new CatalogApiError(await readErrorMessage(res, `Chưa tải được thông tin phim (${res.status}).`), res.status);
+
+    const body = await parseJsonOrThrow(res, 'Dữ liệu phim từ máy chủ không hợp lệ.');
+    if (!isRecord(body) || body.success !== true || !body.data) {
+      const message = isRecord(body) && typeof body.message === 'string' ? body.message : 'Chưa tải được thông tin phim.';
+      throw new CatalogApiError(message, res.status, body);
+    }
+
+    const movie = normalizeCatalogMovie(body.data);
+    if (movie.id !== cleanId) {
+      throw new CatalogApiError(`Mã phim trả về (${movie.id}) không khớp với phim đang mở (${cleanId}).`, 502);
+    }
+    return movie;
+  }, options);
 }
 
 export async function validateCatalogPackage(
-  payload: any,
+  payload: unknown,
   baseUrl = API
 ): Promise<CatalogValidationResult> {
-  const url = `${baseUrl}/admin/catalog/validate`;
-  const res = await fetch(url, {
+  const res = await apiFetch(`${baseUrl}/admin/catalog/validate`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeader(),
-    },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
     body: JSON.stringify(payload),
   });
-
-  if (!res.ok && res.status !== 400) throw new CatalogApiError(`Không thể kiểm tra gói catalog (${res.status})`, res.status);
-  const result = await res.json();
-  if (!result || typeof result.valid !== 'boolean' || !Array.isArray(result.errors)) {
-    throw new CatalogApiError('Phản hồi kiểm tra gói catalog không hợp lệ', 502);
+  if (!res.ok && res.status !== 400) {
+    throw new CatalogApiError(`Chưa kiểm tra được tệp dữ liệu (${res.status}).`, res.status);
   }
-  return result;
+  const result = await res.json();
+  if (!isRecord(result) || typeof result.valid !== 'boolean' || !Array.isArray(result.errors)) {
+    throw new CatalogApiError('Kết quả kiểm tra tệp dữ liệu không hợp lệ.', 502);
+  }
+  return result as unknown as CatalogValidationResult;
 }
 
 export async function importCatalogPackage(
-  payload: any,
+  payload: unknown,
   baseUrl = API
 ): Promise<CatalogImportResponse> {
-  const url = `${baseUrl}/admin/catalog/import`;
-  const res = await fetch(url, {
+  const res = await apiFetch(`${baseUrl}/admin/catalog/import`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeader(),
-    },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
     body: JSON.stringify(payload),
   });
-
   if (!res.ok) {
-    let errBody: any;
+    let errBody: unknown;
     try {
       errBody = await res.json();
-    } catch {
-    }
-    throw new CatalogApiError(
-      errBody?.message || `Lỗi khi nhập dữ liệu catalog (HTTP ${res.status})`,
-      res.status,
-      errBody
-    );
+    } catch {}
+    const message =
+      isRecord(errBody) && typeof errBody.message === 'string'
+        ? errBody.message
+        : `Chưa nhập được dữ liệu (HTTP ${res.status}).`;
+    throw new CatalogApiError(message, res.status, errBody);
   }
-
-  return await res.json();
+  return (await res.json()) as CatalogImportResponse;
 }
 
 export async function getImportHistory(
   baseUrl = API,
   signal?: AbortSignal,
   timeoutMs = DEFAULT_TIMEOUT_MS
-): Promise<any[]> {
-  const url = `${baseUrl}/admin/catalog/history`;
-  return executeWithLifecycle(async (requestSignal) => {
-    const res = await fetch(url, { method: 'GET', headers: { Accept: 'application/json', ...getAuthHeader() }, signal: requestSignal });
-    if (!res.ok) throw new CatalogApiError(`Không thể tải lịch sử nhập (${res.status})`, res.status);
-    const data = await res.json();
-    if (!Array.isArray(data)) throw new CatalogApiError('Dữ liệu lịch sử nhập không hợp lệ', 502);
-    return data;
-  }, { signal, timeoutMs });
+): Promise<Record<string, unknown>[]> {
+  return runCatalogRequest(
+    async (requestSignal) => {
+      const res = await apiFetch(`${baseUrl}/admin/catalog/history`, {
+        method: 'GET',
+        headers: { Accept: 'application/json', ...getAuthHeader() },
+        signal: requestSignal,
+      });
+      if (!res.ok) throw new CatalogApiError(`Chưa tải được lịch sử nhập (${res.status}).`, res.status);
+      const history = await res.json();
+      if (!Array.isArray(history)) throw new CatalogApiError('Dữ liệu lịch sử nhập không hợp lệ.', 502);
+      return history as Record<string, unknown>[];
+    },
+    { signal, timeoutMs }
+  );
 }
 
 export async function getCatalogSnapshots(
@@ -607,32 +623,61 @@ export async function getCatalogSnapshots(
   signal?: AbortSignal,
   timeoutMs = DEFAULT_TIMEOUT_MS
 ): Promise<CatalogSnapshot[]> {
-  const url = `${baseUrl}/admin/catalog/snapshots`;
-  return executeWithLifecycle(async (requestSignal) => {
-    const res = await fetch(url, { method: 'GET', headers: { Accept: 'application/json', ...getAuthHeader() }, signal: requestSignal });
-    if (!res.ok) throw new CatalogApiError(`Không thể tải trạng thái đồng bộ (${res.status})`, res.status);
-    const data = await res.json();
-    if (!Array.isArray(data)) throw new CatalogApiError('Dữ liệu trạng thái đồng bộ không hợp lệ', 502);
-    return data;
-  }, { signal, timeoutMs });
+  return runCatalogRequest(
+    async (requestSignal) => {
+      const res = await apiFetch(`${baseUrl}/admin/catalog/snapshots`, {
+        method: 'GET',
+        headers: { Accept: 'application/json', ...getAuthHeader() },
+        signal: requestSignal,
+      });
+      if (!res.ok) throw new CatalogApiError(`Chưa tải được trạng thái đồng bộ (${res.status}).`, res.status);
+      const snapshots = await res.json();
+      if (!Array.isArray(snapshots)) throw new CatalogApiError('Dữ liệu trạng thái đồng bộ không hợp lệ.', 502);
+      return snapshots as CatalogSnapshot[];
+    },
+    { signal, timeoutMs }
+  );
 }
 
 export async function retryCatalogSnapshot(
   snapshotId: string,
   baseUrl = API
 ): Promise<CatalogSnapshot> {
-  const url = `${baseUrl}/admin/catalog/snapshots/${encodeURIComponent(snapshotId)}/retry`;
-  const res = await fetch(url, {
+  const res = await apiFetch(`${baseUrl}/admin/catalog/snapshots/${encodeURIComponent(snapshotId)}/retry`, {
     method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      ...getAuthHeader(),
-    },
+    headers: { Accept: 'application/json', ...getAuthHeader() },
   });
-  if (!res.ok) {
-    throw new CatalogApiError(`Không thể thử lại snapshot (${res.status})`, res.status);
+  if (!res.ok) throw new CatalogApiError(`Chưa đồng bộ lại được bản dữ liệu (${res.status}).`, res.status);
+  return (await res.json()) as CatalogSnapshot;
+}
+
+function normalizeCatalogSeriesSummary(raw: unknown): CatalogSeriesSummary {
+  if (!isRecord(raw)) {
+    throw new CatalogApiError('Dữ liệu phim bộ từ máy chủ không hợp lệ.', 502, raw);
   }
-  return await res.json();
+  const id = nonEmptyTrimmed(raw.id);
+  if (!id) throw new CatalogApiError('Phim bộ thiếu mã phim.', 502, raw);
+  const title = nonEmptyTrimmed(raw.title);
+  if (!title) throw new CatalogApiError(`Phim bộ [${id}] thiếu tiêu đề.`, 502, raw);
+
+  for (const key of ['releaseYearStart', 'releaseYearEnd'] as const) {
+    const value = raw[key];
+    if (value != null && (typeof value !== 'number' || !Number.isFinite(value))) {
+      throw new CatalogApiError(`Phim bộ [${id}] có năm phát hành không hợp lệ.`, 502, raw);
+    }
+  }
+  return {
+    id,
+    title,
+    originalTitle: typeof raw.originalTitle === 'string' ? raw.originalTitle : undefined,
+    synopsis: typeof raw.synopsis === 'string' ? raw.synopsis : undefined,
+    primaryLanguage: typeof raw.primaryLanguage === 'string' ? raw.primaryLanguage : undefined,
+    releaseYearStart: typeof raw.releaseYearStart === 'number' ? raw.releaseYearStart : undefined,
+    releaseYearEnd: typeof raw.releaseYearEnd === 'number' ? raw.releaseYearEnd : undefined,
+    releaseStatus: typeof raw.releaseStatus === 'string' ? raw.releaseStatus : undefined,
+    genreIds: typeof raw.genreIds === 'string' ? raw.genreIds : undefined,
+    genreIdsJson: typeof raw.genreIdsJson === 'string' ? raw.genreIdsJson : undefined,
+  };
 }
 
 export async function getCatalogSeriesList(
@@ -640,47 +685,22 @@ export async function getCatalogSeriesList(
   signal?: AbortSignal,
   timeoutMs = DEFAULT_TIMEOUT_MS
 ): Promise<CatalogSeriesSummary[]> {
-  const url = `${baseUrl}/catalog/series`;
-  return executeWithLifecycle(async (requestSignal) => {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json', ...getAuthHeader() },
-      signal: requestSignal,
-    });
-    if (!res.ok) throw new CatalogApiError(`Lỗi tải danh mục bộ hoạt hình (${res.status})`, res.status);
-    const body = await res.json();
-    if (!Array.isArray(body)) throw new CatalogApiError('Danh mục bộ hoạt hình không hợp lệ (thiếu mảng dữ liệu)', 502, body);
-    return body.map(normalizeCatalogSeriesSummary);
-  }, { signal, timeoutMs });
-}
-
-function normalizeCatalogSeriesSummary(raw: any): CatalogSeriesSummary {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new CatalogApiError('Bộ hoạt hình từ máy chủ không hợp lệ (không phải object)', 502, raw);
-  }
-  if (typeof raw.id !== 'string' || !raw.id.trim()) {
-    throw new CatalogApiError('Bộ hoạt hình thiếu ID bắt buộc', 502, raw);
-  }
-  if (typeof raw.title !== 'string' || !raw.title.trim()) {
-    throw new CatalogApiError(`Bộ hoạt hình [${raw.id.trim()}] thiếu tiêu đề bắt buộc`, 502, raw);
-  }
-  for (const key of ['releaseYearStart', 'releaseYearEnd'] as const) {
-    if (raw[key] != null && (typeof raw[key] !== 'number' || !Number.isFinite(raw[key]))) {
-      throw new CatalogApiError(`Bộ hoạt hình [${raw.id.trim()}] có ${key} không hợp lệ`, 502, raw);
-    }
-  }
-  return {
-    id: raw.id.trim(),
-    title: raw.title.trim(),
-    originalTitle: typeof raw.originalTitle === 'string' ? raw.originalTitle : undefined,
-    synopsis: typeof raw.synopsis === 'string' ? raw.synopsis : undefined,
-    primaryLanguage: typeof raw.primaryLanguage === 'string' ? raw.primaryLanguage : undefined,
-    releaseYearStart: raw.releaseYearStart ?? undefined,
-    releaseYearEnd: raw.releaseYearEnd ?? undefined,
-    releaseStatus: typeof raw.releaseStatus === 'string' ? raw.releaseStatus : undefined,
-    genreIds: typeof raw.genreIds === 'string' ? raw.genreIds : undefined,
-    genreIdsJson: typeof raw.genreIdsJson === 'string' ? raw.genreIdsJson : undefined,
-  };
+  return runCatalogRequest(
+    async (requestSignal) => {
+      const res = await apiFetch(`${baseUrl}/catalog/series`, {
+        method: 'GET',
+        headers: { Accept: 'application/json', ...getAuthHeader() },
+        signal: requestSignal,
+      });
+      if (!res.ok) throw new CatalogApiError(`Chưa tải được danh sách phim bộ (${res.status}).`, res.status);
+      const body = await res.json();
+      if (!Array.isArray(body)) {
+        throw new CatalogApiError('Danh sách phim bộ từ máy chủ không hợp lệ.', 502, body);
+      }
+      return body.map(normalizeCatalogSeriesSummary);
+    },
+    { signal, timeoutMs }
+  );
 }
 
 export async function getCatalogSeriesDetail(
@@ -688,20 +708,17 @@ export async function getCatalogSeriesDetail(
   baseUrl = API,
   signal?: AbortSignal
 ): Promise<CatalogSeriesResponse | null> {
-  const url = `${baseUrl}/catalog/series/${encodeURIComponent(id)}`;
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-      ...getAuthHeader(),
-    },
-    signal,
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) {
-    throw new CatalogApiError(`Lỗi xem chi tiết bộ phim (${res.status})`, res.status);
-  }
-  return await res.json();
+  return runCatalogRequest(async (requestSignal) => {
+    const res = await apiFetch(`${baseUrl}/catalog/series/${encodeURIComponent(id)}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json', ...getAuthHeader() },
+      signal: requestSignal,
+    });
+    if (res.status === 404) return null;
+    if (res.status === 403) throw new CatalogApiError(PERMISSION_MESSAGE, 403);
+    if (!res.ok) throw new CatalogApiError(`Chưa tải được phim bộ (${res.status}).`, res.status);
+    return (await res.json()) as CatalogSeriesResponse;
+  }, { signal });
 }
 
 export async function getCatalogEpisodeDetail(
@@ -709,54 +726,60 @@ export async function getCatalogEpisodeDetail(
   baseUrl = API,
   signal?: AbortSignal
 ): Promise<CatalogEpisodeResponse | null> {
-  const url = `${baseUrl}/catalog/episodes/${encodeURIComponent(id)}`;
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-      ...getAuthHeader(),
-    },
-    signal,
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) {
-    throw new CatalogApiError(`Lỗi xem chi tiết tập phim (${res.status})`, res.status);
-  }
-  return await res.json();
-}
-
-export async function searchAnimationCatalog(
-  q: string,
-  baseUrl = API,
-  signal?: AbortSignal,
-  timeoutMs = DEFAULT_TIMEOUT_MS
-): Promise<CatalogSearchResult[]> {
-  if (!q.trim()) return [];
-  const url = `${baseUrl}/catalog/search?q=${encodeURIComponent(q.trim())}`;
-  return executeWithLifecycle(async (requestSignal) => {
-    const res = await fetch(url, {
+  return runCatalogRequest(async (requestSignal) => {
+    const res = await apiFetch(`${baseUrl}/catalog/episodes/${encodeURIComponent(id)}`, {
       method: 'GET',
       headers: { Accept: 'application/json', ...getAuthHeader() },
       signal: requestSignal,
     });
-    if (!res.ok) throw new CatalogApiError(`Lỗi tìm kiếm danh mục hoạt hình (${res.status})`, res.status);
-    const body = await res.json();
-    if (!Array.isArray(body)) throw new CatalogApiError('Kết quả tìm kiếm danh mục không hợp lệ (thiếu mảng dữ liệu)', 502, body);
-    const validTypes = new Set(['series', 'episode', 'segment', 'scene']);
-    return body.map((item: any) => {
-      if (!item || typeof item !== 'object' || Array.isArray(item)
-          || typeof item.id !== 'string' || !item.id.trim()
-          || typeof item.title !== 'string' || !item.title.trim()
-          || !validTypes.has(item.type)) {
-        throw new CatalogApiError('Kết quả tìm kiếm thiếu ID, tiêu đề hoặc loại nội dung hợp lệ', 502, item);
-      }
-      return {
-        ...item,
-        id: item.id.trim(),
-        title: item.title.trim(),
-      } as CatalogSearchResult;
-    });
-  }, { signal, timeoutMs });
+    if (res.status === 404) return null;
+    if (res.status === 403) throw new CatalogApiError(PERMISSION_MESSAGE, 403);
+    if (!res.ok) throw new CatalogApiError(`Chưa tải được tập này (${res.status}).`, res.status);
+    return (await res.json()) as CatalogEpisodeResponse;
+  }, { signal });
 }
 
+const VALID_SEARCH_RESULT_TYPES = new Set(['series', 'episode', 'segment', 'scene']);
 
+export async function searchAnimationCatalog(
+  query: string,
+  baseUrl = API,
+  signal?: AbortSignal,
+  timeoutMs = DEFAULT_TIMEOUT_MS
+): Promise<CatalogSearchResult[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  return runCatalogRequest(
+    async (requestSignal) => {
+      const res = await apiFetch(`${baseUrl}/catalog/search?q=${encodeURIComponent(trimmed)}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json', ...getAuthHeader() },
+        signal: requestSignal,
+      });
+      if (!res.ok) throw new CatalogApiError(`Chưa tìm được trong kho phim (${res.status}).`, res.status);
+      const body = await res.json();
+      if (!Array.isArray(body)) {
+        throw new CatalogApiError('Kết quả tìm kiếm không hợp lệ.', 502, body);
+      }
+      return body.map((entry: unknown) => {
+        if (!isRecord(entry)) {
+          throw new CatalogApiError('Kết quả tìm kiếm thiếu mã, tiêu đề hoặc loại nội dung.', 502, entry);
+        }
+        const id = nonEmptyTrimmed(entry.id);
+        const title = nonEmptyTrimmed(entry.title);
+        const type = typeof entry.type === 'string' ? entry.type : '';
+        if (!id || !title || !VALID_SEARCH_RESULT_TYPES.has(type)) {
+          throw new CatalogApiError('Kết quả tìm kiếm thiếu mã, tiêu đề hoặc loại nội dung.', 502, entry);
+        }
+        return {
+          ...entry,
+          id,
+          title,
+          type: type as CatalogSearchResult['type'],
+        };
+      });
+    },
+    { signal, timeoutMs }
+  );
+}

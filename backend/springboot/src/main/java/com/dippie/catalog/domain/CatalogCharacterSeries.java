@@ -15,6 +15,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.io.Serializable;
 
+// Bảng nối nhiều-nhiều giữa nhân vật và phim bộ; hai cột khóa ngoại đặt chỉ đọc để khỏi load entity cha lúc chèn link.
 @Entity
 @Table(name = "catalog_character_series",
         indexes = {
@@ -51,14 +52,7 @@ public class CatalogCharacterSeries {
         this.seriesId = seriesId;
     }
 
-    public String getCharacterId() {
-        return characterId;
-    }
-
-    public String getSeriesId() {
-        return seriesId;
-    }
-
+    // Khóa chính ghép (characterId, seriesId) cho @IdClass của bảng nối.
     public record Key(String characterId, String seriesId) implements Serializable {
     }
 }

@@ -3,6 +3,7 @@ package com.dippie.admin;
 import com.dippie.user.User;
 import java.time.LocalDateTime;
 
+// Dữ liệu tóm tắt một tài khoản hiển thị trên trang quản lý người dùng.
 public record AdminUserView(
         Long id,
         String username,
@@ -13,6 +14,7 @@ public record AdminUserView(
         LocalDateTime createdAt
 ) {
 
+    // Dựng dữ liệu phản hồi từ entity User, chỉ lấy các trường cần đưa ra giao diện admin.
     public static AdminUserView from(User user) {
         return new AdminUserView(
                 user.getId(),

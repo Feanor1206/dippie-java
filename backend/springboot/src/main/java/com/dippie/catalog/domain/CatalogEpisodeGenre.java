@@ -14,6 +14,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.io.Serializable;
 
+// Bảng nối gán thể loại cho từng tập phim; hai trường @ManyToOne chỉ để sinh khóa ngoại và cascade delete.
 @Entity
 @Table(name = "catalog_episode_genres",
         indexes = {
@@ -48,14 +49,7 @@ public class CatalogEpisodeGenre {
         this.genreId = genreId;
     }
 
-    public String getEpisodeId() {
-        return episodeId;
-    }
-
-    public String getGenreId() {
-        return genreId;
-    }
-
+    // Khóa chính ghép (episodeId, genreId) khai báo cho JPA @IdClass.
     public record Key(String episodeId, String genreId) implements Serializable {
     }
 }

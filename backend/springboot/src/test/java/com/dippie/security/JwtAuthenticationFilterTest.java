@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.dippie.user.User;
 import com.dippie.user.UserRepository;
+import com.dippie.user.UserViewerAdapter;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.time.Clock;
@@ -28,6 +29,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+// Test đơn vị cho JwtAuthenticationFilter: khớp tokenVersion, từ chối token cũ, tài khoản bị khóa và token thiếu claim ver.
 class JwtAuthenticationFilterTest {
 
     private static final String VALID_SECRET = Base64.getEncoder().encodeToString(sequentialBytes(32));
@@ -46,7 +48,7 @@ class JwtAuthenticationFilterTest {
         user.changePassword("encoded-2");
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
 
-        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtService, userRepository);
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtService, new UserViewerAdapter(userRepository));
         String token = jwtService.issueLoginToken("alice", user.getTokenVersion());
 
         MockHttpServletRequest request = new MockHttpServletRequest();
@@ -66,7 +68,7 @@ class JwtAuthenticationFilterTest {
         user.changePassword("encoded-2");
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
 
-        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtService, userRepository);
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtService, new UserViewerAdapter(userRepository));
         String staleToken = jwtService.issueLoginToken("alice", 0L);
 
         MockHttpServletRequest request = new MockHttpServletRequest();
@@ -84,7 +86,7 @@ class JwtAuthenticationFilterTest {
         user.disable();
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
 
-        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtService, userRepository);
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtService, new UserViewerAdapter(userRepository));
         String token = jwtService.issueLoginToken("alice", user.getTokenVersion());
 
         MockHttpServletRequest request = new MockHttpServletRequest();
@@ -108,7 +110,7 @@ class JwtAuthenticationFilterTest {
                 .signWith(Keys.hmacShaKeyFor(Base64.getDecoder().decode(VALID_SECRET)), Jwts.SIG.HS256)
                 .compact();
 
-        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtService, userRepository);
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtService, new UserViewerAdapter(userRepository));
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + tokenWithoutVer);
         filter.doFilterInternal(request, new MockHttpServletResponse(), new MockFilterChain());

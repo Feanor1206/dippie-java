@@ -1,3 +1,4 @@
+import { apiFetch, PERMISSION_MESSAGE, readApiMessage, withRequestTimeout } from '@/lib/services/apiRequest';
 import type { AuthUser } from '@/lib/context/AuthContext';
 
 const API = '/api';
@@ -69,10 +70,10 @@ export function validateProfileInput(input: {
 }): string | null {
   const email = input.email.trim();
   if (!email || !email.includes('@') || email.length > MAX_EMAIL_LENGTH) {
-    return 'Định dạng email không hợp lệ.';
+    return 'Email chưa đúng định dạng.';
   }
   if (typeof input.fullName === 'string' && input.fullName.length > MAX_FULL_NAME_LENGTH) {
-    return 'Họ và tên tối đa 100 ký tự.';
+    return 'Họ và tên dài tối đa 100 ký tự.';
   }
   return null;
 }
@@ -83,19 +84,19 @@ export function validatePasswordChangeInput(input: {
   confirmPassword: string;
 }): string | null {
   if (!input.currentPassword) {
-    return 'Vui lòng nhập mật khẩu hiện tại.';
+    return 'Bạn nhập mật khẩu hiện tại nhé.';
   }
   if (!input.newPassword || input.newPassword.length < MIN_PASSWORD_LENGTH) {
-    return 'Mật khẩu mới phải có ít nhất 6 ký tự.';
+    return 'Mật khẩu mới cần có ít nhất 6 ký tự.';
   }
   if (utf8ByteLength(input.newPassword) > MAX_PASSWORD_UTF8_BYTES) {
-    return 'Mật khẩu mới được dùng tối đa 72 byte UTF-8.';
+    return 'Mật khẩu dài quá. Bạn rút ngắn lại nhé, chữ có dấu chiếm chỗ nhiều hơn chữ không dấu.';
   }
   if (input.newPassword !== input.confirmPassword) {
-    return 'Xác nhận mật khẩu mới không khớp.';
+    return 'Mật khẩu nhập lại chưa khớp.';
   }
   if (input.newPassword === input.currentPassword) {
-    return 'Mật khẩu mới phải khác mật khẩu hiện tại.';
+    return 'Mật khẩu mới cần khác mật khẩu hiện tại.';
   }
   return null;
 }
@@ -167,12 +168,12 @@ async function executeWithTimeout<T>(
         reject(new AccountApiError('Yêu cầu đã bị hủy.', 499, { isCanceled: true }));
       } else if (timedOut) {
         reject(
-          new AccountApiError('Kết nối máy chủ quá thời gian chờ.', 408, { isTimeout: true })
+          new AccountApiError('Máy chủ phản hồi chậm. Bạn thử lại nhé.', 408, { isTimeout: true })
         );
       } else if (error instanceof AccountApiError) {
         reject(error);
       } else {
-        reject(new AccountApiError('Không thể kết nối đến máy chủ tài khoản.', 0));
+        reject(new AccountApiError('Chưa kết nối được máy chủ tài khoản.', 0));
       }
     };
 
@@ -218,17 +219,18 @@ async function parseEnvelope(
   res: Response,
   fallbackError: string
 ): Promise<{ data: any; message: string }> {
+  if (res.status === 403) throw new AccountApiError(PERMISSION_MESSAGE, 403);
   let json: any = null;
   try {
     json = await res.json();
   } catch {
     if (!res.ok) {
       if (res.status === 401) {
-        throw new AccountApiError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 401);
+        throw new AccountApiError('Phiên đăng nhập đã hết hạn. Bạn đăng nhập lại nhé.', 401);
       }
       throw new AccountApiError(fallbackError, res.status);
     }
-    throw new AccountApiError('Phản hồi từ máy chủ không phải JSON hợp lệ.', 502);
+    throw new AccountApiError('Máy chủ trả về dữ liệu chưa đúng định dạng.', 502);
   }
 
   const serverMessage = nonEmptyString(json?.message) ? json.message.trim() : '';
@@ -239,13 +241,13 @@ async function parseEnvelope(
       throw new AccountApiError(serverMessage, status);
     }
     if (status === 401) {
-      throw new AccountApiError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 401);
+      throw new AccountApiError('Phiên đăng nhập đã hết hạn. Bạn đăng nhập lại nhé.', 401);
     }
     throw new AccountApiError(fallbackError, status);
   }
 
   if (!Object.prototype.hasOwnProperty.call(json, 'data')) {
-    throw new AccountApiError('Phản hồi từ máy chủ thiếu dữ liệu.', 502);
+    throw new AccountApiError('Máy chủ trả về thiếu dữ liệu.', 502);
   }
 
   return { data: json.data, message: serverMessage };
@@ -268,11 +270,11 @@ export async function updateAccountProfile(
   });
 
   return executeWithTimeout(async (signal) => {
-    const res = await fetch(url, { method: 'PUT', headers, body, signal });
-    const envelope = await parseEnvelope(res, 'Cập nhật thông tin tài khoản thất bại.');
+    const res = await apiFetch(url, { method: 'PUT', headers, body, signal });
+    const envelope = await parseEnvelope(res, 'Chưa lưu được thông tin tài khoản.');
     return {
       user: normalizeAccountUser(envelope.data),
-      message: envelope.message || 'Cập nhật thông tin tài khoản thành công',
+      message: envelope.message || 'Đã lưu thông tin tài khoản.',
     };
   }, options);
 }
@@ -290,13 +292,34 @@ export async function changeAccountPassword(
   });
 
   return executeWithTimeout(async (signal) => {
-    const res = await fetch(url, { method: 'POST', headers, body, signal });
-    const envelope = await parseEnvelope(res, 'Đổi mật khẩu thất bại.');
+    const res = await apiFetch(url, { method: 'POST', headers, body, signal });
+    const envelope = await parseEnvelope(res, 'Chưa đổi được mật khẩu.');
     const normalized = normalizePasswordChangeData(envelope.data);
     return {
       token: normalized.token,
       user: normalized.user,
-      message: envelope.message || 'Đổi mật khẩu thành công',
+      message: envelope.message || 'Đã đổi mật khẩu.',
     };
   }, options);
+}
+
+export async function deleteAccount(token: string, password: string, signal?: AbortSignal): Promise<void> {
+  if (!password) throw new AccountApiError('Bạn nhập mật khẩu hiện tại nhé.', 400);
+  return withRequestTimeout(async (requestSignal) => {
+    const response = await apiFetch('/api/users/me', {
+      method: 'DELETE',
+      headers: authHeaders(token),
+      body: JSON.stringify({ password }),
+      signal: requestSignal,
+    });
+    if (response.status === 204) return;
+    const fallback = response.status === 400
+      ? 'Mật khẩu hiện tại chưa đúng.'
+      : response.status === 409
+      ? 'Quản trị viên cuối cùng không thể tự xóa tài khoản.'
+      : response.status === 404 || response.status === 405
+      ? 'Tính năng xóa tài khoản tạm chưa bật trên máy chủ.'
+      : 'Chưa xóa được tài khoản. Bạn thử lại nhé.';
+    throw new AccountApiError(await readApiMessage(response, fallback), response.status);
+  }, { signal });
 }

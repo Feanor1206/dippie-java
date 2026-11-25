@@ -14,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestConstructor;
 
+// Xác nhận AdminBootstrap tạo admin đầu tiên, buộc xoay mật khẩu admin yếu và xáo mật khẩu tài khoản demo cũ.
 @SpringBootTest
 @ActiveProfiles("test")
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
@@ -34,6 +35,7 @@ class AdminBootstrapTest {
         userRepository.deleteAll();
     }
 
+    // Tạo admin mới khi DB trống, nhưng lần chạy sau không ghi đè mật khẩu của admin đã đặt mật khẩu mạnh.
     @Test
     void bootstrapsAdminAndPreservesExistingStrongAdmin() {
         AdminBootstrap createRunner = new AdminBootstrap(
@@ -62,6 +64,7 @@ class AdminBootstrapTest {
         assertThat(passwordEncoder.matches("A-strong-private-password-123", preserved.getPassword())).isTrue();
     }
 
+    // Chặn khởi động nếu còn admin dùng mật khẩu demo; khi truyền mật khẩu mới hợp lệ thì xoay admin và xáo mật khẩu user/demo cũ.
     @Test
     void requiresExplicitResetForDemoAdminAndScramblesLegacyUsers() {
         DemoAccountSeeder seeder = new DemoAccountSeeder(userRepository, passwordEncoder, clock);
@@ -75,14 +78,14 @@ class AdminBootstrapTest {
                 LocalDateTime.now(clock)
         ));
 
-        AdminBootstrap withoutCreds = new AdminBootstrap(
+        AdminBootstrap withoutCredentials = new AdminBootstrap(
                 new BootstrapAdminProperties("", "", ""),
                 false,
                 userRepository,
                 passwordEncoder,
                 clock
         );
-        assertThatThrownBy(() -> withoutCreds.run(new DefaultApplicationArguments()))
+        assertThatThrownBy(() -> withoutCredentials.run(new DefaultApplicationArguments()))
                 .isInstanceOf(IllegalStateException.class);
 
         AdminBootstrap resetRunner = new AdminBootstrap(
@@ -104,6 +107,7 @@ class AdminBootstrapTest {
         assertThat(passwordEncoder.matches("password123", demoUser.getPassword())).isFalse();
     }
 
+    // Cấu hình thiếu mật khẩu hoặc mật khẩu ngắn dưới 16 ký tự đều phải fail ngay lúc khởi động.
     @Test
     void rejectsIncompleteOrWeakBootstrapConfiguration() {
         AdminBootstrap missingPassword = new AdminBootstrap(

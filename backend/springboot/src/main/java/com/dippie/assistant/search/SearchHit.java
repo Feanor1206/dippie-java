@@ -1,16 +1,20 @@
 package com.dippie.assistant.search;
 
+import com.dippie.common.rating.RatingSummary;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+// Kết quả tìm kiếm trả chung cho CineBot và API khám phá.
+// Phải giữ song song cặp trường camelCase (episodeId, startMs) và snake_case (episode_id, start_ms) để tương thích payload frontend cũ.
 public record SearchHit(
         String id,
         String title,
-        int year,
+        Integer year,
         double rating,
         String runtime,
         List<String> genres,
@@ -49,7 +53,9 @@ public record SearchHit(
         Double calibratedScore,
         List<SearchEvidence> evidence,
         @JsonProperty("episode_count") @JsonInclude(JsonInclude.Include.NON_NULL) Integer episodeCount,
-        @JsonProperty("season_count") @JsonInclude(JsonInclude.Include.NON_NULL) Integer seasonCount
+        @JsonProperty("season_count") @JsonInclude(JsonInclude.Include.NON_NULL) Integer seasonCount,
+        @JsonInclude(JsonInclude.Include.NON_DEFAULT) boolean externalOnly,
+        @JsonUnwrapped RatingSummary ratings
 ) {
 
     public SearchHit {
@@ -65,8 +71,18 @@ public record SearchHit(
         evidence = evidence == null ? List.of() : List.copyOf(evidence);
     }
 
+    // Ưu tiên mốc trên dòng thời gian tập phim, chỉ dùng mốc tệp nguồn khi tập chưa có offset riêng.
     public Long effectiveStartMs() {
         return startMs != null ? startMs : startMsSnake;
+    }
+
+    public SearchHit withRatings(RatingSummary summary) {
+        return new SearchHit(id, title, year, rating, runtime, genres, description, poster, backdrop, videoUrl,
+                matchPercentage, itemType, seriesId, seasonId, episodeIdSnake, segmentId, episodeNumber, airDate,
+                durationMs, startMsSnake, endMs, primaryMediaAssetId, mediaAssetId, aliases, characters, plotFacts,
+                keywords, themes, visualSummary, dialogueSummary, soundEvents, seriesTitle, episodeTitle,
+                comparativeAttributes, diagnostics, episodeId, startMs, score, calibratedScore, evidence,
+                episodeCount, seasonCount, externalOnly, summary);
     }
 
     private static List<String> copyList(List<String> values) {

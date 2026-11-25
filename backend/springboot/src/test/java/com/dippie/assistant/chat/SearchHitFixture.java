@@ -2,9 +2,11 @@ package com.dippie.assistant.chat;
 
 import com.dippie.assistant.search.SearchEvidence;
 import com.dippie.assistant.search.SearchHit;
+import com.dippie.common.rating.RatingSummary;
 import java.util.List;
 import java.util.Map;
 
+// Builder dựng nhanh dữ liệu SearchHit mẫu cho các bài test trong gói assistant.chat.
 final class SearchHitFixture {
 
     private String id = "hit-1";
@@ -171,7 +173,9 @@ final class SearchHitFixture {
                 0.9,
                 evidence,
                 episodeCount,
-                seasonCount
+                seasonCount,
+                false,
+                RatingSummary.EMPTY
         );
     }
 }

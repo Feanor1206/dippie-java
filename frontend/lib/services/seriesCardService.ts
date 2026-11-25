@@ -1,4 +1,6 @@
-import { genreLabel } from '@/lib/labels';
+import { getStoredAuthToken, SESSION_RESET_EVENT } from '@/lib/services/sessionStorage';
+import { apiFetch, PERMISSION_MESSAGE, RequestTimeoutError, withRequestTimeout } from '@/lib/services/apiRequest';
+import { resolveGenreLabel } from '@/lib/labels';
 
 export type SeriesCardGenre = {
   id: string;
@@ -17,6 +19,8 @@ export type SeriesCard = {
   episodeCount: number | null;
   posterUrl: string | null;
   backdropUrl: string | null;
+  averageRating?: number | null;
+  ratingCount?: number;
 };
 
 export type SeriesCardFetchOptions = {
@@ -44,16 +48,15 @@ const API = '/api';
 const DEFAULT_TIMEOUT_MS = 7000;
 const CACHE_TTL_MS = 60_000;
 
-type CacheEntry = {
-  expiresAt: number;
-  data: SeriesCard[];
-};
-
-const cardsCache = new Map<string, CacheEntry>();
+let cacheGeneration = 0;
+const cardsCache = new Map<string, { expiresAt: number; data: SeriesCard[] }>();
 
 export function clearSeriesCardsCache(): void {
+  cacheGeneration += 1;
   cardsCache.clear();
 }
+
+if (typeof window !== 'undefined') window.addEventListener?.(SESSION_RESET_EVENT, clearSeriesCardsCache);
 
 function nullableString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
@@ -75,113 +78,76 @@ function normalizeGenres(raw: unknown): SeriesCardGenre[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
   const result: SeriesCardGenre[] = [];
-  for (const item of raw) {
+  for (const entry of raw) {
     let id = '';
-    let label = '';
-    if (typeof item === 'string') {
-      id = item.trim();
-      label = id ? genreLabel(id) : '';
-    } else if (item && typeof item === 'object' && !Array.isArray(item)) {
-      const record = item as { id?: unknown; label?: unknown };
+    if (typeof entry === 'string') {
+      id = entry.trim();
+    } else if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      const record = entry as { id?: unknown };
       id = typeof record.id === 'string' ? record.id.trim() : '';
-      const rawLabel = typeof record.label === 'string' ? record.label.trim() : '';
-      label = rawLabel || (id ? genreLabel(id) : '');
     }
     if (!id) continue;
-    const key = id.toLocaleLowerCase('vi');
+    const label = resolveGenreLabel(entry as string | { id?: string; label?: string }) || id;
+    const key = label.toLocaleLowerCase('vi');
     if (seen.has(key)) continue;
     seen.add(key);
-    result.push({ id, label: label || id });
+    result.push({ id, label });
   }
   return result;
 }
 
 export function normalizeSeriesCard(raw: unknown): SeriesCard {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new SeriesCardApiError('Dữ liệu bộ phim không hợp lệ.', 502);
+    throw new SeriesCardApiError('Dữ liệu phim bộ không hợp lệ.', 502);
   }
-  const obj = raw as Record<string, unknown>;
-  const id = nullableString(obj.id);
-  const title = nullableString(obj.title);
-  if (!id) {
-    throw new SeriesCardApiError('Bộ phim thiếu ID bắt buộc.', 502);
-  }
-  if (!title) {
-    throw new SeriesCardApiError(`Bộ phim [${id}] thiếu tiêu đề bắt buộc.`, 502);
-  }
+  const record = raw as Record<string, unknown>;
+  const id = nullableString(record.id);
+  const title = nullableString(record.title);
+  if (!id) throw new SeriesCardApiError('Phim bộ thiếu mã phim.', 502);
+  if (!title) throw new SeriesCardApiError(`Phim bộ [${id}] thiếu tiêu đề.`, 502);
+
+  const averageRating =
+    typeof record.averageRating === 'number' &&
+    Number.isFinite(record.averageRating) &&
+    record.averageRating > 0 &&
+    record.averageRating <= 10
+      ? Number(record.averageRating.toFixed(1))
+      : null;
 
   return {
     id,
     title,
-    originalTitle: nullableString(obj.originalTitle),
-    synopsis: nullableString(obj.synopsis),
-    releaseYearStart: nullableYear(obj.releaseYearStart),
-    releaseYearEnd: nullableYear(obj.releaseYearEnd),
-    genres: normalizeGenres(obj.genres),
-    seasonCount: nullableCount(obj.seasonCount),
-    episodeCount: nullableCount(obj.episodeCount),
-    posterUrl: nullableString(obj.posterUrl),
-    backdropUrl: nullableString(obj.backdropUrl),
+    originalTitle: nullableString(record.originalTitle),
+    synopsis: nullableString(record.synopsis),
+    releaseYearStart: nullableYear(record.releaseYearStart),
+    releaseYearEnd: nullableYear(record.releaseYearEnd),
+    genres: normalizeGenres(record.genres),
+    seasonCount: nullableCount(record.seasonCount),
+    episodeCount: nullableCount(record.episodeCount),
+    posterUrl: nullableString(record.posterUrl),
+    backdropUrl: nullableString(record.backdropUrl),
+    averageRating,
+    ratingCount: nullableCount(record.ratingCount) ?? 0,
   };
 }
 
 function getAuthHeader(): Record<string, string> {
-  if (typeof window !== 'undefined') {
-    try {
-      const token = window.localStorage.getItem('dippie_auth_token') || window.localStorage.getItem('token');
-      if (token) return { Authorization: `Bearer ${token}` };
-    } catch {
-      return {};
-    }
-  }
-  return {};
+  const token = getStoredAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function executeWithTimeout<T>(
   action: (signal: AbortSignal) => Promise<T>,
   options: { signal?: AbortSignal; timeoutMs?: number } = {}
 ): Promise<T> {
-  const timeoutMs = typeof options.timeoutMs === 'number' && options.timeoutMs > 0 ? options.timeoutMs : DEFAULT_TIMEOUT_MS;
-  if (options.signal?.aborted) {
-    throw new SeriesCardApiError('Yêu cầu đã bị hủy.', 499, { isCanceled: true });
-  }
-
-  const controller = new AbortController();
-  let timedOut = false;
-  let callerCanceled = false;
-
-  const abortListener = () => {
-    callerCanceled = true;
-    controller.abort(options.signal?.reason);
-  };
-
-  if (options.signal) {
-    options.signal.addEventListener('abort', abortListener, { once: true });
-  }
-
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
-
   try {
-    return await action(controller.signal);
-  } catch (err: unknown) {
-    if (callerCanceled || options.signal?.aborted) {
-      throw new SeriesCardApiError('Yêu cầu đã bị hủy.', 499, { isCanceled: true });
-    }
-    if (timedOut || ((err as { name?: string })?.name === 'AbortError' && !callerCanceled)) {
-      throw new SeriesCardApiError('Yêu cầu danh sách bộ phim quá thời gian phản hồi.', 408, { isTimeout: true });
-    }
-    if (err instanceof SeriesCardApiError) {
-      throw err;
-    }
-    throw new SeriesCardApiError('Không thể kết nối đến máy chủ danh mục bộ phim.', 0);
-  } finally {
-    clearTimeout(timer);
-    if (options.signal) {
-      options.signal.removeEventListener('abort', abortListener);
-    }
+    return await withRequestTimeout(action, { ...options, timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS },
+      'Tải danh sách phim bộ quá chậm.');
+  } catch (error) {
+    if (options.signal?.aborted) throw new SeriesCardApiError('Yêu cầu đã được hủy.', 499, { isCanceled: true });
+    if (error instanceof RequestTimeoutError) throw new SeriesCardApiError(error.message, 408, { isTimeout: true });
+    if (error instanceof SeriesCardApiError) throw error;
+    throw new SeriesCardApiError('Chưa kết nối được kho phim bộ.', 0);
   }
 }
 
@@ -192,29 +158,32 @@ export async function listSeriesCards(options: SeriesCardFetchOptions = {}): Pro
     return cached.data;
   }
 
-  const url = `${baseUrl}/catalog/series/cards`;
+  const generation = cacheGeneration;
   const cards = await executeWithTimeout(async (signal) => {
-    const res = await fetch(url, {
+    const res = await apiFetch(`${baseUrl}/catalog/series/cards`, {
       method: 'GET',
       headers: { Accept: 'application/json', ...getAuthHeader() },
       signal,
     });
+    if (res.status === 403) throw new SeriesCardApiError(PERMISSION_MESSAGE, 403);
     if (!res.ok) {
-      throw new SeriesCardApiError(`Không thể tải danh sách bộ phim (${res.status}).`, res.status);
+      throw new SeriesCardApiError(`Chưa tải được danh sách phim bộ (${res.status}).`, res.status);
     }
     let body: unknown;
     try {
       body = await res.json();
     } catch {
-      throw new SeriesCardApiError('Phản hồi danh sách bộ phim không phải JSON hợp lệ.', 502);
+      throw new SeriesCardApiError('Dữ liệu danh sách phim bộ không hợp lệ.', 502);
     }
     if (!Array.isArray(body)) {
-      throw new SeriesCardApiError('Danh sách bộ phim không hợp lệ (thiếu mảng dữ liệu).', 502);
+      throw new SeriesCardApiError('Danh sách phim bộ không hợp lệ.', 502);
     }
     return body.map(normalizeSeriesCard);
   }, options);
 
-  cardsCache.set(baseUrl, { data: cards, expiresAt: Date.now() + CACHE_TTL_MS });
+  if (generation === cacheGeneration) {
+    cardsCache.set(baseUrl, { data: cards, expiresAt: Date.now() + CACHE_TTL_MS });
+  }
   return cards;
 }
 

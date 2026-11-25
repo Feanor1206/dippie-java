@@ -1,10 +1,10 @@
 # ERD cơ sở dữ liệu Dippie
 
-Sơ đồ gồm toàn bộ 29 bảng MySQL. Mỗi đường biểu diễn một khóa ngoại vật lý. Cột không có trên hình được liệt kê trong từ điển dữ liệu.
+Sơ đồ bên dưới vẽ đủ 29 bảng MySQL. Mỗi đường nối là một khóa ngoại vật lý; các cột không hiển thị trên hình xem chi tiết trong từ điển dữ liệu.
 
-- `||` biểu thị đúng một và `|o` biểu thị 0 hoặc 1 ở phía bảng cha.
-- `o{` biểu thị 0 đến nhiều ở phía bảng con.
-- Đường liền biểu thị khóa ngoại là một phần của khóa chính bảng con. Đường chấm biểu thị quan hệ còn lại.
+- `||` nghĩa là đúng một, `|o` là 0 hoặc 1 ở phía bảng cha.
+- `o{` là 0 đến nhiều ở phía bảng con.
+- Đường liền chỉ khóa ngoại nằm trong khóa chính bảng con; đường chấm chỉ các quan hệ còn lại.
 
 ```mermaid
 erDiagram
@@ -215,8 +215,8 @@ erDiagram
     users ||..o{ watchlist_items : "user_id"
 ```
 
-Khóa ngoại ghép `(series_id, season_id)` của tập bảo đảm mùa thuộc cùng bộ. Liên kết tới mùa là tùy chọn. Tệp liên quan của `catalog_media_assets` là quan hệ tự tham chiếu. Track có thể bám tệp, hoặc có đồng thời tập và nguồn. Kiểu liên kết được kiểm tra bằng CHECK.
+Khóa ngoại ghép `(series_id, season_id)` trên bảng tập giữ cho mùa luôn thuộc đúng bộ; liên kết tới mùa là tùy chọn. Cột tệp liên quan ở `catalog_media_assets` là quan hệ tự tham chiếu. Một track có thể gắn theo tệp, hoặc gắn đồng thời cả tập và nguồn, được kiểm tra bằng ràng buộc CHECK.
 
-`catalog_packages` và `catalog_snapshots` có dấu băm dùng đối chiếu luồng nhập. `audit_log.record_id` giữ mã tập kể cả sau khi xóa tập. Ba bảng này độc lập theo khóa ngoại.
+Hai bảng `catalog_packages` và `catalog_snapshots` lưu mã băm để đối chiếu luồng nhập, còn `audit_log.record_id` giữ lại mã tập kể cả sau khi tập đã xóa. Ba bảng này không đặt khóa ngoại tới bảng khác.
 
-[Từ điển dữ liệu](data-dictionary.md) · [Phân tích chuẩn hóa](normalization.md) · [Ký hiệu ER của Mermaid](https://mermaid.js.org/syntax/entityRelationshipDiagram.html)
+Xem thêm: [Từ điển dữ liệu](data-dictionary.md), [Phân tích chuẩn hóa](normalization.md) và [Ký hiệu ER của Mermaid](https://mermaid.js.org/syntax/entityRelationshipDiagram.html).

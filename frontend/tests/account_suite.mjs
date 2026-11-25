@@ -1,7 +1,7 @@
+import { runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
 import ts from '../node_modules/typescript/lib/typescript.js';
 
 function loadTsModule(relativePath, globals = {}) {
@@ -15,7 +15,7 @@ function loadTsModule(relativePath, globals = {}) {
     },
   }).outputText;
   const module = { exports: {} };
-  vm.runInNewContext(code, {
+  runWithSharedModules(code, {
     module,
     exports: module.exports,
     console,

@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import {
-  listSeriesCards,
-  type SeriesCard as SeriesCardData,
-} from '@/lib/services/seriesCardService';
+import type { SeriesCard as SeriesCardData } from '@/lib/services/seriesCardService';
+import { useSeriesCards } from '@/lib/hooks/useCatalogData';
 import { SeriesCard } from '@/features/series/components/SeriesCard';
 
 export type SeriesRowProps = {
@@ -21,85 +19,55 @@ export function SeriesRow({
   loading: controlledLoading,
   error: controlledError,
   onRetry: controlledRetry,
-  title = 'Các bộ phim',
+  title = 'Phim bộ',
   viewAllHref = '/series',
 }: SeriesRowProps) {
   const isControlled = controlledCards !== undefined || controlledLoading !== undefined;
-  const [internalCards, setInternalCards] = useState<SeriesCardData[]>([]);
-  const [internalLoading, setInternalLoading] = useState(!isControlled);
-  const [internalError, setInternalError] = useState<string | null>(null);
-  const [retryTick, setRetryTick] = useState(0);
+  const fetched = useSeriesCards(!isControlled, 'Chưa tải được danh sách phim bộ.');
+
+  const cards = controlledCards ?? fetched.cards;
+  const loading = controlledLoading ?? fetched.loading;
+  const error = controlledError !== undefined ? controlledError : fetched.error;
+  const handleRetry = controlledRetry ?? fetched.retry;
 
   const trackRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  useEffect(() => {
-    if (isControlled) return;
-    const controller = new AbortController();
-    setInternalLoading(true);
-    setInternalError(null);
-    listSeriesCards({ signal: controller.signal, forceRefresh: retryTick > 0 })
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setInternalCards(data);
-          setInternalLoading(false);
-        }
-      })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted || (err as { isCanceled?: boolean })?.isCanceled) return;
-        setInternalError((err as { message?: string })?.message || 'Không thể tải danh sách bộ phim.');
-        setInternalLoading(false);
-      });
-    return () => controller.abort();
-  }, [isControlled, retryTick]);
-
-  const cards = controlledCards ?? internalCards;
-  const loading = controlledLoading ?? internalLoading;
-  const error = controlledError !== undefined ? controlledError : internalError;
-  const handleRetry = controlledRetry ?? (() => setRetryTick((n) => n + 1));
-
   const updateScrollState = useCallback(() => {
-    const el = trackRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 4);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    const track = trackRef.current;
+    if (!track) return;
+    setCanScrollLeft(track.scrollLeft > 4);
+    setCanScrollRight(track.scrollLeft + track.clientWidth < track.scrollWidth - 4);
   }, []);
 
   useEffect(() => {
     updateScrollState();
-    const el = trackRef.current;
-    if (!el || typeof window === 'undefined') return;
-    const onScroll = () => updateScrollState();
-    const onResize = () => updateScrollState();
-    el.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onResize);
+    const track = trackRef.current;
+    if (!track || typeof window === 'undefined') return;
+    track.addEventListener('scroll', updateScrollState, { passive: true });
+    window.addEventListener('resize', updateScrollState);
     return () => {
-      el.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onResize);
+      track.removeEventListener('scroll', updateScrollState);
+      window.removeEventListener('resize', updateScrollState);
     };
   }, [cards.length, loading, updateScrollState]);
 
   const scrollByDirection = (direction: -1 | 1) => {
-    const el = trackRef.current;
-    if (!el) return;
+    const track = trackRef.current;
+    if (!track) return;
     const prefersReduced =
       typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const distance = Math.max(260, Math.round(el.clientWidth * 0.8));
-    el.scrollBy({
+      Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    const distance = Math.max(260, Math.round(track.clientWidth * 0.8));
+    track.scrollBy({
       left: direction * distance,
       behavior: prefersReduced ? 'auto' : 'smooth',
     });
   };
 
   return (
-    <section
-      className="shelf-section"
-      aria-labelledby="series-row-title"
-      data-testid="series-row"
-    >
+    <section className="shelf-section" aria-labelledby="series-row-title" data-testid="series-row">
       <div className="shelf-heading items-center">
         <h2 id="series-row-title" className="section-title">
           {title}
@@ -109,7 +77,7 @@ export function SeriesRow({
             <div className="hidden sm:flex items-center gap-1.5">
               <button
                 type="button"
-                aria-label="Cuộn danh sách bộ phim sang trái"
+                aria-label="Cuộn danh sách phim bộ sang trái"
                 disabled={!canScrollLeft}
                 onClick={() => scrollByDirection(-1)}
                 className="series-scroll-btn"
@@ -119,7 +87,7 @@ export function SeriesRow({
               </button>
               <button
                 type="button"
-                aria-label="Cuộn danh sách bộ phim sang phải"
+                aria-label="Cuộn danh sách phim bộ sang phải"
                 disabled={!canScrollRight}
                 onClick={() => scrollByDirection(1)}
                 className="series-scroll-btn"
@@ -139,7 +107,7 @@ export function SeriesRow({
         <div
           className="series-row-track movie-row"
           role="status"
-          aria-label="Đang tải các bộ phim"
+          aria-label="Đang tải phim bộ"
           data-testid="series-row-skeleton"
         >
           {Array.from({ length: 4 }).map((_, index) => (
@@ -160,7 +128,7 @@ export function SeriesRow({
           </button>
         </div>
       ) : cards.length === 0 ? (
-        <div className="shelf-message">Chưa có bộ phim nào.</div>
+        <div className="shelf-message">Chưa có phim bộ nào.</div>
       ) : (
         <div
           ref={trackRef}

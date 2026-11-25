@@ -15,6 +15,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
+// Entity ánh xạ bảng watchlist_items, kế thừa LibraryEntry để dùng chung các cột cơ bản.
 @Entity
 @Table(
         name = "watchlist_items",
@@ -22,7 +23,8 @@ import java.time.LocalDateTime;
                 @UniqueConstraint(name = "uq_user_movie_watchlist", columnNames = {"user_id", "movie_id"})
         },
         indexes = {
-                @Index(name = "idx_watchlist_movie", columnList = "movie_id")
+                @Index(name = "idx_watchlist_movie", columnList = "movie_id"),
+                @Index(name = "idx_watchlist_user_added", columnList = "user_id, added_at")
         }
 )
 public class WatchlistItem extends LibraryEntry {

@@ -2,7 +2,7 @@
 
 ## Tạo bản sao lưu
 
-Đặt `$dippieClientOptions` là đường dẫn tới tệp cấu hình MySQL của tài khoản cài đặt, nằm ngoài Git. Tệp giữ tên tài khoản, thông tin kết nối và mật khẩu. Chọn đúng schema trước khi chạy. `--single-transaction` lấy ảnh chụp nhất quán của các bảng InnoDB. Giữ lược đồ ổn định trong thời gian dump. [Cách dùng mysqldump](https://dev.mysql.com/doc/refman/8.0/en/mysqldump.html)
+Đặt `$dippieClientOptions` trỏ tới tệp cấu hình MySQL của tài khoản cài đặt (lưu ngoài Git, chứa tên tài khoản, thông tin kết nối và mật khẩu). Kiểm tra đúng schema trước khi chạy. Cờ `--single-transaction` lấy ảnh chụp nhất quán cho các bảng InnoDB, nhưng trong lúc dump không nên sửa cấu trúc bảng ([Cách dùng mysqldump](https://dev.mysql.com/doc/refman/8.0/en/mysqldump.html)).
 
 ```powershell
 $sourceSchema = 'movie_rcm_db'
@@ -14,11 +14,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Sao lưu MySQL thất bại.' }
 Get-FileHash -LiteralPath $dump -Algorithm SHA256
 ```
 
-Chỉ định một schema làm đối số thường của `mysqldump` để file có thể nạp sang schema khác. Bản dump chứa các bảng và các đối tượng trong schema. Cấu hình tài khoản MySQL thuộc quy trình cấp quyền riêng. Video, phụ đề rời và chỉ mục AI cần được sao lưu cùng phiên bản gói ở nơi chúng được lưu.
+Truyền tên schema như đối số bình thường của `mysqldump` để bản dump nạp sang schema khác được. Tệp dump đã gồm toàn bộ bảng và đối tượng bên trong schema, còn tài khoản MySQL cấp lại theo bước phân quyền riêng. Các tệp video, phụ đề rời và chỉ mục AI cần sao lưu kèm theo đúng phiên bản gói ở nơi lưu trữ của chúng.
 
 ## Nạp vào schema mới
 
-Mở MySQL CLI bằng cấu hình đã chuẩn bị. Tạo schema mới, chọn schema đó, rồi chạy `SOURCE` với đúng đường dẫn mà lệnh sao lưu đã in. Nếu chuyển máy chủ, kiểm tra tài khoản `DEFINER` của view và trigger. Trên máy chủ mới, dùng bộ nạp đối tượng và tài khoản theo cấu hình mới sau khi nạp dump.
+Mở MySQL CLI bằng tệp cấu hình đã chuẩn bị, tạo schema mới, chọn schema đó rồi chạy `SOURCE` với đúng đường dẫn lệnh sao lưu vừa in ra. Khi chuyển sang máy chủ khác, kiểm tra lại tài khoản `DEFINER` của view và trigger; sau khi nạp dump xong thì chạy bộ nạp đối tượng và tài khoản theo cấu hình của máy chủ mới.
 
 ```sql
 CREATE DATABASE dippie_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -26,7 +26,7 @@ USE dippie_restore;
 SOURCE D:/Dippie-backups/dippie-20261124-193000-000.sql;
 ```
 
-Chạy đoạn sau trên cả schema nguồn và schema khôi phục. So từng `row_count` theo tên bảng. Truy vấn đếm trực tiếp từng bảng.
+Chạy đoạn SQL sau trên cả schema nguồn và schema khôi phục rồi so từng `row_count` theo tên bảng (câu lệnh này đếm trực tiếp từng bảng):
 
 ```sql
 SET SESSION group_concat_max_len = 32768;
@@ -46,13 +46,13 @@ SELECT COUNT(*) FROM v_published_episodes;
 SELECT DISTINCT table_schema FROM information_schema.view_table_usage WHERE view_schema = DATABASE();
 ```
 
-View sau phục hồi phải đọc bảng của schema đích. Đếm số view, routine và trigger qua `information_schema.views`, `information_schema.routines` và `information_schema.triggers`.
+View sau khi khôi phục phải trỏ vào bảng của schema đích. Bạn có thể đếm lại số view, routine và trigger bằng `information_schema.views`, `information_schema.routines` và `information_schema.triggers`.
 
 ## Kết quả chạy thật
 
-Thử ngày 24/11/2026 trên MySQL **8.0.46** cục bộ. Dựng schema sạch theo thứ tự `01_init.sql`, đối tượng, quyền và hai tệp seed. FastAPI kết nối bằng `dippie_app`. `GET /api/health` trả 200 với trạng thái `UP`. API quản trị nhập `data/catalog-by-series/catalog.larva.json`, ghi **104 tập**, 92 phân đoạn và 66 track. Chỉ mục chế độ `light` trả `READY`. API gợi ý trả 5 kết quả và có tập thuộc gói vừa nhập.
+Mình chạy thử ngày 24/11/2026 trên MySQL 8.0.46 cục bộ: dựng schema sạch theo thứ tự `01_init.sql`, các đối tượng, quyền tài khoản và hai tệp seed. FastAPI kết nối bằng `dippie_app`, gọi `GET /api/health` trả về `200` với trạng thái `UP`. API quản trị nhập `data/catalog-by-series/catalog.larva.json`, ghi được 104 tập, 92 phân đoạn và 66 track. Chỉ mục ở chế độ `light` trả `READY`, còn API gợi ý trả 5 kết quả có chứa tập trong gói vừa nhập.
 
-Chạy `mysqldump` từ schema vừa nhập và khôi phục vào schema mới trên cùng máy chủ thử. **29/29 bảng** khớp số dòng. View tham chiếu đúng schema khôi phục. Tổng **4 view, 5 routine và 4 trigger** được giữ.
+Sau đó chạy `mysqldump` từ schema đó và khôi phục sang một schema mới trên cùng máy chủ. Cả 29/29 bảng đều khớp số dòng, view trỏ đúng vào schema khôi phục và giữ đủ 4 view, 5 routine cùng 4 trigger.
 
 | Bảng hoặc view | Nguồn | Sau khôi phục |
 | --- | ---: | ---: |
@@ -67,4 +67,4 @@ Chạy `mysqldump` từ schema vừa nhập và khôi phục vào schema mới t
 | `catalog_episode_genres` | 312 | 312 |
 | `v_published_episodes` | 104 | 104 |
 
-Dump thử có 1.066.344 byte. SHA-256 là `0c44cf50dbb7f5ea850ca98b736239eb8143478054a21831db0225e16bad937c`. Mốc phục hồi này dùng schema sạch với Larva. Phép đo 100.000 tập nằm trong tài liệu truy vấn. [Kết quả tối ưu truy vấn](../../database/queries/README.md)
+Tệp dump thử nặng 1.066.344 byte, mã SHA-256 là `0c44cf50dbb7f5ea850ca98b736239eb8143478054a21831db0225e16bad937c`. Lần chạy thử này dùng schema sạch với bộ Larva; phép đo 100.000 tập xem ở [tài liệu truy vấn và đo hiệu năng](../../database/queries/README.md).

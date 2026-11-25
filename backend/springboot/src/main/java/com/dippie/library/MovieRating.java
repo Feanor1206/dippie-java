@@ -22,6 +22,8 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
+// Entity ánh xạ bảng movie_ratings, lưu điểm chấm từ 1 đến 10 của từng user cho mỗi phim.
+// Mình đặt luôn validateRating trong entity và thêm @Check ở SQL để không ai lọt điểm ngoài khoảng hợp lệ.
 @Entity
 @Table(
         name = "movie_ratings",
@@ -29,7 +31,8 @@ import java.time.LocalDateTime;
                 @UniqueConstraint(name = "uq_user_movie_rating", columnNames = {"user_id", "movie_id"})
         },
         indexes = {
-                @Index(name = "idx_ratings_movie", columnList = "movie_id")
+                @Index(name = "idx_ratings_movie", columnList = "movie_id"),
+                @Index(name = "idx_ratings_user_updated", columnList = "user_id, updated_at")
         }
 )
 @Check(name = "ck_movie_rating_range", constraints = "rating >= 1 AND rating <= 10")
@@ -37,7 +40,7 @@ public class MovieRating {
 
     public static final int MIN_RATING = 1;
     public static final int MAX_RATING = 10;
-    public static final String INVALID_RATING_MESSAGE = "Điểm đánh giá phải từ 1 đến 10";
+    public static final String INVALID_RATING_MESSAGE = "Điểm đánh giá cần từ 1 đến 10.";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -116,12 +119,14 @@ public class MovieRating {
         return updatedAt;
     }
 
+    // Kiểm tra điểm trước khi ghi đè để không bao giờ lưu giá trị ngoài khoảng 1 đến 10.
     public void updateRating(int newRating, LocalDateTime timestamp) {
         validateRating(newRating);
         this.rating = newRating;
         this.updatedAt = timestamp;
     }
 
+    // Chặn điểm null hoặc nằm ngoài khoảng 1 đến 10 trước khi chạm xuống DB.
     public static void validateRating(Integer rating) {
         if (rating == null || rating < MIN_RATING || rating > MAX_RATING) {
             throw new InvalidRequestException(INVALID_RATING_MESSAGE);

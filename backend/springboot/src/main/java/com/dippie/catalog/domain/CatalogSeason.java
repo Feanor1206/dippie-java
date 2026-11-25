@@ -1,9 +1,11 @@
 package com.dippie.catalog.domain;
 
+import com.dippie.common.json.JsonText;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -14,10 +16,14 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDate;
 
+// Mùa phim thuộc một series (kế thừa CatalogRecord); khóa duy nhất (series_id, id) để bảng catalog_episodes nối khóa ngoại kép kiểm tra đúng mùa của đúng bộ.
 @Entity
 @Table(name = "catalog_seasons",
         uniqueConstraints = {
                 @UniqueConstraint(name = "uq_cat_season_series_id", columnNames = {"series_id", "id"})
+        },
+        indexes = {
+                @Index(name = "idx_cat_season_series_num", columnList = "series_id, number")
         })
 @Check(name = "ck_catalog_season_kind",
         constraints = "kind IS NULL OR kind IN ('regular', 'specials', 'collection', 'unknown')")
@@ -59,6 +65,7 @@ public class CatalogSeason extends CatalogRecord {
     protected CatalogSeason() {
     }
 
+    // Chép lại metadata mùa phim khi import đè (translationsJson và attributesJson không đụng tới).
     public void applyImport(CatalogSeason imported) {
         replaceRecordFrom(imported);
         seriesId = imported.seriesId;
@@ -111,6 +118,15 @@ public class CatalogSeason extends CatalogRecord {
 
     public LocalDate getReleaseDate() {
         return releaseDate;
+    }
+
+    // Ưu tiên lấy release_year_start khai báo sẵn trong rawJson (nếu > 0), thiếu thì rơi về năm của releaseDate.
+    public Integer getReleaseYearStart() {
+        int declaredYear = JsonText.parse(getRawJson()).map(node -> node.path("release_year_start").asInt()).orElse(0);
+        if (declaredYear > 0) {
+            return declaredYear;
+        }
+        return releaseDate == null ? null : releaseDate.getYear();
     }
 
     public String getArtworksJson() {

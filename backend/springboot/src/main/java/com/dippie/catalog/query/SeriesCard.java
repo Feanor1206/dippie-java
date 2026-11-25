@@ -5,16 +5,18 @@ import com.dippie.catalog.domain.CatalogSeries;
 import com.dippie.catalog.domain.SeriesArtwork;
 import com.dippie.catalog.query.CatalogReadModel.SeriesEpisode;
 import com.dippie.common.json.JsonText;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.dippie.common.rating.RatingSummary;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+// Thẻ tóm tắt bất biến cho trang duyệt bộ phim, gom sẵn số mùa, số tập công khai, thể loại, ảnh bìa và điểm đánh giá.
 public record SeriesCard(String id, String title, String originalTitle, String synopsis, Integer releaseYearStart,
         Integer releaseYearEnd, List<Genre> genres, int seasonCount, int episodeCount, String posterUrl,
-        String backdropUrl) {
+        String backdropUrl, @JsonUnwrapped RatingSummary ratings) {
 
     public SeriesCard {
         genres = genres == null ? List.of() : List.copyOf(genres);
@@ -26,6 +28,7 @@ public record SeriesCard(String id, String title, String originalTitle, String s
             .thenComparing(SeriesEpisode::episodeNumber, NUMBER_ORDER)
             .thenComparing(SeriesEpisode::id);
 
+    // Dựng thẻ từ bộ phim và các tập đã xuất bản; nếu bộ phim chưa có ảnh riêng thì lấy tạm ảnh của tập sớm nhất theo thứ tự mùa/tập.
     static SeriesCard from(CatalogSeries series, List<SeriesEpisode> episodes, Map<String, Genre> genresById) {
         List<Genre> genres = JsonText.stringList(series.getGenreIdsJson()).stream()
                 .map(genresById::get).filter(Objects::nonNull).toList();
@@ -36,39 +39,22 @@ public record SeriesCard(String id, String title, String originalTitle, String s
         SeriesArtwork artwork = SeriesArtwork.fromSeries(series.getArtworksJson(), youtube);
         return new SeriesCard(series.getId(), series.getTitle(), series.getOriginalTitle(), series.getSynopsis(),
                 series.getReleaseYearStart(), series.getReleaseYearEnd(), genres, seasonCount, episodes.size(),
-                artwork.posterUrl(), artwork.backdropUrl());
+                artwork.posterUrl(), artwork.backdropUrl(), RatingSummary.EMPTY);
     }
 
     public SeriesArtwork artwork() {
         return new SeriesArtwork(posterUrl, backdropUrl);
     }
 
+    SeriesCard withRatings(RatingSummary summary) {
+        return new SeriesCard(id, title, originalTitle, synopsis, releaseYearStart, releaseYearEnd, genres,
+                seasonCount, episodeCount, posterUrl, backdropUrl, summary);
+    }
+
+    // Mã thể loại đi kèm nhãn hiển thị rút gọn trên thẻ phim.
     public record Genre(String id, String label) {
         static Genre from(CatalogGenre genre) {
-            return new Genre(genre.getId(), JsonText.parse(genre.getLabelsJson()).map(Genre::preferredLabel)
-                    .orElse(genre.getId()));
-        }
-
-        private static String preferredLabel(JsonNode labels) {
-            if (labels.isObject()) {
-                String vietnamese = labels.path("vi").textValue();
-                return vietnamese != null && !vietnamese.isBlank() ? vietnamese : labels.valueStream()
-                        .map(JsonNode::textValue).filter(Objects::nonNull).filter(text -> !text.isBlank())
-                        .findFirst().orElse(null);
-            }
-            String first = null;
-            for (JsonNode label : labels) {
-                String text = label.path("text").textValue();
-                if (text != null && !text.isBlank()) {
-                    if ("vi".equals(label.path("language").textValue())) {
-                        return text;
-                    }
-                    if (first == null) {
-                        first = text;
-                    }
-                }
-            }
-            return first;
+            return new Genre(genre.getId(), genre.preferredLabel());
         }
     }
 }

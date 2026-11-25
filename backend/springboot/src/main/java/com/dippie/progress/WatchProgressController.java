@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+// API đọc danh sách xem gần đây, lấy, lưu và xóa tiến độ xem từng tập của người đang đăng nhập.
 @RestController
 @RequestMapping("/api/users/watch-progress")
 public class WatchProgressController {
@@ -37,12 +38,12 @@ public class WatchProgressController {
             @PathVariable String episodeId,
             @RequestBody JsonNode body
     ) {
-        return ApiResponse.ok(watchProgressService.save(episodeId, body), "Đã lưu tiến độ xem");
+        return ApiResponse.ok(watchProgressService.save(episodeId, body), "Đã lưu tiến độ xem.");
     }
 
     @DeleteMapping("/{episodeId}")
     public ApiResponse<Void> deleteEpisodeProgress(@PathVariable String episodeId) {
         watchProgressService.delete(episodeId);
-        return ApiResponse.ok(null, "Đã xóa tiến độ xem");
+        return ApiResponse.ok(null, "Đã xóa tiến độ xem.");
     }
 }

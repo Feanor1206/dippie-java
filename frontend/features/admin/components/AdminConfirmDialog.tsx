@@ -28,6 +28,8 @@ export function AdminConfirmDialog({
 }: AdminConfirmDialogProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
+  const dialogState = useRef({ isSubmitting, onCancel });
+  useEffect(() => { dialogState.current = { isSubmitting, onCancel }; }, [isSubmitting, onCancel]);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -45,9 +47,9 @@ export function AdminConfirmDialog({
     }, 30);
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isSubmitting) {
+      if (e.key === 'Escape' && !dialogState.current.isSubmitting) {
         e.preventDefault();
-        onCancel();
+        dialogState.current.onCancel();
         return;
       }
 
@@ -55,7 +57,11 @@ export function AdminConfirmDialog({
         const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
         );
-        if (focusableElements.length === 0) return;
+        if (focusableElements.length === 0) {
+          e.preventDefault();
+          modalRef.current.focus();
+          return;
+        }
 
         const firstElement = focusableElements[0];
         const lastElement = focusableElements[focusableElements.length - 1];
@@ -89,7 +95,13 @@ export function AdminConfirmDialog({
       window.removeEventListener('keydown', handleKeyDown);
       openerRef.current?.focus();
     };
-  }, [open, isSubmitting, onCancel]);
+  }, [open]);
+
+  useEffect(() => {
+    if (isSubmitting && modalRef.current && !modalRef.current.contains(document.activeElement)) {
+      modalRef.current.focus();
+    }
+  }, [isSubmitting]);
 
   if (!open) return null;
 
@@ -97,6 +109,7 @@ export function AdminConfirmDialog({
     <div
       ref={modalRef}
       role="dialog"
+      tabIndex={-1}
       aria-modal="true"
       aria-labelledby="admin-confirm-dialog-title"
       aria-describedby="admin-confirm-dialog-desc"
@@ -168,7 +181,7 @@ export function AdminConfirmDialog({
             {isSubmitting ? (
               <>
                 <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-                <span>Đang xử lý...</span>
+                <span>Đang lưu…</span>
               </>
             ) : (
               <span>{confirmLabel}</span>

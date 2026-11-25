@@ -8,9 +8,11 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+// Khai báo thông tin OpenAPI và nút nhập Bearer JWT cho Swagger UI.
 @Configuration
 class OpenApiConfig {
 
+    static final String API_VERSION = "1.0.0";
     private static final String BEARER_AUTH_SCHEME = "bearerAuth";
 
     @Bean
@@ -18,8 +20,8 @@ class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Dippie API")
-                        .version("1.0.0")
-                        .description("Tài liệu API cho nền tảng xem phim hoạt hình Dippie"))
+                        .version(API_VERSION)
+                        .description("Tài liệu API cho ứng dụng xem phim hoạt hình Dippie."))
                 .addSecurityItem(new SecurityRequirement().addList(BEARER_AUTH_SCHEME))
                 .components(new Components()
                         .addSecuritySchemes(

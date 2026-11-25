@@ -15,6 +15,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.io.Serializable;
 
+// Bảng nối nhiều-nhiều gắn thể loại cho phim bộ, quản lý bằng khóa ghép @IdClass.
 @Entity
 @Table(name = "catalog_series_genres",
         indexes = {
@@ -55,10 +56,7 @@ public class CatalogSeriesGenre {
         return seriesId;
     }
 
-    public String getGenreId() {
-        return genreId;
-    }
-
+    // Khóa ghép (seriesId, genreId) của dòng liên kết.
     public record Key(String seriesId, String genreId) implements Serializable {
     }
 }

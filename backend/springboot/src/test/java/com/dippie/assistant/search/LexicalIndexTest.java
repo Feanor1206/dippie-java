@@ -5,7 +5,50 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+// Bộ test đơn vị cho LexicalIndex: đối chiếu ưu tiên khớp chính xác so với gõ nhầm, chuẩn hóa Unicode và cách tách mốc thời gian từ bằng chứng công khai.
 class LexicalIndexTest {
+
+    @Test
+    void ranksExactCharacterNamesAboveTyposAndLimitsLongTokensToTwoEdits() throws Exception {
+        var payload = new ObjectMapper().readTree("""
+                {"series":[{"id":"series","title":"Starlight"}],
+                 "episodes":[{"id":"fuzzy","series_id":"series","title":"Adventure","character_ids":["near"]},
+                             {"id":"exact","series_id":"series","title":"Puzzle","character_ids":["exact"]}],
+                 "characters":[{"id":"near","name":"Nobitta"},{"id":"exact","name":"Nobita"}]}
+                """);
+        var index = new LexicalIndex(SearchCatalogFlattener.flatten(payload));
+        assertThat(index.search("Nobita", 8, SearchConstraints.NONE)).extracting(match -> match.hit().id())
+                .containsExactly("exact", "fuzzy");
+        assertThat(index.search("starlxxht", 8, SearchConstraints.NONE)).isNotEmpty();
+        assertThat(index.search("starxxxht", 8, SearchConstraints.NONE)).isEmpty();
+    }
+
+    @Test
+    void ranksExactMatchesAboveTyposAndSupportsThreeLetterTranspositions() throws Exception {
+        var mapper = new ObjectMapper();
+        var typoPayload = mapper.readTree("""
+                {"series":[{"id":"ser_peppa","title":"Peppa Pig"}],
+                 "episodes":[{"id":"fuzzy_topic","series_id":"ser_peppa","title":"Chú khủng long xanh"}]}
+                """);
+        var typoIndex = new LexicalIndex(SearchCatalogFlattener.flatten(typoPayload));
+        assertThat(typoIndex.search("khung log", 8, SearchConstraints.NONE)).extracting(match -> match.hit().id())
+                .containsExactly("fuzzy_topic");
+        assertThat(typoIndex.search("peppa pgi", 8, SearchConstraints.NONE)).extracting(match -> match.hit().id())
+                .contains("ser_peppa");
+
+        var exactPayload = mapper.readTree("""
+                {"series":[{"id":"ser_peppa","title":"Peppa Pig"}],
+                 "episodes":[
+                   {"id":"fuzzy_topic","series_id":"ser_peppa","title":"Chú khủng long xanh"},
+                   {"id":"exact_topic","series_id":"ser_peppa","title":"Nhật ký khung log mùa hè"},
+                   {"id":"exact_pig","series_id":"ser_peppa","title":"Chuyện Peppa pgi nhỏ"}]}
+                """);
+        var exactIndex = new LexicalIndex(SearchCatalogFlattener.flatten(exactPayload));
+        assertThat(exactIndex.search("khung log", 8, SearchConstraints.NONE)).extracting(match -> match.hit().id())
+                .containsExactly("exact_topic");
+        assertThat(exactIndex.search("peppa pgi", 8, SearchConstraints.NONE)).extracting(match -> match.hit().id())
+                .startsWith("exact_pig");
+    }
 
     @Test
     void foldsUnicodeAndUsesPythonWordCharacters() {
@@ -55,7 +98,7 @@ class LexicalIndexTest {
         assertThat(scene).hasSize(1);
         assertThat(scene.getFirst().hit().id()).isEqualTo("episode");
         assertThat(scene.getFirst().hit().evidence()).containsExactly(
-                new SearchEvidence("scene", "Chó giữ cửa", 4000L, 8000L, "scene"));
+                new SearchEvidence("scene", "Chó giữ cửa", 4000L, 8000L, "scene", "file", "video", 12000L, 16000L));
         var evidence = DiscoverResponse.of("scene", scene, mapper).results().getFirst().path("evidence").get(0);
         assertThat(mapper.readTree(evidence.toString()))
                 .isEqualTo(mapper.readTree("""
@@ -68,7 +111,8 @@ class LexicalIndexTest {
         assertThat(dialogue.startMsSnake()).isEqualTo(38000L);
         assertThat(dialogue.startMs()).isEqualTo(30000L);
         assertThat(dialogue.evidence()).containsExactly(
-                new SearchEvidence("dialogue:captions:episode:22500", "Mật khẩu quả táo", 30000L, 33000L, "dialogue"));
+                new SearchEvidence("dialogue:captions:episode:22500", "Mật khẩu quả táo", 30000L, 33000L, "dialogue",
+                        "file", "video", 38000L, 41000L));
         assertThat(index.search("unpublishedmarker hiddenmarker disabledmarker", 8, SearchConstraints.NONE)).isEmpty();
     }
 }

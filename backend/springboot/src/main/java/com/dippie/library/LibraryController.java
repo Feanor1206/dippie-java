@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+// API cho tủ phim cá nhân của tài khoản đang đăng nhập gồm xem sau, yêu thích và đánh giá.
 @RestController
 @RequestMapping("/api/users")
 public class LibraryController {
@@ -37,13 +38,13 @@ public class LibraryController {
     @PostMapping("/watchlist")
     public ApiResponse<LibraryItemView> addWatchlist(@RequestBody MovieIdRequest request) {
         String movieId = request == null ? null : request.movieId();
-        return ApiResponse.ok(watchlistService.add(movieId), "Đã thêm phim vào danh sách xem sau");
+        return ApiResponse.ok(watchlistService.add(movieId), "Đã thêm vào danh sách xem sau.");
     }
 
     @DeleteMapping("/watchlist/{movieId}")
     public ApiResponse<Void> removeWatchlist(@PathVariable String movieId) {
         watchlistService.remove(movieId);
-        return ApiResponse.ok(null, "Đã xóa phim khỏi danh sách xem sau");
+        return ApiResponse.ok(null, "Đã xóa khỏi danh sách xem sau.");
     }
 
     @GetMapping("/favorites")
@@ -54,13 +55,13 @@ public class LibraryController {
     @PostMapping("/favorites")
     public ApiResponse<LibraryItemView> addFavorite(@RequestBody MovieIdRequest request) {
         String movieId = request == null ? null : request.movieId();
-        return ApiResponse.ok(favoriteService.add(movieId), "Đã thêm phim vào danh sách yêu thích");
+        return ApiResponse.ok(favoriteService.add(movieId), "Đã thêm vào danh sách yêu thích.");
     }
 
     @DeleteMapping("/favorites/{movieId}")
     public ApiResponse<Void> removeFavorite(@PathVariable String movieId) {
         favoriteService.remove(movieId);
-        return ApiResponse.ok(null, "Đã xóa phim khỏi danh sách yêu thích");
+        return ApiResponse.ok(null, "Đã xóa khỏi danh sách yêu thích.");
     }
 
     @GetMapping("/ratings")
@@ -72,12 +73,12 @@ public class LibraryController {
     public ApiResponse<MovieRatingView> addRating(@RequestBody RatingRequest request) {
         String movieId = request == null ? null : request.movieId();
         Integer rating = request == null ? null : request.rating();
-        return ApiResponse.ok(movieRatingService.rate(movieId, rating), "Đã ghi nhận đánh giá phim");
+        return ApiResponse.ok(movieRatingService.rate(movieId, rating), "Đã lưu đánh giá của bạn.");
     }
 
     @DeleteMapping("/ratings/{movieId}")
     public ApiResponse<Void> removeRating(@PathVariable String movieId) {
         movieRatingService.remove(movieId);
-        return ApiResponse.ok(null, "Đã xóa đánh giá phim");
+        return ApiResponse.ok(null, "Đã xóa đánh giá của bạn.");
     }
 }

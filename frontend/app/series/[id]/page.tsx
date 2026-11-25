@@ -1,1119 +1,302 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
-
-import {
-  getCatalogSeriesDetail,
-  getCatalogEpisodeDetail,
-  CatalogSeriesResponse,
-  CatalogEpisodeResponse,
-  CatalogEpisode,
-  CatalogSegment,
-  CatalogScene,
-  CatalogMediaAsset,
-} from '@/lib/services/catalogService';
-import {
-  resolveStreamUrl,
-  requestPlaybackGrant,
-  requestPlaybackGrantResult,
-  getStoredAuthToken,
-  type PlaybackGrantResult,
-} from '@/lib/services/mediaService';
-import { resolveFileTimestamp, resolveMediaSeekSeconds } from '@/lib/services/mediaRouting';
-import {
-  PLAYBACK_METADATA_TIMEOUT_MS,
-  classifyGrantFailureReason,
-  getUnavailableReasonMessage,
-  resolveFallbackStartTimeMs,
-  selectPlaybackSource,
-  type PlaybackFailureReason,
-  type PlaybackRuntimeFailure,
-} from '@/lib/services/playbackSource';
-import { useWatchProgress } from '@/lib/hooks/useWatchProgress';
-import { isUsableResumeProgress, readAutoNextPreference, writeAutoNextPreference, type WatchProgressDraft } from '@/lib/services/watchProgressService';
-import {
-  getAdjacentEpisode,
-  getEpisodesForSeason,
-  getInitialEpisode,
-  getInitialSeasonId,
-  sortCatalogSeasons,
-} from '@/lib/services/episodeNavigation';
-import type { NextEpisodeRecommendation } from '@/lib/services/nextEpisodeService';
+import { cleanMediaTitle, formatDurationMs, resolveRatingSummary } from '@/lib/labels';
 import { NextEpisodeAction } from '@/features/series/components/NextEpisodeAction';
-import { getSeriesCardById, type SeriesCard } from '@/lib/services/seriesCardService';
 import { SeriesDetailBanner } from '@/features/series/components/SeriesDetailBanner';
+import { ItemLibraryPanel } from '@/features/library/components/LibraryControls';
+import { EpisodePlayerPanel } from '@/features/series/components/EpisodePlayerPanel';
+import { EpisodeSidebar } from '@/features/series/components/EpisodeSidebar';
+import {
+  EpisodePlaybackTracker,
+  extractEpisodeRating,
+  useSeriesPlayback,
+} from '@/features/series/hooks/useSeriesPlayback';
 
-const formatDuration = (ms?: number) => {
-  if (!ms || ms <= 0) return '00:00';
-  const totalSec = Math.floor(ms / 1000);
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+export { EpisodePlaybackTracker };
+
+type TimelineMarkerItem = {
+  id: string;
+  timeLabel: string;
+  title: string;
+  description?: string;
+  onSelect: () => void;
 };
+
+function TimelineListCard({
+  heading,
+  hint,
+  kind,
+  activeId,
+  items,
+}: {
+  heading: string;
+  hint: string;
+  kind: 'segment' | 'scene';
+  activeId: string | null;
+  items: TimelineMarkerItem[];
+}) {
+  return (
+    <div className="rounded-xl border border-surface-border bg-surface p-5">
+      <div className="flex items-center justify-between border-b border-surface-border pb-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-bold text-ink">
+            {heading} ({items.length})
+          </h3>
+        </div>
+        <span className="text-xs text-muted">{hint}</span>
+      </div>
+
+      <div className="mt-3 divide-y divide-surface-border">
+        {items.map((item) => {
+          const isActive = activeId === item.id;
+          const dataAttributes =
+            kind === 'segment' ? { 'data-segment-id': item.id } : { 'data-scene-id': item.id };
+          return (
+            <div
+              key={item.id}
+              {...dataAttributes}
+              role="button"
+              tabIndex={0}
+              onClick={item.onSelect}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  item.onSelect();
+                }
+              }}
+              className={`flex items-start justify-between gap-4 p-3 rounded-lg transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-brand ${
+                isActive
+                  ? 'bg-brand/15 border border-brand/30'
+                  : 'hover:bg-surface-hover/60 border border-transparent'
+              }`}
+            >
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-brand-dark">{item.timeLabel}</span>
+                  <span className="text-xs font-bold text-ink">{item.title}</span>
+                </div>
+                {item.description && (
+                  <p className="text-xs text-muted line-clamp-2">{item.description}</p>
+                )}
+              </div>
+
+              <span className="btn-secondary flex items-center gap-1 text-[11px] font-semibold shrink-0 py-1 px-2.5 pointer-events-none">
+                <span>Tua tới</span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function SeriesDetailPage() {
   const { id: seriesId = '' } = useParams<'id'>();
-  const [searchParams] = useSearchParams();
-  const targetEpisodeId = searchParams.get('episode');
-  const targetSceneId = searchParams.get('scene');
-  const targetSegmentId = searchParams.get('segment');
-  const targetAssetId = searchParams.get('asset');
-  const targetTimeMs = searchParams.get('t');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const playback = useSeriesPlayback(seriesId, searchParams, setSearchParams);
 
-  const [seriesData, setSeriesData] = useState<CatalogSeriesResponse | null>(null);
-  const [seriesCard, setSeriesCard] = useState<SeriesCard | null>(null);
-  const [selectedEpisode, setSelectedEpisode] = useState<CatalogEpisode | null>(null);
-  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
-  const [episodeQuery, setEpisodeQuery] = useState('');
-  const [episodeDetail, setEpisodeDetail] = useState<CatalogEpisodeResponse | null>(null);
-  const [preferredAssetId, setPreferredAssetId] = useState<string | null>(null);
-  const [manualAssetId, setManualAssetId] = useState<string | null>(null);
-  const [runtimeFailure, setRuntimeFailure] = useState<PlaybackRuntimeFailure | null>(null);
-  const [fallbackStartMs, setFallbackStartMs] = useState<number | null>(null);
-  const [fileRetryNonce, setFileRetryNonce] = useState<number>(0);
-  const [hasLoadedMetadata, setHasLoadedMetadata] = useState<boolean>(false);
-  const [youtubeSeekMs, setYoutubeSeekMs] = useState<number | null>(null);
-
-  const [isLoadingSeries, setIsLoadingSeries] = useState<boolean>(true);
-  const [isLoadingEpisode, setIsLoadingEpisode] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [seriesRetry, setSeriesRetry] = useState(0);
-  const [episodeError, setEpisodeError] = useState<string | null>(null);
-  const [episodeRetry, setEpisodeRetry] = useState(0);
-  const [playbackWarning, setPlaybackWarning] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(0);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
-  const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
-  const [streamUrl, setStreamUrl] = useState<string>('');
-  const [isResolvingStream, setIsResolvingStream] = useState(false);
-  const progress = useWatchProgress();
-  const [dismissedResume, setDismissedResume] = useState('');
-  const [autoNext, setAutoNext] = useState(false);
-  const [nextCountdown, setNextCountdown] = useState<number | null>(null);
-  const autoPlayEpisodeRef = useRef<string | null>(null);
-  const youtubeTargetMs = targetEpisodeId === selectedEpisode?.id
-    ? targetTimeMs ?? episodeDetail?.segments.find((segment) => segment.id === targetSegmentId)?.episodeStartMs
-      ?? episodeDetail?.scenes.find((scene) => scene.id === targetSceneId)?.startMs
-    : 0;
-  const effectiveYoutubeStartMs = youtubeSeekMs ?? fallbackStartMs ?? youtubeTargetMs;
-  const playbackSource = selectPlaybackSource({
-    episodeDetail,
-    selectedEpisodeId: selectedEpisode?.id,
-    episodeDurationMs: selectedEpisode?.durationMs,
-    preferredAssetId,
-    manualAssetId,
-    runtimeFailure,
-    startTimeMs: effectiveYoutubeStartMs,
-  });
-  const selectedAsset = playbackSource.kind === 'file' ? playbackSource.asset : null;
-  const youtubeVideoId = playbackSource.kind === 'youtube' ? playbackSource.youtube.videoId : null;
-  const youtubeEmbed = playbackSource.kind === 'youtube';
-  const youtubeUrl = playbackSource.kind === 'youtube'
-    ? playbackSource.watchUrl
-    : playbackSource.kind === 'unavailable'
-    ? playbackSource.youtubeWatchUrl
-    : null;
-  const progressIdentity = `${selectedEpisode?.id || ''}:${selectedAsset?.id || ''}`;
-  useEffect(() => setAutoNext(readAutoNextPreference()), []);
-  useEffect(() => {
-    setNextCountdown(null);
-    setDismissedResume('');
-  }, [progressIdentity]);
-  useEffect(() => {
-    setManualAssetId(null);
-  }, [selectedEpisode?.id]);
-
-  interface PendingSeekIdentity {
-    seriesId: string;
-    episodeId: string;
-    assetId: string;
-    sceneId?: string | null;
-    segmentId?: string | null;
-    targetSec: number;
-    generation: number;
-  }
-  const episodeGenRef = useRef<number>(0);
-  const seriesGenRef = useRef<number>(0);
-  const playGenRef = useRef<number>(0);
-  const pendingSeekRef = useRef<PendingSeekIdentity | null>(null);
-  const pendingResumeRef = useRef<{ episodeId: string; positionMs: number; assetId?: string | null } | null>(null);
-  const initialDeepLinkHandledRef = useRef<boolean>(false);
-  const prevUrlEpisodeIdRef = useRef<string | null>(targetEpisodeId);
-  useEffect(() => {
-    return () => {
-      pendingSeekRef.current = null;
-      pendingResumeRef.current = null;
-    };
-  }, []);
-  useEffect(() => {
-    initialDeepLinkHandledRef.current = false;
-  }, [targetEpisodeId, targetAssetId, targetSceneId, targetSegmentId, targetTimeMs]);
-  useEffect(() => {
-    if (!seriesId) return;
-    setIsLoadingSeries(true);
-    setError(null);
-
-    const currentSeriesGen = ++seriesGenRef.current;
-    const controller = new AbortController();
-
-    getCatalogSeriesDetail(seriesId, undefined, controller.signal)
-      .then((data) => {
-        if (currentSeriesGen !== seriesGenRef.current) return;
-        if (!data) {
-          setError('Không tìm thấy thông tin bộ hoạt hình.');
-        } else {
-          setSeriesData(data);
-          const initialSeasonId = getInitialSeasonId(data.seasons || [], data.episodes || [], targetEpisodeId);
-          setSelectedSeasonId(initialSeasonId);
-          setSelectedEpisode(getInitialEpisode(data.episodes || [], initialSeasonId, targetEpisodeId, (data.seasons || []).length > 0));
-        }
-      })
-      .catch((err) => {
-        if (currentSeriesGen !== seriesGenRef.current || err?.name === 'AbortError') return;
-        setError(err?.message || 'Lỗi khi tải thông tin bộ phim.');
-      })
-      .finally(() => {
-        if (currentSeriesGen === seriesGenRef.current) {
-          setIsLoadingSeries(false);
-        }
-      });
-
-    return () => {
-      controller.abort();
-    };
-  }, [seriesId, seriesRetry]);
-  useEffect(() => {
-    setSeriesCard(null);
-    if (!seriesId || typeof getSeriesCardById !== 'function') return;
-    const controller = new AbortController();
-    getSeriesCardById(seriesId, { signal: controller.signal })
-      .then((card) => {
-        if (!controller.signal.aborted) setSeriesCard(card);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setSeriesCard(null);
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [seriesId]);
-  useEffect(() => {
-    if (!seriesData?.episodes) return;
-    if (targetEpisodeId !== prevUrlEpisodeIdRef.current) {
-      prevUrlEpisodeIdRef.current = targetEpisodeId;
-      if (targetEpisodeId) {
-        const matched = seriesData.episodes.find((e) => e.id === targetEpisodeId);
-        if (matched) {
-          setSelectedSeasonId(matched.seasonId || null);
-          setSelectedEpisode(matched);
-        }
-      } else if (seriesData.episodes.length > 0) {
-        const firstSeasonId = getInitialSeasonId(seriesData.seasons || [], seriesData.episodes || []);
-        setSelectedSeasonId(firstSeasonId);
-        setSelectedEpisode(getInitialEpisode(seriesData.episodes, firstSeasonId, null, (seriesData.seasons || []).length > 0));
-      }
-    }
-  }, [targetEpisodeId, seriesData]);
-  const handleSelectEpisode = (ep: CatalogEpisode) => {
-    if (ep.id !== selectedEpisode?.id) saveCurrentProgress('episode-change');
-    pendingResumeRef.current = null;
-    setNextCountdown(null);
-    setSelectedSeasonId(ep.seasonId || null);
-    setEpisodeQuery('');
-    if (ep.id === selectedEpisode?.id) return;
-    setSelectedEpisode(ep);
-
-    try {
-      const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.set('episode', ep.id);
-      currentUrl.searchParams.delete('scene');
-      currentUrl.searchParams.delete('segment');
-      currentUrl.searchParams.delete('t');
-      currentUrl.searchParams.delete('timeline');
-      currentUrl.searchParams.delete('timescale');
-      currentUrl.searchParams.delete('asset');
-      window.history.replaceState(null, '', currentUrl.toString());
-      prevUrlEpisodeIdRef.current = ep.id;
-    } catch {
-    }
-  };
-
-  const handlePlayNextEpisode = (recommendation: NextEpisodeRecommendation) => {
-    const targetEpisode = seriesData?.episodes?.find((ep) => ep.id === recommendation.episodeId);
-    if (!targetEpisode) return;
-
-    const matchingProgress = progress.records.find(
-      (record) => record.episodeId === recommendation.episodeId
-    );
-    const preferredAssetId = matchingProgress?.assetId || null;
-    const startMs =
-      recommendation.reason === 'RESUME' && recommendation.resumePositionMs > 0
-        ? Math.floor(recommendation.resumePositionMs)
-        : 0;
-
-    setNextCountdown(null);
-    setSelectedSeasonId(targetEpisode.seasonId || null);
-    setEpisodeQuery('');
-
-    try {
-      const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.set('episode', targetEpisode.id);
-      currentUrl.searchParams.delete('scene');
-      currentUrl.searchParams.delete('segment');
-      currentUrl.searchParams.delete('timescale');
-      if (startMs > 0) {
-        currentUrl.searchParams.set('t', String(startMs));
-        currentUrl.searchParams.set('timeline', 'file');
-        if (preferredAssetId) currentUrl.searchParams.set('asset', preferredAssetId);
-        else currentUrl.searchParams.delete('asset');
-      } else {
-        currentUrl.searchParams.delete('t');
-        currentUrl.searchParams.delete('timeline');
-        currentUrl.searchParams.delete('asset');
-      }
-      window.history.replaceState(null, '', currentUrl.toString());
-      prevUrlEpisodeIdRef.current = targetEpisode.id;
-    } catch {
-    }
-
-    if (targetEpisode.id === selectedEpisode?.id) {
-      if (startMs > 0) {
-        setDismissedResume(progressIdentity);
-        if (youtubeVideoId) {
-          setYoutubeSeekMs(startMs);
-          return;
-        }
-        const targetSec = startMs / 1000;
-        if (videoRef.current && videoRef.current.readyState >= 1) {
-          const dur = videoRef.current.duration || 0;
-          const clamped = dur > 0 ? Math.min(targetSec, Math.max(0, dur - 0.5)) : targetSec;
-          videoRef.current.currentTime = clamped;
-          videoRef.current.play().catch(() => {});
-          setIsPlaying(true);
-          pendingSeekRef.current = null;
-        } else if (selectedAsset) {
-          pendingSeekRef.current = {
-            seriesId: String(seriesId),
-            episodeId: targetEpisode.id,
-            assetId: selectedAsset.id,
-            sceneId: null,
-            segmentId: null,
-            targetSec,
-            generation: ++playGenRef.current,
-          };
-        }
-      } else if (videoRef.current) {
-        videoRef.current.currentTime = 0;
-        videoRef.current.play().catch(() => {});
-        setIsPlaying(true);
-      }
-      return;
-    }
-
-    saveCurrentProgress('episode-change');
-    if (startMs > 0) {
-      pendingResumeRef.current = {
-        episodeId: targetEpisode.id,
-        positionMs: startMs,
-        assetId: preferredAssetId,
-      };
-      autoPlayEpisodeRef.current = null;
-    } else {
-      pendingResumeRef.current = null;
-      autoPlayEpisodeRef.current = targetEpisode.id;
-    }
-    setSelectedEpisode(targetEpisode);
-  };
-
-  const handleSelectSeason = (seasonId: string) => {
-    if (seasonId === selectedSeasonId) return;
-    saveCurrentProgress('episode-change');
-    pendingResumeRef.current = null;
-    setNextCountdown(null);
-    const firstEpisode = getInitialEpisode(seriesData?.episodes || [], seasonId);
-    setSelectedSeasonId(seasonId);
-    setSelectedEpisode(firstEpisode);
-    setEpisodeQuery('');
-    prevUrlEpisodeIdRef.current = firstEpisode?.id || null;
-    try {
-      const currentUrl = new URL(window.location.href);
-      if (firstEpisode) currentUrl.searchParams.set('episode', firstEpisode.id);
-      else currentUrl.searchParams.delete('episode');
-      currentUrl.searchParams.delete('scene');
-      currentUrl.searchParams.delete('segment');
-      currentUrl.searchParams.delete('t');
-      currentUrl.searchParams.delete('timeline');
-      currentUrl.searchParams.delete('timescale');
-      currentUrl.searchParams.delete('asset');
-      window.history.replaceState(null, '', currentUrl.toString());
-    } catch {
-    }
-  };
-
-  const orderedSeasons = sortCatalogSeasons(seriesData?.seasons || []);
-  const hasSeasons = orderedSeasons.length > 0;
-  const seasonEpisodes = getEpisodesForSeason(seriesData?.episodes || [], selectedSeasonId, hasSeasons);
-  const filteredSeasonEpisodes = seasonEpisodes.filter((episode) => {
-    const query = episodeQuery.trim().toLocaleLowerCase();
-    if (!query) return true;
-    return `${episode.number ?? episode.episodeNumber ?? ''} ${episode.title} ${episode.synopsis || ''}`
-      .toLocaleLowerCase()
-      .includes(query);
-  });
-  const previousEpisode = getAdjacentEpisode(seriesData?.episodes || [], selectedSeasonId, selectedEpisode?.id || null, -1, hasSeasons);
-  const nextEpisode = getAdjacentEpisode(seriesData?.episodes || [], selectedSeasonId, selectedEpisode?.id || null, 1, hasSeasons);
-  const savedProgress = progress.records.find(record => record.episodeId === selectedEpisode?.id && record.assetId === selectedAsset?.id);
-  const offerResume = playbackSource.kind === 'file' && !targetTimeMs && !targetSceneId && !targetSegmentId
-    && dismissedResume !== progressIdentity && isUsableResumeProgress(savedProgress) && savedProgress.positionMs >= 5000;
-
-  function handleFilePlaybackFailure(assetId: string, reason: PlaybackFailureReason) {
-    if (!selectedEpisode?.id || episodeDetail?.episode?.id !== selectedEpisode.id) return;
-    if (selectedAsset?.id !== assetId) return;
-    const isUrlEpisode = targetEpisodeId === selectedEpisode.id;
-    const matchingSegment = isUrlEpisode && targetSegmentId
-      ? episodeDetail.segments.find((segment) => segment.id === targetSegmentId)
-      : undefined;
-    const matchingScene = isUrlEpisode && targetSceneId
-      ? episodeDetail.scenes.find((scene) => scene.id === targetSceneId)
-      : undefined;
-    const pendingSeekSec =
-      pendingSeekRef.current &&
-      pendingSeekRef.current.episodeId === selectedEpisode.id &&
-      pendingSeekRef.current.assetId === assetId
-        ? pendingSeekRef.current.targetSec
-        : null;
-    const capturedStartMs = resolveFallbackStartTimeMs({
-      videoCurrentTimeSec: videoRef.current?.currentTime,
-      pendingSeekSec,
-      trackedTimeSec: currentTime,
-      manualSeekMs: youtubeSeekMs,
-      deepLinkTimeMs: isUrlEpisode ? targetTimeMs : null,
-      segmentStartMs: matchingSegment?.episodeStartMs,
-      sceneStartMs: matchingScene?.startMs,
-    });
-    setFallbackStartMs(capturedStartMs > 0 ? capturedStartMs : null);
-    setRuntimeFailure({
-      episodeId: selectedEpisode.id,
-      assetId,
-      reason,
-    });
-    setStreamUrl('');
-    setIsResolvingStream(false);
-    setHasLoadedMetadata(false);
-    setIsPlaying(false);
-  }
-
-  function handleRetryOriginalFile() {
-    setPlaybackWarning(null);
-    const failedAsset = playbackSource.kind === 'youtube' || playbackSource.kind === 'unavailable'
-      ? playbackSource.failedAsset
-      : null;
-    const carryStartMs = resolveFallbackStartTimeMs({
-      manualSeekMs: youtubeSeekMs,
-      deepLinkTimeMs: fallbackStartMs ?? (targetEpisodeId === selectedEpisode?.id ? targetTimeMs : null),
-    });
-
-    if (runtimeFailure) {
-      if (failedAsset && carryStartMs > 0 && selectedEpisode) {
-        pendingSeekRef.current = {
-          seriesId: String(seriesId),
-          episodeId: selectedEpisode.id,
-          assetId: failedAsset.id,
-          sceneId: null,
-          segmentId: null,
-          targetSec: carryStartMs / 1000,
-          generation: ++playGenRef.current,
-        };
-      }
-      setRuntimeFailure(null);
-      setHasLoadedMetadata(false);
-      setFileRetryNonce((value) => value + 1);
-      return;
-    }
-
-    if (selectedEpisode && carryStartMs > 0) {
-      pendingResumeRef.current = {
-        episodeId: selectedEpisode.id,
-        positionMs: carryStartMs,
-        assetId: failedAsset?.id || null,
-      };
-    }
-    setRuntimeFailure(null);
-    setHasLoadedMetadata(false);
-    setEpisodeRetry((value) => value + 1);
-  }
-
-  function handleSelectAsset(asset: CatalogMediaAsset) {
-    setPlaybackWarning(null);
-    setManualAssetId(asset.id);
-    setRuntimeFailure(null);
-    setHasLoadedMetadata(false);
-    setFileRetryNonce((value) => value + 1);
-    if (asset.available === false) {
-      setEpisodeRetry((value) => value + 1);
-    }
-  }
-
-  function saveCurrentProgress(reason: 'interval' | 'pause' | 'ended' | 'episode-change') {
-    const video = videoRef.current;
-    if (playbackSource.kind !== 'file' || !video || !selectedEpisode || !selectedAsset || !seriesData
-        || episodeDetail?.episode?.id !== selectedEpisode.id || !Number.isFinite(video.currentTime)
-        || video.currentTime < 1 || !(video.currentSrc || video.src).includes(encodeURIComponent(selectedAsset.id))) return;
-    let fullEpisode = false;
-    try { fullEpisode = JSON.parse(selectedAsset.coverageJson || '[]').some((item: any) => item.episode_id === selectedEpisode.id && item.scope === 'full_episode'); } catch {}
-    if (!fullEpisode || (offerResume && savedProgress && video.currentTime * 1000 + 2000 < savedProgress.positionMs)) return;
-    const season = seriesData.seasons.find(item => item.id === selectedEpisode.seasonId);
-    const durationMs = Number.isFinite(video.duration) && video.duration > 0 ? Math.round(video.duration * 1000) : selectedAsset.durationMs ?? null;
-    const positionMs = Math.min(Math.floor(video.currentTime * 1000), durationMs ?? Number.MAX_SAFE_INTEGER);
-    const draft: WatchProgressDraft = {
-      episodeId: selectedEpisode.id, assetId: selectedAsset.id, seriesId,
-      seriesTitle: seriesData.series.title, episodeTitle: selectedEpisode.title,
-      seasonId: selectedEpisode.seasonId, seasonNumber: season?.number ?? season?.seasonNumber,
-      seasonTitle: season?.title, episodeNumber: selectedEpisode.number ?? selectedEpisode.episodeNumber,
-      positionMs, durationMs,
-      completed: durationMs != null && positionMs >= durationMs * .95 && durationMs - positionMs <= 60000,
-    };
-    void progress.saveProgress(draft, reason).catch(() => {});
-  }
-
-  useEffect(() => {
-    if (nextCountdown === null || !autoNext || !nextEpisode) return;
-    const cancelHidden = () => { if (document.hidden) setNextCountdown(null); };
-    document.addEventListener('visibilitychange', cancelHidden);
-    const timer = window.setTimeout(() => {
-      if (document.hidden) { setNextCountdown(null); return; }
-      if (nextCountdown > 1) setNextCountdown(nextCountdown - 1);
-      else { autoPlayEpisodeRef.current = nextEpisode.id; handleSelectEpisode(nextEpisode); }
-    }, 1000);
-    return () => { window.clearTimeout(timer); document.removeEventListener('visibilitychange', cancelHidden); };
-  }, [nextCountdown, autoNext, nextEpisode?.id, progressIdentity]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || autoPlayEpisodeRef.current !== selectedEpisode?.id) return;
-    const playNext = () => {
-      if (autoPlayEpisodeRef.current !== selectedEpisode?.id || document.hidden
-          || episodeDetail?.episode?.id !== selectedEpisode?.id || !selectedAsset
-          || !(video.currentSrc || video.src).includes(encodeURIComponent(selectedAsset.id))) return;
-      autoPlayEpisodeRef.current = null;
-      void video.play().catch(() => setPlaybackWarning('Bấm Phát để tiếp tục tập kế tiếp.'));
-    };
-    video.addEventListener('canplay', playNext);
-    if (video.readyState >= 3) playNext();
-    return () => video.removeEventListener('canplay', playNext);
-  }, [streamUrl, selectedEpisode?.id, selectedAsset?.id, episodeDetail?.episode?.id]);
-  useEffect(() => {
-    pendingSeekRef.current = null;
-    setPlaybackWarning(null);
-    setActiveSegmentId(null);
-    setEpisodeError(null);
-    setEpisodeDetail(null);
-    setPreferredAssetId(null);
-    setRuntimeFailure(null);
-    setFallbackStartMs(null);
-    setHasLoadedMetadata(false);
-    setStreamUrl('');
-    setIsResolvingStream(false);
-    setCurrentTime(0);
-    setDuration(0);
-    setIsPlaying(false);
-    setYoutubeSeekMs(null);
-    setActiveSceneId(null);
-
-    const currentGen = ++episodeGenRef.current;
-    if (!selectedEpisode?.id) {
-      setIsLoadingEpisode(false);
-      return;
-    }
-    setIsLoadingEpisode(true);
-    const controller = new AbortController();
-
-    getCatalogEpisodeDetail(selectedEpisode.id, undefined, controller.signal)
-      .then((detail) => {
-        if (controller.signal.aborted || currentGen !== episodeGenRef.current) return;
-        if (detail) {
-          setEpisodeDetail(detail);
-          const pendingResume =
-            pendingResumeRef.current && pendingResumeRef.current.episodeId === detail.episode.id
-              ? pendingResumeRef.current
-              : null;
-          if (pendingResume) {
-            pendingResumeRef.current = null;
-          }
-          const isUrlEpisode = targetEpisodeId ? detail.episode.id === targetEpisodeId : false;
-          const sc = isUrlEpisode && targetSceneId && detail.scenes
-            ? detail.scenes.find((s) => s.id === targetSceneId)
-            : undefined;
-          const seg = isUrlEpisode && targetSegmentId && detail.segments
-            ? detail.segments.find((s) => s.id === targetSegmentId)
-            : undefined;
-
-          const resolvedPreferredAssetId =
-            pendingResume?.assetId ||
-            (isUrlEpisode && targetAssetId ? targetAssetId : null) ||
-            (sc?.mediaAssetId ? sc.mediaAssetId : null);
-
-          setPreferredAssetId(resolvedPreferredAssetId);
-
-          const initialSelection = selectPlaybackSource({
-            episodeDetail: detail,
-            selectedEpisodeId: detail.episode.id,
-            episodeDurationMs: detail.episode.durationMs,
-            preferredAssetId: resolvedPreferredAssetId,
-            manualAssetId,
-            startTimeMs: pendingResume?.positionMs ?? (isUrlEpisode ? targetTimeMs ?? seg?.episodeStartMs ?? sc?.startMs : 0),
-          });
-          const assetToSelect = initialSelection.kind === 'file' ? initialSelection.asset : null;
-
-          if (pendingResume && pendingResume.positionMs > 0) {
-            if (assetToSelect) {
-              setDismissedResume(`${detail.episode.id}:${assetToSelect.id}`);
-              pendingSeekRef.current = {
-                seriesId: String(seriesId),
-                episodeId: detail.episode.id,
-                assetId: assetToSelect.id,
-                sceneId: null,
-                segmentId: null,
-                targetSec: pendingResume.positionMs / 1000,
-                generation: ++playGenRef.current,
-              };
-            } else if (initialSelection.kind === 'youtube') {
-              setYoutubeSeekMs(pendingResume.positionMs);
-            }
-          } else if (isUrlEpisode && !initialDeepLinkHandledRef.current) {
-            initialDeepLinkHandledRef.current = true;
-            if (assetToSelect) {
-              const seekSec = resolveMediaSeekSeconds({
-                timeMs: targetTimeMs,
-                timeline: searchParams.get('timeline') || searchParams.get('timescale'),
-                isScene: !!targetSceneId,
-                isSegment: !!targetSegmentId,
-                asset: assetToSelect,
-                segmentId: targetSegmentId || undefined,
-                episodeId: detail.episode.id,
-                sceneStartMs: sc?.startMs,
-                segmentStartMs: seg?.episodeStartMs,
-              });
-
-              if (targetSegmentId && seg) {
-                setActiveSegmentId(seg.id);
-                if (seekSec === null) {
-                  setPlaybackWarning(`Phân đoạn [${seg.title || seg.id}] chưa xác định thời điểm bắt đầu (episode_start_ms = null).`);
-                }
-              }
-              if (targetSceneId && sc) {
-                setActiveSceneId(sc.id);
-                if (seekSec === null) {
-                  setPlaybackWarning(`Phân cảnh [${sc.title || sc.id}] chưa xác định thời điểm bắt đầu (start_ms = null).`);
-                }
-              }
-
-              if (seekSec !== null && !isNaN(seekSec) && isFinite(seekSec) && seekSec >= 0) {
-                pendingSeekRef.current = {
-                  seriesId: String(seriesId),
-                  episodeId: detail.episode.id,
-                  assetId: assetToSelect.id,
-                  sceneId: targetSceneId || null,
-                  segmentId: targetSegmentId || null,
-                  targetSec: seekSec,
-                  generation: ++playGenRef.current,
-                };
-              }
-            } else {
-              if (targetSegmentId && seg) setActiveSegmentId(seg.id);
-              if (targetSceneId && sc) setActiveSceneId(sc.id);
-            }
-          }
-        } else setEpisodeError('Không tìm thấy thông tin tập phim.');
-      })
-      .catch((err) => {
-        if (controller.signal.aborted || currentGen !== episodeGenRef.current || err?.name === 'AbortError' || err?.isCanceled) return;
-        setEpisodeError('Không thể tải thông tin tập phim. Vui lòng thử lại.');
-      })
-      .finally(() => {
-        if (!controller.signal.aborted && currentGen === episodeGenRef.current) {
-          setIsLoadingEpisode(false);
-        }
-      });
-
-    return () => {
-      controller.abort();
-    };
-  }, [selectedEpisode?.id, targetAssetId, targetSceneId, targetSegmentId, targetTimeMs, seriesId, targetEpisodeId, episodeRetry]);
-
-  useEffect(() => {
-    setHasLoadedMetadata(false);
-    if (!selectedAsset?.id) {
-      setStreamUrl('');
-      setIsResolvingStream(false);
-      return;
-    }
-    const currentAssetId = selectedAsset.id;
-    const defaultUrl = resolveStreamUrl(`/api/media/stream/${currentAssetId}`);
-    const token = getStoredAuthToken();
-    const isProtected = selectedAsset.accessPolicy && selectedAsset.accessPolicy !== 'public';
-
-    if (token || isProtected) {
-      const ac = new AbortController();
-      setStreamUrl('');
-      setIsResolvingStream(true);
-      const grantPromise: Promise<PlaybackGrantResult> = typeof requestPlaybackGrantResult === 'function'
-        ? requestPlaybackGrantResult(currentAssetId, ac.signal)
-        : requestPlaybackGrant(currentAssetId, ac.signal).then((grant) => (
-            grant?.streamUrl
-              ? { ok: true, status: 200, grant }
-              : { ok: false, status: isProtected ? 403 : 404, grant: null }
-          ));
-      grantPromise
-        .then((result) => {
-          if (ac.signal.aborted || result.aborted) return;
-          if (result.ok && result.grant?.streamUrl) {
-            setPlaybackWarning(null);
-            setStreamUrl(result.grant.streamUrl);
-          } else {
-            setStreamUrl('');
-            handleFilePlaybackFailure(currentAssetId, classifyGrantFailureReason(result.status));
-          }
-        })
-        .catch(() => {
-          if (ac.signal.aborted) return;
-          setStreamUrl('');
-          handleFilePlaybackFailure(currentAssetId, isProtected ? 'forbidden' : 'stream_error');
-        }).finally(() => {
-          if (!ac.signal.aborted) setIsResolvingStream(false);
-        });
-      return () => {
-        ac.abort();
-      };
-    } else {
-      setIsResolvingStream(false);
-      setStreamUrl(defaultUrl);
-    }
-  }, [selectedAsset?.id, selectedAsset?.accessPolicy, fileRetryNonce]);
-
-  useEffect(() => {
-    if (
-      !selectedAsset?.id ||
-      !streamUrl ||
-      isResolvingStream ||
-      hasLoadedMetadata ||
-      episodeDetail?.episode?.id !== selectedEpisode?.id
-    ) {
-      return;
-    }
-    if (videoRef.current && videoRef.current.readyState >= 1) {
-      setHasLoadedMetadata(true);
-      return;
-    }
-    if (typeof setTimeout !== 'function') return;
-    const assetId = selectedAsset.id;
-    const timer = setTimeout(() => {
-      if (videoRef.current && videoRef.current.readyState >= 1) {
-        setHasLoadedMetadata(true);
-        return;
-      }
-      handleFilePlaybackFailure(assetId, 'timeout');
-    }, PLAYBACK_METADATA_TIMEOUT_MS);
-    return () => {
-      if (typeof clearTimeout === 'function') clearTimeout(timer);
-    };
-  }, [selectedAsset?.id, streamUrl, isResolvingStream, hasLoadedMetadata, fileRetryNonce, selectedEpisode?.id, episodeDetail?.episode?.id]);
-  const handleSeekScene = (scene: CatalogScene) => {
-    setPlaybackWarning(null);
-    if (youtubeVideoId) {
-      setActiveSceneId(scene.id);
-      setYoutubeSeekMs(scene.startMs);
-      return;
-    }
-    const currentEpId = selectedEpisode?.id || '';
-    const currentGen = ++playGenRef.current;
-    const targetSec = scene.startMs / 1000;
-    if (scene.mediaAssetId && episodeDetail?.mediaAssets && selectedAsset?.id !== scene.mediaAssetId) {
-      const matchingAsset = episodeDetail.mediaAssets.find((a) => a.id === scene.mediaAssetId);
-      if (matchingAsset) {
-        pendingSeekRef.current = {
-          seriesId: String(seriesId),
-          episodeId: currentEpId,
-          assetId: matchingAsset.id,
-          sceneId: scene.id,
-          targetSec,
-          generation: currentGen,
-        };
-        setActiveSceneId(scene.id);
-        setManualAssetId(matchingAsset.id);
-        setRuntimeFailure(null);
-        setHasLoadedMetadata(false);
-        return;
-      } else {
-        setPlaybackWarning(
-          `Phân cảnh [${scene.title || scene.id}] thuộc tệp phát [${scene.mediaAssetId}] không có trong tập này.`
-        );
-        return;
-      }
-    }
-
-    setActiveSceneId(scene.id);
-    if (videoRef.current && videoRef.current.readyState >= 1) {
-      const dur = videoRef.current.duration || 0;
-      const clamped = dur > 0 ? Math.min(targetSec, Math.max(0, dur - 0.5)) : targetSec;
-      videoRef.current.currentTime = clamped;
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
-      pendingSeekRef.current = null;
-    } else {
-      pendingSeekRef.current = {
-        seriesId: String(seriesId),
-        episodeId: currentEpId,
-        assetId: selectedAsset?.id || '',
-        sceneId: scene.id,
-        targetSec,
-        generation: currentGen,
-      };
-    }
-  };
-  const handleSeekSegment = (segment: CatalogSegment) => {
-    setPlaybackWarning(null);
-    setActiveSegmentId(segment.id);
-    if (typeof segment.episodeStartMs !== 'number' || isNaN(segment.episodeStartMs)) {
-      setPlaybackWarning(`Phân đoạn [${segment.title || segment.id}] chưa xác định thời điểm bắt đầu (episode_start_ms = null).`);
-      return;
-    }
-    if (youtubeVideoId) {
-      setYoutubeSeekMs(segment.episodeStartMs);
-      return;
-    }
-    const targetSec = resolveFileTimestamp(segment.episodeStartMs, selectedAsset, segment.id, selectedEpisode?.id);
-    if (targetSec === null) {
-      setPlaybackWarning(
-        `Không thể tua: Mốc thời gian phân đoạn chưa xác định hoặc không có coverage tương ứng trên tệp video đang phát.`
-      );
-      return;
-    }
-    const currentEpId = selectedEpisode?.id || '';
-    const currentGen = ++playGenRef.current;
-
-    if (videoRef.current && videoRef.current.readyState >= 1) {
-      const dur = videoRef.current.duration || 0;
-      const clamped = dur > 0 ? Math.min(targetSec, Math.max(0, dur - 0.5)) : targetSec;
-      videoRef.current.currentTime = clamped;
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
-      pendingSeekRef.current = null;
-    } else {
-      pendingSeekRef.current = {
-        seriesId: String(seriesId),
-        episodeId: currentEpId,
-        assetId: selectedAsset?.id || '',
-        sceneId: null,
-        targetSec,
-        generation: currentGen,
-      };
-    }
-  };
-
-  const handleLoadedMetadata = () => {
-    const pending = pendingSeekRef.current;
-    if (!pending || !videoRef.current) return;
-    if (
-      pending.generation === playGenRef.current &&
-      pending.seriesId === String(seriesId) &&
-      pending.episodeId === selectedEpisode?.id &&
-      pending.assetId === selectedAsset?.id
-    ) {
-      const dur = videoRef.current.duration || 0;
-      const clamped = dur > 0 ? Math.min(pending.targetSec, Math.max(0, dur - 0.5)) : pending.targetSec;
-      videoRef.current.currentTime = clamped;
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
-      if (pending.sceneId) {
-        setActiveSceneId(pending.sceneId);
-      }
-      if (pending.segmentId) {
-        setActiveSegmentId(pending.segmentId);
-      }
-      pendingSeekRef.current = null;
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (videoRef.current && !videoRef.current.paused) saveCurrentProgress('interval');
-    if (videoRef.current) {
-      const cur = videoRef.current.currentTime;
-      setCurrentTime(cur);
-      setDuration(videoRef.current.duration || 0);
-
-      const curMs = cur * 1000;
-      if (episodeDetail?.scenes) {
-        const matching = episodeDetail.scenes.find(
-          (s) => curMs >= s.startMs && curMs < s.endMs && (!selectedAsset || !s.mediaAssetId || s.mediaAssetId === selectedAsset.id)
-        );
-        setActiveSceneId(matching ? matching.id : null);
-      }
-      if (episodeDetail?.segments) {
-        const matchingSeg = episodeDetail.segments.find((seg) => {
-          const sStart = seg.episodeStartMs ?? 0;
-          const sEnd = seg.episodeEndMs ?? Infinity;
-          return curMs >= sStart && curMs < sEnd;
-        });
-        setActiveSegmentId(matchingSeg ? matchingSeg.id : null);
-      }
-    }
-  };
-
-  if (isLoadingSeries) {
+  if (playback.isLoadingSeries) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="flex items-center gap-2 text-sm text-muted">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-          <span>Đang nạp dữ liệu bộ hoạt hình...</span>
+      <main id="main-content" tabIndex={-1} className="series-page mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div role="status" className="space-y-6 animate-pulse">
+          <span className="sr-only">Đang tải phim bộ…</span>
+          <div className="rounded-xl border border-surface-border/40 bg-paper-white p-6 sm:p-8 space-y-3">
+            <div className="h-3.5 w-28 rounded bg-surface-elevated" />
+            <div className="h-8 w-2/3 max-w-md rounded bg-surface-elevated" />
+            <div className="flex gap-2">
+              <div className="h-5 w-16 rounded bg-surface-elevated" />
+              <div className="h-5 w-24 rounded bg-surface-elevated" />
+              <div className="h-5 w-20 rounded bg-surface-elevated" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+            <div className="lg:col-span-2 space-y-4">
+              <div className="aspect-video w-full rounded-xl border border-surface-border/40 bg-surface-elevated" />
+              <div className="h-28 rounded-xl border border-surface-border/40 bg-paper-white" />
+            </div>
+            <div className="rounded-xl border border-surface-border/40 bg-paper-white p-5 space-y-3">
+              <div className="h-5 w-1/2 rounded bg-surface-elevated" />
+              <div className="h-12 rounded bg-surface-elevated" />
+              <div className="h-12 rounded bg-surface-elevated" />
+              <div className="h-12 rounded bg-surface-elevated" />
+            </div>
+          </div>
         </div>
-      </div>
+      </main>
     );
   }
 
-  if (error || !seriesData) {
+  if (playback.error || !playback.seriesData) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-16 text-center">
-        <h2 className="mt-4 text-xl font-bold text-ink">Lỗi hiển thị bộ phim</h2>
-        <p className="mt-2 text-sm text-muted">{error || 'Không tìm thấy dữ liệu bộ phim.'}</p>
-        <button onClick={() => setSeriesRetry((value) => value + 1)} className="btn-secondary mt-6 inline-flex items-center gap-2 text-xs">Thử tải lại</button>
-        <Link to="/search" className="btn-secondary mt-6 ml-2 inline-flex items-center gap-2 text-xs">
-          <span>Quay lại kho phim</span>
-        </Link>
-      </div>
+      <main id="main-content" tabIndex={-1} className="mx-auto max-w-xl px-4 py-16 text-center">
+        <div className="rounded-2xl border-2 border-ink bg-paper-white p-8 shadow-brand">
+          <h1 className="comic-heading text-2xl font-bold text-ink">Chưa tải được phim bộ này</h1>
+          <p className="mt-2 text-sm text-muted">{playback.error || 'Không tìm thấy phim bộ này.'}</p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={playback.retrySeries}
+              className="btn-primary inline-flex min-h-[44px] items-center gap-2 text-xs"
+            >
+              Thử tải lại
+            </button>
+            <Link to="/search" className="btn-secondary inline-flex min-h-[44px] items-center gap-2 text-xs">
+              <span>Về kho phim</span>
+            </Link>
+          </div>
+        </div>
+      </main>
     );
   }
 
-  const { series, seasons, episodes } = seriesData;
-  const seriesProgressRevision = progress.records
-    .filter((record) => record.seriesId === seriesId)
-    .map((record) => `${record.episodeId}:${record.version}:${record.positionMs}:${record.completed ? 1 : 0}`)
-    .join('|');
+  const { series, seasons, episodes } = playback.seriesData;
+  const selectedEpisode = playback.selectedEpisode;
+  const activeEpisodeRating =
+    selectedEpisode && playback.episodeRating && playback.episodeRating.episodeId === selectedEpisode.id
+      ? playback.episodeRating
+      : selectedEpisode
+      ? extractEpisodeRating(
+          playback.episodeDetail?.episode?.id === selectedEpisode.id ? playback.episodeDetail : null,
+          selectedEpisode
+        )
+      : null;
+  const episodeRatingSummary = resolveRatingSummary(activeEpisodeRating);
+
+  const segmentItems: TimelineMarkerItem[] = (playback.episodeDetail?.segments || []).map((segment) => ({
+    id: segment.id,
+    timeLabel:
+      segment.episodeStartMs !== undefined
+        ? `${formatDurationMs(segment.episodeStartMs)}${segment.episodeEndMs ? ` đến ${formatDurationMs(segment.episodeEndMs)}` : ''}`
+        : `Phân đoạn ${segment.position}`,
+    title: segment.title || `Phân đoạn ${segment.position}`,
+    description: segment.synopsis,
+    onSelect: () => playback.handleSeekSegment(segment),
+  }));
+
+  const sceneItems: TimelineMarkerItem[] = (playback.episodeDetail?.scenes || []).map((scene) => ({
+    id: scene.id,
+    timeLabel: `${formatDurationMs(scene.startMs)} đến ${formatDurationMs(scene.endMs)}`,
+    title: scene.title || 'Phân cảnh',
+    description: scene.visualDescription || scene.summary,
+    onSelect: () => playback.handleSeekScene(scene),
+  }));
 
   return (
-    <main className="series-page mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-
+    <main id="main-content" tabIndex={-1} className="series-page mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <SeriesDetailBanner
         series={series}
-        card={seriesCard}
+        card={playback.seriesCard}
         seasonCount={seasons.length}
         episodeCount={episodes.length}
         nextEpisodeAction={
           <NextEpisodeAction
             seriesId={seriesId}
-            progressRevision={seriesProgressRevision}
-            onSelectRecommendation={handlePlayNextEpisode}
+            progressRevision={playback.seriesProgressRevision}
+            onSelectRecommendation={playback.handlePlayNextEpisode}
+          />
+        }
+        seriesActions={
+          <ItemLibraryPanel
+            itemId={series.id}
+            title={series.title}
+            poster={playback.seriesCard?.posterUrl || playback.seriesCard?.backdropUrl || ''}
+            scopeLabel="Phim bộ"
+            testIdPrefix="series"
+            compact
           />
         }
       />
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-
         <div className="min-w-0 lg:col-span-2 space-y-4">
+          <EpisodePlayerPanel
+            seriesTitle={series.title}
+            selectedEpisode={selectedEpisode}
+            episodeDetail={playback.episodeDetail}
+            playbackSource={playback.playbackSource}
+            isLoadingEpisode={playback.isLoadingEpisode}
+            isResolvingStream={playback.isResolvingStream}
+            episodeError={playback.episodeError}
+            playbackWarning={playback.playbackWarning}
+            onDismissWarning={() => playback.setPlaybackWarning(null)}
+            isUnmountedDriveFallback={playback.isUnmountedDriveFallback}
+            onRetryOriginalFile={playback.handleRetryOriginalFile}
+            onRetryEpisode={playback.retryEpisode}
+            streamUrl={playback.streamUrl}
+            fileRetryCount={playback.fileRetryCount}
+            videoRef={playback.videoRef}
+            youtubeSeekRequest={playback.youtubeSeekRequest}
+            shouldAutoPlayYoutube={playback.shouldAutoPlayYoutube}
+            youtubeHandlers={playback.youtubeHandlers}
+            videoHandlers={playback.videoHandlers}
+            offerResume={playback.offerResume}
+            savedProgress={playback.savedProgress}
+            onResumePlayback={playback.handleResumePlayback}
+            autoNext={playback.autoNext}
+            onAutoNextToggle={playback.handleAutoNextToggle}
+            nextCountdown={playback.nextCountdown}
+            nextEpisodeLabel={playback.nextEpisodeLabel}
+            hasNextEpisode={Boolean(playback.nextEpisode)}
+            onCancelNextCountdown={() => playback.setNextCountdown(null)}
+            progressError={playback.progressError}
+          />
 
-          {playbackWarning && (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900">
-              <div className="flex items-center gap-2">
-                <span>{playbackWarning}</span>
-              </div>
-              <button
-                onClick={() => setPlaybackWarning(null)}
-                className="min-h-11 shrink-0 px-2 text-muted hover:text-ink"
-              >
-                Đóng
-              </button>
-            </div>
-          )}
-
-          {playbackSource.kind === 'youtube' && playbackSource.isFallback && (
-            <div
-              role="status"
-              aria-live="polite"
-              data-testid="playback-fallback-notice"
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900"
-            >
-              <span>Tệp video chưa sẵn sàng, đang phát bản YouTube.</span>
-              <button
-                type="button"
-                data-testid="retry-original-file"
-                onClick={handleRetryOriginalFile}
-                className="btn-secondary min-h-9 shrink-0 px-3 py-1 text-xs font-semibold"
-              >
-                Thử lại tệp gốc
-              </button>
-            </div>
-          )}
-
-          <div
-            className={`relative overflow-hidden rounded-xl border border-surface-border shadow-2xl aspect-video flex items-center justify-center ${
-              !isLoadingEpisode && !isResolvingStream && !episodeError && playbackSource.kind === 'unavailable'
-                ? 'bg-surface'
-                : 'bg-black'
-            } ${youtubeEmbed ? 'min-h-[200px]' : ''}`}
-          >
-            {isLoadingEpisode || isResolvingStream ? (
-              <p role="status" className="p-6 text-center text-xs text-zinc-200">Đang tải tập phim…</p>
-            ) : episodeError ? (
-              <div role="alert" aria-live="assertive" className="p-6 text-center text-xs text-zinc-200">
-                <p>{episodeError}</p>
-                <button data-testid="retry-episode" onClick={() => setEpisodeRetry((value) => value + 1)} className="btn-secondary mt-3">Thử lại</button>
-              </div>
-            ) : playbackSource.kind === 'youtube' ? (
-              <iframe
-                data-testid="series-youtube-player"
-                className="absolute inset-0 h-full w-full"
-                title={selectedEpisode?.title || 'Tập phim trên YouTube'}
-                src={playbackSource.embedUrl}
-                allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share"
-                referrerPolicy="strict-origin-when-cross-origin"
-                allowFullScreen
-              />
-            ) : playbackSource.kind === 'file' && streamUrl ? (
-              <video
-                ref={videoRef}
-                data-testid="series-video-player"
-                key={`${streamUrl}:${fileRetryNonce}`}
-                src={streamUrl}
-                controls
-                playsInline
-                onLoadedMetadata={() => {
-                  setHasLoadedMetadata(true);
-                  handleLoadedMetadata();
-                }}
-                onLoadedData={() => setHasLoadedMetadata(true)}
-                onCanPlay={() => {
-                  setHasLoadedMetadata(true);
-                  handleLoadedMetadata();
-                }}
-                onError={() => {
-                  if (selectedAsset) {
-                    handleFilePlaybackFailure(selectedAsset.id, 'file_unreachable');
-                  }
-                }}
-                onTimeUpdate={handleTimeUpdate}
-                onPlay={() => { setIsPlaying(true); setNextCountdown(null); }}
-                onPause={() => { setIsPlaying(false); saveCurrentProgress('pause'); }}
-                onSeeking={() => setNextCountdown(null)}
-                onEnded={() => {
-                  saveCurrentProgress('ended');
-                  if (autoNext && nextEpisode && !document.hidden) setNextCountdown(8);
-                }}
-                className="h-full w-full object-contain"
-              />
-            ) : (
-              <div
-                role="alert"
-                aria-live="assertive"
-                data-testid="playback-unavailable-card"
-                className="flex h-full w-full flex-col items-center justify-center p-6 text-center text-ink"
-              >
-                <p className="text-xs font-semibold text-brand-dark">
-                  {episodeDetail?.episode?.title || selectedEpisode?.title || series.title}
-                </p>
-                <h3 className="mt-1 text-base font-bold text-ink sm:text-lg">
-                  Không phát được tập này
-                </h3>
-                <p className="mt-2 max-w-md text-xs leading-relaxed text-muted">
-                  {getUnavailableReasonMessage(
-                    playbackSource.kind === 'unavailable' ? playbackSource.reason : 'file_unreachable'
-                  )}
-                </p>
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-                  {playbackSource.kind === 'unavailable' && playbackSource.youtubeWatchUrl && (
-                    <a
-                      href={playbackSource.youtubeWatchUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      data-testid="open-on-youtube-link"
-                      className="btn-primary inline-flex min-h-10 items-center justify-center px-4 py-2 text-xs font-semibold"
-                    >
-                      Mở trên YouTube
-                    </a>
-                  )}
-                  {((playbackSource.kind === 'unavailable' && playbackSource.canRetryFile) ||
-                    playbackSource.kind === 'file') && (
-                    <button
-                      type="button"
-                      data-testid="retry-original-file"
-                      onClick={handleRetryOriginalFile}
-                      className="btn-secondary inline-flex min-h-10 items-center justify-center px-4 py-2 text-xs font-semibold"
-                    >
-                      Thử lại tệp gốc
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {youtubeEmbed && youtubeUrl && <a href={youtubeUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-brand-dark underline">Mở trên YouTube</a>}
-          {offerResume && savedProgress && <div className="rounded-xl border border-brand/30 bg-brand/10 flex flex-wrap items-center justify-between gap-3 p-4" data-testid="resume-choice">
-            <span className="text-xs sm:text-sm text-foreground">Bạn đang xem dở ở <strong className="font-mono text-brand-dark">{formatDuration(savedProgress.positionMs)}</strong>.</span>
-            <div className="flex items-center gap-2">
-              <button className="btn-primary text-xs py-1.5 px-3" onClick={() => {
-                const video = videoRef.current;
-                if (video && Number.isFinite(video.duration) && savedProgress.positionMs < video.duration * 1000) {
-                  setDismissedResume(progressIdentity); video.currentTime = savedProgress.positionMs / 1000; void video.play().catch(() => {});
-                }
-              }}>Xem tiếp</button>
-              <button className="min-h-11 text-xs text-muted hover:text-ink underline cursor-pointer" onClick={() => {
-                setDismissedResume(progressIdentity);
-                if (videoRef.current) { videoRef.current.currentTime = 0; void videoRef.current.play().catch(() => {}); }
-              }}>Xem từ đầu</button>
-            </div>
-          </div>}
-          <div className="flex flex-wrap items-center gap-4 text-xs text-muted">
-            {!youtubeVideoId && <label className="inline-flex min-h-10 items-center gap-2 cursor-pointer hover:text-ink"><input type="checkbox" className="rounded border-surface-border bg-surface accent-brand" checked={autoNext} onChange={event => {
-              setAutoNext(event.target.checked); writeAutoNextPreference(event.target.checked); setNextCountdown(null);
-            }} />Tự chuyển tập trong mùa</label>}
-            {nextCountdown !== null && nextEpisode && <div role="status" className="rounded-xl border border-surface-border bg-surface-elevated flex items-center gap-3 px-3 py-2 text-xs text-ink" data-testid="next-countdown">
-              Tập tiếp theo sau <strong className="text-brand-dark font-mono">{nextCountdown}</strong> giây
-              <button className="underline text-muted hover:text-ink cursor-pointer ml-1" onClick={() => setNextCountdown(null)}>Hủy</button>
-            </div>}
-          </div>
-          {progress.error && <p role="status" className="text-xs text-muted">{progress.error}</p>}
           {selectedEpisode && (
             <div className="rounded-xl border border-surface-border bg-surface p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border pb-3">
-                <div>
-                  <span className="text-xs font-bold text-brand-dark">
-                    Tập {selectedEpisode.number ?? selectedEpisode.episodeNumber}
-                  </span>
-                  <h2 className="text-lg font-bold text-ink">{selectedEpisode.title}</h2>
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-surface-border pb-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center rounded bg-mint px-2 py-0.5 text-[11px] font-bold text-ink">
+                      Đang phát · Tập {selectedEpisode.number ?? selectedEpisode.episodeNumber}
+                    </span>
+                  </div>
+                  <h2 className="mt-1.5 text-lg font-bold text-ink break-words">{cleanMediaTitle(selectedEpisode.title)}</h2>
                 </div>
-                {selectedEpisode.durationMs && (
-                  <span className="flex items-center gap-1 rounded bg-surface-elevated px-2 py-1 text-xs text-muted border border-surface-border">
-                    {formatDuration(selectedEpisode.durationMs)}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    data-testid="episode-header-rating"
+                    className="inline-flex items-center gap-1 rounded bg-surface-elevated px-2 py-1 text-xs font-medium text-muted border border-surface-border"
+                  >
+                    {episodeRatingSummary.hasRating ? `★ ${episodeRatingSummary.label}` : episodeRatingSummary.label}
                   </span>
-                )}
+                  {selectedEpisode.durationMs && (
+                    <span className="flex items-center gap-1 rounded bg-surface-elevated px-2 py-1 text-xs text-muted border border-surface-border">
+                      {formatDurationMs(selectedEpisode.durationMs)}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {selectedEpisode.synopsis && (
-                <p className="mt-3 text-xs leading-relaxed text-muted">
-                  {selectedEpisode.synopsis}
-                </p>
+                <p className="mt-3 text-xs leading-relaxed text-muted">{selectedEpisode.synopsis}</p>
               )}
 
-              {episodeDetail?.mediaAssets && episodeDetail.mediaAssets.length > 0 && (
+              <ItemLibraryPanel
+                itemId={selectedEpisode.id}
+                title={cleanMediaTitle(selectedEpisode.title)}
+                poster={playback.seriesCard?.posterUrl || ''}
+                scopeLabel="Tập này"
+                testIdPrefix="episode"
+              />
+
+              {playback.episodeDetail?.mediaAssets && playback.episodeDetail.mediaAssets.length > 0 && (
                 <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-surface-border pt-3 text-xs">
                   <span className="text-muted">Nguồn phát:</span>
-                  {episodeDetail.mediaAssets.map((asset) => (
+                  {playback.episodeDetail.mediaAssets.map((asset) => (
                     <button
                       key={asset.id}
                       data-testid="media-asset-button"
                       data-asset-id={asset.id}
-                      aria-pressed={selectedAsset?.id === asset.id}
-                      onClick={() => handleSelectAsset(asset)}
+                      aria-pressed={playback.selectedAsset?.id === asset.id}
+                      onClick={() => playback.handleSelectAsset(asset)}
                       className={`min-h-11 max-w-full break-words rounded px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer border ${
-                        selectedAsset?.id === asset.id
+                        playback.selectedAsset?.id === asset.id
                           ? 'border-brand bg-brand/10 text-brand-dark'
                           : 'border-surface-border bg-surface-elevated text-muted hover:text-ink'
                       }`}
                     >
-                      {asset.editionLabel || (asset.storageProvider === 'drive' ? 'Google Drive' : 'Tệp cục bộ')}
+                      {asset.editionLabel || (asset.storageProvider === 'drive' ? 'Google Drive' : 'Máy chủ Dippie')}
                       {asset.available === false ? ' (Chưa sẵn sàng)' : ''}
                     </button>
                   ))}
@@ -1122,250 +305,44 @@ export default function SeriesDetailPage() {
             </div>
           )}
 
-          {episodeDetail?.segments && episodeDetail.segments.length > 0 && (
-            <div className="rounded-xl border border-surface-border bg-surface p-5">
-              <div className="flex items-center justify-between border-b border-surface-border pb-3">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-ink">
-                    Phân đoạn ({episodeDetail.segments.length})
-                  </h3>
-                </div>
-                <span className="text-xs text-muted">Chọn phân đoạn để xem</span>
-              </div>
-
-              <div className="mt-3 divide-y divide-surface-border">
-                {episodeDetail.segments.map((seg) => {
-                  const isActive = activeSegmentId === seg.id;
-                  const timeLabel =
-                    seg.episodeStartMs !== undefined
-                      ? `${formatDuration(seg.episodeStartMs)}${seg.episodeEndMs ? ` – ${formatDuration(seg.episodeEndMs)}` : ''}`
-                      : `Phân đoạn ${seg.position}`;
-                  return (
-                    <div
-                      key={seg.id}
-                      data-segment-id={seg.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => handleSeekSegment(seg)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handleSeekSegment(seg);
-                        }
-                      }}
-                      className={`flex items-start justify-between gap-4 p-3 rounded-lg transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-brand ${
-                        isActive
-                          ? 'bg-brand/15 border border-brand/30'
-                          : 'hover:bg-surface-hover/60 border border-transparent'
-                      }`}
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-brand-dark">
-                            {timeLabel}
-                          </span>
-                          <span className="text-xs font-bold text-ink">
-                            {seg.title || `Phân đoạn ${seg.position}`}
-                          </span>
-                        </div>
-                        {seg.synopsis && (
-                          <p className="text-xs text-muted line-clamp-2">
-                            {seg.synopsis}
-                          </p>
-                        )}
-                      </div>
-
-                      <span className="btn-secondary flex items-center gap-1 text-[11px] font-semibold shrink-0 py-1 px-2.5 pointer-events-none">
-                        <span>Tua tới</span>
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {segmentItems.length > 0 && (
+            <TimelineListCard
+              heading="Phân đoạn"
+              hint="Bấm để tua tới"
+              kind="segment"
+              activeId={playback.activeSegmentId}
+              items={segmentItems}
+            />
           )}
 
-          {episodeDetail?.scenes && episodeDetail.scenes.length > 0 && (
-            <div className="rounded-xl border border-surface-border bg-surface p-5">
-              <div className="flex items-center justify-between border-b border-surface-border pb-3">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-ink">
-                    Phân cảnh ({episodeDetail.scenes.length})
-                  </h3>
-                </div>
-                <span className="text-xs text-muted">Chọn phân cảnh để xem</span>
-              </div>
-
-              <div className="mt-3 divide-y divide-surface-border">
-                {episodeDetail.scenes.map((scene) => {
-                  const isActive = activeSceneId === scene.id;
-                  const timeLabel = `${formatDuration(scene.startMs)} – ${formatDuration(scene.endMs)}`;
-                  return (
-                    <div
-                      key={scene.id}
-                      data-scene-id={scene.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => handleSeekScene(scene)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handleSeekScene(scene);
-                        }
-                      }}
-                      className={`flex items-start justify-between gap-4 p-3 rounded-lg transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-brand ${
-                        isActive
-                          ? 'bg-brand/15 border border-brand/30'
-                          : 'hover:bg-surface-hover/60 border border-transparent'
-                      }`}
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-brand-dark">
-                            {timeLabel}
-                          </span>
-                          <span className="text-xs font-bold text-ink">
-                            {scene.title || 'Phân cảnh'}
-                          </span>
-                        </div>
-                        {scene.visualDescription && (
-                          <p className="text-xs text-muted line-clamp-2">
-                            {scene.visualDescription}
-                          </p>
-                        )}
-                        {scene.summary && !scene.visualDescription && (
-                          <p className="text-xs text-muted line-clamp-2">
-                            {scene.summary}
-                          </p>
-                        )}
-                      </div>
-
-                      <span
-                        className="btn-secondary flex items-center gap-1 text-[11px] font-semibold shrink-0 py-1 px-2.5 pointer-events-none"
-                      >
-                        <span>Tua tới</span>
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {sceneItems.length > 0 && (
+            <TimelineListCard
+              heading="Phân cảnh"
+              hint="Bấm để tua tới"
+              kind="scene"
+              activeId={playback.activeSceneId}
+              items={sceneItems}
+            />
           )}
         </div>
 
-        <div className="space-y-6">
-          <div className="rounded-xl border border-surface-border bg-surface p-5">
-            <div className="flex items-center justify-between border-b border-surface-border pb-3">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-ink">
-                    Danh sách tập ({seasonEpisodes.length})
-                </h3>
-              </div>
-            </div>
-
-            {hasSeasons && (
-              <div className="mt-4 flex flex-wrap gap-2" aria-label="Chọn mùa">
-                {orderedSeasons.map((season) => (
-                  <button
-                    key={season.id}
-                    type="button"
-                    data-season-id={season.id}
-                    aria-pressed={selectedSeasonId === season.id}
-                    onClick={() => handleSelectSeason(season.id)}
-                    className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                      selectedSeasonId === season.id
-                        ? 'border-brand bg-brand/10 text-ink'
-                        : 'border-surface-border bg-surface-elevated text-muted hover:text-ink'
-                    }`}
-                  >
-                    {season.title || `Mùa ${season.number ?? season.seasonNumber ?? ''}`}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {selectedEpisode && (
-              <div className="mt-4 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  data-testid="previous-episode"
-                  disabled={!previousEpisode}
-                  onClick={() => previousEpisode && handleSelectEpisode(previousEpisode)}
-                  className="btn-secondary text-xs disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Tập trước
-                </button>
-                <span className="text-[11px] text-muted">
-                  {seasonEpisodes.findIndex((episode) => episode.id === selectedEpisode.id) + 1} / {seasonEpisodes.length}
-                </span>
-                <button
-                  type="button"
-                  data-testid="next-episode"
-                  disabled={!nextEpisode}
-                  onClick={() => nextEpisode && handleSelectEpisode(nextEpisode)}
-                  className="btn-secondary text-xs disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Tập tiếp theo
-                </button>
-              </div>
-            )}
-
-            <label className="mt-4 block">
-              <span className="sr-only">Tìm tập trong bộ này</span>
-              <input
-                data-testid="episode-search-input"
-                type="search"
-                value={episodeQuery}
-                onChange={(event) => setEpisodeQuery(event.target.value)}
-                placeholder="Tìm tập theo số hoặc tên…"
-                className="w-full rounded-md border border-surface-border bg-surface-elevated px-3 py-2 text-xs text-ink placeholder:text-muted focus:border-brand focus:outline-none"
-              />
-            </label>
-
-            <div className="mt-3 max-h-[600px] space-y-2 overflow-y-auto">
-              {filteredSeasonEpisodes.length === 0 ? (
-                <p className="rounded-md border border-dashed border-surface-border p-4 text-xs text-muted">
-                  {seasonEpisodes.length ? 'Không tìm thấy tập phù hợp.' : 'Mùa này chưa có tập nào.'}
-                </p>
-              ) : filteredSeasonEpisodes.map((ep) => {
-                const isSelected = selectedEpisode?.id === ep.id;
-                return (
-                  <button
-                    key={ep.id}
-                    data-episode-id={ep.id}
-                    aria-pressed={isSelected}
-                    onClick={() => handleSelectEpisode(ep)}
-                    className={`flex w-full items-start justify-between gap-3 rounded-lg p-3 text-left transition-colors cursor-pointer border ${
-                      isSelected
-                        ? 'border-brand bg-brand/10 text-ink'
-                        : 'border-surface-border bg-surface-elevated text-muted hover:bg-surface-hover hover:text-ink'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="grid h-5 w-5 place-items-center rounded bg-surface text-[10px] font-bold text-brand-dark border border-surface-border">
-                          {ep.number ?? ep.episodeNumber}
-                        </span>
-                        <strong className="text-xs font-semibold">{ep.title}</strong>
-                      </div>
-                      {ep.synopsis && (
-                        <p className="mt-1 line-clamp-2 text-[11px] text-muted">
-                          {ep.synopsis}
-                        </p>
-                      )}
-                    </div>
-
-                    {ep.durationMs && (
-                      <span className="font-mono text-[10px] text-muted shrink-0">
-                        {formatDuration(ep.durationMs)}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <EpisodeSidebar
+          orderedSeasons={playback.orderedSeasons}
+          hasSeasons={playback.hasSeasons}
+          selectedSeasonId={playback.selectedSeasonId}
+          seasonEpisodes={playback.seasonEpisodes}
+          selectedEpisode={selectedEpisode}
+          previousEpisode={playback.previousEpisode}
+          nextEpisode={playback.nextEpisode}
+          previousEpisodeLabel={playback.previousEpisodeLabel}
+          nextEpisodeLabel={playback.nextEpisodeLabel}
+          episodeQuery={playback.episodeQuery}
+          onEpisodeQueryChange={playback.setEpisodeQuery}
+          onSelectSeason={playback.handleSelectSeason}
+          onSelectEpisode={playback.handleSelectEpisode}
+          knownExternalEpisodeIds={playback.knownExternalEpisodeIds}
+          posterUrl={playback.seriesCard?.posterUrl || ''}
+        />
       </div>
     </main>
   );

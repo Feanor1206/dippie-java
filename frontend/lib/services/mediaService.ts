@@ -1,3 +1,6 @@
+import { resolveStreamUrl } from '@/lib/safeUrl';
+import { getStoredAuthToken } from '@/lib/services/sessionStorage';
+import { apiFetch, RequestTimeoutError, withRequestTimeout } from '@/lib/services/apiRequest';
 export interface MediaAssetInfo {
   assetId: string;
   kind: 'feature' | 'trailer';
@@ -20,136 +23,65 @@ export interface MediaDescriptor {
 const DEFAULT_TIMEOUT_MS = 6000;
 const API = '/api';
 
-export function resolveStreamUrl(streamUrl: string): string {
-  if (!streamUrl) return '';
-  if (streamUrl.startsWith('/') || streamUrl.startsWith('http://') || streamUrl.startsWith('https://')) {
-    return streamUrl;
-  }
-  return `/${streamUrl}`;
-}
-
-function createDOMException(message: string, name: string): DOMException {
-  const Ctor = typeof DOMException !== 'undefined' ? DOMException : (Error as any);
-  try {
-    return new Ctor(message, name);
-  } catch {
-    const err = new Error(message) as any;
-    err.name = name;
-    return err;
-  }
-}
+export { resolveStreamUrl };
 
 export async function getMediaDescriptor(
   movieId: string,
   options?: { timeoutMs?: number; signal?: AbortSignal }
 ): Promise<MediaDescriptor> {
-  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-
-  let isTimeout = false;
-  let isExternalAbort = false;
-
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  let removeExternalListener: (() => void) | null = null;
-
-  try {
-    if (options?.signal?.aborted) {
-      isExternalAbort = true;
-      throw createDOMException('The operation was aborted.', 'AbortError');
-    }
-
-    const controller = new AbortController();
-
-    if (options?.signal) {
-      const onAbort = () => {
-        if (!isTimeout) {
-          isExternalAbort = true;
-        }
-        controller.abort();
-      };
-      options.signal.addEventListener('abort', onAbort, { once: true });
-      removeExternalListener = () => {
-        options.signal?.removeEventListener('abort', onAbort);
-      };
-    }
-
-    timeoutId = setTimeout(() => {
-      if (!options?.signal?.aborted) {
-        isTimeout = true;
-        controller.abort();
-      }
-    }, timeoutMs);
-
+  return withRequestTimeout(async (signal) => {
     const url = `${API}/movies/${encodeURIComponent(movieId)}/media-descriptor`;
-    const response = await fetch(url, {
+    const response = await apiFetch(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
-      signal: controller.signal,
+      signal,
     });
 
     if (!response.ok) {
-      throw new Error(`Lỗi tải mô tả media (${response.status})`);
+      throw new Error(`Chưa tải được thông tin phát phim (${response.status}).`);
     }
 
     const json = await response.json();
     if (!json || typeof json !== 'object' || Array.isArray(json)) {
-      throw new Error('Dữ liệu mô tả media không hợp lệ');
+      throw new Error('Thông tin phát phim không hợp lệ.');
     }
 
-    const data =
+    const payload =
       json.data && typeof json.data === 'object' && !Array.isArray(json.data)
         ? json.data
         : json;
 
-    if (typeof data.movieId !== 'string' || data.movieId.trim() === '' || data.movieId !== movieId) {
-      throw new Error('Dữ liệu mô tả media không khớp mã phim');
+    if (typeof payload.movieId !== 'string' || payload.movieId.trim() === '' || payload.movieId !== movieId) {
+      throw new Error('Thông tin phát phim không khớp mã phim.');
     }
 
-    if (typeof data.hasFeature !== 'boolean' || typeof data.hasTrailer !== 'boolean') {
-      throw new Error('Thiếu hoặc sai trường hasFeature/hasTrailer');
+    if (typeof payload.hasFeature !== 'boolean' || typeof payload.hasTrailer !== 'boolean') {
+      throw new Error('Thông tin phát phim thiếu nguồn video.');
     }
 
-    const isInvalid = (a: any, k: string) =>
-      !a || typeof a !== 'object' || Array.isArray(a) || a.kind !== k || typeof a.streamUrl !== 'string' || !a.streamUrl.trim();
-    if (data.hasFeature && isInvalid(data.feature, 'feature')) throw new Error('Dữ liệu feature không hợp lệ');
-    if (data.hasTrailer && isInvalid(data.trailer, 'trailer')) throw new Error('Dữ liệu trailer không hợp lệ');
+    const isInvalidAsset = (asset: any, expectedKind: string) =>
+      !asset || typeof asset !== 'object' || Array.isArray(asset) || asset.kind !== expectedKind || typeof asset.streamUrl !== 'string' || !asset.streamUrl.trim();
+    if (payload.hasFeature && isInvalidAsset(payload.feature, 'feature')) throw new Error('Nguồn phát phim chính không hợp lệ.');
+    if (payload.hasTrailer && isInvalidAsset(payload.trailer, 'trailer')) throw new Error('Nguồn phát đoạn giới thiệu không hợp lệ.');
 
     return {
-      movieId: data.movieId,
-      hasFeature: data.hasFeature,
-      hasTrailer: data.hasTrailer,
-      feature: data.hasFeature && data.feature
+      movieId: payload.movieId,
+      hasFeature: payload.hasFeature,
+      hasTrailer: payload.hasTrailer,
+      feature: payload.hasFeature && payload.feature
         ? {
-            ...data.feature,
-            streamUrl: resolveStreamUrl(data.feature.streamUrl),
+            ...payload.feature,
+            streamUrl: resolveStreamUrl(payload.feature.streamUrl),
           }
         : null,
-      trailer: data.hasTrailer && data.trailer
+      trailer: payload.hasTrailer && payload.trailer
         ? {
-            ...data.trailer,
-            streamUrl: resolveStreamUrl(data.trailer.streamUrl),
+            ...payload.trailer,
+            streamUrl: resolveStreamUrl(payload.trailer.streamUrl),
           }
         : null,
     };
-  } catch (err: any) {
-    if (isExternalAbort || options?.signal?.aborted) {
-      throw createDOMException('The operation was aborted.', 'AbortError');
-    }
-    if (isTimeout) {
-      const timeoutErr = createDOMException('Hết thời gian tải mô tả media', 'TimeoutError');
-      (timeoutErr as any).isTimeout = true;
-      throw timeoutErr;
-    }
-    throw err;
-  } finally {
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-    if (removeExternalListener) {
-      removeExternalListener();
-      removeExternalListener = null;
-    }
-  }
+  }, { ...options, timeoutMs: options?.timeoutMs ?? DEFAULT_TIMEOUT_MS }, 'Tải thông tin phát phim quá chậm. Bạn thử lại nhé.');
 }
 
 export interface PlaybackGrantResponse {
@@ -166,11 +98,7 @@ export interface PlaybackGrantResult {
   aborted?: boolean;
 }
 
-export function getStoredAuthToken(): string | null {
-  return typeof window !== 'undefined'
-    ? localStorage.getItem('dippie_auth_token') || localStorage.getItem('token') || localStorage.getItem('auth_token')
-    : null;
-}
+export { getStoredAuthToken };
 
 export async function requestPlaybackGrantResult(
   assetId: string,
@@ -179,25 +107,27 @@ export async function requestPlaybackGrantResult(
   if (!assetId) return { ok: false, status: 400, grant: null };
   const token = getStoredAuthToken();
   try {
-    const res = await fetch(`${API}/media/grant/${assetId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      signal,
-    });
-    if (!res.ok) return { ok: false, status: res.status, grant: null };
-    const d = await res.json();
-    const resolvedUrl = resolveStreamUrl(d?.streamUrl || '');
-    if (!resolvedUrl) return { ok: false, status: 502, grant: null };
-    return {
-      ok: true,
-      status: res.status,
-      grant: { assetId: d.assetId, grant: d.grant, streamUrl: resolvedUrl, expiresIn: d.expiresIn },
-    };
+    return await withRequestTimeout(async (requestSignal) => {
+      const res = await apiFetch(`${API}/media/grant/${encodeURIComponent(assetId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        signal: requestSignal,
+      });
+      if (!res.ok) return { ok: false, status: res.status, grant: null };
+      const grantData = await res.json();
+      const resolvedUrl = resolveStreamUrl(grantData?.streamUrl || '');
+      if (!resolvedUrl) return { ok: false, status: 502, grant: null };
+      return {
+        ok: true,
+        status: res.status,
+        grant: { assetId: grantData.assetId, grant: grantData.grant, streamUrl: resolvedUrl, expiresIn: grantData.expiresIn },
+      };
+    }, { signal, timeoutMs: DEFAULT_TIMEOUT_MS }, 'Hết thời gian kết nối nguồn phát.');
   } catch (err: any) {
     if (signal?.aborted || err?.name === 'AbortError') {
       return { ok: false, status: 0, grant: null, aborted: true };
     }
-    return { ok: false, status: 0, grant: null };
+    return { ok: false, status: err instanceof RequestTimeoutError ? 408 : 0, grant: null };
   }
 }
 

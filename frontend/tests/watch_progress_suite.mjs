@@ -1,7 +1,7 @@
+import { runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
 import ts from '../node_modules/typescript/lib/typescript.js';
 
 const record = (extra = {}) => ({ episodeId: 'ep1', seriesId: 'series1', seriesTitle: 'Jadoo', seasonId: 'season1', seasonNumber: 1,
@@ -14,7 +14,7 @@ function load(file, globals = {}) {
   const module = { exports: {} };
   const source = fs.readFileSync(new URL(file, import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, process: { env: {} }, console, AbortController,
+  runWithSharedModules(code, { module, exports: module.exports, process: { env: {} }, console, AbortController,
     URLSearchParams, setTimeout, clearTimeout, fetch: async () => { throw Error('Unexpected network'); }, ...globals });
   return module.exports;
 }
@@ -107,16 +107,154 @@ test('Guest records are not merged into the account, and logout never writes acc
   assert.equal(stored.get(service.GUEST_WATCH_PROGRESS_KEY),original); h.close();
 });
 
-test('409 keeps the newer SQL point instead of automatically replaying a stale save over it', async () => {
-  let puts = 0;
+test('409 refreshes version and retries once; if retry also returns 409, keeps the server record and reports conflict', async () => {
+  const putVersions = [];
   const { service } = environment(async (url, opts) => {
-    if (opts.method === 'PUT') { puts++; return reply(null,409); }
-    return reply(url.endsWith('/ep1') ? record({positionMs:400000,version:4}) : [record({version:3})]);
+    if (opts.method === 'PUT') {
+      putVersions.push(JSON.parse(opts.body).expectedVersion);
+      return reply(null, 409);
+    }
+    return reply(url.endsWith('/ep1') ? record({ positionMs: 400000, version: 4 }) : [record({ version: 3 })]);
   });
-  const h = hookHarness(account(1,'one'),service); h.render(); await tick();
-  const result = await h.render().saveProgress(draft({positionMs:80000}));
-  assert.equal(result,null); assert.equal(puts,1);
-  const output = h.render(); assert.equal(output.records[0].positionMs,400000); assert.match(output.error,/cửa sổ khác/); h.close();
+  const h = hookHarness(account(1, 'one'), service);
+  h.render();
+  await tick();
+  const result = await h.render().saveProgress(draft({ positionMs: 80000 }));
+  assert.equal(result, null);
+  assert.deepEqual(putVersions, [3, 4]);
+  const output = h.render();
+  assert.equal(output.records[0].positionMs, 400000);
+  assert.match(output.error, /cửa sổ khác/);
+  h.close();
+});
+
+test('409 on YouTube watch progress refreshes the server version and succeeds on the single retry', async () => {
+  const puts = [];
+  let putAttempt = 0;
+  const ytRecord = (extra = {}) =>
+    record({
+      episodeId: 'ep_doraemon_s05_0209',
+      assetId: 'youtube:0FHNLZszGiU',
+      positionMs: 360000,
+      version: 2,
+      ...extra,
+    });
+  const { service } = environment(async (url, opts) => {
+    if (opts.method === 'PUT') {
+      putAttempt += 1;
+      const body = JSON.parse(opts.body);
+      puts.push(body);
+      if (putAttempt === 1) return reply(null, 409);
+      return reply(ytRecord({ positionMs: body.positionMs, version: 4 }));
+    }
+    if (url.endsWith('/ep_doraemon_s05_0209')) {
+      return reply(ytRecord({ positionMs: 350000, version: 3 }));
+    }
+    return reply([ytRecord({ version: 2 })]);
+  });
+
+  const h = hookHarness(account(1, 'one'), service);
+  h.render();
+  await tick();
+  const saved = await h.render().saveProgress(
+    draft({
+      episodeId: 'ep_doraemon_s05_0209',
+      assetId: 'youtube:0FHNLZszGiU',
+      positionMs: 360000,
+    }),
+    'episode-change'
+  );
+  assert.ok(saved);
+  assert.equal(saved.version, 4);
+  assert.equal(saved.positionMs, 360000);
+  assert.deepEqual(puts.map((p) => p.expectedVersion), [2, 3]);
+  assert.equal(h.render().error, null);
+  h.close();
+});
+
+test('Per-episode saves serialize all reasons including leave (one in flight, latest position wins, identical leave deduplicated)', async () => {
+  let inFlight = 0;
+  let maxConcurrent = 0;
+  let serverVersion = 2;
+  const sentPuts = [];
+  const gates = [];
+  const ytRecord = (extra = {}) =>
+    record({
+      episodeId: 'ep_doraemon_s05_0209',
+      assetId: 'youtube:0FHNLZszGiU',
+      positionMs: 360000,
+      version: 2,
+      ...extra,
+    });
+
+  const { service } = environment(async (url, opts) => {
+    if (opts.method === 'PUT') {
+      inFlight += 1;
+      maxConcurrent = Math.max(maxConcurrent, inFlight);
+      const body = JSON.parse(opts.body);
+      sentPuts.push({ body, keepalive: Boolean(opts.keepalive) });
+      await new Promise((resolve) => gates.push(resolve));
+      inFlight -= 1;
+      if (body.expectedVersion !== serverVersion) {
+        return reply(null, 409);
+      }
+      serverVersion += 1;
+      return reply(ytRecord({ positionMs: body.positionMs, version: serverVersion }));
+    }
+    return reply([ytRecord({ version: 2 })]);
+  });
+
+  const h = hookHarness(account(1, 'one'), service);
+  h.render();
+  await tick();
+  const output = h.render();
+
+  const p1 = output.saveProgress(
+    draft({ episodeId: 'ep_doraemon_s05_0209', assetId: 'youtube:0FHNLZszGiU', positionMs: 360000 }),
+    'episode-change'
+  );
+  await tick();
+  const pDupLeave = output.saveProgress(
+    draft({ episodeId: 'ep_doraemon_s05_0209', assetId: 'youtube:0FHNLZszGiU', positionMs: 360000 }),
+    'leave'
+  );
+  assert.equal(await pDupLeave, null);
+
+  const p2 = output.saveProgress(
+    draft({ episodeId: 'ep_doraemon_s05_0209', assetId: 'youtube:0FHNLZszGiU', positionMs: 365000 }),
+    'pause'
+  );
+  const p3 = output.saveProgress(
+    draft({ episodeId: 'ep_doraemon_s05_0209', assetId: 'youtube:0FHNLZszGiU', positionMs: 375000 }),
+    'leave'
+  );
+
+  assert.equal(sentPuts.length, 1);
+  assert.equal(maxConcurrent, 1);
+  gates.shift()();
+  await tick();
+  await tick();
+
+  assert.equal(sentPuts.length, 2);
+  assert.equal(maxConcurrent, 1);
+  gates.shift()();
+  const [r1, r2, r3] = await Promise.all([p1, p2, p3]);
+  assert.equal(r1.version, 3);
+  assert.equal(r2, null);
+  assert.equal(r3.version, 4);
+  assert.equal(r3.positionMs, 375000);
+  assert.deepEqual(
+    sentPuts.map((entry) => ({
+      positionMs: entry.body.positionMs,
+      expectedVersion: entry.body.expectedVersion,
+      keepalive: entry.keepalive,
+    })),
+    [
+      { positionMs: 360000, expectedVersion: 2, keepalive: false },
+      { positionMs: 375000, expectedVersion: 3, keepalive: true },
+    ]
+  );
+  h.close();
 });
 
 test('Two local saves serialize their optimistic SQL versions', async () => {

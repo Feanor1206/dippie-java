@@ -13,6 +13,7 @@ import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
+// Lưu rãnh văn bản (phụ đề, lời thoại hoặc OCR) thuộc media asset hay tập phim, kế thừa CatalogRecord. DB ép có media_asset_id, hoặc nếu gắn thẳng vào episode_id thì phải đi kèm source_id.
 @Entity
 @Table(name = "catalog_text_tracks",
         indexes = {
@@ -78,6 +79,7 @@ public class CatalogTextTrack extends CatalogRecord {
     protected CatalogTextTrack() {
     }
 
+    // Nạp lại thông tin ngôn ngữ, định dạng và nội dung cues khi re-import; cờ defaultTrack không bị ghi đè.
     public void applyImport(CatalogTextTrack imported) {
         replaceRecordFrom(imported);
         mediaAssetId = imported.mediaAssetId;
@@ -109,47 +111,11 @@ public class CatalogTextTrack extends CatalogRecord {
         this.provenanceJson = provenanceJson;
     }
 
-    public String getMediaAssetId() {
-        return mediaAssetId;
-    }
-
     public String getEpisodeId() {
         return episodeId;
     }
 
-    public String getSourceId() {
-        return sourceId;
-    }
-
-    public String getLanguage() {
-        return language;
-    }
-
     public String getKind() {
         return kind;
-    }
-
-    public String getLabel() {
-        return label;
-    }
-
-    public String getFormat() {
-        return format;
-    }
-
-    public boolean isDefault() {
-        return defaultTrack;
-    }
-
-    public String getExternalFileJson() {
-        return externalFileJson;
-    }
-
-    public String getCuesJson() {
-        return cuesJson;
-    }
-
-    public String getProvenanceJson() {
-        return provenanceJson;
     }
 }

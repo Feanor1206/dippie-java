@@ -1,10 +1,10 @@
+import { runWithSharedModules } from './internal_loader.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from '../node_modules/typescript/lib/typescript.js';
 import fs from 'node:fs';
-import vm from 'node:vm';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const routingFile = path.resolve(__dirname, '../lib/services/mediaRouting.ts');
@@ -26,7 +26,7 @@ function loadMediaRouting() {
     Boolean,
     console,
   };
-  vm.runInNewContext(compiled, sandbox);
+  runWithSharedModules(compiled, sandbox);
   return sandbox.module.exports.buildMediaItemHref ? sandbox.module.exports : sandbox.exports;
 }
 
@@ -161,9 +161,9 @@ test('7. Missing context: does NOT fabricate phantom series or link to wrong epi
   assert.equal(hrefOrphan, '/movies/ep_orphan_9999');
   assert.doesNotMatch(hrefOrphan, /ser_jadoo/);
 
-  assert.equal(buildMediaItemHref({}), '/movies');
-  assert.equal(buildMediaItemHref(null), '/movies');
-  assert.equal(buildMediaItemHref(undefined), '/movies');
+  assert.equal(buildMediaItemHref({}), '/search');
+  assert.equal(buildMediaItemHref(null), '/search');
+  assert.equal(buildMediaItemHref(undefined), '/search');
 });
 
 test('8. Consistency: buildMediaItemHref is pure and deterministic for both title and button link', () => {
@@ -262,7 +262,6 @@ test('12. V2: Scene file timestamp resolves directly to file offset (5s with 30s
   assert.equal(seekSecFromSceneFlag, 5.0);
 });
 
-// 13. V2: Segment logical timestamp maps through coverage (5s with 30s source offset -> 35s)
 test('13. V2: Segment logical timestamp maps through coverage (5s with 30s source offset -> 35.0s)', () => {
   const asset = {
     id: 'asset_jadoo_s01_v0001',
@@ -352,7 +351,6 @@ test('16. V2: Null/undefined timestamps return null (does not fake seek to 0)', 
   assert.equal(resolveMediaSeekSeconds({ timeMs: '', isSegment: true, segmentStartMs: undefined }), null);
 });
 
-// 17. V2: Coverage mapping with segment_id specificity and fallback
 test('17. V2: Coverage mapping prioritizes matching segment_id', () => {
   const asset = {
     id: 'asset_test',
@@ -395,9 +393,9 @@ test('17. V2: Coverage mapping prioritizes matching segment_id', () => {
 });
 
 test('18. V1: Series page AST audit - URL sync effect does NOT depend on selectedEpisode', () => {
-  const pageFile = path.resolve(__dirname, '../app/series/[id]/page.tsx');
-  const code = fs.readFileSync(pageFile, 'utf8');
-  const sf = ts.createSourceFile('page.tsx', code, ts.ScriptTarget.Latest, true);
+  const hookFile = path.resolve(__dirname, '../features/series/hooks/useSeriesPlayback.ts');
+  const code = fs.readFileSync(hookFile, 'utf8');
+  const sf = ts.createSourceFile('useSeriesPlayback.ts', code, ts.ScriptTarget.Latest, true);
 
   let syncEffectFound = false;
   function checkEffectDeps(node) {

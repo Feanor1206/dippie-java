@@ -8,22 +8,29 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.dippie.security.JwtService;
+import com.dippie.security.Role;
+import com.dippie.user.User;
+import com.dippie.user.UserRepository;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.web.servlet.MockMvc;
 
+// Test tích hợp cho định tuyến SPA, cache file tĩnh và lỗi 503 khi chưa build frontend.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -34,9 +41,13 @@ class SpaControllerTest {
     static Path tempDist;
 
     private final MockMvc mockMvc;
+    private final UserRepository userRepository;
+    private final JwtService jwtService;
 
-    SpaControllerTest(MockMvc mockMvc) {
+    SpaControllerTest(MockMvc mockMvc, UserRepository userRepository, JwtService jwtService) {
         this.mockMvc = mockMvc;
+        this.userRepository = userRepository;
+        this.jwtService = jwtService;
     }
 
     @DynamicPropertySource
@@ -56,7 +67,8 @@ class SpaControllerTest {
     @Test
     void servesIndexHtmlWithNoCacheForAllSpaRoutesAndHeadRequests() throws Exception {
         for (String route : new String[]{"/", "/search", "/profile", "/account", "/admin/import", "/admin/users", "/admin/stats",
-                "/admin/audit", "/movies/m1", "/series", "/series/s1"}) {
+                "/admin/audit", "/movies/m1", "/series", "/series/s1", "/lich-su", "/admin/reports", "/dieu-khoan",
+                "/quyen-rieng-tu", "/dat-lai-mat-khau", "/quen-mat-khau"}) {
             mockMvc.perform(get(route))
                     .andExpect(status().isOk())
                     .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-cache"))
@@ -83,6 +95,54 @@ class SpaControllerTest {
 
         mockMvc.perform(get("/assets/missing.js"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void servesTheSpaWith404ForUnknownBrowserRoutes() throws Exception {
+        for (String route : new String[]{"/does-not-exist", "/movies", "/missing/nested/page"}) {
+            mockMvc.perform(get(route).accept(MediaType.TEXT_HTML))
+                    .andExpect(status().isNotFound())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                    .andExpect(content().string("<!doctype html><title>Dippie</title>"));
+            mockMvc.perform(head(route).accept(MediaType.TEXT_HTML))
+                    .andExpect(status().isNotFound())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML));
+        }
+    }
+
+    @Test
+    void keepsApiStaticAndNonHtmlMissesAsResourceErrors() throws Exception {
+        // Route API không tồn tại phải bị chặn 401 ngay khi chưa đăng nhập.
+        for (String route : new String[]{"/api/no-route", "/v1/no-route", "/v3/no-route"}) {
+            mockMvc.perform(get(route).accept(MediaType.TEXT_HTML))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
+        }
+
+        // Khi đã đăng nhập, route API không tồn tại trả 404 dạng JSON thay vì index.html.
+        userRepository.deleteAll();
+        User viewer = userRepository.saveAndFlush(new User(
+                "spa_viewer", "spa.viewer@example.com", "pw", "SPA Viewer",
+                Role.ROLE_USER, LocalDateTime.of(2026, 1, 1, 0, 0)
+        ));
+        String bearer = "Bearer " + jwtService.issueLoginToken(viewer.getUsername(), viewer.getTokenVersion());
+        for (String route : new String[]{"/api/no-route", "/v1/no-route", "/v3/no-route"}) {
+            mockMvc.perform(get(route).header(HttpHeaders.AUTHORIZATION, bearer).accept(MediaType.TEXT_HTML))
+                    .andExpect(status().isNotFound())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.message").value("Không tìm thấy nội dung này."));
+        }
+
+        for (String route : new String[]{"/assets/missing.js", "/illustrations/missing.svg"}) {
+            mockMvc.perform(get(route).accept(MediaType.TEXT_HTML))
+                    .andExpect(status().isNotFound())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.message").value("Không tìm thấy nội dung này."));
+        }
+        mockMvc.perform(get("/does-not-exist").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Không tìm thấy nội dung này."));
     }
 
     @Test

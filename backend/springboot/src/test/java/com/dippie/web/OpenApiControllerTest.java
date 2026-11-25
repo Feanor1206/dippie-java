@@ -11,11 +11,17 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestConstructor;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+// Test tích hợp kiểm tra /v3/api-docs và Swagger UI hoạt động đúng khi được bật rõ trong cấu hình.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@TestPropertySource(properties = {
+        "springdoc.api-docs.enabled=true",
+        "springdoc.swagger-ui.enabled=true"
+})
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 class OpenApiControllerTest {
 
@@ -26,7 +32,7 @@ class OpenApiControllerTest {
     }
 
     @Test
-    void exposesOpenApiSpecAndSwaggerUi() throws Exception {
+    void exposesOpenApiSpecAndSwaggerUiWhenExplicitlyEnabled() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.info.title").value("Dippie API"))

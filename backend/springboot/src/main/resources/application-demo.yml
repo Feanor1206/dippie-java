@@ -1,0 +1,15 @@
+spring:
+  jpa:
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
+      schema-locations:
+        - classpath:watch-progress-h2.sql
+        - classpath:catalog-year-h2.sql
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

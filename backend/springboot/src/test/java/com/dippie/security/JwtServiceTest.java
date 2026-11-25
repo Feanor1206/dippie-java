@@ -18,6 +18,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.env.MockEnvironment;
 
+// Test đơn vị cho JwtService: ký và đọc token đăng nhập, vé phát video và kiểm tra quy tắc khóa bí mật.
 class JwtServiceTest {
 
     private static final String VALID_SECRET = Base64.getEncoder().encodeToString(sequentialBytes(32));
@@ -33,7 +34,7 @@ class JwtServiceTest {
 
         assertThat(service.loginSubject(token)).contains("alice");
         assertThat(service.parseLoginToken(token)).contains(new JwtService.LoginToken("alice", 0L));
-        assertThat(service.playbackGrantRole(token, "asset-1")).isEmpty();
+        assertThat(service.playbackGrantPrincipal(token, "asset-1")).isEmpty();
     }
 
     @Test
@@ -91,15 +92,17 @@ class JwtServiceTest {
         String userGrant = service.issuePlaybackGrant("asset-42", "alice", Role.ROLE_USER);
         String anonGrant = service.issuePlaybackGrant("asset-42", null, null);
 
-        assertThat(service.playbackGrantRole(userGrant, "asset-42")).contains("ROLE_USER");
-        assertThat(service.playbackGrantRole(userGrant, "asset-99")).isEmpty();
+        assertThat(service.playbackGrantPrincipal(userGrant, "asset-42"))
+                .contains(new PlaybackPrincipal.Authenticated(Role.ROLE_USER));
+        assertThat(service.playbackGrantPrincipal(userGrant, "asset-99")).isEmpty();
         assertThat(service.loginSubject(userGrant)).isEmpty();
 
-        assertThat(service.playbackGrantRole(anonGrant, "asset-42")).contains("ROLE_ANONYMOUS");
+        assertThat(service.playbackGrantPrincipal(anonGrant, "asset-42"))
+                .contains(PlaybackPrincipal.Anonymous.INSTANCE);
         assertThat(service.loginSubject(anonGrant)).isEmpty();
 
         clock.advance(Duration.ofMinutes(6));
-        assertThat(service.playbackGrantRole(userGrant, "asset-42")).isEmpty();
+        assertThat(service.playbackGrantPrincipal(userGrant, "asset-42")).isEmpty();
     }
 
     @Test
@@ -161,6 +164,7 @@ class JwtServiceTest {
         return bytes;
     }
 
+    // Đồng hồ giả cho phép tua thời gian tới trước để test token hết hạn mà không cần chờ thật.
     static final class MutableClock extends Clock {
 
         private Instant current;

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+// Dựng HttpServer nội bộ để kiểm tra DeepSeekAnswerGenerator đọc SSE, chặn bịa chi tiết, giới hạn quota ngày và fallback về Template.
 class DeepSeekAnswerGeneratorTest {
 
     private static HttpServer server;
@@ -36,6 +37,7 @@ class DeepSeekAnswerGeneratorTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final IntentParser intentParser = new IntentParser();
 
+    // Các kịch bản phản hồi giả lập từ upstream DeepSeek cho từng ca test.
     enum HandlerMode {
         VALID_SSE,
         STATUS_503,
@@ -45,7 +47,8 @@ class DeepSeekAnswerGeneratorTest {
         UNSUPPORTED_DIGIT,
         LEAKED_SECRET,
         MALFORMED_JSON,
-        OVER_1200_CHARS
+        OVER_1200_CHARS,
+        STALLED_SSE
     }
 
     @BeforeAll
@@ -82,6 +85,17 @@ class DeepSeekAnswerGeneratorTest {
 
             exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
             exchange.sendResponseHeaders(200, 0);
+            if (current == HandlerMode.STALLED_SSE) {
+                try (OutputStream output = exchange.getResponseBody()) {
+                    output.write("data: {\"choices\":[{\"delta\":{\"content\":\"Chi \"}}]}\n\n".getBytes(StandardCharsets.UTF_8));
+                    output.flush();
+                    Thread.sleep(3000);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                } catch (IOException ignored) {
+                }
+                return;
+            }
             try (OutputStream output = exchange.getResponseBody()) {
                 String sse = switch (current) {
                     case VALID_SSE -> "data: {\"choices\":[{\"delta\":{\"content\":\"Trong cảnh phim này, \"}}]}\n\n"
@@ -175,7 +189,7 @@ class DeepSeekAnswerGeneratorTest {
 
         assertThat(stage.get()).isEqualTo("template");
         assertThat(answer).isEqualTo(
-                "Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Dịch vụ hội thoại hiện chưa sẵn sàng. Chi làm vỡ bình hoa."
+                "Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Phần trả lời AI đang tạm bận, gửi bạn đoạn trích gốc nhé. Chi làm vỡ bình hoa."
         );
 
         DeepSeekAnswerGenerator noKey = new DeepSeekAnswerGenerator(
@@ -185,7 +199,7 @@ class DeepSeekAnswerGeneratorTest {
         AtomicReference<String> noKeyStage = new AtomicReference<>();
         String noKeyAnswer = String.join("", noKey.answer(intent, List.of(sampleHit()), noKeyStage::set).toList());
         assertThat(noKeyStage.get()).isEqualTo("template");
-        assertThat(noKeyAnswer).contains("Dịch vụ hội thoại hiện chưa sẵn sàng. Chi làm vỡ bình hoa.");
+        assertThat(noKeyAnswer).contains("Phần trả lời AI đang tạm bận, gửi bạn đoạn trích gốc nhé. Chi làm vỡ bình hoa.");
         assertThat(callCount.get()).isEqualTo(1);
     }
 
@@ -226,11 +240,11 @@ class DeepSeekAnswerGeneratorTest {
 
         ChatIntent chitchat = intentParser.parse("Xin chào!");
         assertThat(String.join("", generator.answer(chitchat, List.of()).toList()))
-                .isEqualTo("Mình là CineBot. Bạn có thể mô tả cảnh hoặc tập phim muốn tìm trong danh mục.");
+                .isEqualTo("Mình là CineBot. Bạn cứ kể lại cảnh phim, nhân vật hoặc tập muốn tìm nhé.");
 
         ChatIntent mood = intentParser.parse("hôm nay stress quá");
         assertThat(String.join("", generator.answer(mood, List.of(sampleHit())).toList()))
-                .isEqualTo("Bạn thử tập này nhé.");
+                .isEqualTo("Bạn có thể xem tập \"Tập 22\".");
 
         ChatIntent noEvidence = intentParser.parse("tìm tập 22");
         SearchHit emptyEvidenceHit = SearchHitFixture.builder().title("Tập 22").build();
@@ -238,6 +252,49 @@ class DeepSeekAnswerGeneratorTest {
                 .isEqualTo("Có vẻ bạn đang tìm Tập 22.");
 
         assertThat(callCount.get()).isZero();
+    }
+
+    @Test
+    void enforcesDailyCallBudgetAndFallsBackOnStalledSseBodyReadTimeout() {
+        // Đặt ngân sách ngày bằng 1: lượt đầu gọi được DeepSeek, lượt hai phải rớt về bản mẫu mà không bắn thêm HTTP.
+        try (DeepSeekAnswerGenerator budgeted = new DeepSeekAnswerGenerator(
+                new AssistantProperties.Llm(
+                        "deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "secret-key-123",
+                        Duration.ofSeconds(5), Duration.ofSeconds(2), 2, 1
+                ),
+                objectMapper
+        )) {
+            ChatIntent intent = intentParser.parse("cảnh Chi làm vỡ bình hoa");
+            AtomicReference<String> firstStage = new AtomicReference<>();
+            budgeted.answer(intent, List.of(sampleHit()), firstStage::set).toList();
+            assertThat(firstStage.get()).isEqualTo("cloud");
+            assertThat(callCount.get()).isEqualTo(1);
+
+            AtomicReference<String> secondStage = new AtomicReference<>();
+            String fallbackText = String.join("", budgeted.answer(intent, List.of(sampleHit()), secondStage::set).toList());
+            assertThat(secondStage.get()).isEqualTo("template");
+            assertThat(fallbackText).isEqualTo("Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Chi làm vỡ bình hoa.");
+            assertThat(callCount.get()).isEqualTo(1);
+        }
+
+        // Giả lập upstream trả 200 OK rồi đứng im 3 giây để kiểm tra watchdog cắt stream trước 2 giây.
+        mode.set(HandlerMode.STALLED_SSE);
+        try (DeepSeekAnswerGenerator timed = new DeepSeekAnswerGenerator(
+                new AssistantProperties.Llm(
+                        "deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "secret-key-123",
+                        Duration.ofMillis(350), Duration.ofSeconds(2), 2, 10
+                ),
+                objectMapper
+        )) {
+            ChatIntent intent = intentParser.parse("cảnh Chi làm vỡ bình hoa");
+            AtomicReference<String> stage = new AtomicReference<>();
+            long startNanos = System.nanoTime();
+            String answer = String.join("", timed.answer(intent, List.of(sampleHit()), stage::set).toList());
+            long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000L;
+            assertThat(stage.get()).isEqualTo("template");
+            assertThat(answer).contains("Phần trả lời AI đang tạm bận, gửi bạn đoạn trích gốc nhé.");
+            assertThat(elapsedMs).isLessThan(2000L);
+        }
     }
 
     private static SearchHit sampleHit() {

@@ -29,6 +29,7 @@ import static com.dippie.catalog.importing.CatalogCollection.SEASONS;
 import static com.dippie.catalog.importing.CatalogCollection.SEGMENTS;
 import static com.dippie.catalog.importing.CatalogCollection.SERIES;
 
+// So sánh gói danh mục sắp nhập với dữ liệu đang lưu trong CSDL để đếm thay đổi và kiểm tra tham chiếu.
 @Repository
 class CatalogDiff {
 
@@ -46,18 +47,24 @@ class CatalogDiff {
         this.entities = entities;
     }
 
+    // Tính sai khác trên toàn gói. Lúc chạy /validate thì truyền lock = false để đọc thường, còn lúc nhập thật khóa hàng lại cho an toàn.
     Analysis calculate(JsonNode document, CatalogPackageValidator.PackageIdentity identity, ContentHash hash,
             boolean lock) {
+        // Đối chiếu phiên bản và mã băm của bản ghi gói trước.
         CatalogPackage existing = lock ? entities.find(CatalogPackage.class, identity.id(), LockModeType.PESSIMISTIC_WRITE)
                 : entities.find(CatalogPackage.class, identity.id());
         Tally tally = new Tally();
         tally.count(existing == null ? null : BigInteger.valueOf(existing.getRevision()), identity.revision(),
                 () -> hash.value().equals(existing.getContentHash()));
 
+        // Nạp các hàng đang lưu cho từng bảng rồi phân loại mục mới, mục cập nhật, mục giữ nguyên hay xung đột.
         Map<CatalogCollection, Map<String, CatalogRecord>> stored = new EnumMap<>(CatalogCollection.class);
+        Map<CatalogCollection, Set<String>> incomingIds = new EnumMap<>(CatalogCollection.class);
         for (CatalogCollection collection : CatalogCollection.values()) {
             JsonNode items = collection.items(document);
-            Map<String, CatalogRecord> rows = findRows(collection, ids(items), lock);
+            Set<String> itemIds = ids(items);
+            incomingIds.put(collection, itemIds);
+            Map<String, CatalogRecord> rows = findRows(collection, itemIds, lock);
             stored.put(collection, rows);
             for (JsonNode item : items) {
                 CatalogRecord row = rows.get(item.path("id").textValue());
@@ -65,9 +72,11 @@ class CatalogDiff {
                         () -> ContentHash.of(item).equals(storedHash(row.getRawJson())));
             }
         }
+
+        // Xác minh quan hệ mùa với bộ phim, phạm vi tệp media và các khóa tham chiếu chéo.
         validateSeasonParents(document, stored.get(SEASONS), lock);
-        validateCoverage(document, lock);
-        validateReferences(document, lock);
+        validateCoverage(document, incomingIds, lock);
+        validateReferences(document, incomingIds, lock);
         return new Analysis(existing, tally.result(), stored);
     }
 
@@ -96,6 +105,7 @@ class CatalogDiff {
                 moved.put(id, index);
             }
         }
+        // Mùa nào đang có tập phim thì chặn đổi bộ phim cha để khỏi lệch series_id giữa mùa và tập.
         if (!moved.isEmpty()) {
             List<CatalogSeason> used = results(entities.createQuery("""
                     select season from CatalogSeason season where season.id in :ids
@@ -104,9 +114,11 @@ class CatalogDiff {
             if (!used.isEmpty()) {
                 int index = moved.get(used.getFirst().getId());
                 throw new CatalogInputException("seasons[" + index + "].series_id",
-                        "Không thể chuyển mùa sang bộ khác khi mùa còn tập.");
+                        "Không thể chuyển mùa sang bộ phim khác khi mùa vẫn còn tập.");
             }
         }
+
+        // Nạp thêm các mùa đã tồn tại sẵn trong CSDL rồi kiểm tra xem mùa mà tập trỏ tới có cùng bộ phim không.
         JsonNode episodes = EPISODES.items(document);
         Set<String> external = new HashSet<>();
         for (JsonNode episode : episodes) {
@@ -121,12 +133,12 @@ class CatalogDiff {
             String seasonId = episode.path("season_id").textValue();
             if (seasonId != null && !episode.path("series_id").textValue().equals(parents.get(seasonId))) {
                 throw new CatalogInputException("episodes[" + index + "].season_id",
-                        "Mùa phải tồn tại và thuộc đúng bộ của tập phim.");
+                        "Mùa phim phải tồn tại và thuộc đúng bộ phim của tập này.");
             }
         }
     }
 
-    private void validateCoverage(JsonNode document, boolean lock) {
+    private void validateCoverage(JsonNode document, Map<CatalogCollection, Set<String>> incomingIds, boolean lock) {
         Map<String, String> paths = new HashMap<>();
         JsonNode assets = MEDIA_ASSETS.items(document);
         for (int assetIndex = 0; assetIndex < assets.size(); assetIndex++) {
@@ -136,42 +148,42 @@ class CatalogDiff {
                         "media_assets[" + assetIndex + "].coverage[" + partIndex + "].episode_id");
             }
         }
-        checkExternalPaths(paths, EPISODES, document, lock, "Tập tham chiếu trong phạm vi tệp chưa tồn tại.");
+        checkExternalPaths(paths, EPISODES, incomingIds, lock, "Tập phim được gắn với tệp này chưa tồn tại.");
     }
 
-    private void validateReferences(JsonNode document, boolean lock) {
+    private void validateReferences(JsonNode document, Map<CatalogCollection, Set<String>> incomingIds, boolean lock) {
         for (Reference rule : REFERENCES) {
             Map<String, String> paths = new HashMap<>();
             JsonNode items = rule.collection().items(document);
             for (int index = 0; index < items.size(); index++) {
-                JsonNode value = items.get(index).path(rule.field());
-                if (CatalogJson.absent(value)) {
+                JsonNode fieldNode = items.get(index).path(rule.field());
+                if (CatalogJson.absent(fieldNode)) {
                     continue;
                 }
                 String path = rule.collection().field + "[" + index + "]." + rule.field();
-                JsonNode references = rule.multiple() ? value : JsonNodeFactory.instance.arrayNode().add(value);
+                JsonNode references = rule.multiple() ? fieldNode : JsonNodeFactory.instance.arrayNode().add(fieldNode);
                 if (!references.isArray()) {
-                    throw new CatalogInputException(path, "Mã định danh tham chiếu không hợp lệ.");
+                    throw new CatalogInputException(path, "Mã tham chiếu không hợp lệ.");
                 }
                 for (JsonNode reference : references) {
                     String id = reference.textValue();
                     if (id == null || id.isEmpty()) {
-                        throw new CatalogInputException(path, "Mã định danh tham chiếu không hợp lệ.");
+                        throw new CatalogInputException(path, "Mã tham chiếu không hợp lệ.");
                     }
                     paths.putIfAbsent(id, path);
                 }
             }
-            checkExternalPaths(paths, rule.target(), document, lock, "Bản ghi tham chiếu chưa tồn tại.");
+            checkExternalPaths(paths, rule.target(), incomingIds, lock, "Mục được tham chiếu chưa tồn tại.");
         }
     }
 
-    private void checkExternalPaths(Map<String, String> paths, CatalogCollection target, JsonNode document,
-            boolean lock, String message) {
+    private void checkExternalPaths(Map<String, String> paths, CatalogCollection target,
+            Map<CatalogCollection, Set<String>> incomingIds, boolean lock, String message) {
         if (paths.isEmpty()) {
             return;
         }
         Set<String> missing = new HashSet<>(paths.keySet());
-        missing.removeAll(ids(target.items(document)));
+        missing.removeAll(incomingIds.getOrDefault(target, Set.of()));
         missing.removeAll(findRows(target, missing, lock).keySet());
         missing.stream().min(CatalogJson.CODE_POINT_ORDER).ifPresent(id -> {
             throw new CatalogInputException(paths.get(id), message);
@@ -204,19 +216,23 @@ class CatalogDiff {
         return query.getResultList();
     }
 
+    // Kết quả so sánh gồm bản ghi gói cũ, bộ đếm thay đổi và các hàng đang lưu trong CSDL theo từng bảng.
     record Analysis(CatalogPackage existingPackage, Counts counts,
             Map<CatalogCollection, Map<String, CatalogRecord>> storedRows) {
     }
 
+    // Số lượng mục tạo mới, cập nhật, giữ nguyên và bị xung đột phiên bản.
     record Counts(int toCreate, int toUpdate, int unchanged, int conflicts) {
         boolean hasChanges() {
             return toCreate > 0 || toUpdate > 0;
         }
     }
 
+    // Khai báo một trường tham chiếu trong JSON và bảng đích cần kiểm tra tồn tại.
     private record Reference(CatalogCollection collection, String field, CatalogCollection target, boolean multiple) {
     }
 
+    // Bộ đếm nội bộ phân loại từng mục dựa trên số phiên bản và mã băm nội dung.
     private static final class Tally {
 
         private int created;
@@ -224,6 +240,7 @@ class CatalogDiff {
         private int unchanged;
         private int conflicts;
 
+        // Phiên bản lớn hơn thì cập nhật, bằng nhau mà nội dung giống hệt thì giữ nguyên, còn lại tính là xung đột.
         void count(BigInteger storedRevision, int revision, BooleanSupplier sameContent) {
             if (storedRevision == null) {
                 created++;

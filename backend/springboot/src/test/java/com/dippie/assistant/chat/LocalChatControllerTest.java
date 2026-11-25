@@ -12,6 +12,7 @@ import com.dippie.assistant.search.CatalogSearch;
 import com.dippie.assistant.search.SearchConstraints;
 import com.dippie.assistant.search.SearchEvidence;
 import com.dippie.assistant.search.SearchHit;
+import com.dippie.common.error.RequestBodyTooLargeException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
@@ -41,6 +42,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+// Test tích hợp HTTP cho POST /api/chat: thứ tự khung SSE, kiểm tra JSON đầu vào, giới hạn dung lượng, 503 và ngắt kết nối giữa chừng.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -51,23 +53,27 @@ class LocalChatControllerTest {
     private final MockMvc mockMvc;
     private final LocalChatController localChatController;
     private final FakeCatalogSearch fakeCatalogSearch;
+    private final ChatStreamGuard chatStreamGuard;
     private final ObjectMapper objectMapper;
 
     LocalChatControllerTest(
             MockMvc mockMvc,
             LocalChatController localChatController,
             FakeCatalogSearch fakeCatalogSearch,
+            ChatStreamGuard chatStreamGuard,
             ObjectMapper objectMapper
     ) {
         this.mockMvc = mockMvc;
         this.localChatController = localChatController;
         this.fakeCatalogSearch = fakeCatalogSearch;
+        this.chatStreamGuard = chatStreamGuard;
         this.objectMapper = objectMapper;
     }
 
     @BeforeEach
     void resetFake() {
         fakeCatalogSearch.reset();
+        chatStreamGuard.resetRateLimit();
     }
 
     @Test
@@ -140,7 +146,7 @@ class LocalChatControllerTest {
         assertThat(done.get("structuredIntent").get("intent_type").asText()).isEqualTo("NO_OP");
         assertThat(done.get("structuredIntent").get("mode").asText()).isEqualTo("chitchat");
         assertThat(done.get("text").asText())
-                .isEqualTo("Mình là CineBot. Bạn có thể mô tả cảnh hoặc tập phim muốn tìm trong danh mục.");
+                .isEqualTo("Mình là CineBot. Bạn cứ kể lại cảnh phim, nhân vật hoặc tập muốn tìm nhé.");
     }
 
     @Test
@@ -165,9 +171,9 @@ class LocalChatControllerTest {
                 .andReturn();
 
         assertThat(fakeCatalogSearch.lastLimit()).isEqualTo(100);
-        assertThat(fakeCatalogSearch.lastQuery()).contains("hài hước vui nhộn comedy");
+        assertThat(fakeCatalogSearch.lastQuery()).isEqualTo("hôm nay tôi stress quá");
         JsonNode moodDone = parseSse(moodCompleted.getResponse().getContentAsString(StandardCharsets.UTF_8)).getLast().data();
-        assertThat(moodDone.get("text").asText()).isEqualTo("Bạn thử tập này nhé.");
+        assertThat(moodDone.get("text").asText()).contains(cheerfulEpisode.title());
         assertThat(moodDone.get("followUps")).isEmpty();
 
         SearchHit seriesHit = SearchHitFixture.builder()
@@ -189,7 +195,7 @@ class LocalChatControllerTest {
 
         assertThat(fakeCatalogSearch.lastConstraints().seriesOnly()).isTrue();
         JsonNode seriesDone = parseSse(seriesCompleted.getResponse().getContentAsString(StandardCharsets.UTF_8)).getLast().data();
-        assertThat(seriesDone.get("text").asText()).isEqualTo("Danh mục hiện có 88 tập Xin chào Jadoo.");
+        assertThat(seriesDone.get("text").asText()).isEqualTo("Kho phim hiện có 88 tập Xin chào Jadoo.");
         assertThat(seriesDone.get("followUps")).isEmpty();
     }
 
@@ -218,7 +224,7 @@ class LocalChatControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"query\":\"   \"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value("Thiếu trường query hoặc messages."));
+                .andExpect(jsonPath("$.detail").value("Bạn chưa nhập câu hỏi cho CineBot."));
 
         mockMvc.perform(post("/api/chat")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -265,7 +271,7 @@ class LocalChatControllerTest {
                         .content(oversized))
                 .andExpect(status().isPayloadTooLarge())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Yêu cầu quá lớn."));
+                .andExpect(jsonPath("$.message").value(RequestBodyTooLargeException.DEFAULT_MESSAGE));
     }
 
     @Test
@@ -276,7 +282,7 @@ class LocalChatControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"query\":\"Xin chào!\"}"))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.detail").value("Chưa có snapshot catalog được chấp nhận."));
+                .andExpect(jsonPath("$.detail").value("Kho phim đang được cập nhật, bạn thử lại sau ít phút nhé."));
     }
 
     @Test
@@ -340,24 +346,26 @@ class LocalChatControllerTest {
                 continue;
             }
             String type = null;
-            String data = null;
+            String eventJson = null;
             for (String line : block.split("\n")) {
                 if (line.startsWith("event: ")) {
                     type = line.substring(7);
                 } else if (line.startsWith("data: ")) {
-                    data = line.substring(6);
+                    eventJson = line.substring(6);
                 }
             }
-            if (type != null && data != null) {
-                events.add(new ParsedSseEvent(type, objectMapper.readTree(data)));
+            if (type != null && eventJson != null) {
+                events.add(new ParsedSseEvent(type, objectMapper.readTree(eventJson)));
             }
         }
         return events;
     }
 
+    // Một khung sự kiện SSE đã tách type và JSON payload để kiểm tra trong test.
     private record ParsedSseEvent(String type, JsonNode data) {
     }
 
+    // Đăng ký FakeCatalogSearch thay cho chỉ mục thật khi chạy SpringBootTest.
     @TestConfiguration
     static class FakeSearchConfig {
 
@@ -368,6 +376,7 @@ class LocalChatControllerTest {
         }
     }
 
+    // Bản giả lập CatalogSearch ghi lại truy vấn gần nhất và cho phép bật/tắt trạng thái sẵn sàng.
     static final class FakeCatalogSearch implements CatalogSearch {
 
         private final AtomicBoolean ready = new AtomicBoolean(true);

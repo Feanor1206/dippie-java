@@ -17,6 +17,8 @@ import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
+// Bảng admin_audit_events lưu dấu vết các thao tác quản trị như đổi quyền, khóa tài khoản hay nhập danh mục.
+// Khóa ngoại tới User đặt SET_NULL để khi tài khoản người thực hiện bị xóa thì dòng lịch sử vẫn còn nguyên.
 @Entity
 @Table(
         name = "admin_audit_events",
@@ -66,15 +68,8 @@ public class AdminAuditEvent {
     protected AdminAuditEvent() {
     }
 
-    public AdminAuditEvent(
-            Long actorUserId,
-            String actorUsername,
-            String action,
-            String targetType,
-            String targetId,
-            String detailsJson,
-            LocalDateTime createdAt
-    ) {
+    public AdminAuditEvent(Long actorUserId, String actorUsername, String action, String targetType, String targetId,
+            String detailsJson, LocalDateTime createdAt) {
         this.actorUserId = actorUserId;
         this.actorUsername = actorUsername;
         this.action = action;

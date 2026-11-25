@@ -8,6 +8,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+// Kiểm tra các trường hợp tách header HTTP Range (đầy đủ, mở đuôi, hậu tố, kẹp số quá lớn và lỗi 416) của ByteRange.
 class ByteRangeTest {
 
     @ParameterizedTest

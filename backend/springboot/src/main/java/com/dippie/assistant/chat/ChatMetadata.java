@@ -3,6 +3,7 @@ package com.dippie.assistant.chat;
 import com.dippie.assistant.search.SearchHit;
 import java.util.List;
 
+// Khối thông tin đầu lượt chat gửi trong sự kiện SSE "metadata" trước khi bắt đầu phát từng đoạn chữ.
 public record ChatMetadata(
         List<SearchHit> recommendedMovies,
         List<String> followUps,
