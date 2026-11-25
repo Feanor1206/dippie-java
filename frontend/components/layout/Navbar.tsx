@@ -1,0 +1,235 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Link, useLocation } from 'react-router';
+
+import { useWatchlist } from '@/lib/context/WatchlistContext';
+import { useAuth } from '@/lib/context/AuthContext';
+
+export function Navbar() {
+  const [open, setOpen] = useState(false);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const { pathname } = useLocation();
+  const { watchlist, openChat } = useWatchlist();
+  const { user, isAuthenticated, openAuthModal, logout } = useAuth();
+
+  const navLinks = [
+    { name: 'Trang chủ', href: '/' },
+    { name: 'Bộ phim', href: '/series' },
+    { name: 'Kho phim', href: '/search' },
+    { name: 'Danh sách xem', href: '/profile', count: watchlist.length },
+  ];
+  if (user?.role === 'ROLE_ADMIN') {
+    navLinks.push(
+      { name: 'Nhập dữ liệu', href: '/admin/import' },
+      { name: 'Người dùng', href: '/admin/users' },
+      { name: 'Thống kê', href: '/admin/stats' },
+      { name: 'Nhật ký', href: '/admin/audit' },
+    );
+  }
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const getInitials = (name?: string) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  };
+
+  return (
+    <header className="comic-navbar sticky top-0 z-40 border-b border-surface-border/25 bg-background">
+      <nav aria-label="Điều hướng chính" className="page-shell flex h-[68px] items-center justify-between">
+        <div className="flex items-center gap-8">
+          <Link
+            to="/"
+            className="flex items-center gap-2 text-xl font-bold tracking-tight text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand rounded px-1"
+          >
+            <span className="comic-wordmark">Dippie</span>
+          </Link>
+
+          <div className="hidden lg:flex items-center gap-6">
+            {navLinks.map((link) => {
+              const isActive = pathname === link.href;
+              return (
+                <Link
+                  key={link.name}
+                  to={link.href}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`text-sm font-medium transition-colors ${
+                    isActive ? 'text-brand-dark font-semibold' : 'text-muted hover:text-ink'
+                  }`}
+                >
+                  {link.name}
+                  {link.count !== undefined && link.count > 0 && (
+                    <span className="ml-1 rounded-full bg-surface-elevated px-1.5 py-0.5 text-[11px] font-semibold text-brand-dark">
+                      {link.count}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="hidden lg:flex items-center gap-3">
+          <button
+            onClick={openChat}
+            className="min-h-[44px] min-w-[44px] rounded-lg border border-surface-border/50 bg-surface px-3.5 text-sm font-semibold text-ink hover:bg-surface-elevated cursor-pointer"
+          >
+            Hỏi CineBot
+          </button>
+
+          {isAuthenticated && user ? (
+            <div className="relative" ref={dropdownRef}>
+              <button
+                data-testid="nav-user-dropdown-button"
+                aria-expanded={userDropdownOpen}
+                onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                className="flex items-center gap-2 rounded-lg border border-surface-border bg-surface px-2.5 py-1 text-xs text-ink hover:border-zinc-500 transition-colors cursor-pointer"
+              >
+                <div className="grid h-6 w-6 place-items-center rounded bg-brand text-[11px] font-bold text-zinc-950 shadow-sm">
+                  {getInitials(user.fullName || user.username)}
+                </div>
+                <span className="font-medium max-w-[100px] truncate">
+                  {user.fullName || user.username}
+                </span>
+              </button>
+
+              {userDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-52 rounded-xl border border-surface-border bg-surface-elevated p-2 shadow-2xl animate-fade-in z-50">
+                  <div className="px-2.5 py-2 border-b border-surface-border">
+                    <p className="text-xs font-bold text-ink truncate">{user.fullName || user.username}</p>
+                    <p className="text-[11px] text-muted truncate">{user.email}</p>
+                  </div>
+
+                  <div className="mt-1.5 space-y-0.5">
+                    <Link
+                      to="/profile"
+                      onClick={() => setUserDropdownOpen(false)}
+                      className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-muted hover:bg-surface-hover hover:text-ink transition-colors"
+                    >
+                      Hồ sơ cá nhân
+                    </Link>
+                    <Link
+                      to="/account"
+                      onClick={() => setUserDropdownOpen(false)}
+                      className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-muted hover:bg-surface-hover hover:text-ink transition-colors"
+                    >
+                      Cài đặt tài khoản
+                    </Link>
+                  </div>
+
+                  <div className="mt-1.5 pt-1.5 border-t border-surface-border">
+                    <button
+                      onClick={() => {
+                        setUserDropdownOpen(false);
+                        logout();
+                      }}
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-red-800 hover:bg-red-500/10 transition-colors cursor-pointer"
+                    >
+                      Đăng xuất
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              data-testid="nav-login-button"
+              onClick={() => openAuthModal('login')}
+              className="min-h-[44px] rounded-lg bg-brand px-3.5 text-sm font-bold text-ink hover:bg-brand-hover active:bg-brand-active cursor-pointer"
+            >
+              Đăng nhập
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 lg:hidden">
+          {isAuthenticated ? (
+            <Link
+              to="/profile"
+              aria-label="Hồ sơ cá nhân"
+              className="grid h-11 w-11 place-items-center rounded-lg bg-brand text-xs font-bold text-zinc-950 shadow-sm"
+            >
+              {getInitials(user?.fullName || user?.username)}
+            </Link>
+          ) : (
+            <button
+              onClick={() => openAuthModal('login')}
+              className="min-h-[44px] rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-zinc-950 hover:bg-brand-hover active:bg-brand-active cursor-pointer shadow-sm"
+            >
+              Đăng nhập
+            </button>
+          )}
+
+          <button
+            aria-label={open ? 'Đóng menu' : 'Mở menu'}
+            aria-expanded={open}
+            aria-controls="mobile-navigation"
+            onClick={() => setOpen(!open)}
+            className="min-h-[44px] rounded-lg border border-surface-border bg-surface px-3 text-xs font-semibold text-ink hover:bg-surface-elevated cursor-pointer"
+          >
+            {open ? 'Đóng' : 'Menu'}
+          </button>
+        </div>
+      </nav>
+
+      {open && (
+        <div id="mobile-navigation" className="border-b border-surface-border bg-surface px-5 py-5 lg:hidden animate-slide-up">
+          <div className="flex flex-col gap-3">
+            {navLinks.map((link) => {
+              const isActive = pathname === link.href;
+              return (
+                <Link
+                  key={link.name}
+                  to={link.href}
+                  aria-current={isActive ? 'page' : undefined}
+                  onClick={() => setOpen(false)}
+                  className={`flex items-center justify-between rounded-lg px-3.5 py-2.5 text-sm font-medium ${
+                    isActive ? 'bg-surface-elevated text-brand-dark font-bold border border-surface-border' : 'text-muted hover:bg-surface-hover hover:text-ink'
+                  }`}
+                >
+                  <span>{link.name}</span>
+                  {link.count !== undefined && link.count > 0 && (
+                    <span className="text-xs text-brand-dark font-semibold">
+                      ({link.count})
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+
+            <div className="pt-3 mt-2 border-t border-surface-border flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  openChat();
+                }}
+                className="btn-primary min-h-[44px] w-full justify-center text-sm"
+              >
+                Hỏi CineBot
+              </button>
+              {isAuthenticated && (
+                <button
+                  data-testid="mobile-logout"
+                  onClick={() => { setOpen(false); logout(); }}
+                  className="btn-secondary w-full justify-center text-xs text-red-800 hover:text-red-800"
+                >
+                  Đăng xuất
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </header>
+  );
+}

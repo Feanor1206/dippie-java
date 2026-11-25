@@ -1,0 +1,716 @@
+import { labels } from './labels_fixture.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import ts from '../node_modules/typescript/lib/typescript.js';
+
+function loadTsModule(relativePath, globals = {}) {
+  const source = fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+  const code = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      jsx: ts.JsxEmit.React,
+      esModuleInterop: true,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const module = { exports: {} };
+  vm.runInNewContext(code, {
+    module,
+    exports: module.exports,
+    console,
+    AbortController,
+    DOMException,
+    URLSearchParams,
+    Date,
+    setTimeout,
+    clearTimeout,
+    ...globals,
+  });
+  return module.exports;
+}
+
+function findNodes(node, predicate, acc = []) {
+  if (!node) return acc;
+  if (Array.isArray(node)) {
+    for (const child of node) findNodes(child, predicate, acc);
+    return acc;
+  }
+  if (typeof node === 'object') {
+    if (predicate(node)) acc.push(node);
+    findNodes(node.props?.children, predicate, acc);
+  }
+  return acc;
+}
+
+function getText(node) {
+  function collect(n) {
+    if (Array.isArray(n)) return n.map(collect).join(' ');
+    if (n && typeof n === 'object') return collect(n.props?.children);
+    return typeof n === 'string' || typeof n === 'number' ? String(n) : '';
+  }
+  return collect(node).replace(/\s+/g, ' ').trim();
+}
+
+function makeReactHarness() {
+  const slots = [];
+  let cursor = 0;
+  let effects = [];
+  let dirty = false;
+  const sameDeps = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+  const react = {
+    useState(initial) {
+      const i = cursor++;
+      if (!(i in slots)) slots[i] = { value: typeof initial === 'function' ? initial() : initial };
+      return [
+        slots[i].value,
+        (next) => {
+          slots[i].value = typeof next === 'function' ? next(slots[i].value) : next;
+          dirty = true;
+        },
+      ];
+    },
+    useRef(initial) {
+      const i = cursor++;
+      return (slots[i] ||= { current: initial });
+    },
+    useMemo(factory, deps) {
+      const i = cursor++;
+      if (!slots[i] || !sameDeps(slots[i].deps, deps)) slots[i] = { value: factory(), deps };
+      return slots[i].value;
+    },
+    useCallback(fn, deps) {
+      return react.useMemo(() => fn, deps);
+    },
+    useEffect(fn, deps) {
+      const i = cursor++;
+      const prev = slots[i];
+      if (!prev || !deps || !sameDeps(prev.deps, deps)) {
+        slots[i] = { deps, cleanup: prev?.cleanup };
+        effects.push(() => {
+          slots[i].cleanup?.();
+          slots[i].cleanup = fn();
+        });
+      }
+    },
+    createElement(type, props, ...children) {
+      const flat = children.length === 1 ? children[0] : children.length > 1 ? children : undefined;
+      return { type, props: { ...props, ...(flat !== undefined ? { children: flat } : {}) } };
+    },
+  };
+  return {
+    react,
+    resetCursor() {
+      cursor = 0;
+      dirty = false;
+    },
+    flushEffects() {
+      const pending = effects;
+      effects = [];
+      for (const fn of pending) fn();
+    },
+    isDirty() {
+      return dirty;
+    },
+    unmount() {
+      for (const slot of slots) slot?.cleanup?.();
+    },
+  };
+}
+
+const utils = loadTsModule('../features/series/seriesBrowseUtils.ts', {
+  require: (name) => (name === '@/lib/labels' ? labels : {}),
+});
+
+const sampleCards = [
+  {
+    id: 'ser_jadoo',
+    title: 'Xin Chào Jadoo',
+    originalTitle: 'Hello Jadoo',
+    synopsis: 'Cô bé tinh nghịch Jadoo và gia đình.',
+    releaseYearStart: 2011,
+    releaseYearEnd: 2022,
+    genres: [
+      { id: 'comedy', label: 'Hài' },
+      { id: 'family', label: 'Gia đình' },
+      { id: 'animation', label: 'Hoạt hình' },
+      { id: 'adventure', label: 'Phiêu lưu' },
+    ],
+    seasonCount: 4,
+    episodeCount: 52,
+    posterUrl: 'https://cdn.example.com/jadoo-poster.jpg',
+    backdropUrl: 'https://cdn.example.com/jadoo-backdrop.jpg',
+  },
+  {
+    id: 'ser_ori',
+    title: 'Công chúa Ori',
+    originalTitle: 'Princess Ori',
+    synopsis: 'Hành trình kỳ diệu của công chúa Ori.',
+    releaseYearStart: 2023,
+    releaseYearEnd: null,
+    genres: [
+      { id: 'fantasy', label: 'Giả tưởng' },
+      { id: 'adventure', label: 'Phiêu lưu' },
+    ],
+    seasonCount: 1,
+    episodeCount: 12,
+    posterUrl: 'https://cdn.example.com/ori-poster.jpg',
+    backdropUrl: null,
+  },
+  {
+    id: 'ser_larva',
+    title: 'Larva',
+    originalTitle: 'Ấu trùng tinh nghịch',
+    synopsis: 'Hai chú ấu trùng hài hước.',
+    releaseYearStart: 2015,
+    releaseYearEnd: 2019,
+    genres: [{ id: 'comedy', label: 'Hài' }],
+    seasonCount: 3,
+    episodeCount: 104,
+    posterUrl: null,
+    backdropUrl: null,
+  },
+];
+
+test('seriesCardService parses complete cards and handles missing optional fields gracefully', async () => {
+  const calls = [];
+  const service = loadTsModule('../lib/services/seriesCardService.ts', {
+    require: (name) => (name === '@/lib/labels' ? labels : {}),
+    fetch: async (url, opts) => {
+      calls.push({ url, opts });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          sampleCards[0],
+          {
+            id: 'ser_minimal',
+            title: 'Bộ phim cũ',
+            genres: [{ id: 'Comedy' }, { id: 'comedy', label: 'Trùng lặp' }, 'family'],
+            seasonCount: -1,
+            episodeCount: 'bad',
+            releaseYearStart: 'invalid',
+            posterUrl: '   ',
+          },
+        ],
+      };
+    },
+  });
+
+  service.clearSeriesCardsCache();
+  const list = await service.listSeriesCards();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, '/api/catalog/series/cards');
+  assert.equal(list.length, 2);
+
+  assert.equal(list[0].id, 'ser_jadoo');
+  assert.equal(list[0].seasonCount, 4);
+  assert.equal(list[0].episodeCount, 52);
+  assert.equal(list[0].backdropUrl, 'https://cdn.example.com/jadoo-backdrop.jpg');
+
+  assert.equal(list[1].id, 'ser_minimal');
+  assert.equal(list[1].originalTitle, null);
+  assert.equal(list[1].synopsis, null);
+  assert.equal(list[1].releaseYearStart, null);
+  assert.equal(list[1].releaseYearEnd, null);
+  assert.equal(list[1].seasonCount, null);
+  assert.equal(list[1].episodeCount, null);
+  assert.equal(list[1].posterUrl, null);
+  assert.equal(list[1].backdropUrl, null);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(list[1].genres)),
+    [
+      { id: 'Comedy', label: 'Hài' },
+      { id: 'family', label: 'Gia đình' },
+    ]
+  );
+
+  const fromCache = await service.getSeriesCardById('ser_jadoo');
+  assert.equal(fromCache.title, 'Xin Chào Jadoo');
+  assert.equal(calls.length, 1);
+
+  const missing = await service.getSeriesCardById('nonexistent');
+  assert.equal(missing, null);
+
+  await service.listSeriesCards({ forceRefresh: true });
+  assert.equal(calls.length, 2);
+});
+
+test('seriesCardService rejects HTTP errors, malformed payloads, aborts, and timeouts', async () => {
+  const errService = loadTsModule('../lib/services/seriesCardService.ts', {
+    require: (name) => (name === '@/lib/labels' ? labels : {}),
+    fetch: async () => ({ ok: false, status: 503, json: async () => ({}) }),
+  });
+  await assert.rejects(errService.listSeriesCards({ forceRefresh: true }), (err) => err.status === 503);
+
+  const badService = loadTsModule('../lib/services/seriesCardService.ts', {
+    require: (name) => (name === '@/lib/labels' ? labels : {}),
+    fetch: async () => ({ ok: true, status: 200, json: async () => ({ notAnArray: true }) }),
+  });
+  await assert.rejects(badService.listSeriesCards({ forceRefresh: true }), (err) => err.status === 502);
+
+  const missingIdService = loadTsModule('../lib/services/seriesCardService.ts', {
+    require: (name) => (name === '@/lib/labels' ? labels : {}),
+    fetch: async () => ({ ok: true, status: 200, json: async () => [{ title: 'No ID' }] }),
+  });
+  await assert.rejects(missingIdService.listSeriesCards({ forceRefresh: true }), (err) => err.status === 502);
+
+  const slowService = loadTsModule('../lib/services/seriesCardService.ts', {
+    require: (name) => (name === '@/lib/labels' ? labels : {}),
+    fetch: (_url, opts) =>
+      new Promise((_resolve, reject) => {
+        opts.signal.addEventListener('abort', () => {
+          const e = new Error('aborted');
+          e.name = 'AbortError';
+          reject(e);
+        });
+      }),
+  });
+  await assert.rejects(slowService.listSeriesCards({ timeoutMs: 20, forceRefresh: true }), (err) => err.isTimeout === true);
+
+  const ac = new AbortController();
+  const pending = slowService.listSeriesCards({ signal: ac.signal, forceRefresh: true });
+  ac.abort();
+  await assert.rejects(pending, (err) => err.isCanceled === true);
+});
+
+test('filtering by search (title & originalTitle, Vietnamese accents) and multi-select genres works', () => {
+  const byOriginal = utils.filterAndSortSeriesCards(sampleCards, { q: 'Princess', genres: [], sort: 'title' });
+  assert.deepEqual(Array.from(byOriginal, (c) => c.id), ['ser_ori']);
+
+  const byFoldedVi = utils.filterAndSortSeriesCards(sampleCards, { q: 'cong chua', genres: [], sort: 'title' });
+  assert.deepEqual(Array.from(byFoldedVi, (c) => c.id), ['ser_ori']);
+
+  const bySingleGenre = utils.filterAndSortSeriesCards(sampleCards, { q: '', genres: ['fantasy'], sort: 'title' });
+  assert.deepEqual(Array.from(bySingleGenre, (c) => c.id), ['ser_ori']);
+
+  const byMultiGenre = utils.filterAndSortSeriesCards(sampleCards, {
+    q: '',
+    genres: ['fantasy', 'family'],
+    sort: 'title',
+  });
+  assert.deepEqual(Array.from(byMultiGenre, (c) => c.id), ['ser_ori', 'ser_jadoo']);
+
+  const combined = utils.filterAndSortSeriesCards(sampleCards, {
+    q: 'larva',
+    genres: ['comedy'],
+    sort: 'title',
+  });
+  assert.deepEqual(Array.from(combined, (c) => c.id), ['ser_larva']);
+});
+
+test('all three sort orders sort accurately', () => {
+  const byTitle = utils.filterAndSortSeriesCards(sampleCards, { q: '', genres: [], sort: 'title' });
+  assert.deepEqual(Array.from(byTitle, (c) => c.id), ['ser_ori', 'ser_larva', 'ser_jadoo']);
+
+  const byNewest = utils.filterAndSortSeriesCards(sampleCards, { q: '', genres: [], sort: 'newest' });
+  assert.deepEqual(Array.from(byNewest, (c) => c.id), ['ser_ori', 'ser_larva', 'ser_jadoo']);
+
+  const byEpisodes = utils.filterAndSortSeriesCards(sampleCards, { q: '', genres: [], sort: 'episodes' });
+  assert.deepEqual(Array.from(byEpisodes, (c) => c.id), ['ser_larva', 'ser_jadoo', 'ser_ori']);
+});
+
+test('URL query round-trip preserves q, multi-select genres, and sort cleanly', () => {
+  const defaultParams = utils.serializeSeriesBrowseParams({ q: '', genres: [], sort: 'title' });
+  assert.equal(defaultParams.toString(), '');
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(utils.parseSeriesBrowseParams(defaultParams))),
+    { q: '', genres: [], sort: 'title' }
+  );
+
+  const original = { q: 'Jadoo', genres: ['comedy', 'family'], sort: 'episodes' };
+  const serialized = utils.serializeSeriesBrowseParams(original);
+  const parsed = utils.parseSeriesBrowseParams(serialized.toString());
+  assert.equal(parsed.q, 'Jadoo');
+  assert.deepEqual(Array.from(parsed.genres), ['comedy', 'family']);
+  assert.equal(parsed.sort, 'episodes');
+
+  const legacy = utils.parseSeriesBrowseParams('genre=Comedy&genre=fantasy&sort=unknown');
+  assert.deepEqual(Array.from(legacy.genres), ['Comedy', 'fantasy']);
+  assert.equal(legacy.sort, 'title');
+});
+
+test('label formatting handles counts, year ranges, episode tags, and progress percentages', () => {
+  assert.equal(utils.formatSeriesCounts(2, 24), '2 mùa · 24 tập');
+  assert.equal(utils.formatSeriesCounts(1, null), '1 mùa');
+  assert.equal(utils.formatSeriesCounts(0, 12), '12 tập');
+  assert.equal(utils.formatSeriesCounts(null, null), '');
+
+  assert.equal(utils.formatYearRange(2011, 2022), '2011–2022');
+  assert.equal(utils.formatYearRange(2023, 2023), '2023');
+  assert.equal(utils.formatYearRange(2023, null), '2023');
+  assert.equal(utils.formatYearRange(null, 2020), '2020');
+  assert.equal(utils.formatYearRange(null, null), '');
+
+  assert.equal(utils.formatEpisodeTag(5), 'Tập 5');
+  assert.equal(utils.formatEpisodeTag(0), '');
+  assert.equal(utils.formatEpisodeTag(null), '');
+
+  assert.equal(utils.computeProgressPercent(30000, 120000), 25);
+  assert.equal(utils.computeProgressPercent(150000, 120000), 100);
+  assert.equal(utils.computeProgressPercent(30000, null), null);
+});
+
+test('artwork fallback selection and initials generation behave predictably', () => {
+  assert.deepEqual(
+    { ...utils.pickSeriesArtwork({ backdropUrl: 'https://b', posterUrl: 'https://p' }, 'backdrop') },
+    { primary: 'https://b', fallback: 'https://p' }
+  );
+  assert.deepEqual(
+    { ...utils.pickSeriesArtwork({ backdropUrl: null, posterUrl: 'https://p' }, 'backdrop') },
+    { primary: 'https://p', fallback: null }
+  );
+  assert.deepEqual(
+    { ...utils.pickSeriesArtwork({ backdropUrl: '', posterUrl: '' }, 'backdrop') },
+    { primary: null, fallback: null }
+  );
+  assert.deepEqual(
+    { ...utils.pickMovieArtwork({ thumbnailUrl: 'https://t', backdrop: 'https://b', poster: 'https://p' }) },
+    { primary: 'https://t', fallback: 'https://b' }
+  );
+  assert.equal(utils.getTitleInitials('Xin Chào Jadoo'), 'XJ');
+  assert.equal(utils.getTitleInitials('Larva'), 'LA');
+  assert.equal(utils.getTitleInitials(''), '?');
+
+  const extracted = utils.extractSeriesGenres(sampleCards);
+  assert.equal(extracted.length, 5);
+  assert.equal(extracted[0].id, 'family');
+});
+
+test('SeriesRow renders heading, view-all link, accessible scroll buttons, and cards', () => {
+  const h = makeReactHarness();
+  const mod = loadTsModule('../features/series/components/SeriesRow.tsx', {
+    require: (name) => {
+      if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
+      if (name === 'react-router') return { Link: 'route-link' };
+      if (name === 'lucide-react') return { ChevronLeft: 'LeftIcon', ChevronRight: 'RightIcon' };
+      if (name.includes('SeriesCard')) return { SeriesCard: 'SeriesCard' };
+      if (name.includes('seriesCardService')) return { listSeriesCards: async () => sampleCards };
+      return {};
+    },
+  });
+
+  h.resetCursor();
+  const tree = mod.SeriesRow({ cards: sampleCards, loading: false, error: null });
+  h.flushEffects();
+  assert.ok(getText(tree).includes('Các bộ phim'));
+  const viewAll = findNodes(tree, (n) => n.props?.['data-testid'] === 'series-row-view-all')[0];
+  assert.equal(viewAll.props.to, '/series');
+  const prevBtn = findNodes(tree, (n) => n.props?.['data-testid'] === 'series-row-prev')[0];
+  const nextBtn = findNodes(tree, (n) => n.props?.['data-testid'] === 'series-row-next')[0];
+  assert.ok(prevBtn.props['aria-label']);
+  assert.ok(nextBtn.props['aria-label']);
+  assert.equal(findNodes(tree, (n) => n.type === 'SeriesCard').length, 3);
+  h.unmount();
+});
+
+test('FilmShelf renders artwork, series_title, and episode badge on recommendation cards', () => {
+  const h = makeReactHarness();
+  const mediaRouting = loadTsModule('../lib/services/mediaRouting.ts', {});
+  const mod = loadTsModule('../features/movies/components/FilmShelf.tsx', {
+    React: h.react,
+    require: (name) => {
+      if (name === '@/lib/labels') return labels;
+      if (name === 'react-router') return { Link: 'route-link' };
+      if (name.includes('mediaRouting')) return mediaRouting;
+      if (name.includes('ArtworkImage')) return { ArtworkImage: 'ArtworkImage' };
+      return {};
+    },
+  });
+  const gridTree = mod.FilmGrid({
+    movies: [
+      {
+        id: 'ep_jadoo_1',
+        title: 'ngày đi học',
+        year: 2020,
+        rating: 8.5,
+        runtime: '12m',
+        genres: ['Comedy'],
+        description: 'Tập mở đầu vui nhộn.',
+        poster: 'https://cdn.example.com/ep1-poster.jpg',
+        backdrop: 'https://cdn.example.com/ep1-backdrop.jpg',
+        item_type: 'episode',
+        series_id: 'ser_jadoo',
+        series_title: 'Xin Chào Jadoo',
+        episode_number: 7,
+      },
+    ],
+  });
+  const card = findNodes(gridTree, (n) => n.props?.['data-testid'] === 'film-card')[0];
+  assert.equal(card.props.to, '/series/ser_jadoo?episode=ep_jadoo_1');
+  const art = findNodes(card, (n) => n.type === 'ArtworkImage')[0];
+  assert.equal(art.props.src, 'https://cdn.example.com/ep1-backdrop.jpg');
+  assert.equal(art.props.fallbackSrc, 'https://cdn.example.com/ep1-poster.jpg');
+  const text = getText(card);
+  assert.ok(text.includes('Xin Chào Jadoo'));
+  assert.ok(text.includes('Tập 7'));
+  assert.ok(text.includes('Ngày đi học'));
+});
+
+test('ArtworkImage falls back from primary src to fallbackSrc to initials panel on error', () => {
+  const h = makeReactHarness();
+  const mod = loadTsModule('../features/series/components/ArtworkImage.tsx', {
+    require: (name) => {
+      if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
+      if (name.includes('seriesBrowseUtils')) return utils;
+      return {};
+    },
+  });
+
+  const render = (props) => {
+    h.resetCursor();
+    const tree = mod.ArtworkImage(props);
+    h.flushEffects();
+    return tree;
+  };
+
+  let tree = render({
+    src: 'https://primary.jpg',
+    fallbackSrc: 'https://secondary.jpg',
+    alt: 'Xin Chào Jadoo',
+    title: 'Xin Chào Jadoo',
+  });
+  let img = findNodes(tree, (n) => n.type === 'img')[0];
+  assert.equal(img.props.src, 'https://primary.jpg');
+  assert.equal(img.props.loading, 'lazy');
+
+  img.props.onError();
+  tree = render({
+    src: 'https://primary.jpg',
+    fallbackSrc: 'https://secondary.jpg',
+    alt: 'Xin Chào Jadoo',
+    title: 'Xin Chào Jadoo',
+  });
+  img = findNodes(tree, (n) => n.type === 'img')[0];
+  assert.equal(img.props.src, 'https://secondary.jpg');
+
+  img.props.onError();
+  tree = render({
+    src: 'https://primary.jpg',
+    fallbackSrc: 'https://secondary.jpg',
+    alt: 'Xin Chào Jadoo',
+    title: 'Xin Chào Jadoo',
+  });
+  assert.equal(findNodes(tree, (n) => n.type === 'img').length, 0);
+  const fallback = findNodes(tree, (n) => n.props?.['data-testid'] === 'artwork-fallback')[0];
+  assert.ok(fallback);
+  assert.ok(getText(fallback).includes('XJ'));
+});
+
+test('SeriesCard caps genre tags at 3, links to /series/{id}, and includes synopsis and Xem CTA', () => {
+  const h = makeReactHarness();
+  const artworkMod = loadTsModule('../features/series/components/ArtworkImage.tsx', {
+    require: (name) => {
+      if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
+      if (name.includes('seriesBrowseUtils')) return utils;
+      return {};
+    },
+  });
+  const mod = loadTsModule('../features/series/components/SeriesCard.tsx', {
+    require: (name) => {
+      if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
+      if (name === 'react-router') return { Link: 'route-link' };
+      if (name === 'lucide-react') return { Play: 'PlayIcon' };
+      if (name.includes('ArtworkImage')) return artworkMod;
+      if (name.includes('seriesBrowseUtils')) return utils;
+      return {};
+    },
+  });
+
+  h.resetCursor();
+  const tree = mod.SeriesCard({ card: sampleCards[0] });
+  assert.equal(tree.props.to, '/series/ser_jadoo');
+  assert.equal(tree.props['data-testid'], 'series-card');
+  const genresWrap = findNodes(tree, (n) => n.props?.['data-testid'] === 'series-card-genres')[0];
+  assert.equal(genresWrap.props.children.length, 3);
+  const text = getText(tree);
+  assert.ok(text.includes('Xin Chào Jadoo'));
+  assert.ok(text.includes('2011–2022'));
+  assert.ok(text.includes('4 mùa · 52 tập'));
+  assert.ok(text.includes('Xem'));
+  assert.ok(text.includes('Cô bé tinh nghịch Jadoo'));
+});
+
+test('SeriesBrowsePage mirrors search, genre chips, and sort into URL and supports retry', async () => {
+  let params = new URLSearchParams();
+  let failNext = true;
+  const h = makeReactHarness();
+  const setSearchParams = (next) => {
+    params = next instanceof URLSearchParams ? next : new URLSearchParams(next);
+  };
+  const mod = loadTsModule('../app/series/page.tsx', {
+    require: (name) => {
+      if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
+      if (name === 'react-router') return { useSearchParams: () => [params, setSearchParams] };
+      if (name === 'lucide-react') return { Search: 'SearchIcon', X: 'XIcon' };
+      if (name.includes('seriesCardService')) {
+        return {
+          listSeriesCards: async () => {
+            if (failNext) throw new Error('Backend offline');
+            return sampleCards;
+          },
+        };
+      }
+      if (name.includes('SeriesCard')) return { SeriesCard: 'SeriesCard' };
+      if (name.includes('seriesBrowseUtils')) return utils;
+      return {};
+    },
+  });
+
+  const render = () => {
+    h.resetCursor();
+    const tree = mod.default();
+    h.flushEffects();
+    return tree;
+  };
+  const settle = async () => {
+    let tree;
+    for (let i = 0; i < 6; i++) {
+      tree = render();
+      await new Promise(setImmediate);
+    }
+    return render();
+  };
+
+  let tree = await settle();
+  const retryBtn = findNodes(tree, (n) => n.props?.['data-testid'] === 'series-retry-button')[0];
+  assert.ok(retryBtn);
+
+  failNext = false;
+  retryBtn.props.onClick();
+  tree = await settle();
+
+  const cards = findNodes(tree, (n) => n.type === 'SeriesCard');
+  assert.equal(cards.length, 3);
+  assert.ok(getText(tree).includes('3 bộ phim'));
+
+  const sortSelect = findNodes(tree, (n) => n.props?.['data-testid'] === 'series-sort-select')[0];
+  sortSelect.props.onChange({ target: { value: 'episodes' } });
+  tree = render();
+  assert.equal(params.get('sort'), 'episodes');
+  const sortedCards = findNodes(tree, (n) => n.type === 'SeriesCard');
+  assert.equal(sortedCards[0].props.card.id, 'ser_larva');
+
+  const fantasyChip = findNodes(tree, (n) => n.props?.['data-genre-id'] === 'fantasy')[0];
+  fantasyChip.props.onClick();
+  tree = render();
+  assert.equal(params.get('genres'), 'fantasy');
+  assert.equal(findNodes(tree, (n) => n.type === 'SeriesCard').length, 1);
+
+  h.unmount();
+});
+
+test('ContinueWatching renders thumbnail, series title, episode tag, progress bar, and preserves resume link', () => {
+  const h = makeReactHarness();
+  const watchProgressService = loadTsModule('../lib/services/watchProgressService.ts', {
+    window: { localStorage: { getItem: () => null, setItem() {}, removeItem() {} } },
+  });
+  const movieProgress = loadTsModule('../lib/services/movieProgress.ts', {
+    window: { localStorage: { getItem: () => null, setItem() {}, removeItem() {} } },
+  });
+  const mod = loadTsModule('../features/movies/components/ContinueWatching.tsx', {
+    require: (name) => {
+      if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
+      if (name === 'react-router') return { Link: 'route-link' };
+      if (name.includes('useWatchProgress')) {
+        return {
+          useWatchProgress: () => ({
+            records: [
+              {
+                episodeId: 'ep_1',
+                seriesId: 'ser_jadoo',
+                seriesTitle: 'Xin Chào Jadoo',
+                seasonId: 's1',
+                seasonNumber: 1,
+                seasonTitle: 'Mùa 1',
+                episodeNumber: 3,
+                episodeTitle: 'Ngày đi học',
+                thumbnailUrl: 'https://cdn.example.com/ep3.jpg',
+                assetId: 'ast_1',
+                positionMs: 60000,
+                durationMs: 240000,
+                completed: false,
+                version: 1,
+                updatedAt: '2026-11-20T00:00:00Z',
+              },
+            ],
+          }),
+        };
+      }
+      if (name.includes('watchProgressService')) return watchProgressService;
+      if (name.includes('movieProgress')) return movieProgress;
+      if (name.includes('ArtworkImage')) return { ArtworkImage: 'ArtworkImage' };
+      if (name.includes('seriesBrowseUtils')) return utils;
+      return {};
+    },
+  });
+
+  h.resetCursor();
+  const tree = mod.ContinueWatching({ films: [] });
+  const card = findNodes(tree, (n) => n.props?.['data-testid'] === 'continue-card')[0];
+  assert.ok(card);
+  assert.equal(card.props.to, '/series/ser_jadoo?episode=ep_1&asset=ast_1&t=60000&timeline=file');
+  const art = findNodes(card, (n) => n.type === 'ArtworkImage')[0];
+  assert.equal(art.props.src, 'https://cdn.example.com/ep3.jpg');
+  const bar = findNodes(card, (n) => n.props?.['data-testid'] === 'continue-progress-bar')[0];
+  assert.equal(bar.props['aria-valuenow'], 25);
+  const text = getText(card);
+  assert.ok(text.includes('Xin Chào Jadoo'));
+  assert.ok(text.includes('Tập 3'));
+  assert.ok(text.includes('1:00'));
+});
+
+test('SeriesDetailBanner renders backdrop overlay, genres, counts, and falls back without card', () => {
+  const h = makeReactHarness();
+  const mod = loadTsModule('../features/series/components/SeriesDetailBanner.tsx', {
+    require: (name) => {
+      if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
+      if (name === 'react-router') return { Link: 'route-link' };
+      if (name === '@/lib/labels') return labels;
+      if (name.includes('seriesBrowseUtils')) return utils;
+      return {};
+    },
+  });
+
+  h.resetCursor();
+  const withCard = mod.SeriesDetailBanner({
+    series: { id: 'ser_jadoo', title: 'Xin Chào Jadoo', releaseYearStart: 2011 },
+    card: sampleCards[0],
+    seasonCount: 4,
+    episodeCount: 52,
+    nextEpisodeAction: { type: 'NextEpisodeAction', props: {} },
+  });
+  h.flushEffects();
+  const bgImg = findNodes(withCard, (n) => n.type === 'img')[0];
+  assert.equal(bgImg.props.src, 'https://cdn.example.com/jadoo-backdrop.jpg');
+  assert.equal(bgImg.props.loading, 'lazy');
+  const text = getText(withCard);
+  assert.ok(text.includes('4 mùa · 52 tập'));
+  assert.ok(text.includes('Hài'));
+  assert.ok(text.includes('Gia đình'));
+
+  const h2 = makeReactHarness();
+  const mod2 = loadTsModule('../features/series/components/SeriesDetailBanner.tsx', {
+    require: (name) => {
+      if (name === 'react') return { __esModule: true, default: h2.react, ...h2.react };
+      if (name === 'react-router') return { Link: 'route-link' };
+      if (name === '@/lib/labels') return labels;
+      if (name.includes('seriesBrowseUtils')) return utils;
+      return {};
+    },
+  });
+  h2.resetCursor();
+  const fallbackTree = mod2.SeriesDetailBanner({
+    series: { id: 'ser_old', title: 'Old Series', genreIds: 'Comedy,Family' },
+    card: null,
+    seasonCount: 2,
+    episodeCount: 10,
+    nextEpisodeAction: null,
+  });
+  assert.equal(findNodes(fallbackTree, (n) => n.type === 'img').length, 0);
+  const fallbackText = getText(fallbackTree);
+  assert.ok(fallbackText.includes('2 mùa · 10 tập'));
+  assert.ok(fallbackText.includes('Hài'));
+  assert.ok(fallbackText.includes('Gia đình'));
+});
