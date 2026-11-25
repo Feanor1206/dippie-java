@@ -15,7 +15,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Giai đoạn 2: build backend
-FROM eclipse-temurin:21-jdk-jammy AS backend-build
+FROM eclipse-temurin:25-jdk-jammy AS backend-build
 WORKDIR /src/backend/springboot
 
 # Tải trước thư viện Maven để không phải tải lại khi chỉ sửa code Java
@@ -30,7 +30,7 @@ COPY backend/springboot/src ./src
 RUN ./mvnw -B package -DskipTests ${MAVEN_PROFILES:+-P${MAVEN_PROFILES}}
 
 # Giai đoạn 3: đóng gói runtime
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM eclipse-temurin:25-jre-alpine AS runtime
 WORKDIR /app
 
 # Tạo tài khoản dippie không có quyền root và cấp quyền thư mục /app
