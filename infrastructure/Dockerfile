@@ -4,7 +4,7 @@
 # 3. Đóng gói runtime JRE 21 Alpine chạy bằng tài khoản thường (không dùng root).
 
 # Giai đoạn 1: build frontend
-FROM node:22-alpine AS frontend-build
+FROM node:26-alpine AS frontend-build
 WORKDIR /src/frontend
 
 # Chép tệp khai báo gói trước để giữ lại cache npm ci khi chỉ sửa mã nguồn
