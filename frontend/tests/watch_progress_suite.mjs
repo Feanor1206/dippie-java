@@ -268,3 +268,161 @@ test('Two local saves serialize their optimistic SQL versions', async () => {
   const output = h.render(); await Promise.all([output.saveProgress(draft({positionMs:70000})),output.saveProgress(draft({positionMs:80000}))]);
   assert.deepEqual(versions,[0,1]); assert.equal(h.render().records[0].positionMs,80000); h.close();
 });
+
+test('normalizeWatchProgressRecord treats zero durationMs as unknown and isProgressCompleted matches backend threshold', () => {
+  const { service } = environment();
+  const normalized = service.normalizeWatchProgressRecord(record({ durationMs: 0, positionMs: 45000 }));
+  assert.equal(normalized.durationMs, null);
+  assert.equal(service.isUsableResumeProgress(normalized), true);
+  assert.equal(service.isProgressCompleted(570000, 600000), true);
+  assert.equal(service.isProgressCompleted(569999, 600000), false);
+  assert.equal(service.isProgressCompleted(3540000, 3600000), true);
+  assert.equal(service.isProgressCompleted(3539999, 3600000), false);
+  assert.equal(service.isProgressCompleted(60000, null), false);
+  assert.equal(service.isUsableResumeProgress(record({ positionMs: 570000, durationMs: 600000, completed: false })), false);
+});
+
+test('Unmount preserves in-flight save, broadcasts update to same-scope consumer without stale GET clobber, and isolates accounts', async () => {
+  const listeners = new Map();
+  const stored = new Map();
+  const sharedWindow = {
+    localStorage: {
+      getItem: (key) => stored.get(key) ?? null,
+      setItem: (key, val) => stored.set(key, val),
+      removeItem: (key) => stored.delete(key),
+    },
+    addEventListener(type, fn) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type).add(fn);
+    },
+    removeEventListener(type, fn) {
+      listeners.get(type)?.delete(fn);
+    },
+    dispatchEvent(event) {
+      for (const fn of [...(listeners.get(event.type) || [])]) fn(event);
+      return true;
+    },
+  };
+  const pendingPuts = [];
+  const pendingGets = [];
+  let getCount = 0;
+  const service = load('../lib/services/watchProgressService.ts', {
+    window: sharedWindow,
+    Event,
+    CustomEvent,
+    fetch: (url, opts = {}) => {
+      if (opts.method === 'PUT') {
+        return new Promise((resolve) => pendingPuts.push({ resolve, signal: opts.signal, body: JSON.parse(opts.body) }));
+      }
+      getCount += 1;
+      if (getCount === 1) {
+        return Promise.resolve(reply([record({ version: 2, positionMs: 30000, updatedAt: '2026-11-26T00:00:00Z' })]));
+      }
+      return new Promise((resolve) => pendingGets.push({ resolve, url, auth: opts.headers.Authorization }));
+    },
+  });
+
+  const makeScopedHarness = (auth) => {
+    const slots = []; let cursor = 0; let pending = []; let authValue = auth;
+    const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+    const react = {
+      useState(init) {
+        const i = cursor++;
+        if (!slots[i]) slots[i] = { value: typeof init === 'function' ? init() : init };
+        return [slots[i].value, (val) => { slots[i].value = typeof val === 'function' ? val(slots[i].value) : val; }];
+      },
+      useRef(value) { const i = cursor++; return (slots[i] ||= { current: value }); },
+      useCallback(fn, deps) { const i = cursor++; if (!slots[i] || !same(slots[i].deps, deps)) slots[i] = { fn, deps }; return slots[i].fn; },
+      useEffect(fn, deps) {
+        const i = cursor++;
+        if (!slots[i] || !same(slots[i].deps, deps)) {
+          pending.push(() => { slots[i]?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; });
+        }
+      },
+    };
+    const hook = load('../lib/hooks/useWatchProgress.ts', {
+      window: sharedWindow,
+      Event,
+      CustomEvent,
+      require: (name) => (name === 'react' ? react : name.includes('AuthContext') ? { useAuth: () => authValue } : service),
+    });
+    return {
+      render(nextAuth = authValue) {
+        authValue = nextAuth; cursor = 0;
+        const output = hook.useWatchProgress();
+        const effects = pending; pending = []; effects.forEach((fn) => fn());
+        return output;
+      },
+      close() { slots.forEach((slot) => slot?.cleanup?.()); },
+    };
+  };
+
+  const playerHook = makeScopedHarness(account(1, 'tok1'));
+  playerHook.render();
+  await tick();
+  const savePromise = playerHook.render().saveProgress(draft({ positionMs: 95000 }), 'pause');
+  await tick();
+  playerHook.close();
+
+  assert.equal(pendingPuts.length, 1);
+  assert.equal(pendingPuts[0].signal.aborted, false);
+
+  const homeHook = makeScopedHarness(account(1, 'tok1'));
+  const otherAccountHook = makeScopedHarness(account(2, 'tok2'));
+  homeHook.render();
+  otherAccountHook.render();
+  await tick();
+
+  pendingPuts[0].resolve(reply(record({ version: 3, positionMs: 95000, updatedAt: '2026-11-26T00:01:00Z' })));
+  const saved = await savePromise;
+  assert.equal(saved.version, 3);
+  assert.equal(homeHook.render().records[0].positionMs, 95000);
+  assert.equal(otherAccountHook.render().records.length, 0);
+
+  pendingGets[0].resolve(reply([record({ version: 2, positionMs: 30000, updatedAt: '2026-11-26T00:00:00Z' })]));
+  pendingGets[1].resolve(reply([]));
+  await tick();
+  await tick();
+  assert.equal(homeHook.render().records[0].version, 3);
+  assert.equal(homeHook.render().records[0].positionMs, 95000);
+  assert.equal(otherAccountHook.render().records.length, 0);
+
+  homeHook.close();
+  otherAccountHook.close();
+});
+
+test('Reload syncs lower version after delete+recreate and leave double-409 refresh uses keepalive', async () => {
+  let listPhase = 1;
+  const putVersions = [];
+  const episodeGets = [];
+  const { service } = environment(async (url, opts = {}) => {
+    if (opts.method === 'PUT') {
+      const body = JSON.parse(opts.body);
+      putVersions.push(body.expectedVersion);
+      if (url.endsWith('/ep2')) return reply(null, 409);
+      return reply(record({ version: body.expectedVersion + 1, positionMs: body.positionMs }));
+    }
+    if (url.endsWith('/ep2')) {
+      episodeGets.push({ keepalive: Boolean(opts.keepalive) });
+      return reply(record({ episodeId: 'ep2', version: 2, positionMs: 90000 }));
+    }
+    if (listPhase === 1) return reply([record({ version: 4, positionMs: 50000 })]);
+    return reply([record({ version: 0, positionMs: 50000 })]);
+  });
+
+  const h = hookHarness(account(1, 'one'), service);
+  h.render();
+  await tick();
+  listPhase = 2;
+  h.render().reload();
+  h.render();
+  await tick();
+  await h.render().saveProgress(draft({ positionMs: 75000 }), 'pause');
+  assert.deepEqual(putVersions, [0]);
+
+  await h.render().saveProgress(draft({ episodeId: 'ep2', positionMs: 60000 }), 'leave');
+  assert.equal(episodeGets.length, 2);
+  assert.equal(episodeGets[0].keepalive, true);
+  assert.equal(episodeGets[1].keepalive, true);
+  h.close();
+});

@@ -1,23 +1,12 @@
 package com.dippie.security;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import com.dippie.model.user.Role;
+import com.dippie.model.user.User;
+import com.dippie.repository.user.UserRepository;
+import com.dippie.service.user.UserViewerAdapter;
 
-import com.dippie.user.User;
-import com.dippie.user.UserRepository;
-import com.dippie.user.UserViewerAdapter;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.util.Base64;
-import java.util.Date;
-import java.util.Optional;
-import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -28,6 +17,20 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.Base64;
+import java.util.Date;
+import java.util.Optional;
+import java.util.stream.IntStream;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 // Test đơn vị cho JwtAuthenticationFilter: khớp tokenVersion, từ chối token cũ, tài khoản bị khóa và token thiếu claim ver.
 class JwtAuthenticationFilterTest {

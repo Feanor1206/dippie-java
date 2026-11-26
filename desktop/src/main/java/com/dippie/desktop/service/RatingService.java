@@ -9,6 +9,7 @@ import com.dippie.desktop.db.JdbcDatabase;
 import com.dippie.desktop.model.AdminSession;
 import com.dippie.desktop.model.Movie;
 import com.dippie.desktop.model.Rating;
+import com.dippie.desktop.model.RatingRow;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -40,17 +41,10 @@ public final class RatingService {
         });
     }
 
-    // Một dòng hoàn chỉnh để hiển thị và lọc trên bảng đánh giá.
-    public record RatingRow(Rating rating, String username, String title, String seriesId, String seriesTitle) {
-        public long id() {
-            return rating.id();
-        }
-    }
-
     // Khóa dòng đánh giá rồi đối chiếu với bản chụp lúc admin bấm xóa, tránh xóa nhầm nếu người dùng vừa đổi điểm.
     public void delete(AdminSession session, RatingRow selected) {
         db.transaction(connection -> {
-            var actor = session.requireCurrent(userDao.lockAccount(connection, session.userId()).orElse(null));
+            var actor = AdminQuery.requireCurrent(session, userDao.lockAccount(connection, session.userId()).orElse(null));
             Rating current = ratingDao.lockRating(connection, selected.id())
                     .orElseThrow(() -> new DataAccessException.Conflict("Đánh giá này đã bị xóa trước đó. Hãy làm mới bảng."));
             if (!current.equals(selected.rating())) {

@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/context/AuthContext';
+import { parseTimestamp } from '@/lib/timestamps';
 import {
   getGuestWatchProgress,
   getWatchProgress,
   listWatchProgress,
+  notifyWatchProgressUpdated,
   saveGuestWatchProgress,
   saveWatchProgress as saveWatchProgressRequest,
   WatchProgressError,
   WATCH_HISTORY_CHANGED_EVENT,
   WATCH_PROGRESS_LIMIT,
+  WATCH_PROGRESS_UPDATED_EVENT,
   type WatchProgressDraft,
   type WatchProgressRecord,
+  type WatchProgressUpdateDetail,
 } from '@/lib/services/watchProgressService';
 
 export type WatchProgressSaveReason = 'interval' | 'pause' | 'ended' | 'episode-change' | 'leave';
@@ -60,7 +64,7 @@ class ScopedJobError {
   ) {}
 }
 
-const INTERVAL_THROTTLE_MS = 15_000;
+const INTERVAL_THROTTLE_MS = 14_000;
 const CONFLICT_RETRY_FAILED_MESSAGE =
   'Bạn vừa xem tập này ở cửa sổ khác. Dippie đã giữ mốc mới nhất.';
 
@@ -76,12 +80,13 @@ function getErrorInfo(err: unknown): { status?: number; isCanceled: boolean; mes
 
 function upsertRecord(records: WatchProgressRecord[], record: WatchProgressRecord): WatchProgressRecord[] {
   return [record, ...records.filter((item) => item.episodeId !== record.episodeId)]
-    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+    .sort((a, b) => parseTimestamp(b.updatedAt) - parseTimestamp(a.updatedAt))
     .slice(0, WATCH_PROGRESS_LIMIT);
 }
 
 export class EpisodeProgressCoordinator {
-  private readonly controllers = new Set<AbortController>();
+  private readonly readControllers = new Set<AbortController>();
+  private readonly writeControllers = new Set<AbortController>();
   private readonly pending = new Map<string, QueuedSave>();
   private readonly workers = new Map<string, Promise<void>>();
   private readonly versions = new Map<string, number>();
@@ -99,29 +104,52 @@ export class EpisodeProgressCoordinator {
   }
 
   trackController(controller: AbortController): void {
-    this.controllers.add(controller);
+    this.readControllers.add(controller);
   }
 
   releaseController(controller: AbortController): void {
-    this.controllers.delete(controller);
+    this.readControllers.delete(controller);
   }
 
   recordVersion(scopeId: string, episodeId: string, version: number): void {
     const key = `${scopeId}:${episodeId}`;
     const existing = this.versions.get(key);
-    if (existing === undefined || version > existing) {
+    if (existing === undefined || version >= existing) {
       this.versions.set(key, version);
     }
   }
 
+  syncVersions(scopeId: string, records: WatchProgressRecord[]): void {
+    const prefix = `${scopeId}:`;
+    for (const key of [...this.versions.keys()]) {
+      if (key.startsWith(prefix) && !this.inFlight.has(key) && !this.pending.has(key)) {
+        this.versions.delete(key);
+      }
+    }
+    for (const record of records) {
+      const key = `${scopeId}:${record.episodeId}`;
+      if (!this.inFlight.has(key) && !this.pending.has(key)) {
+        this.versions.set(key, record.version);
+      } else {
+        this.recordVersion(scopeId, record.episodeId, record.version);
+      }
+    }
+  }
+
+  abortReadRequests(): void {
+    this.readControllers.forEach((controller) => controller.abort());
+    this.readControllers.clear();
+  }
+
   abortActiveRequests(): void {
-    this.controllers.forEach((controller) => controller.abort());
-    this.controllers.clear();
+    this.abortReadRequests();
+    this.writeControllers.forEach((controller) => controller.abort());
+    this.writeControllers.clear();
   }
 
   resetForScope(scopeId: string): void {
-    this.abortActiveRequests();
     if (this.activeScopeId !== scopeId) {
+      this.abortActiveRequests();
       this.pending.forEach((job) => job.resolve(null));
       this.pending.clear();
       this.workers.clear();
@@ -129,6 +157,8 @@ export class EpisodeProgressCoordinator {
       this.inFlight.clear();
       this.lastIntervalSave.clear();
       this.activeScopeId = scopeId;
+    } else {
+      this.abortReadRequests();
     }
   }
 
@@ -182,7 +212,7 @@ export class EpisodeProgressCoordinator {
       }
 
       const controller = job.reason === 'leave' ? null : new AbortController();
-      if (controller) this.controllers.add(controller);
+      if (controller) this.writeControllers.add(controller);
       this.inFlight.set(queueKey, { assetId: job.draft.assetId, positionMs: job.draft.positionMs });
 
       let activeJob = job;
@@ -207,7 +237,7 @@ export class EpisodeProgressCoordinator {
         failedJob.resolve(null);
       } finally {
         this.inFlight.delete(queueKey);
-        if (controller) this.controllers.delete(controller);
+        if (controller) this.writeControllers.delete(controller);
       }
     }
   }
@@ -297,7 +327,7 @@ export class EpisodeProgressCoordinator {
         throw new ScopedJobError(retryErr, activeJob);
       }
       const refreshed = await this.api
-        .getWatchProgress(activeJob.scope.token!, activeJob.draft.episodeId, { signal })
+        .getWatchProgress(activeJob.scope.token!, activeJob.draft.episodeId, retryOptions)
         .catch(() => latest);
       if (!this.hooks.isCurrentScope(activeJob.scope)) {
         activeJob.resolve(null);
@@ -323,10 +353,25 @@ export function useWatchProgress() {
       : status;
   const [state, setState] = useState<ProgressState>({ scopeId: '', records: [], loading: true, error: null });
   const [retryCount, setRetryCount] = useState(0);
+  const mountedRef = useRef(true);
+  const recentUpdatesRef = useRef<{ scopeId: string; byEpisode: Map<string, WatchProgressRecord> }>({
+    scopeId: '',
+    byEpisode: new Map(),
+  });
   const identityRef = useRef<ScopeIdentity>({ id: scopeId, generation: 0, status, token });
   if (identityRef.current.id !== scopeId) {
     identityRef.current = { id: scopeId, generation: identityRef.current.generation + 1, status, token };
   }
+  if (recentUpdatesRef.current.scopeId !== scopeId) {
+    recentUpdatesRef.current = { scopeId, byEpisode: new Map() };
+  }
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const isCurrentScope = useCallback(
     (scope: ScopeIdentity) =>
@@ -337,14 +382,23 @@ export function useWatchProgress() {
   const hooks: CoordinatorHooks = {
     isCurrentScope,
     onRecordLoaded: (scope, record) => {
+      if (!mountedRef.current) return;
       setState((prev) => (prev.scopeId === scope.id ? { ...prev, records: upsertRecord(prev.records, record) } : prev));
     },
     onRecordSaved: (scope, record) => {
+      if (recentUpdatesRef.current.scopeId === scope.id) {
+        recentUpdatesRef.current.byEpisode.set(record.episodeId, record);
+      }
+      if (typeof notifyWatchProgressUpdated === 'function') {
+        notifyWatchProgressUpdated(scope.id, record);
+      }
+      if (!mountedRef.current) return;
       setState((prev) =>
         prev.scopeId === scope.id ? { ...prev, records: upsertRecord(prev.records, record), error: null } : prev
       );
     },
     onSaveError: (scope, err, reason) => {
+      if (!mountedRef.current) return;
       const info = getErrorInfo(err);
       if (reason === 'leave' && info.status !== 409 && info.status !== 401) return;
       setState((prev) =>
@@ -375,15 +429,15 @@ export function useWatchProgress() {
     });
 
     if (status === 'checking' || status === 'unavailable') {
-      return () => coordinator.abortActiveRequests();
+      return () => coordinator.abortReadRequests();
     }
     if (status === 'guest') {
       const records = getGuestWatchProgress();
       if (isCurrentScope(scope)) setState({ scopeId: scope.id, records, loading: false, error: null });
-      return () => coordinator.abortActiveRequests();
+      return () => coordinator.abortReadRequests();
     }
     if (status !== 'authenticated' || !token || !user) {
-      return () => coordinator.abortActiveRequests();
+      return () => coordinator.abortReadRequests();
     }
 
     const controller = new AbortController();
@@ -391,12 +445,30 @@ export function useWatchProgress() {
     listWatchProgress(token, { signal: controller.signal })
       .then((records) => {
         if (!isCurrentScope(scope)) return;
-        records.forEach((record) => coordinator.recordVersion(scope.id, record.episodeId, record.version));
-        setState({ scopeId: scope.id, records, loading: false, error: null });
+        let merged = records;
+        if (recentUpdatesRef.current.scopeId === scope.id && recentUpdatesRef.current.byEpisode.size > 0) {
+          for (const [episodeId, recent] of [...recentUpdatesRef.current.byEpisode.entries()]) {
+            const existing = merged.find((item) => item.episodeId === episodeId);
+            const isRecentNewer =
+              !existing ||
+              recent.version > existing.version ||
+              (recent.version === existing.version &&
+                parseTimestamp(recent.updatedAt) > parseTimestamp(existing.updatedAt));
+            if (isRecentNewer) {
+              merged = upsertRecord(merged, recent);
+            } else {
+              recentUpdatesRef.current.byEpisode.delete(episodeId);
+            }
+          }
+        }
+        coordinator.syncVersions(scope.id, merged);
+        if (mountedRef.current) {
+          setState({ scopeId: scope.id, records: merged, loading: false, error: null });
+        }
       })
       .catch((err: unknown) => {
         const info = getErrorInfo(err);
-        if (!isCurrentScope(scope) || info.isCanceled) return;
+        if (!isCurrentScope(scope) || info.isCanceled || !mountedRef.current) return;
         setState({
           scopeId: scope.id,
           records: [],
@@ -406,7 +478,7 @@ export function useWatchProgress() {
       })
       .finally(() => coordinator.releaseController(controller));
 
-    return () => coordinator.abortActiveRequests();
+    return () => coordinator.abortReadRequests();
   }, [scopeId, status, token, user?.id, retryCount, isCurrentScope]);
 
   const saveProgress = useCallback(
@@ -420,11 +492,16 @@ export function useWatchProgress() {
         try {
           const records = saveGuestWatchProgress(draft);
           const record = records.find((item) => item.episodeId === draft.episodeId) || null;
-          if (isCurrentScope(scope)) setState({ scopeId: scope.id, records, loading: false, error: null });
+          if (record && typeof notifyWatchProgressUpdated === 'function') {
+            notifyWatchProgressUpdated(scope.id, record);
+          }
+          if (isCurrentScope(scope) && mountedRef.current) {
+            setState({ scopeId: scope.id, records, loading: false, error: null });
+          }
           return Promise.resolve(record);
         } catch (err: unknown) {
           const info = getErrorInfo(err);
-          if (isCurrentScope(scope)) {
+          if (isCurrentScope(scope) && mountedRef.current) {
             setState((prev) => ({ ...prev, error: info.message || 'Chưa lưu được mốc xem trên máy này.' }));
           }
           return Promise.reject(err);
@@ -439,19 +516,49 @@ export function useWatchProgress() {
   const reload = useCallback(() => setRetryCount((value) => value + 1), []);
 
   useEffect(() => {
-    if (status !== 'authenticated' || typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+    if (
+      (status !== 'authenticated' && status !== 'guest') ||
+      typeof window === 'undefined' ||
+      typeof window.addEventListener !== 'function'
+    ) {
       return;
     }
-    const handleSynced = () => reload();
-    window.addEventListener(WATCH_HISTORY_CHANGED_EVENT, handleSynced);
-    window.addEventListener('dippie:watch-progress-synced', handleSynced);
+    const historyEventName =
+      typeof WATCH_HISTORY_CHANGED_EVENT === 'string' ? WATCH_HISTORY_CHANGED_EVENT : 'dippie:watch-history-changed';
+    const progressEventName =
+      typeof WATCH_PROGRESS_UPDATED_EVENT === 'string' ? WATCH_PROGRESS_UPDATED_EVENT : 'dippie:watch-progress-updated';
+    const handleHistoryChanged = () => {
+      recentUpdatesRef.current.byEpisode.clear();
+      reload();
+    };
+    const handleProgressUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<WatchProgressUpdateDetail> | null)?.detail;
+      if (!detail || detail.scopeId !== scopeId || !detail.record) return;
+      const record = detail.record;
+      recentUpdatesRef.current.byEpisode.set(record.episodeId, record);
+      coordinatorRef.current?.recordVersion(scopeId, record.episodeId, record.version);
+      if (!mountedRef.current) return;
+      setState((prev) =>
+        prev.scopeId === scopeId
+          ? { ...prev, records: upsertRecord(prev.records, record), error: null }
+          : prev
+      );
+    };
+    window.addEventListener(historyEventName, handleHistoryChanged);
+    window.addEventListener(progressEventName, handleProgressUpdated);
+    if (status === 'authenticated') {
+      window.addEventListener('dippie:watch-progress-synced', handleHistoryChanged);
+    }
     return () => {
       if (typeof window.removeEventListener === 'function') {
-        window.removeEventListener(WATCH_HISTORY_CHANGED_EVENT, handleSynced);
-        window.removeEventListener('dippie:watch-progress-synced', handleSynced);
+        window.removeEventListener(historyEventName, handleHistoryChanged);
+        window.removeEventListener(progressEventName, handleProgressUpdated);
+        if (status === 'authenticated') {
+          window.removeEventListener('dippie:watch-progress-synced', handleHistoryChanged);
+        }
       }
     };
-  }, [status, reload]);
+  }, [status, scopeId, reload]);
 
   const visibleState =
     state.scopeId === scopeId

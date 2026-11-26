@@ -1,7 +1,9 @@
 package com.dippie.desktop.service;
 
 import com.dippie.desktop.dao.UserDao;
+import com.dippie.desktop.db.DataAccessException;
 import com.dippie.desktop.model.AdminSession;
+import com.dippie.desktop.model.UserAccount;
 
 import java.util.function.Supplier;
 
@@ -20,7 +22,15 @@ final class AdminQuery<T> implements Supplier<T> {
     // Đọc lại tài khoản từ DB mỗi lần để nếu bên web vừa khóa hay hạ quyền thì lệnh đọc bị chặn ngay.
     @Override
     public T get() {
-        session.requireCurrent(userDao.findById(session.userId()).orElse(null));
+        requireCurrent(session, userDao.findById(session.userId()).orElse(null));
         return delegate.get();
+    }
+
+    // Mình chuyển chỗ ném Conflict về tầng service nha Việt, để AdminSession bên model không phải nhập DataAccessException từ db.
+    static UserAccount requireCurrent(AdminSession session, UserAccount account) {
+        if (!session.matches(account)) {
+            throw new DataAccessException.Conflict("Phiên đăng nhập đã hết hiệu lực. Bạn cần đăng nhập lại.");
+        }
+        return account;
     }
 }

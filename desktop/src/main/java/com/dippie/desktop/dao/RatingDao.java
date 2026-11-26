@@ -2,6 +2,7 @@ package com.dippie.desktop.dao;
 
 import com.dippie.desktop.db.JdbcDatabase;
 import com.dippie.desktop.model.Rating;
+import com.dippie.desktop.model.TopRated;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -78,10 +79,6 @@ public final class RatingDao extends AbstractJdbcDao<Rating, Long> {
 
     // Điểm trung bình của một bộ phim hoặc tập phim đã có người chấm.
     public record Summary(String movieId, double average) {
-    }
-
-    // Một dòng trong bảng xếp hạng 10 tập điểm cao nhất.
-    public record TopRated(String episodeId, String seriesTitle, String title, double average, long count) {
     }
 
     // Số lượt chấm cho từng mức điểm từ 1 đến 10.

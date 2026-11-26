@@ -181,7 +181,7 @@ export function EpisodePlayerPanel({
           <video
             ref={videoRef}
             data-testid="series-video-player"
-            key={`${streamUrl}:${fileRetryCount}`}
+            key={`${selectedEpisode?.id || ''}:${streamUrl}:${fileRetryCount}`}
             src={streamUrl}
             controls
             playsInline

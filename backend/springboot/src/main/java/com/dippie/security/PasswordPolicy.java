@@ -1,6 +1,7 @@
 package com.dippie.security;
 
-import com.dippie.common.error.InvalidRequestException;
+import com.dippie.exception.InvalidRequestException;
+
 import java.nio.charset.StandardCharsets;
 
 // Quy tắc kiểm tra mật khẩu: cấm bỏ trống hoặc toàn khoảng trắng, đủ độ dài tối thiểu và không vượt 72 byte UTF-8 vì BCrypt tự cắt phần thừa sau byte thứ 72.

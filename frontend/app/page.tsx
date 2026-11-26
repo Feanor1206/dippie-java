@@ -5,7 +5,7 @@ import { ContinueWatching } from '@/features/movies/components/ContinueWatching'
 import { SeriesRow } from '@/features/series/components/SeriesRow';
 import { useAuth } from '@/lib/context/AuthContext';
 import { listMovieProgress } from '@/lib/services/movieProgress';
-import { getGuestWatchProgress } from '@/lib/services/watchProgressService';
+import { getGuestWatchProgress, WATCH_HISTORY_CHANGED_EVENT } from '@/lib/services/watchProgressService';
 import {
   getRecommendations,
   MOOD_PRESETS,
@@ -34,14 +34,32 @@ const DEFAULT_GENRE_TOPICS: CatalogGenreOption[] = [
 export default function HomePage() {
   const { status, token, user } = useAuth();
   const userId = status === 'authenticated' ? user?.id ?? null : null;
-  const films = useMemo(() => status === 'guest' || userId !== null ? listMovieProgress(userId) : [], [status, userId]);
+  const [historyVersion, setHistoryVersion] = useState(0);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+    const eventName =
+      typeof WATCH_HISTORY_CHANGED_EVENT === 'string' ? WATCH_HISTORY_CHANGED_EVENT : 'dippie:watch-history-changed';
+    const refreshHistory = () => setHistoryVersion((value) => value + 1);
+    window.addEventListener(eventName, refreshHistory);
+    return () => {
+      if (typeof window.removeEventListener === 'function') {
+        window.removeEventListener(eventName, refreshHistory);
+      }
+    };
+  }, []);
+
+  const films = useMemo(
+    () => (status === 'guest' || userId !== null ? listMovieProgress(userId) : []),
+    [status, userId, historyVersion]
+  );
   const watched = useMemo(
     () =>
       [
         ...films.filter((film) => film.positionMs > 0).map((film) => film.movieId),
         ...(status === 'guest' ? getGuestWatchProgress().filter((episode) => episode.positionMs > 0).map((episode) => episode.episodeId) : []),
       ].filter((id) => id.length <= MAX_WATCHED_ID_LENGTH),
-    [films, status]
+    [films, status, historyVersion]
   );
 
   const [state, setState] = useState<{

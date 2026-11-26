@@ -30,7 +30,7 @@ public final class UserService {
     public UserAccount change(AdminSession session, UserAccount selected, Role role, boolean enabled) {
         return db.transaction(connection -> {
             var enabledAdmins = userDao.lockEnabledAdmins(connection);
-            UserAccount actor = session.requireCurrent(enabledAdmins.stream()
+            UserAccount actor = AdminQuery.requireCurrent(session, enabledAdmins.stream()
                     .filter(account -> account.id() == session.userId()).findFirst().orElse(null));
             if (selected.id() == actor.id()) {
                 throw new DataAccessException.Conflict("Bạn không thể tự đổi vai trò hay khóa tài khoản của chính mình.");

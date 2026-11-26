@@ -909,3 +909,54 @@ test('GuestSyncDialog presents the exact Vietnamese confirmation title and both 
   assert.equal(confirmed, 1);
   assert.equal(declined, 1);
 });
+
+test('Guest watch progress sync writes oldest episode first so the most recently watched episode stays newest on server', async () => {
+  const storage = new Map();
+  storage.set(
+    'dippie_guest_watch_progress_v1',
+    JSON.stringify([
+      {
+        episodeId: 'ep_newest',
+        assetId: 'youtube:33333333333',
+        positionMs: 45000,
+        completed: false,
+        updatedAt: '2026-11-26T00:05:00Z',
+      },
+      {
+        episodeId: 'ep_middle',
+        assetId: 'youtube:22222222222',
+        positionMs: 30000,
+        completed: false,
+        updatedAt: '2026-11-26T00:02:00Z',
+      },
+      {
+        episodeId: 'ep_oldest',
+        assetId: 'youtube:11111111111',
+        positionMs: 15000,
+        completed: false,
+        updatedAt: '2026-11-26T00:00:00Z',
+      },
+    ])
+  );
+
+  const putEpisodeOrder = [];
+  const lib = loadLibraryService(async (url, opts) => {
+    const method = opts?.method || 'GET';
+    if (method === 'PUT' && url.includes('/users/watch-progress/')) {
+      putEpisodeOrder.push(url.split('/').at(-1));
+      return ok({ version: 0 });
+    }
+    return ok([]);
+  }, storage);
+
+  const result = await lib.syncGuestDataToAccount(
+    'tok-order',
+    { watchlist: [], favorites: [], ratings: {} },
+    new AbortController().signal,
+    () => true
+  );
+
+  assert.equal(result.failedCount, 0);
+  assert.equal(result.mergedProgressCount, 3);
+  assert.deepEqual(putEpisodeOrder, ['ep_oldest', 'ep_middle', 'ep_newest']);
+});

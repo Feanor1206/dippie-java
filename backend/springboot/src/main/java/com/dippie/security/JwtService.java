@@ -1,11 +1,19 @@
 package com.dippie.security;
 
+import com.dippie.model.user.Role;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
+import org.springframework.stereotype.Service;
+
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -15,11 +23,6 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.Optional;
 import javax.crypto.SecretKey;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
-import org.springframework.stereotype.Service;
 
 // Xử lý ký và kiểm tra JWT (HS256) cho cả phiên đăng nhập lẫn vé phát video ngắn hạn.
 @Service

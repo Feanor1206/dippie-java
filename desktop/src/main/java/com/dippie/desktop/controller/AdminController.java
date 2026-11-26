@@ -1,13 +1,14 @@
 package com.dippie.desktop.controller;
 
 import com.dippie.desktop.model.AdminSession;
+import com.dippie.desktop.model.DashboardSnapshot;
+import com.dippie.desktop.model.RatingRow;
 import com.dippie.desktop.model.Role;
 import com.dippie.desktop.model.UserAccount;
 import com.dippie.desktop.model.catalog.SeriesNode;
 import com.dippie.desktop.service.AdminServices;
+import com.dippie.desktop.service.CatalogService;
 import com.dippie.desktop.service.CommandHistory;
-import com.dippie.desktop.service.DashboardService;
-import com.dippie.desktop.service.RatingService.RatingRow;
 import javafx.beans.property.ReadOnlyBooleanProperty;
 import javafx.beans.property.ReadOnlyBooleanWrapper;
 import javafx.beans.property.ReadOnlyLongProperty;
@@ -54,12 +55,12 @@ public final class AdminController {
         tasks.database(() -> services.currentAdmin(session), onSuccess);
     }
 
-    public void dashboard(Consumer<DashboardService.Snapshot> onSuccess) {
+    public void dashboard(Consumer<DashboardSnapshot> onSuccess) {
         dashboard(onSuccess, () -> {
         });
     }
 
-    public void dashboard(Consumer<DashboardService.Snapshot> onSuccess, Runnable onComplete) {
+    public void dashboard(Consumer<DashboardSnapshot> onSuccess, Runnable onComplete) {
         tasks.database(() -> services.dashboard(session), onSuccess, onComplete);
     }
 
@@ -70,6 +71,11 @@ public final class AdminController {
 
     public void catalog(Consumer<List<SeriesNode>> onSuccess, Runnable onComplete) {
         tasks.database(() -> services.catalog(session), onSuccess, onComplete);
+    }
+
+    // Lọc cây danh mục đi qua controller để CatalogPane khỏi gọi thẳng sang CatalogService.
+    public List<SeriesNode> filterCatalog(List<SeriesNode> catalog, String query) {
+        return CatalogService.filter(catalog, query);
     }
 
     public void users(Consumer<List<UserAccount>> onSuccess) {

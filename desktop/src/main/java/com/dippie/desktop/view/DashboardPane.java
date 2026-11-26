@@ -2,10 +2,10 @@ package com.dippie.desktop.view;
 
 import com.dippie.desktop.controller.AdminController;
 import com.dippie.desktop.controller.UiTasks;
-import com.dippie.desktop.dao.RatingDao.TopRated;
-import com.dippie.desktop.dao.WatchProgressDao.MostWatched;
 import com.dippie.desktop.export.CsvStrategy;
-import com.dippie.desktop.service.DashboardService.Snapshot;
+import com.dippie.desktop.model.DashboardSnapshot;
+import com.dippie.desktop.model.MostWatched;
+import com.dippie.desktop.model.TopRated;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.collections.FXCollections;
@@ -151,7 +151,7 @@ public final class DashboardPane extends DataPane {
     }
 
     // Cập nhật 5 thẻ tổng, hai bảng xếp hạng và vẽ lại biểu đồ cột sau mỗi lần đọc.
-    private void display(Snapshot snapshot) {
+    private void display(DashboardSnapshot snapshot) {
         var counts = snapshot.counts();
         var numbers = NumberFormat.getIntegerInstance(VIETNAMESE);
         seriesCountLabel.setText(numbers.format(counts.series()));

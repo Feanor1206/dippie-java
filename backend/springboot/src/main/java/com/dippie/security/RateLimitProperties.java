@@ -1,8 +1,9 @@
 package com.dippie.security;
 
-import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
+
+import java.time.Duration;
 
 // Cấu hình ngưỡng và cửa sổ giới hạn tần suất theo IP và theo tài khoản, đọc từ dippie.auth.rate-limit.
 @ConfigurationProperties("dippie.auth.rate-limit")

@@ -61,3 +61,24 @@ test('Movie progress keeps guest and each signed-in viewer in separate collectio
   assert.equal(progress.getMovieProgress('film', 1).positionMs, 30000);
   assert.equal(progress.getMovieProgress('film', 2), null);
 });
+
+test('clearMovieProgress clears only the specified user bucket and near-end progress marks completed', () => {
+  const progress = load(memoryWindow().window);
+  progress.saveMovieProgress({ movieId: 'guest-film', title: 'Guest', positionMs: 20000, durationMs: 600000 }, 100000, null);
+  progress.saveMovieProgress({ movieId: 'u1-film', title: 'User 1', positionMs: 20000, durationMs: 600000 }, 100000, 1);
+  progress.saveMovieProgress({ movieId: 'u2-film', title: 'User 2', positionMs: 20000, durationMs: 600000 }, 100000, 2);
+
+  progress.clearMovieProgress(1);
+  assert.equal(progress.listMovieProgress(1).length, 0);
+  assert.equal(progress.listMovieProgress(2).length, 1);
+  assert.equal(progress.listMovieProgress(null).length, 1);
+
+  const nearEnd = progress.saveMovieProgress(
+    { movieId: 'short-film', title: 'Short', positionMs: 570000, durationMs: 600000, completed: false },
+    100000,
+    1
+  );
+  assert.equal(nearEnd.completed, true);
+  assert.equal(progress.isUsableMovieProgress(nearEnd), false);
+  assert.equal(progress.getMovieResumeSeconds('short-film', 1), 0);
+});

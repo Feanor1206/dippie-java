@@ -12,10 +12,11 @@ import com.dippie.desktop.dao.UserDao;
 import com.dippie.desktop.dao.WatchProgressDao;
 import com.dippie.desktop.db.JdbcDatabase;
 import com.dippie.desktop.model.AdminSession;
+import com.dippie.desktop.model.DashboardSnapshot;
+import com.dippie.desktop.model.RatingRow;
 import com.dippie.desktop.model.Role;
 import com.dippie.desktop.model.UserAccount;
 import com.dippie.desktop.model.catalog.SeriesNode;
-import com.dippie.desktop.service.RatingService.RatingRow;
 
 import java.util.List;
 
@@ -50,7 +51,7 @@ public final class AdminServices {
 
     // Xác minh phiên rồi trả về thông tin quản trị viên đang đăng nhập.
     public UserAccount currentAdmin(AdminSession session) {
-        return session.requireCurrent(userDao.findById(session.userId()).orElse(null));
+        return AdminQuery.requireCurrent(session, userDao.findById(session.userId()).orElse(null));
     }
 
     public List<UserAccount> users(AdminSession session) {
@@ -65,7 +66,7 @@ public final class AdminServices {
         return new AdminQuery<>(userDao, session, catalogService::load).get();
     }
 
-    public DashboardService.Snapshot dashboard(AdminSession session) {
+    public DashboardSnapshot dashboard(AdminSession session) {
         return new AdminQuery<>(userDao, session, dashboardService::load).get();
     }
 

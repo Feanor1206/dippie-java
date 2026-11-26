@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Tạo báo cáo Bài tập lớn Dippie (Bao_cao_BTL_Dippie.docx) bằng python-docx."""
 
+import re
 from pathlib import Path
 import docx
 from docx.shared import Inches, Pt, Mm, RGBColor
@@ -9,25 +10,29 @@ from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn, nsdecls
 
+import team_info as team
+
 BASE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
 SCREENSHOTS_DIR = ASSETS_DIR / "screenshots"
 DESKTOP_SHOTS_DIR = SCREENSHOTS_DIR / "desktop"
 OUT_DOCX = BASE_DIR / "Bao_cao_BTL_Dippie.docx"
 
-# Bảng màu trang nhã cho văn bản học thuật (phù hợp in màu lẫn đen trắng)
-CLR_PRIMARY = RGBColor(0x28, 0x46, 0x30)   # Xanh xô thơm đậm
-CLR_INK = RGBColor(0x18, 0x24, 0x1E)       # Mực đậm
-CLR_MUTED = RGBColor(0x4E, 0x5B, 0x52)     # Xám trầm
-CLR_WARN = RGBColor(0x8C, 0x4A, 0x00)      # Nhấn nhẹ cho khung đánh dấu
+# Báo cáo nộp giảng viên nên để chữ đen, bảng kẻ mảnh, tiêu đề cột tô xám nhạt (theo mẫu báo cáo CNPM của nhóm).
+CLR_PRIMARY = RGBColor(0x00, 0x00, 0x00)
+CLR_INK = RGBColor(0x00, 0x00, 0x00)
+CLR_MUTED = RGBColor(0x40, 0x40, 0x40)
+CLR_WARN = RGBColor(0x00, 0x00, 0x00)
 
-HEX_HEADER_BG = "E6EEDF"
-HEX_ALT_ROW = "F7FAF5"
-HEX_BORDER = "9EB09B"
-HEX_CODE_BG = "F4F6F3"
-HEX_PLACEHOLDER_BG = "FBF8EE"
-HEX_PLACEHOLDER_BORDER = "B89548"
-
+HEX_HEADER_BG = "E7E6E6"
+HEX_ALT_ROW = "FFFFFF"
+HEX_BORDER = "000000"
+HEX_CODE_BG = "F2F2F2"
+HEX_PLACEHOLDER_BG = "FFFFFF"
+HEX_PLACEHOLDER_BORDER = "000000"
+LOGO_PATH = BASE_DIR / "assets" / "logo-truong.png"
+FIGURE_CAPTION_STYLE = "Chu thich hinh"
+TABLE_CAPTION_STYLE = "Chu thich bang"
 
 # ---------------------------------------------------------------------------
 # Tiện ích định dạng XML cho python-docx 1.2.0
@@ -198,6 +203,9 @@ class ReportBuilder:
         self.tables = []    # [(num, caption)]
         self.fig_list_anchor = None
         self.tbl_list_anchor = None
+        self.chapter = None
+        self.fig_in_chapter = 0
+        self.tbl_in_chapter = 0
         self._configure_document()
 
     def _configure_document(self):
@@ -228,19 +236,16 @@ class ReportBuilder:
         normal.paragraph_format.space_after = Pt(6)
         normal.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-        for lvl, size, color, sp_before, sp_after, ital in (
-            (1, 16, CLR_PRIMARY, 14, 8, False),
-            (2, 14, CLR_INK, 12, 6, False),
-            (3, 13, CLR_PRIMARY, 8, 4, True),
-        ):
+        # Chương căn giữa cỡ 16, mục 1.1 cỡ 14, mục 1.1.1 cỡ 13, đều đậm và đen như báo cáo CNPM.
+        for lvl, size in ((1, 16), (2, 14), (3, 13)):
             st = self.doc.styles[f"Heading {lvl}"]
             st.font.name = "Times New Roman"
             st.font.size = Pt(size)
             st.font.bold = True
-            st.font.italic = ital
-            st.font.color.rgb = color
-            st.paragraph_format.space_before = Pt(sp_before)
-            st.paragraph_format.space_after = Pt(sp_after)
+            st.font.italic = False
+            st.font.color.rgb = CLR_INK
+            st.paragraph_format.space_before = Pt(12 if lvl == 1 else 10)
+            st.paragraph_format.space_after = Pt(10 if lvl == 1 else 6)
             st.paragraph_format.line_spacing = 1.3
             st.paragraph_format.keep_with_next = True
             st.paragraph_format.keep_together = True
@@ -249,30 +254,29 @@ class ReportBuilder:
             if srFonts is None:
                 srFonts = OxmlElement("w:rFonts")
                 srPr.insert(0, srFonts)
+            # Xoá font theo theme, nếu không Word vẫn hiện tiêu đề bằng Calibri Light.
+            for attr in ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme"):
+                if srFonts.get(qn(attr)) is not None:
+                    del srFonts.attrib[qn(attr)]
             for attr in ("w:ascii", "w:hAnsi", "w:cs", "w:eastAsia"):
                 srFonts.set(qn(attr), "Times New Roman")
 
-        # Header và Footer từ trang 2 trở đi
-        header = section.header
-        hp = header.paragraphs[0]
-        hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        hp.paragraph_format.line_spacing = 1.0
-        hp.paragraph_format.space_after = Pt(2)
-        hr = hp.add_run("Báo cáo Bài tập lớn: Dippie (Website xem và gợi ý phim hoạt hình cho gia đình)")
-        set_run_font(hr, size_pt=10, italic=True, color=CLR_MUTED)
-        add_bottom_border_to_paragraph(hp, color="C9DDBD", sz="4")
+        # Hai kiểu chú thích riêng để Word gom thành danh mục hình và danh mục bảng có số trang.
+        from docx.enum.style import WD_STYLE_TYPE
+        for style_name in (FIGURE_CAPTION_STYLE, TABLE_CAPTION_STYLE):
+            cst = self.doc.styles.add_style(style_name, WD_STYLE_TYPE.PARAGRAPH)
+            cst.base_style = normal
+            cst.font.size = Pt(12)
+            cst.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            cst.paragraph_format.line_spacing = 1.2
+            cst.paragraph_format.first_line_indent = Pt(0)
 
+        # Không có dòng đầu trang; chân trang chỉ có số trang ở giữa, trang bìa không đánh số.
         footer = section.footer
         fp = footer.paragraphs[0]
         fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
         fp.paragraph_format.line_spacing = 1.0
-        fp.paragraph_format.space_before = Pt(2)
-        r_pre = fp.add_run("Trang ")
-        set_run_font(r_pre, size_pt=11, color=CLR_MUTED)
-        add_field(fp, "PAGE", "1", size_pt=11, color=CLR_MUTED)
-        r_mid = fp.add_run(" / ")
-        set_run_font(r_mid, size_pt=11, color=CLR_MUTED)
-        add_field(fp, "NUMPAGES", "1", size_pt=11, color=CLR_MUTED)
+        add_field(fp, "PAGE", "1", size_pt=12, color=CLR_INK)
 
     def page_break(self):
         self.doc.add_page_break()
@@ -280,10 +284,23 @@ class ReportBuilder:
     def h1(self, text, break_before=True):
         if break_before:
             self.doc.add_page_break()
+        # Hình và bảng đánh số lại theo chương: Hình 1.1, Bảng 3.2; phần phụ lục dùng PL.1.
+        found = re.match(r"Chương (\d+)", text)
+        self.chapter = found.group(1) if found else ("PL" if text.startswith("Phụ lục") else None)
+        self.fig_in_chapter = 0
+        self.tbl_in_chapter = 0
         p = self.doc.add_heading(text, level=1)
-        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        add_bottom_border_to_paragraph(p, color="8DAD86", sz="8")
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         return p
+
+    def _number(self, kind):
+        if kind == "fig":
+            self.fig_in_chapter += 1
+            n = self.fig_in_chapter
+        else:
+            self.tbl_in_chapter += 1
+            n = self.tbl_in_chapter
+        return f"{self.chapter}.{n}" if self.chapter else str(n)
 
     def h2(self, text):
         p = self.doc.add_heading(text, level=2)
@@ -302,6 +319,8 @@ class ReportBuilder:
         para.paragraph_format.space_before = Pt(0)
         para.paragraph_format.space_after = Pt(space_after)
         para.paragraph_format.keep_with_next = keep_with_next
+        if align == WD_ALIGN_PARAGRAPH.JUSTIFY:
+            para.paragraph_format.first_line_indent = Mm(10)
         if bold_prefix:
             r0 = para.add_run(bold_prefix)
             set_run_font(r0, size_pt=13, bold=True, color=CLR_INK)
@@ -329,7 +348,7 @@ class ReportBuilder:
         p_lbl.paragraph_format.space_after = Pt(2)
         p_lbl.paragraph_format.keep_with_next = True
         rl = p_lbl.add_run(title)
-        set_run_font(rl, size_pt=12, bold=True, italic=True, color=CLR_PRIMARY)
+        set_run_font(rl, size_pt=12, bold=True, italic=True, color=CLR_INK)
 
         tbl = self.doc.add_table(rows=1, cols=1)
         tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -355,17 +374,17 @@ class ReportBuilder:
         sp.paragraph_format.line_spacing = 1.0
 
     def table(self, caption, headers, rows, col_widths_mm=None, font_size=11):
-        t_num = len(self.tables) + 1
+        t_num = self._number("tbl")
         self.tables.append((t_num, caption))
 
-        p_cap = self.doc.add_paragraph()
+        p_cap = self.doc.add_paragraph(style=TABLE_CAPTION_STYLE)
         p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p_cap.paragraph_format.space_before = Pt(8)
         p_cap.paragraph_format.space_after = Pt(4)
         p_cap.paragraph_format.line_spacing = 1.2
         p_cap.paragraph_format.keep_with_next = True
         r1 = p_cap.add_run(f"Bảng {t_num}. ")
-        set_run_font(r1, size_pt=12, bold=True, color=CLR_PRIMARY)
+        set_run_font(r1, size_pt=12, bold=True, color=CLR_INK)
         r2 = p_cap.add_run(caption)
         set_run_font(r2, size_pt=12, italic=True, color=CLR_INK)
 
@@ -396,7 +415,7 @@ class ReportBuilder:
             cp.paragraph_format.space_after = Pt(0)
             cp.paragraph_format.keep_with_next = True
             cr = cp.add_run(h_text)
-            set_run_font(cr, size_pt=font_size, bold=True, color=CLR_PRIMARY)
+            set_run_font(cr, size_pt=font_size, bold=True, color=CLR_INK)
 
         for ri, row_data in enumerate(rows):
             row = tbl.rows[ri + 1]
@@ -421,7 +440,7 @@ class ReportBuilder:
         return tbl
 
     def figure(self, image_path, caption, width_inches=5.9):
-        f_num = len(self.figures) + 1
+        f_num = self._number("fig")
         self.figures.append((f_num, caption))
 
         p_img = self.doc.add_paragraph()
@@ -433,189 +452,111 @@ class ReportBuilder:
         run = p_img.add_run()
         run.add_picture(str(image_path), width=Inches(width_inches))
 
-        p_cap = self.doc.add_paragraph()
+        p_cap = self.doc.add_paragraph(style=FIGURE_CAPTION_STYLE)
         p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p_cap.paragraph_format.space_before = Pt(2)
         p_cap.paragraph_format.space_after = Pt(10)
         p_cap.paragraph_format.line_spacing = 1.2
         r1 = p_cap.add_run(f"Hình {f_num}. ")
-        set_run_font(r1, size_pt=12, bold=True, color=CLR_PRIMARY)
+        set_run_font(r1, size_pt=12, bold=True, color=CLR_INK)
         r2 = p_cap.add_run(caption)
         set_run_font(r2, size_pt=12, italic=True, color=CLR_INK)
 
     def build_cover_page(self):
-        def center_line(text, size=13, bold=False, italic=False, color=CLR_INK, sa=4, sb=0):
+        """Trang bìa giống bài CNPM: trường, khoa, logo, tên báo cáo, lớp, giảng viên, bảng thành viên, nơi và tháng."""
+        def center_line(text, size=13, bold=True, sa=6, sb=0):
             p = self.doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            p.paragraph_format.line_spacing = 1.2
+            p.paragraph_format.line_spacing = 1.3
+            p.paragraph_format.first_line_indent = Pt(0)
             p.paragraph_format.space_before = Pt(sb)
             p.paragraph_format.space_after = Pt(sa)
-            r = p.add_run(text)
-            set_run_font(r, size_pt=size, bold=bold, italic=italic, color=color)
+            set_run_font(p.add_run(text), size_pt=size, bold=bold, color=CLR_INK)
             return p
 
-        center_line("TRƯỜNG: ....................................................................................", size=13, bold=True, sa=3)
-        center_line("KHOA: .........................................................................................", size=13, bold=True, sa=8)
+        center_line(team.field("truong"), sa=4)
+        center_line(team.field("khoa"), sa=10)
+        if LOGO_PATH.exists():
+            p_logo = self.doc.add_paragraph()
+            p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p_logo.paragraph_format.space_after = Pt(14)
+            p_logo.add_run().add_picture(str(LOGO_PATH), width=Mm(30))
 
-        p_div = self.doc.add_paragraph()
-        p_div.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_div.paragraph_format.space_after = Pt(10)
-        p_div.paragraph_format.line_spacing = 1.0
-        r_div = p_div.add_run("_______________  *  _______________")
-        set_run_font(r_div, size_pt=12, color=CLR_PRIMARY)
+        center_line("Báo cáo bài tập lớn", size=20, sb=6, sa=10)
+        center_line(team.field("hoc_phan", "Lập trình hướng đối tượng"), sa=6)
+        center_line("Dippie: website xem và gợi ý phim hoạt hình cho gia đình", sa=6)
+        center_line(f"Mã học phần {team.field('ma_hoc_phan', '................')}", sa=6)
+        center_line(f"Lớp {team.field('lop', '................')}", sa=6)
+        center_line(f"Giảng viên hướng dẫn: {team.field('giang_vien', '................................')}", sa=14)
 
-        center_line("BÁO CÁO BÀI TẬP LỚN", size=22, bold=True, color=CLR_PRIMARY, sb=2, sa=4)
-        center_line("HỌC PHẦN: LẬP TRÌNH HƯỚNG ĐỐI TƯỢNG JAVA", size=14, bold=True, color=CLR_INK, sa=12)
-
-        title_tbl = self.doc.add_table(rows=1, cols=1)
-        title_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
-        set_table_col_widths(title_tbl, [156.0])
-        tc = title_tbl.cell(0, 0)
-        set_cell_shading(tc, HEX_HEADER_BG)
-        set_cell_margins(tc, top=130, bottom=130, left=160, right=160)
-        set_table_borders(title_tbl, color="36563C", sz="12")
-        pt0 = tc.paragraphs[0]
-        pt0.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        pt0.paragraph_format.line_spacing = 1.25
-        pt0.paragraph_format.space_after = Pt(4)
-        rt0 = pt0.add_run("ĐỀ TÀI")
-        set_run_font(rt0, size_pt=13, bold=True, color=CLR_PRIMARY)
-        pt1 = tc.add_paragraph()
-        pt1.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        pt1.paragraph_format.line_spacing = 1.3
-        pt1.paragraph_format.space_after = Pt(4)
-        rt1 = pt1.add_run("DIPPIE: WEBSITE XEM VÀ GỢI Ý PHIM HOẠT HÌNH CHO GIA ĐÌNH")
-        set_run_font(rt1, size_pt=16, bold=True, color=CLR_INK)
-        pt2 = tc.add_paragraph()
-        pt2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        pt2.paragraph_format.line_spacing = 1.2
-        pt2.paragraph_format.space_after = Pt(0)
-        rt2 = pt2.add_run("(Spring Boot 3.5 · Java 21 · React 19 · Trợ lý CineBot · Ứng dụng Quản trị JavaFX)")
-        set_run_font(rt2, size_pt=11, italic=True, color=CLR_MUTED)
-
-        p_sp = self.doc.add_paragraph()
-        p_sp.paragraph_format.space_after = Pt(8)
-        p_sp.paragraph_format.line_spacing = 1.0
-
-        info_tbl = self.doc.add_table(rows=3, cols=2)
-        info_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
-        set_table_borders(info_tbl, color="FFFFFF", sz="0", val="none")
-        set_table_col_widths(info_tbl, [56.0, 100.0])
-        info_rows = [
-            ("Giảng viên hướng dẫn:", "...................................................................."),
-            ("Lớp học phần:", "...................................................................."),
-            ("Nhóm thực hiện:", "Nhóm 4 sinh viên (Thành viên 1 đến Thành viên 4)"),
-        ]
-        for idx, (k, v) in enumerate(info_rows):
-            r = info_tbl.rows[idx]
-            for ci, txt in enumerate((k, v)):
-                set_cell_margins(r.cells[ci], top=35, bottom=35, left=60, right=60)
-                cp = r.cells[ci].paragraphs[0]
-                cp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        mem_tbl = self.doc.add_table(rows=5, cols=2)
+        mem_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+        set_table_borders(mem_tbl, color="BFBFBF", sz="4")
+        set_table_col_widths(mem_tbl, [80.0, 70.0])
+        rows = [("Họ và tên", "Mã sinh viên")] + [(team.full_name(n), team.student_id(n)) for n in range(1, 5)]
+        for ri, (name, sid) in enumerate(rows):
+            row = mem_tbl.rows[ri]
+            prevent_row_split(row)
+            for ci, val in enumerate((name, sid)):
+                c = row.cells[ci]
+                if ri == 0:
+                    set_cell_shading(c, HEX_HEADER_BG)
+                set_cell_margins(c, top=70, bottom=70, left=90, right=90)
+                cp = c.paragraphs[0]
+                cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                cp.paragraph_format.first_line_indent = Pt(0)
                 cp.paragraph_format.line_spacing = 1.2
                 cp.paragraph_format.space_after = Pt(0)
-                cr = cp.add_run(txt)
-                set_run_font(cr, size_pt=12.5, bold=(ci == 0), color=CLR_INK)
+                set_run_font(cp.add_run(val), size_pt=13, bold=(ri == 0), color=CLR_INK)
 
-        p_mem = self.doc.add_paragraph()
-        p_mem.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_mem.paragraph_format.space_before = Pt(10)
-        p_mem.paragraph_format.space_after = Pt(4)
-        p_mem.paragraph_format.line_spacing = 1.2
-        rm = p_mem.add_run("DANH SÁCH THÀNH VIÊN NHÓM")
-        set_run_font(rm, size_pt=12.5, bold=True, color=CLR_PRIMARY)
+        # Dòng nơi và tháng nằm ở chân trang của riêng trang bìa nên luôn sát đáy trang.
+        first_footer = self.doc.sections[0].first_page_footer
+        fp = first_footer.paragraphs[0]
+        fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        set_run_font(fp.add_run(f"{team.field('noi_lam', '................')}, tháng 11 năm 2026"), size_pt=13, color=CLR_INK)
 
-        mem_tbl = self.doc.add_table(rows=5, cols=4)
-        mem_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
-        set_table_borders(mem_tbl, color=HEX_BORDER, sz="4")
-        widths = [14.0, 42.0, 32.0, 68.0]
-        set_table_col_widths(mem_tbl, widths)
-        hdrs = ["STT", "Thành viên / Họ và tên", "Mã sinh viên", "Vai trò chính"]
-        members = [
-            ("1", "Thành viên 1\nHọ và tên: ....................", "..................", "Nhóm trưởng, kiến trúc và backend (bảo mật, tiến độ xem, danh mục)"),
-            ("2", "Thành viên 2\nHọ và tên: ....................", "..................", "Frontend React 19 và trải nghiệm người dùng"),
-            ("3", "Thành viên 3\nHọ và tên: ....................", "..................", "Trợ lý CineBot, tìm kiếm BM25 và gợi ý phim"),
-            ("4", "Thành viên 4\nHọ và tên: ....................", "..................", "Ứng dụng JavaFX, cơ sở dữ liệu, kiểm thử và triển khai"),
-        ]
-        for ci, h in enumerate(hdrs):
-            c = mem_tbl.rows[0].cells[ci]
-            set_cell_shading(c, HEX_HEADER_BG)
-            set_cell_margins(c, top=45, bottom=45, left=65, right=65)
-            cp = c.paragraphs[0]
-            cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            cp.paragraph_format.line_spacing = 1.15
-            cp.paragraph_format.space_after = Pt(0)
-            set_run_font(cp.add_run(h), size_pt=11, bold=True, color=CLR_PRIMARY)
-        for ri, mrow in enumerate(members):
-            row = mem_tbl.rows[ri + 1]
-            prevent_row_split(row)
-            for ci, val in enumerate(mrow):
-                c = row.cells[ci]
-                set_cell_margins(c, top=40, bottom=40, left=65, right=65)
-                cp = c.paragraphs[0]
-                cp.alignment = WD_ALIGN_PARAGRAPH.CENTER if ci in (0, 2) else WD_ALIGN_PARAGRAPH.LEFT
-                cp.paragraph_format.line_spacing = 1.12
-                cp.paragraph_format.space_after = Pt(0)
-                set_run_font(cp.add_run(val), size_pt=10.5, bold=(ci == 1), color=CLR_INK)
 
-        center_line("HÀ NỘI, NĂM 2026", size=13, bold=True, color=CLR_INK, sb=16, sa=0)
+    def _front_title(self, text, page_break=True):
+        if page_break:
+            self.doc.add_page_break()
+        p = self.doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.first_line_indent = Pt(0)
+        p.paragraph_format.space_after = Pt(12)
+        set_run_font(p.add_run(text), size_pt=16, bold=True, color=CLR_INK)
+        return p
 
     def build_front_matter(self):
-        self.doc.add_page_break()
-        p_toc_title = self.doc.add_paragraph()
-        p_toc_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_toc_title.paragraph_format.space_after = Pt(10)
-        set_run_font(p_toc_title.add_run("MỤC LỤC"), size_pt=16, bold=True, color=CLR_PRIMARY)
-        add_bottom_border_to_paragraph(p_toc_title, color="8DAD86", sz="8")
-
+        self._front_title("Mục lục")
         p_toc = self.doc.add_paragraph()
         p_toc.alignment = WD_ALIGN_PARAGRAPH.LEFT
         p_toc.paragraph_format.line_spacing = 1.35
         add_field(
             p_toc,
             'TOC \\o "1-3" \\h \\z \\u',
-            "Mục lục tự động: nhấn Ctrl+A rồi F9 (hoặc chuột phải chọn Update Field) trong Microsoft Word để cập nhật số trang.",
+            "Mở bằng Word rồi bấm Ctrl+A, F9 để hiện mục lục có số trang.",
             size_pt=12, italic=True, color=CLR_MUTED
         )
 
-        self.doc.add_page_break()
-        p_fig_h = self.doc.add_paragraph()
-        p_fig_h.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_fig_h.paragraph_format.space_after = Pt(8)
-        set_run_font(p_fig_h.add_run("DANH MỤC HÌNH VẼ"), size_pt=15, bold=True, color=CLR_PRIMARY)
-        add_bottom_border_to_paragraph(p_fig_h, color="8DAD86", sz="8")
+        self._front_title("Danh mục hình vẽ")
         self.fig_list_anchor = self.doc.add_paragraph()
-        self.fig_list_anchor.paragraph_format.space_after = Pt(12)
-
-        p_tbl_h = self.doc.add_paragraph()
-        p_tbl_h.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_tbl_h.paragraph_format.space_before = Pt(10)
-        p_tbl_h.paragraph_format.space_after = Pt(8)
-        set_run_font(p_tbl_h.add_run("DANH MỤC BẢNG BIỂU"), size_pt=15, bold=True, color=CLR_PRIMARY)
-        add_bottom_border_to_paragraph(p_tbl_h, color="8DAD86", sz="8")
+        self._front_title("Danh mục bảng")
         self.tbl_list_anchor = self.doc.add_paragraph()
-        self.tbl_list_anchor.paragraph_format.space_after = Pt(12)
+
+    def _fill_list(self, anchor, style_name, prefix, items):
+        """Danh mục là trường TOC của Word gom theo kiểu chú thích, nên có số trang sau khi cập nhật.
+        Trước khi cập nhật vẫn hiện sẵn danh sách tên hình, bảng."""
+        anchor.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        anchor.paragraph_format.line_spacing = 1.35
+        anchor.paragraph_format.first_line_indent = Pt(0)
+        preview = "\n".join(f"{prefix} {num}. {cap}" for num, cap in items)
+        add_field(anchor, f'TOC \\h \\z \\t "{style_name},1"', preview, size_pt=12, color=CLR_INK)
 
     def populate_lists_of_figures_and_tables(self):
         if self.fig_list_anchor is not None:
-            for num, cap in self.figures:
-                p = self.fig_list_anchor.insert_paragraph_before()
-                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                p.paragraph_format.line_spacing = 1.35
-                p.paragraph_format.space_after = Pt(3)
-                set_run_font(p.add_run(f"Hình {num}. "), size_pt=12, bold=True, color=CLR_PRIMARY)
-                set_run_font(p.add_run(cap), size_pt=12, color=CLR_INK)
-            self.fig_list_anchor._element.getparent().remove(self.fig_list_anchor._element)
-
+            self._fill_list(self.fig_list_anchor, FIGURE_CAPTION_STYLE, "Hình", self.figures)
         if self.tbl_list_anchor is not None:
-            for num, cap in self.tables:
-                p = self.tbl_list_anchor.insert_paragraph_before()
-                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                p.paragraph_format.line_spacing = 1.35
-                p.paragraph_format.space_after = Pt(3)
-                set_run_font(p.add_run(f"Bảng {num}. "), size_pt=12, bold=True, color=CLR_PRIMARY)
-                set_run_font(p.add_run(cap), size_pt=12, color=CLR_INK)
-            self.tbl_list_anchor._element.getparent().remove(self.tbl_list_anchor._element)
+            self._fill_list(self.tbl_list_anchor, TABLE_CAPTION_STYLE, "Bảng", self.tables)
 
     def save(self, path=OUT_DOCX):
         self.populate_lists_of_figures_and_tables()
@@ -644,7 +585,7 @@ def build_report():
     # =======================================================================
     # LỜI MỞ ĐẦU
     # =======================================================================
-    rb.h1("LỜI MỞ ĐẦU", break_before=True)
+    rb.h1("Lời mở đầu", break_before=True)
     rb.p(
         "Nhiều gia đình có trẻ nhỏ thường mở hoạt hình tiếng Việt cho con xem, nhưng nguồn phim trên mạng lại nằm "
         "rải rác ở nhiều kênh YouTube, danh sách phát hoặc thư mục cá nhân khác nhau. Phụ huynh hay gặp khó khi muốn "
@@ -671,7 +612,7 @@ def build_report():
     # =======================================================================
     # CHƯƠNG 1. GIỚI THIỆU CÔNG NGHỆ
     # =======================================================================
-    rb.h1("CHƯƠNG 1. GIỚI THIỆU CÔNG NGHỆ", break_before=True)
+    rb.h1("Chương 1. Giới thiệu công nghệ", break_before=True)
     rb.p(
         "Trong đề tài này, nhóm chúng em kết hợp phần nền tảng Java học trên lớp (Java 21, JavaFX 21, JDBC, các mẫu "
         "thiết kế GoF) với một số công nghệ web và vận hành thực tế gồm Spring Boot 3.5, React 19, TypeScript, "
@@ -679,16 +620,16 @@ def build_report():
         "Caddy HTTPS và GitHub Actions CI."
     )
 
-    rb.h2("1.1. Các công nghệ lõi phía Backend và Desktop Java")
+    rb.h2("1.1. Các công nghệ lõi phía backend và desktop Java")
 
     rb.h3("1.1.1. Java 21 (LTS)")
     rb.p(
         "Nhóm chọn Java 21 vì đây là bản hỗ trợ dài hạn (LTS) có nhiều cú pháp mới gọn và an toàn kiểu hơn so với các "
-        "bản Java cũ trong giáo trình. Trong 321 tệp mã nguồn chính (23.753 dòng gồm 22.488 dòng không tính chú thích "
-        "và 1.265 dòng chú thích tiếng Việt) của backend Spring Boot, chúng em dùng trực tiếp các tính năng sau:"
+        "bản Java cũ trong giáo trình. Trong 333 tệp mã nguồn chính (24.416 dòng gồm 23.140 dòng không tính chú thích "
+        "và 1.276 dòng chú thích tiếng Việt) của backend Spring Boot, chúng em dùng trực tiếp các tính năng sau:"
     )
     rb.bullet(
-        "Java Records xuất hiện trong 141 tệp để định nghĩa DTO và đối tượng giá trị bất biến như ApiResponse<T>, "
+        "Java Records xuất hiện trong 145 tệp để định nghĩa DTO và đối tượng giá trị bất biến như ApiResponse<T>, "
         "ByteRange, WatchDuration, SearchHit, ChatIntent và Viewer. Cách viết này bỏ được phần getter, equals và "
         "hashCode lặp lại mà không cần cài thêm Lombok."
     )
@@ -697,16 +638,16 @@ def build_report():
         "CatalogEpisodeRepository, MovieRatingRepository) và chuỗi JSON mẫu, dễ đọc và đỡ sai ký tự thoát."
     )
     rb.bullet(
-        "Pattern Matching cho instanceof (13 tệp) và biểu thức switch dạng mũi tên (14 tệp) được dùng trong "
+        "Pattern Matching cho instanceof (14 tệp) và biểu thức switch dạng mũi tên (12 tệp) được dùng trong "
         "AccessPolicy, PublicationStatus, MovieQueryService, CatalogImportService, LocalChatController và "
         "PlaybackContextResolver để xử lý rẽ nhánh rõ ràng."
     )
     rb.bullet(
         "Sealed Types được áp dụng ở cả hai module Java. Ở backend có 4 sealed interface là ChatEvent (Metadata, "
         "Token, Done, Error cho luồng SSE), PlaybackPrincipal (Authenticated, Anonymous cho quyền phát video), "
-        "PlaybackContextResolver.PlaybackAssetId (Youtube, File) và HealthController.HealthStatus (UpStatus, "
-        "DownStatus). Ở module desktop có sealed interface CatalogNode cho phép đúng 3 nhánh SeriesNode, SeasonNode "
-        "và EpisodeNode."
+        "PlaybackContextResolver.PlaybackAssetId (Youtube, File) và HealthStatus (UpStatus, DownStatus cho kiểm "
+        "tra sức khỏe hệ thống). Ở module desktop có sealed interface CatalogNode cho phép đúng 3 nhánh SeriesNode, "
+        "SeasonNode và EpisodeNode."
     )
     rb.bullet(
         "Nhóm không bật Virtual Threads vì các truy vấn H2/MySQL cục bộ và tìm kiếm BM25 trong RAM đều hoàn tất "
@@ -742,7 +683,7 @@ def build_report():
         "ClientIpResolver (chỉ tin X-Forwarded-For từ dải proxy tin cậy)."
     )
 
-    rb.h3("1.1.4. Cơ sở dữ liệu kép: H2 (Demo) và MySQL 8.0 / 8.4 (Production)")
+    rb.h3("1.1.4. Cơ sở dữ liệu kép: H2 khi demo và MySQL 8.4 khi chạy thật")
     rb.p(
         "Dippie chạy được trên cả H2 và MySQL thông qua Spring Profiles với cùng một mô hình thực thể JPA, đồng nhất "
         "múi giờ UTC cho cả Jackson lẫn kết nối JDBC/Hibernate. Ứng dụng không tự bật hồ sơ demo khi thiếu cấu hình "
@@ -754,9 +695,9 @@ def build_report():
         "4 view, 2 hàm, 3 thủ tục lưu trữ và 4 trigger."
     )
 
-    rb.h3("1.1.5. JavaFX 21 và JDBC thuần (Ứng dụng Desktop Dippie Admin)")
+    rb.h3("1.1.5. JavaFX 21 và JDBC thuần (ứng dụng desktop Dippie Admin)")
     rb.p(
-        "Bên cạnh giao diện web, nhóm viết thêm module desktop/ gồm 59 tệp Java chính (3.582 dòng gồm 219 dòng chú "
+        "Bên cạnh giao diện web, nhóm viết thêm module desktop/ gồm 64 tệp Java chính (3.605 dòng gồm 223 dòng chú "
         "thích tiếng Việt) chia trên 9 package và 5 lớp kiểm thử JUnit 5 đạt 33/33 ca. Đây là ứng dụng quản trị "
         "desktop Dippie Admin dùng JavaFX 21.0.6 và JDBC thuần (PreparedStatement, quản lý giao dịch tường minh bằng "
         "setAutoCommit(false), commit và rollback). Ứng dụng có 4 tab là Tổng quan, Danh mục, Người dùng và Đánh giá, "
@@ -764,7 +705,7 @@ def build_report():
         "thiết kế GoF."
     )
 
-    rb.h2("1.2. Các công nghệ phía Giao diện Web, Đa phương tiện và Trợ lý AI")
+    rb.h2("1.2. Các công nghệ phía giao diện web, đa phương tiện và trợ lý AI")
 
     rb.h3("1.2.1. React 19, TypeScript 5.7, Vite 8 và Tailwind CSS 3.4")
     rb.p(
@@ -833,14 +774,14 @@ def build_report():
         "Tổng hợp các công nghệ sử dụng trong Dippie và phần mở rộng so với môn học",
         ["Công nghệ / Kỹ thuật", "Vai trò và nơi áp dụng trong Dippie", "Phần mở rộng so với nội dung học phần"],
         [
-            ["Java 21 (Records, Text Blocks, Pattern Matching, Sealed)", "321 tệp mã nguồn backend (com.dippie.*) và 59 tệp desktop.", "Mở rộng từ cú pháp Java OOP cơ bản lên kiểu bản ghi bất biến, sealed interface và switch đối sánh mẫu."],
+            ["Java 21 (Records, Text Blocks, Pattern Matching, Sealed)", "333 tệp mã nguồn backend (com.dippie) và 64 tệp desktop.", "Mở rộng từ cú pháp Java OOP cơ bản lên kiểu bản ghi bất biến, sealed interface và switch đối sánh mẫu."],
             ["Spring Boot 3.5, Spring Data JPA và Flyway", "Tầng REST API (25 Controller), giao dịch, khóa đồng thời, truy vấn Criteria SQL, Flyway V1 đến V5 và SPA.", "Tự động hóa IoC/DI, quản lý phiên bản lược đồ bằng Flyway và ánh xạ ORM chạy trên cả H2 lẫn MySQL."],
-            ["Spring Security, JWT (HS256) và BCrypt", "Gói com.dippie.security, user và session; xác thực web, đăng xuất thu hồi token và vé phát video 5 phút.", "Xác thực phi trạng thái, phiên bản hóa token, header bảo mật, giới hạn thân yêu cầu và giới hạn tần suất theo proxy tin cậy."],
+            ["Spring Security, JWT (HS256) và BCrypt", "Gói com.dippie.security cùng tầng controller, service, model cho user và account; xác thực web, đăng xuất thu hồi token và vé phát video 5 phút.", "Xác thực phi trạng thái, phiên bản hóa token, header bảo mật, giới hạn thân yêu cầu và giới hạn tần suất theo proxy tin cậy."],
             ["H2 (AUTO_SERVER) và MySQL 8.0 / 8.4 (TLS)", "Cơ sở dữ liệu 32 bảng chuẩn hóa BCNF, múi giờ UTC cho chế độ demo và production.", "Kết hợp lược đồ quan hệ chuẩn, view, hàm, thủ tục, trigger MySQL TLS với chế độ H2 chạy ngay không cần cài đặt."],
-            ["JavaFX 21 và JDBC thuần", "Module desktop/ (59 tệp Java, 33 test): cây danh mục, biểu đồ, Hoàn tác và xuất CSV.", "Thực hành trực tiếp JavaFX, JDBC PreparedStatement có giao dịch và các mẫu GoF trên cùng cơ sở dữ liệu."],
+            ["JavaFX 21 và JDBC thuần", "Module desktop/ (64 tệp Java, 33 test): cây danh mục, biểu đồ, Hoàn tác và xuất CSV.", "Thực hành trực tiếp JavaFX, JDBC PreparedStatement có giao dịch và các mẫu GoF trên cùng cơ sở dữ liệu."],
             ["React 19, TypeScript, Vite 8 và Tailwind CSS", "Thư mục frontend/ (81 tệp); giao diện web, di động, lịch sử xem, báo lỗi phát, pháp lý và báo mất mạng.", "Tách giao diện thành ứng dụng SPA có kiểm tra kiểu tĩnh thay cho trang HTML tĩnh."],
             ["Server-Sent Events (SSE) và HTTP Byte Range", "Luồng CineBot (/api/chat, ChatStreamGuard) và phát tệp video tua nhanh (/api/media/stream).", "Truyền dữ liệu theo luồng thời gian thực có kiểm soát tải và phát từng đoạn 206 Partial Content."],
-            ["BM25 cục bộ và DeepSeek LLM có căn cứ", "Gói com.dippie.assistant.search và chat; tìm kiếm không dấu, chịu lỗi gõ và hội thoại.", "Áp dụng truy xuất thông tin BM25 và RAG chống bịa đặt ngay trên JVM."],
+            ["BM25 cục bộ và DeepSeek LLM có căn cứ", "Gói com.dippie.service.assistant, com.dippie.model.assistant, com.dippie.dto.assistant và com.dippie.controller.assistant; tìm kiếm không dấu, chịu lỗi gõ và hội thoại.", "Áp dụng truy xuất thông tin BM25 và RAG chống bịa đặt ngay trên JVM."],
             ["YouTube IFrame Player API", "Component YouTubePlayer.tsx; phát nhúng, nhảy đúng mốc giây, lưu tiến độ và tự chuyển tập.", "Điều khiển trình phát YouTube hai chiều qua JavaScript API thay cho thẻ iframe tĩnh."],
             ["CHAY_DIPPIE.bat, Docker, Caddy HTTPS và CI", "CHAY_DIPPIE.bat, HUONG_DAN_CHAY.md, make-release-zip.ps1, infrastructure/, backup-mysql.* và ci.yml.", "Chạy thử 1 cú nhấp tự tải JDK di động, đóng gói container non-root, HTTPS tự động và sao lưu có SHA-256."],
         ],
@@ -851,7 +792,7 @@ def build_report():
     # =======================================================================
     # CHƯƠNG 2. BÀI TOÁN VÀ CHỨC NĂNG
     # =======================================================================
-    rb.h1("CHƯƠNG 2. BÀI TOÁN VÀ CHỨC NĂNG", break_before=True)
+    rb.h1("Chương 2. Bài toán và chức năng", break_before=True)
 
     rb.h2("2.1. Đặt bài toán và nhu cầu thực tế")
     rb.p(
@@ -896,7 +837,7 @@ def build_report():
         font_size=10.5,
     )
 
-    rb.h2("2.3. Danh sách Use Case và Sơ đồ Use Case")
+    rb.h2("2.3. Danh sách ca sử dụng và sơ đồ ca sử dụng")
     rb.figure(ASSETS_DIR / "usecase_diagram.png", "Sơ đồ Use Case tổng quan hệ thống Dippie", width_inches=6.1)
 
     rb.table(
@@ -994,7 +935,7 @@ def build_report():
     # =======================================================================
     # CHƯƠNG 3. THIẾT KẾ VÀ CÀI ĐẶT
     # =======================================================================
-    rb.h1("CHƯƠNG 3. THIẾT KẾ VÀ CÀI ĐẶT", break_before=True)
+    rb.h1("Chương 3. Thiết kế và cài đặt", break_before=True)
 
     rb.h2("3.1. Kiến trúc tổng thể hệ thống")
     rb.p(
@@ -1014,37 +955,54 @@ def build_report():
 
     rb.h2("3.2. Kiến trúc MVC")
     rb.p(
-        "Cả ứng dụng web lẫn ứng dụng desktop Dippie Admin đều tổ chức theo mô hình MVC (Model, View, Controller) để "
-        "tách dữ liệu và quy tắc nghiệp vụ khỏi giao diện hiển thị cũng như phần điều phối yêu cầu. Bảng dưới đây đối "
-        "chiếu các lớp thực tế trong mã nguồn của hai nền tảng theo ba thành phần của MVC."
+        "Cả ứng dụng web lẫn ứng dụng desktop Dippie Admin đều tổ chức theo kiến trúc MVC nghiêm ngặt, tách rạch ròi "
+        "dữ liệu và quy tắc miền (Model), phần hiển thị cùng dữ liệu trao đổi giao diện (View), lớp tiếp nhận và "
+        "điều phối yêu cầu (Controller) và tầng Service đứng giữa Controller với Model. Ở backend Spring Boot, mã "
+        "nguồn chia theo tầng trước rồi chia gói con theo từng tính năng (controller.<tính năng>, service.<tính năng>, "
+        "repository.<tính năng>, model.<tính năng>, dto.<tính năng>), kèm gói ngoại lệ com.dippie.exception và ba nhóm "
+        "hỗ trợ là config, security, common. Ba quy tắc phụ thuộc được giữ chặt trong mã nguồn: controller chỉ gọi "
+        "service và không truy cập trực tiếp repository, tầng model không phụ thuộc tầng nào phía trên, còn "
+        "repository không phụ thuộc service."
+    )
+    rb.p(
+        "Ở ứng dụng desktop Dippie Admin, các gói chia thành model (gồm model.catalog), view, controller, service, "
+        "dao, db và export. Các lớp giao diện trong com.dippie.desktop.view chỉ làm việc với controller, model và "
+        "export; các kiểu dữ liệu hiển thị cho bảng và màn hình tổng quan (TopRated, MostWatched, DashboardSnapshot, "
+        "DashboardCounts, RatingRow) đặt trong com.dippie.desktop.model, còn CatalogPane lọc cây danh mục thông qua "
+        "AdminController.filterCatalog."
     )
     rb.table(
         "Ánh xạ kiến trúc MVC trên ứng dụng Web và ứng dụng Desktop Dippie Admin",
         ["Thành phần MVC", "Ứng dụng Web (Spring Boot + React SPA)", "Ứng dụng Desktop (Dippie Admin JavaFX)"],
         [
             [
-                "Model",
-                "Thực thể JPA (Movie, User, MovieRating, WatchProgress, CatalogSeries, CatalogSeason, CatalogEpisode...), bản ghi DTO bất biến (ApiResponse<T>, MovieRatingView, LibraryItemView, WatchProgressView...), tầng dịch vụ nghiệp vụ (MovieRatingService, WatchProgressService, CatalogQueryService, RecommendationService, ChatService...) và Spring Data JPA Repository (MovieRatingRepository, CatalogEpisodeRepository, WatchProgressRepository, UserRepository...).",
-                "Các lớp mô hình bất biến (UserAccount, AdminSession, Role, cây Composite CatalogNode gồm SeriesNode, SeasonNode, EpisodeNode), tầng dịch vụ nghiệp vụ (AdminServices, AuthService, CatalogService, UserService, RatingService, DashboardService) và 10 lớp JDBC DAO kế thừa AbstractJdbcDao<T, ID> (UserDao, SeriesDao, SeasonDao, EpisodeDao, RatingDao...).",
+                "Model (dữ liệu và quy tắc)",
+                "Gói model.<tính năng> gồm thực thể JPA (User, Movie, MovieRating, WatchProgress, CatalogSeries, CatalogEpisode...), enum (Role, PublicationStatus) và bản ghi/quy tắc miền (CompletionPolicy, NextEpisodePolicy, ResolvedMediaStream...), cùng gói repository.<tính năng> gồm các Spring Data JPA Repository (UserRepository, MovieRatingRepository, CatalogEpisodeRepository, WatchProgressRepository...) và truy vấn viết tay (AdminStatsQuery, ViewerSignalsRepository).",
+                "Gói com.dippie.desktop.model và com.dippie.desktop.model.catalog (UserAccount, AdminSession, Role, cây Composite CatalogNode gồm SeriesNode, SeasonNode, EpisodeNode, các kiểu hàng bảng và thống kê TopRated, MostWatched, DashboardSnapshot, DashboardCounts, RatingRow), cùng 10 lớp JDBC DAO kế thừa AbstractJdbcDao<T, ID> trong com.dippie.desktop.dao và tầng kết nối com.dippie.desktop.db.",
             ],
             [
-                "View",
-                "Ứng dụng React 19 SPA trong thư mục frontend/ nhận dữ liệu JSON từ REST API và hiển thị qua các component như SeriesDetailBanner, ItemLibraryPanel, YouTubePlayer, CineBot, OfflineBanner, GuestSyncDialog, cập nhật giao diện theo trạng thái từ WatchlistContext và useSeriesPlayback.",
-                "Lớp khởi chạy DippieAdminApp và 9 lớp giao diện JavaFX trong com.dippie.desktop.view: HeaderBar, LoginPane, WorkspacePane, lớp cơ sở trừu tượng DataPane cùng 4 tab DashboardPane, CatalogPane, UsersPane, RatingsPane và thanh trạng thái StatusBar.",
+                "View (giao diện và dữ liệu hiển thị)",
+                "Giao diện React 19 SPA trong thư mục frontend/ (SeriesDetailBanner, ItemLibraryPanel, YouTubePlayer, CineBot, OfflineBanner, GuestSyncDialog, WatchlistContext, useSeriesPlayback) cùng các bản ghi JSON trong gói dto.<tính năng> (CatalogSearchHit, CatalogSeriesDetail, CatalogEpisodeDetail, SeriesCard, LibraryItemView, MovieRatingView, WatchProgressView, DiscoverResponse...) gửi qua lại giữa server và trình duyệt.",
+                "Lớp khởi chạy DippieAdminApp và 9 lớp giao diện JavaFX trong com.dippie.desktop.view (HeaderBar, LoginPane, WorkspacePane, lớp cơ sở trừu tượng DataPane, 4 tab DashboardPane, CatalogPane, UsersPane, RatingsPane và thanh trạng thái StatusBar). Các lớp View chỉ nhập controller, model và export.",
             ],
             [
-                "Controller",
-                "25 lớp @RestController / @Controller của Spring MVC (LibraryController, CatalogController, MovieController, WatchProgressController, WatchHistoryClearController, RecommendationController, LocalChatController, AuthController, SessionLogoutController, AccountErasureController, PasswordResetController, PlaybackReportController, AdminPlaybackReportController, AdminUserController, AdminStatsController...) nhận yêu cầu HTTP, kiểm tra đầu vào, gọi dịch vụ và trả JSON hoặc luồng SSE.",
-                "Các lớp trong com.dippie.desktop.controller gồm LoginController, AdminController và UiTasks: nhận sự kiện bấm nút từ View, chạy truy vấn JDBC và xuất tệp ở luồng nền rồi báo kết quả về luồng giao diện JavaFX.",
+                "Controller (điều phối yêu cầu)",
+                "Gói controller.<tính năng> gồm 25 lớp @RestController / @Controller (LibraryController, CatalogController, AdminCatalogController, MovieController, WatchProgressController, RecommendationController, LocalChatController, LocalDiscoverController, AuthController, SessionLogoutController, AccountErasureController, PasswordResetController, PlaybackReportController, AdminUserController, AdminStatsController...) và GlobalExceptionHandler (com.dippie.controller.web). Controller chỉ nhận HTTP, gọi Service và trả DTO hoặc SSE.",
+                "Gói com.dippie.desktop.controller gồm LoginController, AdminController, UiTasks và ConnectionState: nhận sự kiện giao diện từ View, điều phối lệnh đọc/ghi xuống tầng Service trên luồng nền (kể cả AdminController.filterCatalog cho CatalogPane) và trả kết quả về luồng JavaFX.",
+            ],
+            [
+                "Tầng Service (giữa Controller và Model)",
+                "Gói service.<tính năng> chứa logic nghiệp vụ, các mẫu Strategy và Adapter, bộ tìm kiếm BM25 cục bộ và đường ống CineBot (AbstractLibraryListService, MovieRatingService, RecommendationStrategy, RecommendationService, CatalogReadModelCache, CatalogPackageValidator, CatalogImportService, DiscoverService, ChatService, MediaStreamService, MailDeliveryStrategy...).",
+                "Gói com.dippie.desktop.service gồm AdminServices, AuthService, CatalogService, DashboardService, UserService, RatingService, AccountCommand, CommandHistory và Proxy AdminQuery: gom quy tắc nghiệp vụ, giao dịch JDBC và cơ chế hoàn tác ở giữa Controller với DAO.",
             ],
         ],
-        col_widths_mm=[24, 70, 66],
-        font_size=10,
+        col_widths_mm=[26, 69, 65],
+        font_size=9.8,
     )
 
     rb.h3("3.2.1. Luồng MVC thực tế: chấm điểm một tập phim")
     rb.p(
-        "Để thấy rõ ba tầng phối hợp ra sao khi ứng dụng chạy, xét thao tác người dùng chấm điểm từ 1 đến 10 cho một "
+        "Để thấy rõ các tầng phối hợp ra sao khi ứng dụng chạy, xét thao tác người dùng chấm điểm từ 1 đến 10 cho một "
         "tập phim trên trang chi tiết /series/:id:"
     )
     rb.bullet(
@@ -1058,31 +1016,34 @@ def build_report():
         "{ movieId, rating }."
     )
     rb.bullet(
-        "Bước 3 (Controller): LibraryController.addRating(RatingRequest) trong gói com.dippie.library nhận yêu cầu "
-        "POST /api/users/ratings, tách hai trường movieId và rating rồi gọi MovieRatingService.rate(movieId, rating)."
+        "Bước 3 (Controller): LibraryController.addRating(RatingRequest) trong gói com.dippie.controller.library nhận "
+        "yêu cầu POST /api/users/ratings với bản ghi DTO RatingRequest (gói com.dippie.dto.library), tách hai trường "
+        "movieId và rating rồi chuyển sang MovieRatingService.rate(movieId, rating)."
     )
     rb.bullet(
-        "Bước 4 (Model: Service và Repository): MovieRatingService xác định người xem hiện tại qua CurrentViewer, kiểm "
-        "tra điểm nằm trong đoạn 1 đến 10 bằng MovieRating.validateRating(rating), kiểm tra phim đang hiển thị qua "
-        "MovieVisibility.findVisibleById(movieId), rồi tra cứu hoặc lưu thực thể MovieRating xuống cơ sở dữ liệu qua "
-        "MovieRatingRepository.findByUserIdAndMovieId(...) và saveAndFlush(...) trong giao dịch REQUIRES_NEW (bắt "
-        "DataIntegrityViolationException nếu hai yêu cầu ghi trùng lúc)."
+        "Bước 4 (Service và Model): MovieRatingService (gói com.dippie.service.library) xác định người xem hiện tại "
+        "qua CurrentViewer, kiểm tra điểm nằm trong đoạn 1 đến 10 bằng quy tắc miền MovieRating.validateRating(rating) "
+        "(gói com.dippie.model.library), kiểm tra phim đang hiển thị qua MovieVisibility.findVisibleById(movieId), "
+        "rồi tra cứu hoặc lưu thực thể MovieRating xuống cơ sở dữ liệu qua MovieRatingRepository "
+        "(gói com.dippie.repository.library) trong giao dịch REQUIRES_NEW (bắt DataIntegrityViolationException nếu "
+        "hai yêu cầu ghi trùng lúc)."
     )
     rb.bullet(
-        "Bước 5 (Phản hồi và cập nhật View): Controller bọc MovieRatingView trong ApiResponse.ok(...) trả về JSON. "
+        "Bước 5 (DTO và cập nhật View): MovieRatingService trả bản ghi DTO MovieRatingView (gói "
+        "com.dippie.dto.library) để LibraryController bọc trong ApiResponse.ok(...) gửi về trình duyệt dạng JSON. "
         "Khi nhận phản hồi thành công, WatchlistContext gọi notifyRatingChanged(movieId) để xóa bộ đệm "
         "seriesCardService và phát sự kiện dippie:rating-changed. Hook useSeriesPlayback đang lắng nghe sự kiện này "
         "gọi refreshEpisodeRating(...) để đọc lại điểm trung bình (tính từ MovieRatingRepository.summarize(...) qua "
         "RatingSummaries) và vẽ lại điểm mới ngay trên màn hình."
     )
 
-    rb.h3("3.2.2. Liên hệ giữa MVC và mẫu Observer, cách tổ chức gói theo tính năng")
+    rb.h3("3.2.2. Liên hệ với mẫu Observer và kỷ luật phân tầng MVC")
     rb.p(
         "Như bài giảng Design Patterns trên lớp trình bày (slide 50 đến 52), MVC dùng trực tiếp mẫu Observer để tách "
-        "Model khỏi View: nguồn dữ liệu chỉ phát thông báo khi trạng thái đổi, còn các màn hình tự đăng ký theo dõi và "
-        "cập nhật phần hiển thị của mình mà tầng dữ liệu không cần giữ tham chiếu tới giao diện. Trong Dippie Admin "
-        "JavaFX, AdminController công bố các thuộc tính quan sát được gồm usersChangedProperty, ratingsChangedProperty "
-        "và undoAvailableProperty, còn UiTasks công bố connectionProperty; các lớp WorkspacePane, UsersPane và "
+        "Model khỏi View: nguồn dữ liệu phát thông báo khi trạng thái đổi, còn các màn hình tự đăng ký theo dõi và "
+        "cập nhật phần hiển thị của mình mà tầng dữ liệu giữ độc lập với giao diện. Trong Dippie Admin JavaFX, "
+        "AdminController công bố các thuộc tính quan sát được gồm usersChangedProperty, ratingsChangedProperty và "
+        "undoAvailableProperty, còn UiTasks công bố connectionProperty; các lớp WorkspacePane, UsersPane và "
         "StatusBar gắn listener lên những thuộc tính này để tự làm mới khi thao tác khóa tài khoản, hoàn tác hoặc xóa "
         "đánh giá hoàn tất. Ở phía web, cơ chế tương tự xuất hiện ở cả hai đầu: WatchlistContext phát sự kiện "
         "dippie:rating-changed cho useSeriesPlayback và trang hồ sơ cập nhật điểm, còn phía backend "
@@ -1090,46 +1051,91 @@ def build_report():
         "CatalogImportAuditListener tự phản ứng độc lập."
     )
     rb.p(
-        "Ở backend Spring Boot, nhóm không chia 321 lớp vào ba gói kỹ thuật phẳng kiểu controllers, services và "
-        "repositories mà chia thành 29 gói theo tính năng (package-by-feature) như library, progress, media, "
-        "recommendation, catalog.query, assistant.chat, session, erasure, report hay passwordreset, trong đó mỗi gói "
-        "vẫn giữ đủ các lớp MVC của riêng tính năng đó. Chẳng hạn gói com.dippie.library đặt chung LibraryController "
-        "(Controller), MovieRatingService, FavoriteService, WatchlistService (Service), MovieRating, LibraryEntry "
-        "(Entity) và MovieRatingRepository, LibraryEntryRepository (Repository). Cách tổ chức này cho phép giữ nhiều "
-        "lớp và bản ghi phụ trợ ở phạm vi package-private, khi sửa một tính năng chỉ cần mở một thư mục, đồng thời "
-        "nhóm dùng các lớp Adapter (UserViewerAdapter, MediaFileAvailabilityAdapter, MoviePresentationAdapter, "
-        "RatingSummaries) để tách phụ thuộc chéo giữa các gói cốt lõi."
+        "Cách chia gói theo tầng trước rồi mới chia theo tính năng giúp ranh giới MVC thể hiện thẳng trên cây thư "
+        "mục. Chẳng hạn tính năng thư viện nằm gọn ở đúng năm tầng: LibraryController ở com.dippie.controller.library, "
+        "RatingRequest và MovieRatingView ở com.dippie.dto.library, AbstractLibraryListService, FavoriteService, "
+        "WatchlistService và MovieRatingService ở com.dippie.service.library, thực thể MovieRating và LibraryEntry "
+        "ở com.dippie.model.library, còn MovieRatingRepository và LibraryEntryRepository ở "
+        "com.dippie.repository.library. Tương tự, LocalDiscoverController ở com.dippie.controller.assistant chỉ giải "
+        "mã đầu vào rồi gọi DiscoverService ở com.dippie.service.assistant, giữ trọn quy tắc controller không đụng "
+        "tới repository hay xử lý nghiệp vụ. Giữa các tính năng trong tầng service, các lớp Adapter "
+        "(UserViewerAdapter, MediaFileAvailabilityAdapter, MoviePresentationAdapter, RatingSummaries) tiếp tục ngăn "
+        "phụ thuộc chéo. Ở ứng dụng desktop Dippie Admin, các lớp trong com.dippie.desktop.view chỉ phụ thuộc "
+        "controller, model và export; mọi bản ghi dùng cho bảng và thống kê (TopRated, MostWatched, "
+        "DashboardSnapshot, DashboardCounts, RatingRow) nằm trong com.dippie.desktop.model, và CatalogPane lọc danh "
+        "mục qua AdminController.filterCatalog để không gọi trực tiếp sang CatalogService."
     )
 
-    rb.h2("3.3. Cấu trúc gói mã nguồn (Package Structure)")
+    rb.h2("3.3. Cấu trúc gói mã nguồn")
     rb.p(
-        "Đo trực tiếp trên nhánh mã nguồn cuối cho thấy backend (backend/springboot/src/main/java) có 321 tệp Java "
-        "chính (23.753 dòng tổng cộng, gồm 22.488 dòng không tính chú thích và 1.265 dòng chú thích tiếng Việt) chia "
-        "trên 29 package. Phần giao diện web frontend/ có 81 tệp ứng dụng (22.104 dòng), còn module desktop/ có 59 "
-        "tệp Java chính (3.582 dòng gồm 219 dòng chú thích) trên 9 package."
+        "Đo trực tiếp trên mã nguồn hiện tại cho thấy backend (backend/springboot/src/main/java) có 333 tệp Java "
+        "chính (24.416 dòng tổng cộng, gồm 23.140 dòng không tính chú thích và 1.276 dòng chú thích tiếng Việt) chia "
+        "trên 74 package theo mô hình MVC phân tầng trước, gói con theo tính năng. Phần giao diện web frontend/ có "
+        "81 tệp ứng dụng (22.104 dòng), còn module desktop/ có 64 tệp Java chính (3.605 dòng gồm 223 dòng chú thích) "
+        "trên 9 package."
     )
     rb.table(
-        "Cấu trúc các package chính trong backend Spring Boot, frontend và module desktop",
-        ["Phân hệ / Package", "Số tệp", "Trách nhiệm chính"],
+        "Cấu trúc các package theo tầng MVC trong backend Spring Boot, frontend và module desktop",
+        ["Tầng / Nhóm package", "Số tệp", "Trách nhiệm chính và các lớp tiêu biểu"],
         [
-            ["com.dippie.common.{collection, error, json, rating, text, web}", "18", "Phân cấp ngoại lệ DomainException (gồm RequestBodyTooLargeException), ApiResponse<T>, RatingLookup và RatingSummary, đọc JSON an toàn, chuẩn hóa Unicode/TextFolding và chọn đa dạng DiverseSelection."],
-            ["com.dippie.security", "19", "SecurityConfig fail-closed kèm header bảo mật, RequestBodySizeLimitFilter, JwtService (HS256, tokenVersion, vé 5 phút), JwtAuthenticationFilter, ActiveViewerLookup, sealed PlaybackPrincipal, ClientIpResolver, TrustedProxyProperties, FixedWindowRateLimiter, LoginRateLimiter và PasswordPolicy."],
-            ["com.dippie.{user, account, session, erasure}", "21", "Thực thể User (kèm terms_accepted_at), UserViewerAdapter, AuthService (đăng ký kèm điều khoản, đăng nhập), AdminBootstrap, DemoAccountSeeder, cập nhật hồ sơ, đổi mật khẩu, đăng xuất thu hồi token (SessionLogoutController) và tự xóa tài khoản (AccountErasureController)."],
-            ["com.dippie.passwordreset và com.dippie.mail", "16", "Yêu cầu và xác nhận đặt lại mật khẩu (PasswordResetController, PasswordResetService, PasswordResetToken, ResetTokenCodec) cùng Strategy gửi thư MailDeliveryStrategy (SmtpMailDeliveryStrategy và FileOutboxMailDeliveryStrategy xuất tệp .eml)."],
-            ["com.dippie.admin và com.dippie.report", "33", "Quản trị tài khoản khóa bi quan (AdminUserService, AdminUserPolicy), thống kê vận hành (AdminStatsService/Query), nhật ký kiểm toán (AdminAuditService, AuditTrailWriter, CatalogImportAuditListener) và báo lỗi phát video (PlaybackReportController, AdminPlaybackReportController, PlaybackReportService)."],
-            ["com.dippie.movie", "14", "Truy vấn, tìm kiếm, lọc thể loại/năm, sắp xếp và phân trang trên SQL qua JPA Specification và Hibernate Criteria (MovieQueryService, MovieFilter, MovieVisibility, MoviePresentationAdapter)."],
-            ["com.dippie.catalog.{domain, query, importing}", "84", "Thực thể danh mục chuẩn hóa (49 tệp, gồm CatalogRecord, CatalogSnapshot, CatalogImportedEvent, cổng MediaFileAvailability và MoviePresentationLookup), bộ đệm đọc bất biến CatalogReadModelCache (11 tệp) và nhập/xuất gói dippie.catalog.v1 (24 tệp)."],
-            ["com.dippie.library", "18", "Thư viện cá nhân áp dụng Template Method và Generics (AbstractLibraryListService, LibraryEntryRepository, WatchlistService, FavoriteService), chấm điểm 1 đến 10 (MovieRatingService, RatingSummaries)."],
-            ["com.dippie.progress và com.dippie.history", "15", "Tiến độ xem có khóa lạc quan (WatchProgress, WatchProgressCommand, WatchProgressService, CompletionPolicy, PlaybackContextResolver với sealed PlaybackAssetId), gợi ý tập tiếp theo (NextEpisodeService) và xóa toàn bộ lịch sử xem (WatchHistoryClearController)."],
-            ["com.dippie.media", "21", "Cấp vé phát video 5 phút (PlaybackGrantService), kiểm soát quyền và trạng thái xuất bản (PlaybackAccess), MediaFileAvailabilityAdapter, tìm tệp theo Strategy (MediaFileResolver) và phát Byte Range 64 KB (MediaStreamController, ResolvedMediaStream)."],
-            ["com.dippie.recommendation", "15", "Hệ thống gợi ý theo Strategy Pattern: AffinityRecommendationStrategy (sở thích và đa dạng hóa) và MoodRecommendationStrategy (6 chế độ tâm trạng và mô tả tự do)."],
-            ["com.dippie.assistant.{gốc, search, chat}", "38", "Trạng thái trợ lý (2 tệp), chỉ mục BM25 cục bộ (14 tệp: LexicalIndex, SearchCatalogFlattener, LocalCatalogSearch) và đường ống CineBot SSE (22 tệp: IntentParser, ChatStreamGuard, sealed ChatEvent, Template và DeepSeek AnswerGenerator)."],
-            ["com.dippie.web và com.dippie", "9", "Điểm khởi chạy DippieApplication, DemoHistorySeeder, GlobalExceptionHandler, HealthController (sealed HealthStatus), SpaController, SpaIndex và cấu hình Swagger/OpenAPI."],
-            ["frontend/ (app, features, components, lib, types)", "81", "Giao diện React 19, TypeScript và Tailwind CSS chia theo tính năng (series, movies, search, chat, profile, account, lich-su, legal, dat-lai-mat-khau, admin)."],
-            ["desktop/ (com.dippie.desktop, 9 package)", "59", "Ứng dụng desktop Dippie Admin (3.582 dòng Java và desktop.css): DippieAdminApp, 4 lớp controller, 13 tệp dao (Dao, RowMapper, AbstractJdbcDao và 10 DAO), 5 tệp db, 2 tệp export CSV, 13 tệp model (sealed CatalogNode), 12 tệp service và 9 lớp view (thêm HeaderBar)."],
+            [
+                "controller.<tính năng> (12 gói con: account, admin, assistant, catalog, library, media, movie, progress, recommendation, report, user, web)",
+                "26",
+                "25 lớp REST/SPA Controller ánh xạ HTTP sang lời gọi Service và trả bản ghi DTO hoặc SSE (LibraryController, CatalogController, AdminCatalogController, MovieController, WatchProgressController, NextEpisodeController, WatchHistoryClearController, MediaStreamController, PlaybackGrantController, RecommendationController, LocalChatController, LocalDiscoverController, AuthController, AccountController, PasswordResetController, SessionLogoutController, AccountErasureController, AdminUserController, AdminStatsController, AdminAuditController, PlaybackReportController, HealthController, SpaController...) cùng GlobalExceptionHandler (com.dippie.controller.web).",
+            ],
+            [
+                "service.<tính năng> (13 gói con: account, admin, assistant, catalog, library, mail, media, movie, progress, recommendation, report, user, web)",
+                "101",
+                "Toàn bộ logic nghiệp vụ, các mẫu Strategy và Adapter, bộ tìm kiếm BM25 trong RAM và đường ống CineBot: AbstractLibraryListService, FavoriteService, WatchlistService, MovieRatingService, RatingSummaries; RecommendationService, RecommendationStrategy (Affinity, Mood); CatalogImportService, CatalogPackageValidator, CatalogQueryService, CatalogReadModelCache, CatalogSnapshotService; DiscoverService, ChatService, IntentParser, LexicalIndex, LocalCatalogSearch, ChatStreamGuard, AnswerGenerator (Template, DeepSeek); MediaStreamService, PlaybackAccess, MediaFileResolver, MediaFileAvailabilityAdapter; MovieQueryService, MoviePresentationAdapter; WatchProgressService, NextEpisodeService, PlaybackContextResolver; AuthService, UserViewerAdapter; MailDeliveryStrategy; HealthService, SpaIndex.",
+            ],
+            [
+                "repository.<tính năng> (10 gói con: account, admin, catalog, library, media, movie, progress, recommendation, report, user)",
+                "22",
+                "Các Spring Data JPA Repository và truy vấn viết tay truy cập H2/MySQL: UserRepository, PasswordResetTokenRepository, AdminAuditEventRepository, AdminStatsQuery, 9 repository danh mục (CatalogSeriesRepository, CatalogSeasonRepository, CatalogEpisodeRepository, CatalogSegmentRepository, CatalogSceneRepository, CatalogGenreRepository, CatalogMediaAssetRepository, CatalogPackageRepository, CatalogSnapshotRepository), LibraryEntryRepository, FavoriteItemRepository, WatchlistItemRepository, MovieRatingRepository, MediaAssetRepository, MovieRepository (JpaSpecificationExecutor), WatchProgressRepository, ViewerSignalsRepository và PlaybackReportRepository.",
+            ],
+            [
+                "model.<tính năng> (12 gói con: account, admin, assistant, catalog, library, mail, media, movie, progress, recommendation, report, user)",
+                "70",
+                "Thực thể JPA, enum và bản ghi/quy tắc miền độc lập với các tầng phía trên: User, Role; PasswordResetToken; AdminAuditEvent; CatalogRecord và 11 thực thể danh mục, CatalogSnapshot, CatalogImportedEvent, PublicationStatus, AccessPolicy, ContentHash, YoutubeSource; LibraryEntry, FavoriteItem, WatchlistItem, MovieRating; EmailMessage; ByteRange, MediaAsset, ResolvedMediaStream; Movie, MovieFilter, MovieGenre, MovieGenreTerm; CompletionPolicy, NextEpisodePolicy, PlaybackContext, WatchDuration, WatchProgress, WatchProgressCommand; MoodPreset, RecommendationCandidate, ViewerSignals; PlaybackReport; ChatIntent, SearchDocument, SearchHit, SearchConstraints.",
+            ],
+            [
+                "dto.<tính năng> (12 gói con: account, admin, assistant, catalog, library, media, movie, progress, recommendation, report, user, web)",
+                "60",
+                "Các Java Record yêu cầu và phản hồi JSON trao đổi với giao diện React 19: AuthResponse, LoginRequest, RegisterRequest, UserProfileResponse; ChangePasswordRequest, DeleteAccountRequest, PasswordResetRequestDto; AdminPageResponse, AdminStatsResponse, AdminUserView, AdminAuditEventView; ChatEvent (sealed), ChatMetadata, ChatDonePayload, DiscoverRequest, DiscoverResponse; CatalogSearchHit, CatalogSeriesDetail, CatalogEpisodeDetail, SeriesCard, CatalogImportResult; LibraryItemView, MovieIdRequest, MovieRatingView, RatingRequest; MediaAssetView, PlaybackGrantResponse; MovieBrowsePage, MovieView; WatchProgressView; RecommendationRequest, RecommendationResult; PlaybackReportView; HealthStatus (sealed).",
+            ],
+            [
+                "com.dippie.exception (1 gói)",
+                "13",
+                "Toàn bộ hệ thống ngoại lệ của backend: lớp trừu tượng DomainException và các lớp con (NotFoundException, InvalidRequestException, ConflictException, ForbiddenException, UnauthorizedException, TooManyRequestsException, ServiceUnavailableException, RequestBodyTooLargeException, ChatPayloadTooLargeException, CatalogInputException) cùng ChatCapacityException và RangeNotSatisfiableException.",
+            ],
+            [
+                "config.<tính năng> (7 gói con: account, assistant, mail, media, report, user, web)",
+                "11",
+                "Các lớp @Configuration và bản ghi @ConfigurationProperties: PasswordResetRateLimitProperties, AssistantProperties, ChatConfiguration, MailConfiguration, MailProperties, MediaProperties, PlaybackReportRateLimitProperties, BootstrapAdminProperties, OpenApiConfig, WebProperties và WebResourceConfig.",
+            ],
+            [
+                "com.dippie.security (1 gói)",
+                "18",
+                "SecurityConfig fail-closed kèm header bảo mật, RequestBodySizeLimitFilter, JwtService (HS256, tokenVersion, vé 5 phút), JwtAuthenticationFilter, ActiveViewerLookup, CurrentViewer, SecurityContextCurrentViewer, Viewer, sealed PlaybackPrincipal, ClientIpResolver, TrustedProxyProperties, FixedWindowRateLimiter, LoginRateLimiter và PasswordPolicy.",
+            ],
+            [
+                "common.<nhóm> (5 gói con: collection, json, rating, text, web) và com.dippie",
+                "12",
+                "Điểm khởi chạy DippieApplication cùng tiện ích dùng chung: DiverseSelection, CatalogJson, CatalogJsonWriter, JsonText, RatingLookup, RatingSummary, TextFolding, UnicodeText, ApiResponse<T>, ClockConfig và UtcDateTimeJacksonConfig.",
+            ],
+            [
+                "frontend/ (app, features, components, lib, types)",
+                "81",
+                "Giao diện React 19, TypeScript và Tailwind CSS chia theo tính năng (series, movies, search, chat, profile, account, lich-su, legal, dat-lai-mat-khau, admin).",
+            ],
+            [
+                "desktop/ (com.dippie.desktop, 9 package)",
+                "64",
+                "Ứng dụng desktop Dippie Admin (3.605 dòng Java và desktop.css): DippieAdminApp; 4 lớp controller (AdminController có filterCatalog, LoginController, UiTasks, ConnectionState); 13 tệp dao (Dao, RowMapper, AbstractJdbcDao và 10 DAO); 5 tệp db; 2 tệp export CSV; 18 tệp model (13 tệp com.dippie.desktop.model gồm TopRated, MostWatched, DashboardSnapshot, DashboardCounts, RatingRow và 5 tệp com.dippie.desktop.model.catalog với sealed CatalogNode); 12 tệp service và 9 lớp view chỉ phụ thuộc controller, model và export.",
+            ],
         ],
-        col_widths_mm=[50, 16, 94],
-        font_size=9.5,
+        col_widths_mm=[46, 15, 99],
+        font_size=9.3,
     )
 
     rb.h2("3.4. Thiết kế cơ sở dữ liệu")
@@ -1161,7 +1167,7 @@ def build_report():
 
     rb.h2("3.5. Thiết kế giao diện và các luồng nghiệp vụ chính")
 
-    rb.h3("3.5.1. Giao diện Trang chủ và Danh sách Phim bộ")
+    rb.h3("3.5.1. Giao diện trang chủ và danh sách phim bộ")
     rb.p(
         "Giao diện web Dippie chọn nền sáng màu giấy trắng với màu nhấn xanh xô thơm và cỡ chữ dễ đọc cho cả phụ "
         "huynh lẫn trẻ nhỏ. Trang chủ (/) mở đầu bằng khu vực Kho phim hoạt hình, ô tìm nhanh, hàng Các bộ phim có "
@@ -1294,7 +1300,7 @@ def build_report():
     if (DESKTOP_SHOTS_DIR / "ratings.png").exists():
         rb.figure(DESKTOP_SHOTS_DIR / "ratings.png", "Tab Đánh giá trên Dippie Admin: lọc theo bộ phim, mức điểm, xuất CSV và xóa lượt đánh giá cần kiểm duyệt", width_inches=5.9)
 
-    rb.h2("3.6. Áp dụng kiến thức môn học (OOP và Design Patterns)")
+    rb.h2("3.6. Áp dụng kiến thức môn học (OOP và mẫu thiết kế)")
     rb.p(
         "Đồ án môn Lập trình hướng đối tượng Java đòi hỏi các cơ chế OOP, thư viện chuẩn (ngoại lệ, luồng I/O, "
         "generics, collections, lớp nội, JavaFX, JDBC) và các mẫu thiết kế GoF phải có mặt trong mã nguồn thật để "
@@ -1310,16 +1316,16 @@ def build_report():
         "Ánh xạ kiến thức môn học và các mẫu thiết kế GoF vào mã nguồn Dippie",
         ["Kiến thức / Mẫu thiết kế", "Nơi áp dụng (Lớp / Gói)", "Cách vận dụng trong dự án"],
         [
-            ["Xử lý ngoại lệ (Exceptions)", "Backend: DomainException (11 lớp con trực tiếp gồm RequestBodyTooLargeException cùng CatalogInputException), GlobalExceptionHandler (com.dippie.web), ChatCapacityException, RangeNotSatisfiableException; Desktop: DataAccessException (Connection, Query, Transaction, Conflict) và AuthException", "Phân cấp ngoại lệ miền gắn sẵn HttpStatus và ánh xạ tập trung về phản hồi JSON hoặc thông báo tiếng Việt trên JavaFX; dịch SQLException sang lỗi dễ hiểu; dùng try-with-resources đóng tệp và kết nối JDBC."],
+            ["Xử lý ngoại lệ (Exceptions)", "Backend: com.dippie.exception gồm DomainException (11 lớp con trực tiếp gồm RequestBodyTooLargeException cùng CatalogInputException), ChatCapacityException, RangeNotSatisfiableException và GlobalExceptionHandler (com.dippie.controller.web); Desktop: DataAccessException (Connection, Query, Transaction, Conflict) và AuthException", "Phân cấp ngoại lệ miền gắn sẵn HttpStatus và ánh xạ tập trung về phản hồi JSON hoặc thông báo tiếng Việt trên JavaFX; dịch SQLException sang lỗi dễ hiểu; dùng try-with-resources đóng tệp và kết nối JDBC."],
             ["Luồng vào/ra (I/O Streams)", "Backend: ResolvedMediaStream (FileChannel, ByteBuffer, OutputStream), RequestBodySizeLimitFilter và LocalChatController (InputStream đếm byte giới hạn dung lượng), CatalogImportService và CatalogJsonWriter, FileOutboxMailDeliveryStrategy (xuất tệp .eml UTF-8), DeepSeekAnswerGenerator (InputStream, BufferedReader); Desktop: CsvExporter (BufferedWriter UTF-8 BOM, Files.move) và DatabaseFactory", "Đọc và phát tệp video theo khối 64 KB; đọc thân yêu cầu có chặn dung lượng; xuất tệp thư .eml; đọc luồng SSE từ DeepSeek; xuất tệp CSV chuẩn UTF-8 BOM mở đúng tiếng Việt trong Excel và chặn công thức bảng tính."],
             ["Kế thừa (Inheritance)", "Backend: DomainException (11 lớp con trực tiếp), CatalogRecord (11 thực thể danh mục), LibraryEntry (WatchlistItem, FavoriteItem), AbstractLibraryListService (WatchlistService, FavoriteService); Desktop: DataPane (4 tab), AbstractJdbcDao (10 DAO)", "Đưa các trường chung (mã định danh, thời gian cập nhật, khóa lạc quan) và khung xử lý lên lớp cha trừu tượng, để lớp con chỉ cài đặt phần khác biệt."],
             ["Đa hình (Polymorphism)", "Backend: RecommendationStrategy, MediaLocationStrategy, AnswerGenerator, MailDeliveryStrategy, CatalogSearch, CatalogIndexPublisher, GlobalExceptionHandler.handleDomain(DomainException); Desktop: DataPane.refresh(), CatalogNode, Command, Dao<T, ID>, CsvStrategy<T>", "Bên gọi chỉ làm việc với giao diện hoặc lớp cha; hành vi thực tế được chọn lúc chạy tùy theo đối tượng cụ thể."],
             ["Lập trình tổng quát (Generics)", "Backend: ApiResponse<T>, AdminPageResponse<T>, LibraryEntryRepository<E extends LibraryEntry>, AbstractLibraryListService<E>, RatingLookup.withSummaries<T, R>, DiverseSelection; Desktop: Dao<T, ID>, AbstractJdbcDao<T, ID>, RowMapper<T>, AdminQuery<T>, CsvStrategy<T>", "Kiểm tra kiểu ngay khi biên dịch, dùng chung khung phản hồi, repository thư viện, truy vấn JDBC, Proxy phiên và xuất CSV cho nhiều thực thể."],
             ["Collections và cấu trúc dữ liệu", "Backend: DiverseSelection (ArrayList, ArrayDeque, LinkedHashMap), FixedWindowRateLimiter (LinkedHashMap), LexicalIndex (HashMap chia nhóm theo độ dài từ), CatalogReadModel bất biến, ConcurrentHashMap, AtomicReference; Desktop: ObservableList, FilteredList, SortedList, LinkedHashMap", "Chọn cấu trúc dữ liệu khớp bài toán truy xuất: chỉ mục đảo BM25, hàng đợi xoay vòng đa dạng hóa bộ phim, tập tra cứu O(1) và bảng TableView lọc, sắp xếp trực tiếp."],
-            ["Lớp lồng nhau và lớp ẩn danh", "Backend: LexicalIndex.Posting, ChatRequestValidator.ChatValidationException, ChatStreamGuard.Permit, HealthController.UpStatus/DownStatus, WatchProgressRepository.ContextRow, PlaybackContextResolver.PlaybackAssetId; Desktop: DataAccessException.{Connection,Query,Transaction,Conflict}, RatingDao.TopRated, Task ẩn danh trong UiTasks", "Gói các kiểu dữ liệu phụ trợ và ngoại lệ nội bộ ngay trong lớp dùng chúng để không làm rối không gian tên package."],
+            ["Lớp lồng nhau và lớp ẩn danh", "Backend: LexicalIndex.Posting, ChatRequestValidator.ChatValidationException, ChatStreamGuard.Permit, DiscoverRequest.Rejection, WatchProgressRepository.ContextRow, PlaybackContextResolver.PlaybackAssetId; Desktop: DataAccessException.{Connection,Query,Transaction,Conflict}, JdbcDatabase.Work, Task ẩn danh trong UiTasks", "Gói các kiểu dữ liệu phụ trợ và ngoại lệ nội bộ ngay trong lớp dùng chúng để không làm rối không gian tên package."],
             ["Composite (GoF Cấu trúc)", "Desktop (com.dippie.desktop.model.catalog): sealed interface CatalogNode (Component) với SeriesNode và SeasonNode (Composite), EpisodeNode (Leaf), hiển thị trên TreeView<CatalogNode> trong CatalogPane", "Biểu diễn thống nhất cây Bộ phim, Mùa và Tập để lọc tìm kiếm đệ quy giữ nguyên đường dẫn cha và đọc chi tiết bằng đối sánh mẫu switch."],
-            ["Adapter (GoF Cấu trúc)", "Backend: ActiveViewerLookup cài bởi UserViewerAdapter; MediaFileAvailability cài bởi MediaFileAvailabilityAdapter; MoviePresentationLookup cài bởi MoviePresentationAdapter; RatingLookup cài bởi RatingSummaries; SecurityContextCurrentViewer; DeepSeekAnswerGenerator; Desktop: CatalogPane.toItem(...)", "Chuyển đổi dữ liệu giữa các gói độc lập (tách phụ thuộc security/user, catalog/media, catalog/movie, library) và đổi cây CatalogNode sang TreeItem của JavaFX."],
-            ["Facade (GoF Cấu trúc)", "Backend: CatalogImportService, CatalogQueryService, ChatService, RecommendationService, MediaStreamService, AuthService, PlaybackReportService, PasswordResetService, GlobalExceptionHandler; Desktop: AdminServices", "Đặt một cổng gọi đơn giản che các bước phức tạp phía sau như kiểm tra SHA-256, chạy giao dịch, làm mới chỉ mục hoặc lắp ghép 10 DAO với 5 dịch vụ desktop."],
+            ["Adapter (GoF Cấu trúc)", "Backend: ActiveViewerLookup cài bởi UserViewerAdapter; MediaFileAvailability cài bởi MediaFileAvailabilityAdapter; MoviePresentationLookup cài bởi MoviePresentationAdapter; RatingLookup cài bởi RatingSummaries; SecurityContextCurrentViewer; DeepSeekAnswerGenerator; Desktop: CatalogPane.toItem(...)", "Chuyển đổi dữ liệu giữa các tính năng độc lập (security/user, catalog/media, catalog/movie, library) và đổi cây CatalogNode sang TreeItem của JavaFX."],
+            ["Facade (GoF Cấu trúc)", "Backend: CatalogImportService, CatalogQueryService, ChatService, DiscoverService, RecommendationService, MediaStreamService, AuthService, PlaybackReportService, PasswordResetService, GlobalExceptionHandler; Desktop: AdminServices", "Đặt một cổng gọi đơn giản che các bước phức tạp phía sau như kiểm tra SHA-256, chạy giao dịch, làm mới chỉ mục hoặc lắp ghép 10 DAO với 5 dịch vụ desktop."],
             ["Proxy (GoF Cấu trúc)", "Backend: CatalogReadModelCache (Caching Proxy đứng trước CatalogReadModelLoader), JwtAuthenticationFilter, RequestBodySizeLimitFilter và PlaybackAccess (Access-Control Proxy), Proxy Spring AOP (@Transactional); Desktop: AdminQuery<T> (Protection Proxy kiểm tra AdminSession.requireCurrent trước mỗi truy vấn đọc)", "Chặn trước tài nguyên thật để lưu đệm không khóa đọc, kiểm tra quyền truy cập và trạng thái xuất bản, giới hạn dung lượng thân yêu cầu, thu hồi phiên quản trị đã bị đổi quyền trên web và quản lý ranh giới giao dịch."],
             ["Observer (GoF Hành vi)", "Backend: CatalogImportedEvent (CatalogImportService phát tới CatalogReadModelCache, CatalogImportAuditListener, LocalCatalogSearch); Desktop: AdminController.{usersChangedProperty, ratingsChangedProperty, undoAvailableProperty} tới WorkspacePane và UsersPane; UiTasks.connectionProperty tới StatusBar", "Tách nguồn phát sự kiện khỏi các thành phần lắng nghe để bộ đệm, chỉ mục tìm kiếm, nhật ký kiểm toán và các tab JavaFX tự làm mới độc lập."],
             ["Strategy (GoF Hành vi)", "Backend: RecommendationStrategy (AffinityRecommendationStrategy, MoodRecommendationStrategy), MediaLocationStrategy (DriveCacheLocation, DriveMountLocation, LocalMediaLocation), AnswerGenerator (TemplateAnswerGenerator, DeepSeekAnswerGenerator), MailDeliveryStrategy (SmtpMailDeliveryStrategy, FileOutboxMailDeliveryStrategy), CatalogSearch; Desktop: CsvStrategy<T> kết hợp CsvExporter", "Đóng gói từng họ thuật toán gợi ý, tìm tệp, sinh câu trả lời, gửi thư và trích cột CSV thành các đối tượng có thể đổi qua lại mà không sửa lớp gọi."],
@@ -1327,7 +1333,7 @@ def build_report():
             ["State (GoF Hành vi)", "Backend: CatalogSnapshot cùng enum CatalogSnapshot.Status (PENDING, BUILDING, READY, BLOCKED, SYNC_FAILED với completeIndexSync, recordRetry, supersede), sealed ChatEvent cho các pha SSE; Desktop: enum ConnectionState (NOT_CHECKED, CHECKING, CONNECTED, DISCONNECTED với onRequest())", "Quản lý tường minh các trạng thái hợp lệ và quy tắc chuyển trạng thái của tiến trình đồng bộ chỉ mục, luồng SSE và thanh trạng thái kết nối CSDL."],
             ["Template Method và Factory Method (GoF)", "Backend: AbstractLibraryListService<E> (khung list, add, remove và phương thức nhà máy newEntry(...)) cài bởi WatchlistService và FavoriteService; Desktop: AbstractJdbcDao<T, ID> và DataPane", "Cố định khung xử lý chung ở lớp cha trừu tượng và để lớp con cài đặt bước khởi tạo thực thể hoặc hiển thị bảng riêng."],
             ["Creational (Singleton, Factory, Builder)", "Desktop: enum Singleton ConnectionProvider.INSTANCE và DatabaseFactory (chọn H2 demo hoặc MySQL từ desktop.properties); Backend: Static Factory (ApiResponse.ok, WatchProgress.start), Builder (ResponseEntity, Jwts.builder)", "Quản lý tập trung điểm mở kết nối JDBC, tách logic chọn H2/MySQL khỏi phần còn lại và tạo đối tượng bất biến gọn gàng."],
-            ["Kiến trúc MVC", "Web: Entities/DTO/Services/Repositories (Model), React SPA (View), 25 @RestController (Controller); Desktop: model/dao/service (Model), 9 lớp view (View), AdminController/LoginController/UiTasks (Controller)", "Tách biệt dữ liệu, giao diện và điều phối luồng trên cả web lẫn desktop (chi tiết ở mục 3.2)."],
+            ["Kiến trúc MVC", "Web: model + repository (Model), React 19 SPA + dto (View), controller (Controller), service ở giữa; Desktop: model + dao + db (Model), 9 lớp view chỉ gọi controller/model/export (View), controller (Controller), service ở giữa", "Tách biệt dữ liệu, giao diện và điều phối luồng kèm quy tắc phụ thuộc tầng chặt trên cả web lẫn desktop (chi tiết ở mục 3.2)."],
             ["JavaFX GUI và Event Handling", "Desktop (9 lớp view): HeaderBar, LoginPane, WorkspacePane (4 tab), DashboardPane (BarChart và Timeline 30 giây), CatalogPane (TreeView), UsersPane, RatingsPane, StatusBar", "Xây dựng giao diện desktop hướng sự kiện bằng JavaFX 21, chạy JDBC và ghi tệp trên luồng nền UiTasks và ràng buộc disableProperty để tránh bấm lặp."],
             ["JDBC (PreparedStatement và Transaction)", "Desktop (com.dippie.desktop.db và .dao): JdbcDatabase (read/transaction với setAutoCommit(false), commit, rollback), Dao<T, ID>, RowMapper<T>, AbstractJdbcDao<T, ID> và 10 DAO", "Truy vấn có tham số chống SQL Injection, khóa dòng FOR UPDATE, gộp cập nhật dữ liệu và ghi kiểm toán trong cùng một giao dịch trên cả H2 và MySQL."],
         ],
@@ -1344,7 +1350,7 @@ def build_report():
     )
 
     rb.code_block(
-        "Đoạn mã 1. Kế thừa (extends): DomainException.java & NotFoundException.java",
+        "Đoạn mã 1. Kế thừa (extends): exception/DomainException.java & exception/NotFoundException.java",
         """// Lớp cha trừu tượng cho mọi lỗi nghiệp vụ trong Dippie. Các lớp con kế thừa và gán sẵn HTTP status cùng header riêng,
 // nhờ đó GlobalExceptionHandler chỉ cần bắt một chỗ là xử lý được hết.
 public abstract class DomainException extends RuntimeException {
@@ -1372,7 +1378,7 @@ public class NotFoundException extends DomainException {
     )
 
     rb.code_block(
-        "Đoạn mã 2. Giao diện (interface): RecommendationStrategy.java & desktop/dao/Dao.java",
+        "Đoạn mã 2. Giao diện (interface): service/recommendation/RecommendationStrategy.java & desktop/dao/Dao.java",
         """// Interface Strategy chung cho các cách gợi ý phim (theo sở thích hoặc theo tâm trạng).
 public interface RecommendationStrategy {
 
@@ -1390,19 +1396,19 @@ public interface Dao<T, ID> {
         font_size=9.0
     )
     rb.p(
-        "Trong gói com.dippie.recommendation, hai lớp AffinityRecommendationStrategy và MoodRecommendationStrategy "
-        "cài đặt RecommendationStrategy; còn ở module desktop, 10 lớp DAO kế thừa AbstractJdbcDao<T, ID> cài đặt "
-        "Dao<T, ID>."
+        "Trong gói com.dippie.service.recommendation, hai lớp AffinityRecommendationStrategy và "
+        "MoodRecommendationStrategy cài đặt RecommendationStrategy; còn ở module desktop, 10 lớp DAO kế thừa "
+        "AbstractJdbcDao<T, ID> cài đặt Dao<T, ID>."
     )
 
     rb.code_block(
-        "Đoạn mã 3. Lớp trừu tượng (abstract / Template Method): AbstractLibraryListService.java & FavoriteService.java",
+        "Đoạn mã 3. Lớp trừu tượng (abstract / Template Method): service/library/AbstractLibraryListService.java & service/library/FavoriteService.java",
         """// Lớp dịch vụ gốc dùng Template Method và Factory Method qua newEntry() để FavoriteService với WatchlistService dùng chung luồng xem, thêm và xóa.
 public abstract class AbstractLibraryListService<E extends LibraryEntry> {
     ...
-        entry = requiresNewTransaction.execute(status -> repository.saveAndFlush(
-                newEntry(viewer.userId(), movie.getId(), LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS))
-        ));
+            entry = requiresNewTransaction.execute(status -> repository.saveAndFlush(
+                    newEntry(viewer.userId(), movie.getId(), LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS))
+            ));
     ...
     // Factory Method để lớp con trả về đúng entity FavoriteItem hoặc WatchlistItem.
     protected abstract E newEntry(Long userId, String movieId, LocalDateTime addedAt);
@@ -1421,7 +1427,7 @@ public class FavoriteService extends AbstractLibraryListService<FavoriteItem> {
     )
 
     rb.code_block(
-        "Đoạn mã 4. Đa hình (Polymorphism): RecommendationService.java & GlobalExceptionHandler.java",
+        "Đoạn mã 4. Đa hình (Polymorphism): service/recommendation/RecommendationService.java & controller/web/GlobalExceptionHandler.java",
         """    // Request có mood hoặc moodPreset thì chạy MoodRecommendationStrategy, còn lại chạy AffinityRecommendationStrategy.
     public RecommendationResult recommend(RecommendationRequest request) {
         ...
@@ -1451,7 +1457,7 @@ public class FavoriteService extends AbstractLibraryListService<FavoriteItem> {
     )
 
     rb.code_block(
-        "Đoạn mã 5. Caching Proxy kết hợp Observer (backend/.../catalog/query/CatalogReadModelCache.java)",
+        "Đoạn mã 5. Caching Proxy kết hợp Observer (service/catalog/CatalogReadModelCache.java)",
         """@Component
 public class CatalogReadModelCache {
 
@@ -1479,9 +1485,9 @@ public class CatalogReadModelCache {
     )
 
     rb.code_block(
-        "Đoạn mã 6. Đọc và ghi tệp từng khối 64 KB bằng FileChannel (backend/.../media/ResolvedMediaStream.java)",
+        "Đoạn mã 6. Đọc và ghi tệp từng khối 64 KB bằng FileChannel (model/media/ResolvedMediaStream.java)",
         """    // Ghi đồng bộ từng khúc 64KB bằng FileChannel thay vì async stream để video dài không bị Spring cắt giữa chừng do async timeout.
-    void writeRange(long start, long length, OutputStream outputStream) throws IOException {
+    public void writeRange(long start, long length, OutputStream outputStream) throws IOException {
         if (length <= 0) {
             return;
         }
@@ -1510,22 +1516,23 @@ public class CatalogReadModelCache {
     # =======================================================================
     # CHƯƠNG 4. TỔ CHỨC NHÓM VÀ QUY TRÌNH PHÁT TRIỂN
     # =======================================================================
-    rb.h1("CHƯƠNG 4. TỔ CHỨC NHÓM VÀ QUY TRÌNH PHÁT TRIỂN", break_before=True)
+    rb.h1("Chương 4. Tổ chức nhóm và quy trình phát triển", break_before=True)
 
     rb.h2("4.1. Cơ cấu tổ chức và vai trò thành viên")
     rb.p(
-        "Nhóm gồm 4 thành viên, chia công việc theo phân hệ để mỗi người phụ trách xuyên suốt từ thiết kế, cài đặt "
-        "đến viết kiểm thử tự động cho phần của mình, đồng thời thống nhất giao tiếp qua tài liệu hợp đồng API và "
-        "đọc soát mã chéo trước khi gộp."
+        "Nhóm có 4 thành viên. Hai bạn giữ phần Java chính: một bạn làm backend Spring Boot cùng CineBot, một bạn "
+        "làm ứng dụng Dippie Admin bằng JavaFX và JDBC cùng cơ sở dữ liệu. Hai bạn còn lại lo frontend và khâu dữ liệu, "
+        "triển khai, đồng thời nhận thêm vài phần Java nhỏ có test riêng. Mọi người thống nhất API qua CONTRACT.md "
+        "và đọc chéo mã của nhau trước khi gộp."
     )
     rb.table(
         "Phân vai của 4 thành viên trong nhóm Dippie",
         ["Thành viên", "Vai trò", "Phạm vi phụ trách chính"],
         [
-            ["Thành viên 1", "Nhóm trưởng, Kiến trúc và Backend lõi", "Thiết kế kiến trúc Spring Boot 3.5; bảo mật JWT và rà soát OWASP; đăng xuất thu hồi token, xóa tài khoản, đặt lại mật khẩu và báo lỗi phát; quản trị người dùng và kiểm toán; tiến độ xem, danh mục, rà soát mã và điều phối gộp nhánh."],
-            ["Thành viên 2", "Frontend React và Trải nghiệm người dùng", "Xây dựng giao diện React 19, TypeScript và Tailwind CSS; tích hợp YouTube IFrame API, hộp thoại xác nhận đồng bộ dữ liệu khách, trang lịch sử xem, trang pháp lý, báo mất mạng và ARIA; sửa lỗi UX qua 3 vòng và viết 29 bộ test frontend (286 ca)."],
-            ["Thành viên 3", "CineBot, Tìm kiếm và Gợi ý phim", "Cài đặt chỉ mục BM25 cục bộ (LexicalIndex), tìm kiếm không dấu và chịu lỗi gõ; xây dựng đường ống CineBot SSE (IntentParser, ChatStreamGuard, Template và DeepSeek AnswerGenerator); viết hai chiến lược gợi ý Affinity và Mood."],
-            ["Thành viên 4", "Ứng dụng JavaFX, CSDL, Kiểm thử và Triển khai", "Thiết kế 32 bảng MySQL/H2, migration Flyway, view, hàm, thủ tục, trigger và đo tải; xây dựng ứng dụng desktop Dippie Admin (JavaFX 21, JDBC, GoF); chuẩn bị CHAY_DIPPIE.bat, HUONG_DAN_CHAY.md, Docker Compose, Caddy HTTPS, CI và kịch bản demo."],
+            [team.label(1), "Nhóm trưởng, backend Spring Boot, CineBot và gợi ý", "Thiết kế kiến trúc Spring Boot 3.5; bảo mật JWT và rà soát OWASP; đăng xuất thu hồi token, xóa tài khoản, đặt lại mật khẩu, báo lỗi phát; tiến độ xem và danh mục; chỉ mục BM25, luồng CineBot SSE và hai chiến lược gợi ý; điều phối gộp nhánh."],
+            [team.label(2), "Dippie Admin (JavaFX, JDBC), cơ sở dữ liệu và kiểm thử", "Xây dựng ứng dụng desktop Dippie Admin bằng JavaFX 21 và JDBC thuần (DAO, Composite, Command, Strategy); thiết kế 32 bảng MySQL/H2, Flyway, view, hàm, thủ tục, trigger và đo tải; viết test JUnit cho desktop và các phần backend dùng chung CSDL."],
+            [team.label(3), "Frontend React, trải nghiệm người dùng, phụ phần Java", "Xây dựng giao diện React 19, TypeScript và Tailwind CSS; trình phát YouTube, hộp thoại đồng bộ dữ liệu khách, trang lịch sử xem, trang pháp lý, báo mất mạng; sửa lỗi UX qua 3 vòng. Phần Java: các record yêu cầu và phản hồi của thư viện, đánh giá trong com.dippie.dto.library cùng test API trong com.dippie.controller.library."],
+            [team.label(4), "Dữ liệu phim, triển khai, kịch bản demo, phụ phần Java", "Chuẩn hóa dữ liệu 6 bộ phim (806 tập, 1.705 phân đoạn); chuẩn bị CHAY_DIPPIE.bat, HUONG_DAN_CHAY.md, Docker Compose, Caddy HTTPS, CI và kịch bản demo. Phần Java: kiểm tra gói danh mục trước khi nhập (CatalogPackageValidator) và test đi kèm."],
         ],
         col_widths_mm=[28, 42, 90],
         font_size=10.5,
@@ -1536,10 +1543,10 @@ public class CatalogReadModelCache {
         "Đầu việc và minh chứng đóng góp của từng thành viên",
         ["Thành viên", "Các đầu việc chính đã thực hiện", "Minh chứng trong kho mã nguồn"],
         [
-            ["Thành viên 1", "Khởi tạo backend Spring Boot 3.5; cài đặt bảo mật JWT, tokenVersion, LoginRateLimiter, FixedWindowRateLimiter, RequestBodySizeLimitFilter và xử lý các mục bảo mật OWASP; xây dựng CatalogImportService, CatalogReadModelCache, WatchProgressService, MediaStreamController, đăng xuất thu hồi token, xóa tài khoản, đặt lại mật khẩu và báo lỗi phát; viết CONTRACT.md.", "Các gói com.dippie.security, user, account, session, erasure, passwordreset, mail, report, admin, catalog.*, library, progress, history, media; backend/springboot/CONTRACT.md và README.md; 589 ca kiểm thử Surefire backend (1 ca bỏ qua do symlink Windows)."],
-            ["Thành viên 2", "Xây dựng các trang /, /series, /series/:id, /search, /profile, /account, /lich-su, /dieu-khoan, /quyen-rieng-tu, /quen-mat-khau, /dat-lai-mat-khau, /admin/* (5 mục); tích hợp YouTubePlayer.tsx, thanh 6 tâm trạng, bảng chấm điểm 1 đến 10 trực tiếp, GuestSyncDialog, OfflineBanner và PlaybackReportButton; xử lý các lỗi UX sau Vòng 1 và Vòng 2.", "81 tệp ứng dụng trong frontend/ (22.104 dòng); 29 bộ kiểm thử frontend/tests/*_suite.mjs với 286 ca kiểm thử (16.520 dòng); điểm UX phần Thư viện và Đánh giá đạt 9/10."],
-            ["Thành viên 3", "Chuẩn hóa dữ liệu 6 bộ phim (806 tập, 1.705 phân đoạn); xây dựng LexicalIndex BM25 và NameSimilarity sửa lỗi gõ; cài đặt đường ống CineBot SSE (IntentParser, ChatStreamGuard, ChatRetrieval, Template/DeepSeek AnswerGenerator) cùng hai chiến lược gợi ý Affinity và Mood.", "Các gói com.dippie.assistant.*, com.dippie.recommendation, com.dippie.movie; bộ kiểm thử đối chiếu CatalogSearchParityTest (20 truy vấn cố định) cùng các lớp test tìm kiếm, chat và gợi ý."],
-            ["Thành viên 4", "Hoàn thiện lược đồ 32 bảng MySQL (01_init.sql), 14 migration SQL (02 đến 15), 5 Flyway migration (V1 đến V5), 4 view, 2 hàm, 3 thủ tục, 4 trigger và đo tải mốc 100.000 tập; phát triển Dippie Admin (JavaFX 21 và JDBC); chuẩn bị CHAY_DIPPIE.bat, HUONG_DAN_CHAY.md, scripts/make-release-zip.ps1, Docker Compose, Caddy HTTPS, script sao lưu, CI/Dependabot và kịch bản demo.", "Thư mục database/, db/migration/, infrastructure/ (Dockerfile, docker-compose.yml, docker-compose.demo.yml, Caddyfile), CHAY_DIPPIE.bat, HUONG_DAN_CHAY.md, scripts/make-release-zip.ps1, backup-mysql.*, .github/workflows/ci.yml và module desktop/ (59 tệp Java, 3.582 dòng, 5 lớp JUnit 5 đạt 33/33 ca)."],
+            [team.label(1), "Khởi tạo backend Spring Boot 3.5; cài đặt bảo mật JWT, tokenVersion, LoginRateLimiter, FixedWindowRateLimiter, RequestBodySizeLimitFilter và xử lý các mục OWASP; xây dựng CatalogImportService, CatalogReadModelCache, WatchProgressService, MediaStreamController; cài LexicalIndex BM25, NameSimilarity, DiscoverService, đường ống CineBot SSE (IntentParser, ChatStreamGuard, Template/DeepSeek AnswerGenerator) và gợi ý Affinity, Mood; viết CONTRACT.md.", "Gói com.dippie.security, com.dippie.exception cùng các tầng controller, service, repository, model và dto cho account, catalog, progress, media, assistant, recommendation; backend/springboot/CONTRACT.md; bộ đối chiếu CatalogSearchParityTest (20 truy vấn cố định); 589 ca kiểm thử backend (1 ca bỏ qua do symlink trên Windows)."],
+            [team.label(2), "Phát triển Dippie Admin: đăng nhập kiểm tra BCrypt qua JDBC, tab Tổng quan, Danh mục (TreeView theo Composite), Người dùng (Hoàn tác bằng Command), Đánh giá và xuất CSV; hoàn thiện lược đồ 32 bảng (01_init.sql), 14 migration SQL, 5 Flyway migration (V1 đến V5), 4 view, 2 hàm, 3 thủ tục, 4 trigger và đo tải mốc 100.000 tập.", "Module desktop/ (64 tệp Java, 3.605 dòng, 5 lớp JUnit 5 đạt 33/33 ca); thư mục database/ và db/migration/; báo cáo đo tải MySQL."],
+            [team.label(3), "Xây dựng các trang /, /series, /series/:id, /search, /profile, /account, /lich-su, /dieu-khoan, /quyen-rieng-tu, /quen-mat-khau, /dat-lai-mat-khau và /admin/* (5 mục); tích hợp YouTubePlayer.tsx, thanh 6 tâm trạng, chấm điểm 1 đến 10, GuestSyncDialog, OfflineBanner, PlaybackReportButton. Phía Java viết RatingRequest, MovieIdRequest, LibraryItemView, MovieRatingView và LibraryControllerTest.", "81 tệp trong frontend/ (22.104 dòng); 29 bộ kiểm thử frontend/tests/*_suite.mjs với 286 ca; gói com.dippie.dto.library và LibraryControllerTest (gói kiểm thử com.dippie.controller.library); điểm UX phần Thư viện và Đánh giá đạt 9/10."],
+            [team.label(4), "Chuẩn hóa 6 gói danh mục trong data/catalog-by-series/; viết CHAY_DIPPIE.bat, HUONG_DAN_CHAY.md, scripts/make-release-zip.ps1, Docker Compose, Caddy HTTPS, script sao lưu, CI/Dependabot và kịch bản demo. Phía Java viết CatalogPackageValidator cùng CatalogPackageValidatorTest để chặn gói danh mục sai trước khi nhập.", "Thư mục data/catalog-by-series/, infrastructure/ (Dockerfile, docker-compose.yml, docker-compose.demo.yml, Caddyfile), CHAY_DIPPIE.bat, HUONG_DAN_CHAY.md, scripts/, .github/workflows/ci.yml; lớp com.dippie.service.catalog.CatalogPackageValidator."],
         ],
         col_widths_mm=[26, 74, 60],
         font_size=10,
@@ -1571,7 +1578,7 @@ public class CatalogReadModelCache {
         "người dùng quay lại), ghi lại lỗi theo mức độ nặng nhẹ rồi sửa theo từng đợt."
     )
 
-    rb.h2("4.4. Kết quả 3 vòng đánh giá trải nghiệm người dùng (UX Audit)")
+    rb.h2("4.4. Kết quả 3 vòng đánh giá trải nghiệm người dùng")
     rb.p(
         "Nhóm chạy 3 vòng kiểm thử trực tiếp trên ứng dụng đang hoạt động, kết hợp gọi API/SSE và mở trình duyệt "
         "Chromium không giao diện ở hai kích thước màn hình là máy tính (1280x800 px) và điện thoại (375x812 px). "
@@ -1609,12 +1616,11 @@ public class CatalogReadModelCache {
         "Thống kê kiểm thử tự động, rà soát bảo mật OWASP và kiểm thử khói cuối",
         ["Phân hệ / Hạng mục kiểm chứng", "Số lớp / bộ", "Kết quả", "Nội dung kiểm chứng tiêu biểu"],
         [
-            ["Backend: catalog.{domain, importing, query}", "14 lớp", "Thuộc tổng 589 ca", "Kiểm tra lược đồ, băm SHA-256, nhập nguyên tử, xung đột revision, chỉ mục hiệu năng H2, bộ đệm đọc và trạng thái xuất bản."],
-            ["Backend: assistant.{chat, search}", "10 lớp (+1 fixture)", "Thuộc tổng 589 ca", "Đối chiếu 20 truy vấn BM25, phân tích ý định, hội thoại nhiều lượt, luồng SSE, ChatStreamGuard, DeepSeek bám bằng chứng và dự phòng mẫu."],
-            ["Backend: media và progress", "11 lớp", "Thuộc tổng 589 ca", "Vé phát JWT 5 phút, kiểm tra xuất bản ở PlaybackAccess, đường dẫn, HTTP Byte Range 200/206/416, khóa lạc quan 409 và tập kế tiếp."],
-            ["Backend: security, user, account, admin, config", "17 lớp", "Thuộc tổng 589 ca", "JWT HS256, tokenVersion, LoginRateLimiter, PasswordPolicy, Critical/High/MediumLowSecurityFixesTest, FlywayConfigurationTest, RegistrationTermsTest và kiểm toán."],
-            ["Backend: erasure, history, mail, passwordreset, report, session", "6 lớp", "21 ca (thuộc 589 ca)", "Đăng xuất thu hồi token, tự xóa tài khoản, xóa lịch sử xem, gửi/xử lý báo lỗi phát video, đặt lại mật khẩu và chiến lược gửi thư SMTP/.eml."],
-            ["Backend: movie, library, recommendation, common.text, web", "11 lớp", "Thuộc tổng 589 ca", "Lọc và sắp xếp SQL Specification, thư viện lũy đẳng, chấm điểm 1 đến 10, gợi ý Affinity/Mood, TextFolding và định tuyến SPA 404."],
+            ["Backend: controller.<tính năng> (11 gói con)", "19 lớp", "Thuộc tổng 589 ca", "Kiểm thử HTTP/MockMvc xuyên bảo mật và giao dịch cho account (đăng xuất thu hồi token, xóa tài khoản, đặt lại mật khẩu), admin, assistant (CineBot SSE), catalog, library, media, movie, progress (khóa lạc quan 409, xóa lịch sử), report, user và web (SPA 404, OpenAPI)."],
+            ["Backend: service.<tính năng> (9 gói con)", "29 lớp (+1 fixture)", "Thuộc tổng 589 ca", "Đối chiếu 20 truy vấn BM25 (CatalogSearchParityTest), CineBot (IntentParser, ChatService, Template/DeepSeek), nhập và đệm danh mục (CatalogPackageValidatorTest, CatalogReadModelCacheTest), gợi ý Affinity/Mood, phát media (PlaybackAccessTest, MediaFileResolverTest), gửi thư SMTP/.eml, lọc SQL, tiến độ và chính sách quản trị."],
+            ["Backend: model.<tính năng> (4 gói con)", "10 lớp", "Thuộc tổng 589 ca", "Kiểm thử đơn vị quy tắc miền: AccessPolicy, PublicationStatus, ContentHash SHA-256, YoutubeSource, SeriesArtwork, ByteRange 200/206/416, MovieBrowseQuery và WatchProgressCommand."],
+            ["Backend: com.dippie.security", "8 lớp", "Thuộc tổng 589 ca", "JWT HS256, tokenVersion, LoginRateLimiter, PasswordPolicy, SecurityContextCurrentViewer và bộ Critical/High/MediumLowSecurityFixesTest."],
+            ["Backend: config và com.dippie.common.text", "3 lớp", "Thuộc tổng 589 ca", "Cấu hình Flyway (FlywayConfigurationTest), MediaPropertiesTest và chuẩn hóa tiếng Việt không dấu (TextFoldingTest)."],
             ["Tổng cộng Backend Spring Boot", "69 lớp (70 tệp)", "589 ca Surefire", "Chạy tự động qua ./mvnw -B test trên H2 in-memory (0 lỗi, 1 ca bỏ qua trên Windows do tạo symlink cần quyền quản trị viên ở MediaFileResolverTest)."],
             ["Tổng cộng Frontend React / TypeScript", "29 bộ (*_suite.mjs)", "286 ca", "16.520 dòng mã kiểm thử (31 tệp .mjs), chạy qua npm test kèm npm run typecheck và npm run build (điều hướng, trình phát, CineBot, GuestSyncDialog, đặt lại mật khẩu, pháp lý, di động)."],
             ["Tổng cộng Desktop JavaFX (Dippie Admin)", "5 lớp JUnit 5", "33 ca (33/33 đạt)", "529 dòng mã kiểm thử (kèm TestDatabase): AdminServiceTest (15), DaoTest (11), ReadServiceTest (3), CsvExportTest (2), DatabaseFactoryTest (2)."],
@@ -1628,9 +1634,9 @@ public class CatalogReadModelCache {
     # =======================================================================
     # CHƯƠNG 5. TRIỂN KHAI THỬ NGHIỆM
     # =======================================================================
-    rb.h1("CHƯƠNG 5. TRIỂN KHAI THỬ NGHIỆM", break_before=True)
+    rb.h1("Chương 5. Triển khai thử nghiệm", break_before=True)
 
-    rb.h2("5.1. Chạy thử một cú nhấp và đóng gói phát hành (Demo cục bộ)")
+    rb.h2("5.1. Chạy thử một cú nhấp và đóng gói phát hành")
     rb.p(
         "Để giảng viên hoặc người chấm mở nhanh toàn bộ hệ thống trên máy Windows 10/11 mà không phải tự cài Java, "
         "Node.js hay MySQL, nhóm đóng gói quy trình khởi chạy một cú nhấp bằng tệp CHAY_DIPPIE.bat (chuyển tiếp sang "
@@ -1666,7 +1672,7 @@ CHAY_DIPPIE.bat -Reset    # Xóa target\\dippie-java để nạp lại dữ li�
         "scripts/import_preview_catalog.ps1)."
     )
 
-    rb.h2("5.2. Khởi chạy ứng dụng quản trị Desktop JavaFX (Dippie Admin)")
+    rb.h2("5.2. Khởi chạy ứng dụng quản trị desktop Dippie Admin")
     rb.p(
         "Ứng dụng desktop Dippie Admin trong module desktop/ chạy độc lập bằng lệnh sau ở thư mục gốc:"
     )
@@ -1684,7 +1690,7 @@ CHAY_DIPPIE.bat -Reset    # Xóa target\\dippie-java để nạp lại dữ li�
         "desktop/desktop.properties và điền url (tiền tố jdbc:mysql://), user cùng password."
     )
 
-    rb.h2("5.3. Triển khai môi trường Production với Docker Compose và Caddy HTTPS")
+    rb.h2("5.3. Triển khai bản chạy thật với Docker Compose và Caddy HTTPS")
     rb.p(
         "Để chạy thử như một dịch vụ web hoàn chỉnh bên ngoài máy cá nhân, nhóm chuẩn bị sẵn cấu hình container và "
         "sao lưu trong infrastructure/, hồ sơ prod của Spring Boot và các script trong scripts/:"
@@ -1845,7 +1851,7 @@ CHAY_DIPPIE.bat -Reset    # Xóa target\\dippie-java để nạp lại dữ li�
     # =======================================================================
     # KẾT LUẬN
     # =======================================================================
-    rb.h1("KẾT LUẬN", break_before=True)
+    rb.h1("Kết luận", break_before=True)
     rb.p(
         "Qua bài tập lớn này, nhóm chúng em đã xây dựng được hệ thống Dippie chạy hoàn chỉnh gồm ứng dụng web cho gia "
         "đình (Spring Boot 3.5, Java 21, React 19) và ứng dụng quản trị desktop (JavaFX 21, JDBC thuần) dùng chung "
@@ -1870,7 +1876,7 @@ CHAY_DIPPIE.bat -Reset    # Xóa target\\dippie-java để nạp lại dữ li�
     # =======================================================================
     # TÀI LIỆU THAM KHẢO
     # =======================================================================
-    rb.h1("TÀI LIỆU THAM KHẢO", break_before=True)
+    rb.h1("Tài liệu tham khảo", break_before=True)
     refs = [
         "[1] Y. Daniel Liang, Introduction to Java Programming and Data Structures, Comprehensive Version (Giáo trình học phần Lập trình hướng đối tượng Java), Pearson.",
         "[2] E. Gamma, R. Helm, R. Johnson, J. Vlissides, Design Patterns: Elements of Reusable Object-Oriented Software, Addison-Wesley, 1995.",
@@ -1890,7 +1896,7 @@ CHAY_DIPPIE.bat -Reset    # Xóa target\\dippie-java để nạp lại dữ li�
     # =======================================================================
     # PHỤ LỤC
     # =======================================================================
-    rb.h1("PHỤ LỤC", break_before=True)
+    rb.h1("Phụ lục", break_before=True)
 
     rb.h2("Phụ lục A. Tài khoản mẫu, dữ liệu gieo sẵn và thống kê 6 bộ phim")
     rb.table(

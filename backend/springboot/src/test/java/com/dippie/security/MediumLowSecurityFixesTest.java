@@ -1,39 +1,30 @@
 package com.dippie.security;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.dippie.model.catalog.CatalogEpisode;
+import com.dippie.model.catalog.CatalogSeason;
+import com.dippie.model.catalog.CatalogSeries;
+import com.dippie.model.catalog.CatalogSnapshot;
+import com.dippie.model.library.FavoriteItem;
+import com.dippie.model.library.MovieRating;
+import com.dippie.model.library.WatchlistItem;
+import com.dippie.model.movie.Movie;
+import com.dippie.model.progress.WatchProgress;
+import com.dippie.model.user.Role;
+import com.dippie.model.user.User;
+import com.dippie.repository.admin.AdminAuditEventRepository;
+import com.dippie.repository.catalog.CatalogEpisodeRepository;
+import com.dippie.repository.catalog.CatalogSeasonRepository;
+import com.dippie.repository.catalog.CatalogSeriesRepository;
+import com.dippie.repository.catalog.CatalogSnapshotRepository;
+import com.dippie.repository.library.FavoriteItemRepository;
+import com.dippie.repository.library.MovieRatingRepository;
+import com.dippie.repository.library.WatchlistItemRepository;
+import com.dippie.repository.movie.MovieRepository;
+import com.dippie.repository.progress.WatchProgressRepository;
+import com.dippie.repository.user.UserRepository;
+import com.dippie.service.catalog.CatalogReadModelCache;
 
-import com.dippie.admin.AdminAuditEventRepository;
-import com.dippie.catalog.domain.CatalogEpisode;
-import com.dippie.catalog.domain.CatalogEpisodeRepository;
-import com.dippie.catalog.domain.CatalogSeason;
-import com.dippie.catalog.domain.CatalogSeasonRepository;
-import com.dippie.catalog.domain.CatalogSeries;
-import com.dippie.catalog.domain.CatalogSeriesRepository;
-import com.dippie.catalog.domain.CatalogSnapshot;
-import com.dippie.catalog.domain.CatalogSnapshotRepository;
-import com.dippie.catalog.query.CatalogReadModelCache;
-import com.dippie.library.FavoriteItem;
-import com.dippie.library.FavoriteItemRepository;
-import com.dippie.library.MovieRating;
-import com.dippie.library.MovieRatingRepository;
-import com.dippie.library.WatchlistItem;
-import com.dippie.library.WatchlistItemRepository;
-import com.dippie.movie.Movie;
-import com.dippie.movie.MovieRepository;
-import com.dippie.progress.WatchProgress;
-import com.dippie.progress.WatchProgressRepository;
-import com.dippie.user.User;
-import com.dippie.user.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -44,6 +35,18 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // Bộ test hồi quy cho phân quyền fail-closed, lọc nội dung nháp khỏi thư viện và thống kê, ghi audit và cấu hình đóng gói H2.
 @SpringBootTest

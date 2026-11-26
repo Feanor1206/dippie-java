@@ -81,6 +81,14 @@ export function getMovieProgress(movieId: string, userId: number | null = null):
   return listMovieProgress(userId).find((entry) => entry.movieId === movieId.trim()) || null;
 }
 
+export function isMovieProgressCompleted(positionMs: number, durationMs: number | null | undefined): boolean {
+  if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) return false;
+  const total = Math.floor(durationMs);
+  const fivePercent = Math.max(1, Math.floor(total / 20));
+  const nearEnd = Math.min(60_000, fivePercent);
+  return positionMs >= total - nearEnd;
+}
+
 export function saveMovieProgress(
   draft: MovieProgressDraft,
   now = Date.now(),
@@ -93,13 +101,14 @@ export function saveMovieProgress(
     ? draft.durationMs
     : null;
   const thumbnailUrl = nonEmpty(draft.thumbnailUrl) ? draft.thumbnailUrl.trim() : null;
+  const positionMs = durationMs === null ? draft.positionMs : Math.min(draft.positionMs, durationMs);
   const record: MovieProgressRecord = {
     movieId: draft.movieId.trim(),
     title: draft.title.trim(),
     ...(thumbnailUrl ? { thumbnailUrl } : {}),
-    positionMs: durationMs === null ? draft.positionMs : Math.min(draft.positionMs, durationMs),
+    positionMs,
     durationMs,
-    completed: Boolean(draft.completed),
+    completed: Boolean(draft.completed) || isMovieProgressCompleted(positionMs, durationMs),
     updatedAt: new Date(now).toISOString(),
   };
   const next = [record, ...listMovieProgress(userId).filter((entry) => entry.movieId !== record.movieId)]
@@ -113,10 +122,22 @@ export function saveMovieProgress(
   return record;
 }
 
+export function clearMovieProgress(userId: number | null = null): void {
+  const store = storage();
+  if (!store) return;
+  try {
+    store.removeItem(movieProgressKey(userId));
+  } catch {}
+}
+
 export function isUsableMovieProgress(record: MovieProgressRecord | null | undefined): record is MovieProgressRecord {
   return Boolean(
-    record && !record.completed && nonEmpty(record.movieId) && nonEmpty(record.title) &&
-    record.positionMs > 0 && (record.durationMs === null || record.positionMs < record.durationMs)
+    record &&
+      !record.completed &&
+      nonEmpty(record.movieId) &&
+      nonEmpty(record.title) &&
+      record.positionMs > 0 &&
+      (record.durationMs === null || (record.durationMs > 0 && !isMovieProgressCompleted(record.positionMs, record.durationMs)))
   );
 }
 
@@ -136,6 +157,6 @@ export function getMovieResumeSeconds(movieId: string, userId: number | null = n
   } catch {
   }
   const saved = getMovieProgress(movieId, userId);
-  if (saved && !saved.completed && saved.positionMs > 0) return saved.positionMs / 1000;
+  if (isUsableMovieProgress(saved)) return saved.positionMs / 1000;
   return 0;
 }

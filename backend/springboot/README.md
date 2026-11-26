@@ -21,33 +21,102 @@ flowchart LR
     SpringBoot -.->|"HTTPS SSE (tùy chọn: DIPPIE_LLM_PROVIDER=deepseek)"| DeepSeek["DeepSeek API (OpenAI-compatible)"]
 ```
 
-## 3. Cấu trúc package
+## 3. Cấu trúc package (MVC)
 
-Mã nguồn chia theo tính năng (package-by-feature) dưới `com.dippie`:
+Backend chia theo tầng trước, trong mỗi tầng chia tiếp theo tính năng (`account`, `catalog`, `library`, `progress`...):
 
-| Package | Trách nhiệm |
+| Tầng | Vai trò |
 | --- | --- |
-| `com.dippie` | Điểm khởi chạy ứng dụng (`DippieApplication`). |
-| `com.dippie.common.error` | Phân cấp ngoại lệ miền (`DomainException`, `InvalidRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `TooManyRequestsException`, `ServiceUnavailableException`) và bộ xử lý lỗi tập trung `GlobalExceptionHandler`. |
-| `com.dippie.common.web` | Khung phản hồi chuẩn `ApiResponse` và cấu hình đồng hồ UTC `ClockConfig`. |
-| `com.dippie.common.json` | Tiện ích đọc an toàn dữ liệu JSON lưu trong cột `LONGTEXT` (`JsonText`). |
-| `com.dippie.common.text` | Tiện ích chuẩn hóa chuỗi Unicode (`UnicodeText`: case-folding và cắt khoảng trắng tương thích Python). |
-| `com.dippie.security` | Cấu hình Spring Security phi trạng thái (`SecurityConfig`), ký và xác thực JWT (`JwtService`, `JwtAuthenticationFilter`), lấy người dùng hiện tại (`CurrentViewer`, `SecurityContextCurrentViewer`, `Viewer`, `Role`), giới hạn tần suất đăng nhập (`LoginRateLimiter`), kiểm tra độ mạnh/giới hạn byte mật khẩu (`PasswordPolicy`) và thuộc tính cấu hình (`JwtProperties`, `RateLimitProperties`, `CorsProperties`). |
-| `com.dippie.user` | Thực thể tài khoản (`User`, `UserRepository`), luồng đăng nhập/đăng ký/hồ sơ (`AuthService`, `AuthController`), kiểm tra kết nối cơ sở dữ liệu (`HealthController`), khởi tạo quản trị viên (`AdminBootstrap`, `BootstrapAdminProperties`) và tài khoản demo (`DemoAccountSeeder`). |
-| `com.dippie.account` | Tự sửa thông tin tài khoản cho người đã đăng nhập: cập nhật hồ sơ và đổi mật khẩu kèm cấp JWT mới (`AccountController`, `AccountService`, `UpdateProfileRequest`, `ChangePasswordRequest`). |
-| `com.dippie.admin` | Quản trị người dùng có khóa bi quan và giữ lại ít nhất một quản trị viên đang hoạt động (`AdminUserController`, `AdminUserService`, `AdminUserPolicy`, `AdminUserView`, `UpdateUserRoleRequest`, `UpdateUserStatusRequest`, `AdminPageResponse`), nhật ký kiểm toán quản trị (`AdminAuditController`, `AdminAuditService`, `AdminAuditEvent`, `AdminAuditEventRepository`, `AdminAuditEventView`, `CatalogImportAuditListener`) và thống kê vận hành (`AdminStatsController`, `AdminStatsService`, `AdminStatsQuery`, `AdminStatsResponse`, `TopWatchedEpisodeView`, `TopRatedMovieView`). |
-| `com.dippie.movie` | Truy vấn, lọc, sắp xếp và phân trang phim bằng SQL qua JPA `Specification` và Hibernate Criteria (`Movie`, `MovieRepository`, `MovieQueryService`, `MovieController`, `MovieFilter`, `MovieBrowseQuery`, `MovieBrowsePage`, `MovieVisibility`, `MovieView`, `MediaDescriptorView`, `MovieGenre`, `MovieGenreTerm`). |
-| `com.dippie.catalog.domain` | Các thực thể JPA danh mục chuẩn hóa (`CatalogRecord`, `CatalogSeries`, `CatalogSeason`, `CatalogEpisode`, `CatalogSegment`, `CatalogScene`, `CatalogMediaAsset`, `CatalogTextTrack`, `CatalogGenre`, `CatalogCharacter`, `CatalogSource`, `CatalogAttributeScale`, `CatalogPackage`, `CatalogSnapshot`, `AuditLog`), bảng liên kết, view, repository và enum miền (`PublicationStatus`, `AccessPolicy`). |
-| `com.dippie.catalog.query` | Đọc chi tiết bộ/tập phim, kiểm tra quyền hiển thị, tìm kiếm toàn văn và mô hình đọc danh mục bất biến theo sự kiện (`CatalogController`, `CatalogQueryService`, `CatalogSearchService`, `CatalogVisibility`, `YoutubeSource`, `CatalogReadModel`, `CatalogReadModelCache`, `CatalogReadModelLoader`, `CatalogRecommendationRows`, `SeriesCard`). Khi `CatalogImportService` phát `CatalogImportedEvent` sau commit, `CatalogReadModelCache` nạp lại snapshot `CatalogReadModel` mới qua `CatalogReadModelLoader`, trong khi các luồng đọc vẫn đọc tiếp snapshot cũ mà không bị chặn. |
-| `com.dippie.catalog.importing` | Kiểm tra gói JSON, tính khác biệt, băm SHA-256, nhập dữ liệu nguyên tử trong một giao dịch, đồng bộ chỉ mục cục bộ, phát `CatalogImportedEvent`, quản lý snapshot và xuất danh mục (`AdminCatalogController`, `CatalogImportService`, `CatalogImportTransaction`, `CatalogImportedEvent`, `CatalogPackageValidator`, `CatalogDiff`, `ContentHash`, `CatalogJsonWriter`, `CatalogRecordWriter`, `CatalogRecordMapper`, `CatalogLegacyRows`, `CatalogLinks`, `CatalogExportService`, `CatalogSnapshotService`, `CatalogIndexPublisher`, `IndexSyncOutcome`). |
-| `com.dippie.library` | Quản lý danh sách xem sau, yêu thích và đánh giá phim (`LibraryController`, `LibraryEntry`, `AbstractLibraryListService`, `WatchlistService`, `WatchlistItem`, `FavoriteService`, `FavoriteItem`, `MovieRatingService`, `MovieRating`). |
-| `com.dippie.progress` | Lưu và đọc tiến độ xem theo tập, khóa lạc quan, quy tắc hoàn thành và gợi ý tập tiếp theo (`WatchProgressController`, `WatchProgressService`, `WatchProgress`, `WatchProgressCommand`, `WatchDuration`, `CompletionPolicy`, `PlaybackContext`, `PlaybackContextResolver`, `NextEpisodeController`, `NextEpisodeService`, `NextEpisodePolicy`). |
-| `com.dippie.media` | Ủy quyền phát video, cấp vé JWT ngắn hạn, định vị tệp đa nguồn và truyền phát HTTP Byte Range (`PlaybackGrantController`, `PlaybackGrantService`, `PlaybackAccess`, `MediaStreamController`, `MediaStreamService`, `ByteRange`, `MediaFileResolver`, `MediaLocationStrategy`, `DriveCacheLocation`, `DriveMountLocation`, `LocalMediaLocation`, `MediaPathPolicy`, `MediaAsset`). |
-| `com.dippie.recommendation` | Gợi ý phim chạy trên Java theo chiến lược chấm điểm tương đồng từ cơ sở dữ liệu và chiến lược tìm theo tâm trạng qua `CatalogSearch` có dự phòng (`RecommendationController`, `RecommendationService`, `RecommendationStrategy`, `AffinityRecommendationStrategy`, `MoodRecommendationStrategy`, `CandidateCatalog`, `ViewerSignals`, `ViewerSignalsRepository`, `RecommendationCandidate`, `RecommendationContext`, `RecommendationRequest`, `RecommendationResult`, `RecommendedItem`). |
-| `com.dippie.assistant` | Cấu hình nhà cung cấp LLM (`AssistantProperties` ánh xạ `dippie.assistant.*`) và endpoint trạng thái `GET /api/assistant/status` (`AssistantStatusController`). |
-| `com.dippie.assistant.search` | Giao diện tìm kiếm danh mục (`CatalogSearch`), chỉ mục từ vựng BM25 cục bộ trong bộ nhớ (`LocalCatalogSearch`, `LexicalIndex`, `SearchCatalogFlattener`, `LocalIndexPublisher`, `LocalDiscoverController`) cùng các model yêu cầu/phản hồi (`SearchDocument`, `SearchHit`, `SearchEvidence`, `SearchConstraints`, `DiscoverRequest`, `DiscoverResponse`, `FollowUpSuggestions`). |
-| `com.dippie.assistant.chat` | Đường ống CineBot trên Java: phân tích ý định và vá hội thoại (`IntentParser`, `ChatIntent`, `TextFolding`), điều phối truy xuất và phát luồng SSE (`ChatService`, `LocalChatController`, `ChatRequestValidator`, `ChatConfiguration`, `ChatEvent`, `ChatMetadata`, `ChatDonePayload`, `ChatPipelineStages`, `ChatHistoryMessage`, `ChatCapacityException`, `ChatPayloadTooLargeException`), chiến lược sinh câu trả lời (`AnswerGenerator`, `TemplateAnswerGenerator`, `DeepSeekAnswerGenerator`), câu trả lời mẫu (`CatalogReplies`) và chấm bằng chứng tâm trạng (`MoodEvidence`). |
-| `com.dippie.web` | Phục vụ trang SPA từ `frontend/dist`, tài nguyên tĩnh `/assets/**`, `/illustrations/**` và cấu hình OpenAPI/Swagger UI (`SpaController`, `WebResourceConfig`, `WebProperties`, `OpenApiConfig`). |
+| `com.dippie.controller` | Controller (C): nhận request HTTP, gọi service, trả DTO |
+| `com.dippie.service` | Tầng service: nghiệp vụ, strategy, adapter, bộ tìm kiếm BM25, CineBot |
+| `com.dippie.repository` | Model (M): truy cập dữ liệu qua Spring Data JPA và truy vấn tự viết |
+| `com.dippie.model` | Model (M): entity JPA, enum và record/quy tắc miền |
+| `com.dippie.dto` | View (V) phía server: record JSON gửi cho giao diện React và nhận từ đó |
+| `com.dippie.exception` | Cây ngoại lệ dùng chung, `GlobalExceptionHandler` đổi thành phản hồi lỗi chuẩn |
+| `com.dippie.config` | Cấu hình Spring và các lớp `@ConfigurationProperties` |
+| `com.dippie.security` | Spring Security, JWT, người xem hiện tại, giới hạn tần suất |
+| `com.dippie.common` | Tiện ích dùng chung (JSON, chuỗi, điểm đánh giá, phản hồi chuẩn) |
+
+Phần View chính là giao diện React 19 trong `frontend/`; các record trong `dto` là dữ liệu JSON mà View nhận và gửi.
+Quy tắc phụ thuộc: controller chỉ gọi service (không gọi thẳng repository), service dùng repository và model,
+model không phụ thuộc tầng nào phía trên, repository không phụ thuộc service.
+
+| Package | Lớp |
+| --- | --- |
+| `com.dippie` | `DippieApplication` |
+| `com.dippie.controller.account` | `AccountController`, `AccountErasureController`, `PasswordResetController`, `SessionLogoutController` |
+| `com.dippie.controller.admin` | `AdminAuditController`, `AdminStatsController`, `AdminUserController` |
+| `com.dippie.controller.assistant` | `AssistantStatusController`, `LocalChatController`, `LocalDiscoverController` |
+| `com.dippie.controller.catalog` | `AdminCatalogController`, `CatalogController` |
+| `com.dippie.controller.library` | `LibraryController` |
+| `com.dippie.controller.media` | `MediaStreamController`, `PlaybackGrantController` |
+| `com.dippie.controller.movie` | `MovieController` |
+| `com.dippie.controller.progress` | `NextEpisodeController`, `WatchHistoryClearController`, `WatchProgressController` |
+| `com.dippie.controller.recommendation` | `RecommendationController` |
+| `com.dippie.controller.report` | `AdminPlaybackReportController`, `PlaybackReportController` |
+| `com.dippie.controller.user` | `AuthController` |
+| `com.dippie.controller.web` | `GlobalExceptionHandler`, `HealthController`, `SpaController` |
+| `com.dippie.service.account` | `AccountErasureService`, `AccountService`, `PasswordResetEmailTemplate`, `PasswordResetRateLimiter`, `PasswordResetService`, `ResetTokenCodec`, `SessionLogoutService` |
+| `com.dippie.service.admin` | `AdminAuditService`, `AdminStatsService`, `AdminUserPolicy`, `AdminUserService`, `AuditTrailWriter`, `CatalogImportAuditListener` |
+| `com.dippie.service.assistant` | `AnswerGenerator`, `CatalogReplies`, `CatalogSearch`, `ChatFollowUp`, `ChatRequestValidator`, `ChatRetrieval`, `ChatService`, `ChatStreamGuard`, `DeepSeekAnswerGenerator`, `DiscoverService`, `FollowUpSuggestions`, `IntentParser`, `LexicalIndex`, `LexicalQuery`, `LocalCatalogSearch`, `LocalIndexPublisher`, `MoodEvidence`, `SearchCatalogFlattener`, `TemplateAnswerGenerator` |
+| `com.dippie.service.catalog` | `CatalogDates`, `CatalogDiff`, `CatalogExportService`, `CatalogImportService`, `CatalogImportTransaction`, `CatalogIndexPublisher`, `CatalogLegacyRows`, `CatalogLinks`, `CatalogMovieGenres`, `CatalogPackageValidator`, `CatalogQueryService`, `CatalogReadModel`, `CatalogReadModelCache`, `CatalogReadModelLoader`, `CatalogRecommendationRows`, `CatalogRecordMapper`, `CatalogRecordWriter`, `CatalogSearchNames`, `CatalogSearchService`, `CatalogSnapshotService`, `CatalogSnapshotStartupReconciler`, `CatalogValidation`, `CatalogVisibility`, `MediaFileAvailability`, `MoviePresentationLookup`, `NameSimilarity`, `SeriesSearchAliases` |
+| `com.dippie.service.library` | `AbstractLibraryListService`, `FavoriteService`, `MovieRatingService`, `RatingSummaries`, `WatchlistService` |
+| `com.dippie.service.mail` | `FileOutboxMailDeliveryStrategy`, `MailDeliveryStrategy`, `SmtpMailDeliveryStrategy` |
+| `com.dippie.service.media` | `DriveCacheLocation`, `DriveMountLocation`, `LocalMediaLocation`, `MediaFileAvailabilityAdapter`, `MediaFileResolver`, `MediaLocationStrategy`, `MediaPathPolicy`, `MediaStreamService`, `PlaybackAccess`, `PlaybackGrantService` |
+| `com.dippie.service.movie` | `MovieGenreDirectory`, `MoviePresentationAdapter`, `MovieQueryService`, `MovieVisibility` |
+| `com.dippie.service.progress` | `NextEpisodeService`, `PlaybackContextResolver`, `WatchHistoryClearService`, `WatchProgressService` |
+| `com.dippie.service.recommendation` | `AffinityRecommendationStrategy`, `CandidateCatalog`, `MoodRecommendationStrategy`, `RecommendationContext`, `RecommendationSelection`, `RecommendationService`, `RecommendationStrategy` |
+| `com.dippie.service.report` | `PlaybackReportRateLimiter`, `PlaybackReportService` |
+| `com.dippie.service.user` | `AdminBootstrap`, `AuthService`, `DemoAccountSeeder`, `DemoHistorySeeder`, `UserViewerAdapter` |
+| `com.dippie.service.web` | `HealthService`, `SpaIndex` |
+| `com.dippie.repository.account` | `PasswordResetTokenRepository` |
+| `com.dippie.repository.admin` | `AdminAuditEventRepository`, `AdminStatsQuery` |
+| `com.dippie.repository.catalog` | `CatalogEpisodeRepository`, `CatalogGenreRepository`, `CatalogMediaAssetRepository`, `CatalogPackageRepository`, `CatalogSceneRepository`, `CatalogSeasonRepository`, `CatalogSegmentRepository`, `CatalogSeriesRepository`, `CatalogSnapshotRepository` |
+| `com.dippie.repository.library` | `FavoriteItemRepository`, `LibraryEntryRepository`, `MovieRatingRepository`, `WatchlistItemRepository` |
+| `com.dippie.repository.media` | `MediaAssetRepository` |
+| `com.dippie.repository.movie` | `MovieRepository` |
+| `com.dippie.repository.progress` | `WatchProgressRepository` |
+| `com.dippie.repository.recommendation` | `ViewerSignalsRepository` |
+| `com.dippie.repository.report` | `PlaybackReportRepository` |
+| `com.dippie.repository.user` | `UserRepository` |
+| `com.dippie.model.account` | `PasswordResetToken` |
+| `com.dippie.model.admin` | `AdminAuditEvent` |
+| `com.dippie.model.assistant` | `ChatHistoryMessage`, `ChatIntent`, `ChatPipelineStages`, `SearchConstraints`, `SearchDocument`, `SearchEvidence`, `SearchHit`, `WatchPreferences` |
+| `com.dippie.model.catalog` | `AccessPolicy`, `AuditLog`, `CatalogAttributeScale`, `CatalogCharacter`, `CatalogCharacterSeries`, `CatalogCollection`, `CatalogDisplayText`, `CatalogDocument`, `CatalogEpisode`, `CatalogEpisodeAsset`, `CatalogEpisodeCharacter`, `CatalogEpisodeGenre`, `CatalogGenre`, `CatalogImportedEvent`, `CatalogMediaAsset`, `CatalogPackage`, `CatalogRecord`, `CatalogScene`, `CatalogSeason`, `CatalogSegment`, `CatalogSeries`, `CatalogSeriesCharacter`, `CatalogSeriesGenre`, `CatalogSnapshot`, `CatalogSource`, `CatalogTextTrack`, `ContentHash`, `EpisodeMood`, `EpisodeRuntime`, `IndexSyncOutcome`, `PublicationStatus`, `SeriesArtwork`, `SeriesEpisode`, `YoutubeSource` |
+| `com.dippie.model.library` | `FavoriteItem`, `LibraryEntry`, `MovieRating`, `WatchlistItem` |
+| `com.dippie.model.mail` | `EmailMessage` |
+| `com.dippie.model.media` | `ByteRange`, `MediaAsset`, `ResolvedMediaStream` |
+| `com.dippie.model.movie` | `Movie`, `MovieFilter`, `MovieGenre`, `MovieGenreTerm` |
+| `com.dippie.model.progress` | `CompletionPolicy`, `NextEpisodePolicy`, `PlaybackContext`, `WatchDuration`, `WatchProgress`, `WatchProgressCommand` |
+| `com.dippie.model.recommendation` | `MoodPreset`, `RecommendationCandidate`, `ViewerSignals` |
+| `com.dippie.model.report` | `PlaybackReport`, `PlaybackReportReason`, `PlaybackReportStatus` |
+| `com.dippie.model.user` | `Role`, `User` |
+| `com.dippie.dto.account` | `ChangePasswordRequest`, `DeleteAccountRequest`, `PasswordResetConfirmRequest`, `PasswordResetRequestDto`, `UpdateProfileRequest` |
+| `com.dippie.dto.admin` | `AdminAuditEventView`, `AdminPageResponse`, `AdminStatsResponse`, `AdminUserView`, `TopRatedMovieView`, `TopWatchedEpisodeView`, `UpdateUserRoleRequest`, `UpdateUserStatusRequest` |
+| `com.dippie.dto.assistant` | `AssistantStatus`, `ChatDonePayload`, `ChatEvent`, `ChatMetadata`, `DiscoverErrorBody`, `DiscoverRequest`, `DiscoverResponse` |
+| `com.dippie.dto.catalog` | `CatalogEpisodeDetail`, `CatalogEpisodeView`, `CatalogImportResult`, `CatalogMediaAssetView`, `CatalogPackageView`, `CatalogSceneView`, `CatalogSearchHit`, `CatalogSeasonView`, `CatalogSegmentView`, `CatalogSeriesDetail`, `CatalogSeriesView`, `CatalogSnapshotView`, `SeriesCard` |
+| `com.dippie.dto.library` | `LibraryItemView`, `MovieIdRequest`, `MovieRatingView`, `RatingRequest` |
+| `com.dippie.dto.media` | `MediaAssetView`, `MediaDescriptorView`, `PlaybackGrantResponse` |
+| `com.dippie.dto.movie` | `MovieBrowsePage`, `MovieBrowseQuery`, `MovieGenreView`, `MovieView` |
+| `com.dippie.dto.progress` | `NextEpisodeView`, `WatchProgressView` |
+| `com.dippie.dto.recommendation` | `RecommendationRequest`, `RecommendationResult`, `RecommendedItem` |
+| `com.dippie.dto.report` | `CreatePlaybackReportRequest`, `PlaybackReportCreatedResponse`, `PlaybackReportView`, `UpdatePlaybackReportStatusRequest` |
+| `com.dippie.dto.user` | `AuthResponse`, `LoginRequest`, `RegisterRequest`, `UserProfileResponse` |
+| `com.dippie.dto.web` | `DownStatus`, `HealthStatus`, `UpStatus` |
+| `com.dippie.exception` | `CatalogInputException`, `ChatCapacityException`, `ChatPayloadTooLargeException`, `ConflictException`, `DomainException`, `ForbiddenException`, `InvalidRequestException`, `NotFoundException`, `RangeNotSatisfiableException`, `RequestBodyTooLargeException`, `ServiceUnavailableException`, `TooManyRequestsException`, `UnauthorizedException` |
+| `com.dippie.config.account` | `PasswordResetRateLimitProperties` |
+| `com.dippie.config.assistant` | `AssistantProperties`, `ChatConfiguration` |
+| `com.dippie.config.mail` | `MailConfiguration`, `MailProperties` |
+| `com.dippie.config.media` | `MediaProperties` |
+| `com.dippie.config.report` | `PlaybackReportRateLimitProperties` |
+| `com.dippie.config.user` | `BootstrapAdminProperties` |
+| `com.dippie.config.web` | `OpenApiConfig`, `WebProperties`, `WebResourceConfig` |
+| `com.dippie.security` | `ActiveViewerLookup`, `ClientIpResolver`, `CorsProperties`, `CurrentViewer`, `FixedWindowRateLimiter`, `HttpBodyLimitProperties`, `JwtAuthenticationFilter`, `JwtProperties`, `JwtService`, `LoginRateLimiter`, `PasswordPolicy`, `PlaybackPrincipal`, `RateLimitProperties`, `RequestBodySizeLimitFilter`, `SecurityConfig`, `SecurityContextCurrentViewer`, `TrustedProxyProperties`, `Viewer` |
+| `com.dippie.common.collection` | `DiverseSelection` |
+| `com.dippie.common.json` | `CatalogJson`, `CatalogJsonWriter`, `JsonText` |
+| `com.dippie.common.rating` | `RatingLookup`, `RatingSummary` |
+| `com.dippie.common.text` | `TextFolding`, `UnicodeText` |
+| `com.dippie.common.web` | `ApiResponse`, `ClockConfig`, `UtcDateTimeJacksonConfig` |
 
 ## 4. Quy tắc nghiệp vụ chính
 
@@ -314,26 +383,38 @@ Chạy toàn bộ bộ kiểm thử từ thư mục `backend/springboot`:
 
 Trên Windows PowerShell dùng `.\mvnw.cmd test` (thêm `-o -B` khi chạy offline hoặc trên CI). Bộ kiểm thử chạy trên hồ sơ `test` dùng H2 in-memory, gồm unit test cho quy tắc miền, kiểm thử đối chiếu tìm kiếm (`CatalogSearchParityTest`: 20 truy vấn trên Jadoo và Larva) và integration test bằng `@SpringBootTest` cùng `@AutoConfigureMockMvc`.
 
-Số lượng lớp kiểm thử theo từng package (tổng 51 lớp):
+Số lượng lớp kiểm thử theo từng package (tổng 70 lớp):
 
 | Package | Số lớp kiểm thử |
 | --- | ---: |
-| `com.dippie.account` | 1 |
-| `com.dippie.admin` | 3 |
-| `com.dippie.assistant.chat` | 8 |
-| `com.dippie.assistant.search` | 2 |
-| `com.dippie.catalog.domain` | 5 |
-| `com.dippie.catalog.importing` | 5 |
-| `com.dippie.catalog.query` | 2 |
-| `com.dippie.library` | 1 |
-| `com.dippie.media` | 4 |
-| `com.dippie.movie` | 4 |
-| `com.dippie.progress` | 5 |
-| `com.dippie.recommendation` | 2 |
-| `com.dippie.security` | 5 |
-| `com.dippie.user` | 2 |
-| `com.dippie.web` | 2 |
-| **Tổng cộng** | **51** |
+| `com.dippie.common.text` | 1 |
+| `com.dippie.config` | 1 |
+| `com.dippie.config.media` | 1 |
+| `com.dippie.controller.account` | 4 |
+| `com.dippie.controller.admin` | 2 |
+| `com.dippie.controller.assistant` | 1 |
+| `com.dippie.controller.catalog` | 3 |
+| `com.dippie.controller.library` | 1 |
+| `com.dippie.controller.media` | 1 |
+| `com.dippie.controller.movie` | 1 |
+| `com.dippie.controller.progress` | 2 |
+| `com.dippie.controller.report` | 1 |
+| `com.dippie.controller.user` | 1 |
+| `com.dippie.controller.web` | 2 |
+| `com.dippie.model.catalog` | 6 |
+| `com.dippie.model.media` | 1 |
+| `com.dippie.model.movie` | 1 |
+| `com.dippie.model.progress` | 2 |
+| `com.dippie.security` | 8 |
+| `com.dippie.service.admin` | 1 |
+| `com.dippie.service.assistant` | 10 |
+| `com.dippie.service.catalog` | 5 |
+| `com.dippie.service.mail` | 1 |
+| `com.dippie.service.media` | 2 |
+| `com.dippie.service.movie` | 3 |
+| `com.dippie.service.progress` | 3 |
+| `com.dippie.service.recommendation` | 2 |
+| `com.dippie.service.user` | 3 |
 
 ## 8. Quy ước phản hồi và kiểm tra dữ liệu
 

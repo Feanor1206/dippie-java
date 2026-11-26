@@ -1,0 +1,117 @@
+package com.dippie.service.library;
+
+import com.dippie.dto.library.MovieRatingView;
+import com.dippie.exception.InvalidRequestException;
+import com.dippie.model.library.MovieRating;
+import com.dippie.model.movie.Movie;
+import com.dippie.repository.library.MovieRatingRepository;
+import com.dippie.security.CurrentViewer;
+import com.dippie.security.Viewer;
+import com.dippie.service.catalog.CatalogReadModelCache;
+import com.dippie.service.movie.MovieVisibility;
+
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Set;
+
+// Xử lý nghiệp vụ xem, chấm, sửa và xóa điểm đánh giá phim cho tài khoản hiện tại.
+@Service
+public class MovieRatingService {
+
+    private final MovieRatingRepository ratingRepository;
+    private final MovieVisibility movieVisibility;
+    private final CatalogReadModelCache catalogReadModelCache;
+    private final CurrentViewer currentViewer;
+    private final TransactionTemplate requiresNewTransaction;
+    private final TransactionTemplate readTransaction;
+    private final Clock clock;
+
+    public MovieRatingService(
+            MovieRatingRepository ratingRepository,
+            MovieVisibility movieVisibility,
+            CatalogReadModelCache catalogReadModelCache,
+            CurrentViewer currentViewer,
+            PlatformTransactionManager transactionManager,
+            Clock clock
+    ) {
+        this.ratingRepository = ratingRepository;
+        this.movieVisibility = movieVisibility;
+        this.catalogReadModelCache = catalogReadModelCache;
+        this.currentViewer = currentViewer;
+        this.requiresNewTransaction = new TransactionTemplate(transactionManager);
+        this.requiresNewTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.readTransaction = new TransactionTemplate(transactionManager);
+        this.readTransaction.setReadOnly(true);
+        this.clock = clock;
+    }
+
+    // Trả danh sách đánh giá mới cập nhật nhất trước, bỏ qua các phim đang ẩn hoặc chưa xuất bản.
+    public List<MovieRatingView> list() {
+        Viewer viewer = currentViewer.require();
+        Set<String> hiddenIds = catalogReadModelCache.current().hiddenMovieIds();
+        return readTransaction.execute(status -> ratingRepository.findByUserIdOrderByUpdatedAtDesc(viewer.userId())
+                .stream()
+                .filter(rating -> !hiddenIds.contains(rating.getMovieId()))
+                .map(MovieRatingView::from)
+                .toList());
+    }
+
+    // Chấm mới hoặc cập nhật điểm cho phim đang hiển thị; tách REQUIRES_NEW để bắt lỗi trùng khóa khi gửi hai request cùng lúc.
+    public MovieRatingView rate(String rawMovieId, Integer rating) {
+        Viewer viewer = currentViewer.require();
+        // Kiểm tra đầu vào và chắc chắn phim còn hiển thị công khai trước khi mở giao dịch ghi
+        String movieId = rawMovieId == null ? "" : rawMovieId.strip();
+        if (movieId.isEmpty()) {
+            throw new InvalidRequestException(MovieRating.INVALID_RATING_MESSAGE);
+        }
+        MovieRating.validateRating(rating);
+        Movie movie = movieVisibility.findVisibleById(movieId)
+                .orElseThrow(() -> new InvalidRequestException("Không tìm thấy phim: " + movieId));
+
+        // Chạy giao dịch riêng để nếu đụng unique key do race condition thì phiên cũ rollback gọn, sau đó mở giao dịch khác cập nhật bản ghi vừa chèn
+        MovieRating saved;
+        try {
+            saved = requiresNewTransaction.execute(status -> upsertRating(viewer.userId(), movie.getId(), rating));
+        } catch (DataIntegrityViolationException ex) {
+            saved = requiresNewTransaction.execute(status -> updateExistingRating(viewer.userId(), movie.getId(), rating, ex));
+        }
+        return MovieRatingView.from(saved);
+    }
+
+    public void remove(String movieId) {
+        Viewer viewer = currentViewer.require();
+        requiresNewTransaction.executeWithoutResult(status -> ratingRepository.deleteByUserIdAndMovieId(viewer.userId(), movieId));
+    }
+
+    // Tìm xem user đã chấm phim này chưa để cập nhật, chưa có thì tạo bản ghi mới và flush ngay trong giao dịch.
+    private MovieRating upsertRating(Long userId, String movieId, int rating) {
+        LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
+        return ratingRepository.findByUserIdAndMovieId(userId, movieId)
+                .map(existing -> {
+                    existing.updateRating(rating, now);
+                    return ratingRepository.saveAndFlush(existing);
+                })
+                .orElseGet(() -> ratingRepository.saveAndFlush(new MovieRating(userId, movieId, rating, now)));
+    }
+
+    // Nhánh dự phòng khi hai request cùng tạo mới một cặp (userId, movieId): đọc lại bản ghi vừa thắng rồi cập nhật điểm mới nhất.
+    private MovieRating updateExistingRating(
+            Long userId,
+            String movieId,
+            int rating,
+            DataIntegrityViolationException original
+    ) {
+        MovieRating existing = ratingRepository.findByUserIdAndMovieId(userId, movieId)
+                .orElseThrow(() -> original);
+        existing.updateRating(rating, LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS));
+        return ratingRepository.saveAndFlush(existing);
+    }
+}

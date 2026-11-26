@@ -1,11 +1,12 @@
 package com.dippie.security;
 
+import com.dippie.exception.InvalidRequestException;
+
+import org.junit.jupiter.api.Test;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.dippie.common.error.InvalidRequestException;
-import org.junit.jupiter.api.Test;
 
 // Test đơn vị cho PasswordPolicy: cấm khoảng trắng, kiểm tra độ dài tối thiểu, trần 72 byte UTF-8 và chuẩn mật khẩu admin.
 class PasswordPolicyTest {
