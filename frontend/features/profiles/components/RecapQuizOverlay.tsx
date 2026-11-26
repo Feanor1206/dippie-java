@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, Home, Sparkles, Volume2 } from 'lucide-react';
+import { Check, Film, Home, Sparkles, Volume2 } from 'lucide-react';
+import { ArtworkImage } from '@/features/series/components/ArtworkImage';
 import { useBlockingOverlayFocus } from '@/features/profiles/hooks/useBlockingOverlayFocus';
 import { speakVietnamesePrompt } from '@/features/quiz/quizService';
 import {
@@ -11,10 +12,41 @@ import {
 
 const CHOICE_BADGES = ['▲', '◆', '●', '■'] as const;
 
+const RECAP_CHARACTER_VI_LABELS: Record<string, { label: string; dotColor: string }> = {
+  yellow: { label: 'Ấu trùng Vàng (Yellow)', dotColor: '#facc15' },
+  red: { label: 'Ấu trùng Đỏ (Red)', dotColor: '#ef4444' },
+  violet: { label: 'Ấu trùng Tím (Violet)', dotColor: '#8b5cf6' },
+  brown: { label: 'Bọ Hung Nâu (Brown)', dotColor: '#92400e' },
+  pink: { label: 'Ấu trùng Hồng (Pink)', dotColor: '#f472b6' },
+  black: { label: 'Bọ Cánh Cứng Đen (Black)', dotColor: '#1f2937' },
+  rainbow: { label: 'Ốc Sên Cầu Vồng (Rainbow)', dotColor: '#10b981' },
+};
+
+export function localizeRecapItemText(rawText: string): { text: string; dotColor: string | null } {
+  const trimmed = (rawText || '').trim();
+  if (!trimmed) return { text: '', dotColor: null };
+  const exact = RECAP_CHARACTER_VI_LABELS[trimmed.toLowerCase()];
+  if (exact) {
+    return { text: exact.label, dotColor: exact.dotColor };
+  }
+  let localized = trimmed;
+  let matchedColor: string | null = null;
+  for (const [engKey, meta] of Object.entries(RECAP_CHARACTER_VI_LABELS)) {
+    const pattern = new RegExp(`\\b${engKey}\\b`, 'gi');
+    if (pattern.test(localized)) {
+      localized = localized.replace(pattern, meta.label);
+      if (!matchedColor) matchedColor = meta.dotColor;
+    }
+  }
+  return { text: localized, dotColor: matchedColor };
+}
+
 export function RecapQuizOverlay({
   token,
   episodeId,
   nextEpisodeLabel,
+  seriesTitle = '',
+  artworkUrl = null,
   onUnlocked,
   onRewatchEpisode,
   onFinishSession,
@@ -22,6 +54,8 @@ export function RecapQuizOverlay({
   token: string;
   episodeId: string;
   nextEpisodeLabel: string;
+  seriesTitle?: string;
+  artworkUrl?: string | null;
   onUnlocked: (targetEpisodeId: string | null) => void;
   onRewatchEpisode: () => void;
   onFinishSession?: () => void;
@@ -36,6 +70,7 @@ export function RecapQuizOverlay({
   const [selectedChoiceId, setSelectedChoiceId] = useState('');
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
+  const [speechNotice, setSpeechNotice] = useState<string | null>(null);
   const [solvedTargetId, setSolvedTargetId] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
@@ -45,6 +80,7 @@ export function RecapQuizOverlay({
     setOrderedIds([]);
     setSelectedChoiceId('');
     setFeedback(null);
+    setSpeechNotice(null);
     setSolvedTargetId(undefined);
     void fetchRecapQuiz(token, episodeId)
       .then((loaded) => {
@@ -69,17 +105,26 @@ export function RecapQuizOverlay({
   const itemById = new Map<string, RecapQuizItem>((quiz?.items ?? []).map((item) => [item.id, item]));
   const remainingItems = (quiz?.items ?? []).filter((item) => !orderedIds.includes(item.id));
 
+  const speakAndReport = (text: string) => {
+    const ok = speakVietnamesePrompt(text);
+    setSpeechNotice(
+      ok ? null : 'Thiết bị này chưa có giọng đọc tiếng Việt tự động, ba mẹ đọc giúp bé nhé.'
+    );
+  };
+
   const handleReadFullRecap = () => {
     if (!quiz) {
-      speakVietnamesePrompt('Cùng nhớ lại tập vừa xem nhé!');
+      speakAndReport('Cùng nhớ lại tập vừa xem nhé!');
       return;
     }
     const intro =
       quiz.quizType === 'ORDER_SCENES'
         ? `${quiz.prompt}. Chạm chọn cảnh xảy ra trước rồi tới cảnh tiếp theo nhé.`
         : quiz.prompt;
-    const itemLines = quiz.items.map((item, idx) => `Lựa chọn ${idx + 1}: ${item.text}`);
-    speakVietnamesePrompt([intro, ...itemLines].join(' '));
+    const itemLines = quiz.items.map(
+      (item, idx) => `Lựa chọn ${idx + 1}: ${localizeRecapItemText(item.text).text}`
+    );
+    speakAndReport([intro, ...itemLines].join(' '));
   };
 
   const toggleOrderItem = (id: string) => {
@@ -166,32 +211,47 @@ export function RecapQuizOverlay({
       aria-modal="true"
       aria-labelledby="recap-quiz-title"
       data-testid="recap-quiz-overlay"
-      className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto overscroll-contain bg-ink/90 p-3 sm:items-center sm:p-5 animate-fade-in"
+      className="relative z-30 flex min-h-[30rem] sm:min-h-[32rem] w-full flex-1 items-center justify-center bg-ink/90 p-3 sm:p-5 animate-fade-in"
     >
       <div className="motion-overlay-overshoot my-auto w-full max-w-lg rounded-2xl border-2 border-ink bg-paper-white p-4 text-left shadow-brand-lg sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex items-start gap-3">
+          <ArtworkImage
+            src={artworkUrl}
+            alt={quiz?.episodeTitle || seriesTitle || 'Tập vừa xem'}
+            title={seriesTitle || quiz?.episodeTitle || 'Dippie'}
+            seed={episodeId}
+            aspectClassName="h-16 w-20"
+            className="h-16 w-20 shrink-0 rounded-xl border-2 border-ink"
+          />
           <div className="min-w-0 flex-1">
-            <span className="motion-chip-pop inline-flex items-center gap-1 rounded-full border border-ink bg-[#f2d18c] px-2.5 py-0.5 text-[0.6875rem] font-bold text-ink">
-              <Sparkles size={12} aria-hidden="true" />
-              <span>Nhớ lại tập vừa xem</span>
-            </span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="motion-chip-pop inline-flex items-center gap-1 rounded-full border border-ink bg-[#f2d18c] px-2.5 py-0.5 text-[0.6875rem] font-bold text-ink">
+                <Sparkles size={12} aria-hidden="true" />
+                <span>Nhớ lại tập vừa xem</span>
+              </span>
+              <button
+                type="button"
+                data-autofocus=""
+                data-testid="recap-read-aloud-button"
+                onClick={handleReadFullRecap}
+                aria-label="Nghe đọc câu hỏi ôn tập và các lựa chọn"
+                className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-lg border-2 border-ink bg-[#fef3c7] px-3 py-1.5 text-xs font-bold text-ink shadow-[2px_2px_0_#203328] hover:bg-[#fde68a] cursor-pointer"
+              >
+                <Volume2 size={16} aria-hidden="true" />
+                <span>Nghe đọc</span>
+              </button>
+            </div>
             <h3 id="recap-quiz-title" className="mt-1.5 font-display text-base font-bold text-ink sm:text-lg">
               {quiz?.prompt || 'Cùng nhớ lại tập vừa xem nhé!'}
             </h3>
           </div>
-
-          <button
-            type="button"
-            data-autofocus=""
-            data-testid="recap-read-aloud-button"
-            onClick={handleReadFullRecap}
-            aria-label="Nghe đọc câu hỏi ôn tập và các lựa chọn"
-            className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-lg border-2 border-ink bg-[#fef3c7] px-3 py-1.5 text-xs font-bold text-ink shadow-[2px_2px_0_#203328] hover:bg-[#fde68a] cursor-pointer"
-          >
-            <Volume2 size={16} aria-hidden="true" />
-            <span>Nghe đọc</span>
-          </button>
         </div>
+
+        {speechNotice && (
+          <p role="status" data-testid="recap-speech-notice" className="mt-2 rounded-lg border border-ink/20 bg-[#fef3c7]/65 px-3 py-1.5 text-xs font-medium text-ink">
+            {speechNotice}
+          </p>
+        )}
 
         {loading && (
           <p role="status" className="py-6 text-center text-xs font-semibold text-muted">
@@ -249,6 +309,7 @@ export function RecapQuizOverlay({
                     {orderedIds.map((id, index) => {
                       const item = itemById.get(id);
                       if (!item) return null;
+                      const localized = localizeRecapItemText(item.text);
                       return (
                         <div
                           key={id}
@@ -267,14 +328,14 @@ export function RecapQuizOverlay({
                             onClick={() => toggleOrderItem(id)}
                             className="min-h-[44px] min-w-0 flex-1 text-left font-semibold text-ink cursor-pointer"
                           >
-                            {item.text}
+                            {localized.text}
                           </button>
                           <div className="flex shrink-0 items-center gap-1">
                             <button
                               type="button"
                               data-testid={`recap-speak-slot-${index + 1}`}
-                              aria-label={`Nghe đọc cảnh ${index + 1}: ${item.text}`}
-                              onClick={() => speakVietnamesePrompt(`Cảnh số ${index + 1}: ${item.text}`)}
+                              aria-label={`Nghe đọc cảnh ${index + 1}: ${localized.text}`}
+                              onClick={() => speakAndReport(`Cảnh số ${index + 1}: ${localized.text}`)}
                               className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-ink bg-paper-white text-ink hover:bg-[#fef3c7] cursor-pointer"
                             >
                               <Volume2 size={15} aria-hidden="true" />
@@ -306,32 +367,35 @@ export function RecapQuizOverlay({
 
                 {remainingItems.length > 0 && (
                   <div className="space-y-1.5" data-testid="recap-pool-items">
-                    {remainingItems.map((item) => (
-                      <div key={item.id} className="flex items-stretch gap-1.5">
-                        <button
-                          type="button"
-                          draggable
-                          data-testid={`recap-item-${item.id}`}
-                          onDragStart={() => setDraggingId(item.id)}
-                          onClick={() => toggleOrderItem(item.id)}
-                          className="flex min-h-[56px] min-w-0 flex-1 items-center gap-2.5 rounded-xl border-2 border-ink/40 bg-surface-muted px-3 py-2 text-left text-xs font-bold text-ink hover:border-ink hover:bg-paper-white cursor-pointer sm:text-sm"
-                        >
-                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-ink bg-[#f2d18c] text-xs font-extrabold text-ink">
-                            {orderedIds.length + 1}
-                          </span>
-                          <span className="min-w-0 flex-1 break-words leading-snug">{item.text}</span>
-                        </button>
-                        <button
-                          type="button"
-                          data-testid={`recap-speak-item-${item.id}`}
-                          aria-label={`Nghe đọc cảnh: ${item.text}`}
-                          onClick={() => speakVietnamesePrompt(item.text)}
-                          className="inline-flex min-h-[56px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border-2 border-ink bg-paper-white px-2.5 text-ink hover:bg-[#fef3c7] cursor-pointer"
-                        >
-                          <Volume2 size={17} aria-hidden="true" />
-                        </button>
-                      </div>
-                    ))}
+                    {remainingItems.map((item) => {
+                      const localized = localizeRecapItemText(item.text);
+                      return (
+                        <div key={item.id} className="flex items-stretch gap-1.5">
+                          <button
+                            type="button"
+                            draggable
+                            data-testid={`recap-item-${item.id}`}
+                            onDragStart={() => setDraggingId(item.id)}
+                            onClick={() => toggleOrderItem(item.id)}
+                            className="flex min-h-[56px] min-w-0 flex-1 items-center gap-2.5 rounded-xl border-2 border-ink/40 bg-surface-muted px-3 py-2 text-left text-xs font-bold text-ink hover:border-ink hover:bg-paper-white cursor-pointer sm:text-sm"
+                          >
+                            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-ink bg-[#f2d18c] text-xs font-extrabold text-ink">
+                              <Film size={15} aria-hidden="true" />
+                            </span>
+                            <span className="min-w-0 flex-1 break-words leading-snug">{localized.text}</span>
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`recap-speak-item-${item.id}`}
+                            aria-label={`Nghe đọc cảnh: ${localized.text}`}
+                            onClick={() => speakAndReport(localized.text)}
+                            className="inline-flex min-h-[56px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border-2 border-ink bg-paper-white px-2.5 text-ink hover:bg-[#fef3c7] cursor-pointer"
+                          >
+                            <Volume2 size={17} aria-hidden="true" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -354,6 +418,7 @@ export function RecapQuizOverlay({
                 {quiz.items.map((item, idx) => {
                   const selected = selectedChoiceId === item.id;
                   const badgeSymbol = CHOICE_BADGES[idx % CHOICE_BADGES.length];
+                  const localized = localizeRecapItemText(item.text);
                   return (
                     <div key={item.id} className="flex items-stretch gap-1.5">
                       <button
@@ -370,10 +435,17 @@ export function RecapQuizOverlay({
                             : 'border-surface-border bg-surface-muted text-ink hover:border-ink/60'
                         }`}
                       >
-                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-ink bg-paper-white text-xs font-extrabold text-ink">
+                        <span
+                          style={
+                            !selected && localized.dotColor
+                              ? ({ backgroundColor: localized.dotColor, color: '#fffdf6' } as React.CSSProperties)
+                              : undefined
+                          }
+                          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-ink bg-paper-white text-xs font-extrabold text-ink"
+                        >
                           {selected ? <Check size={15} aria-hidden="true" /> : badgeSymbol}
                         </span>
-                        <span className="min-w-0 flex-1 break-words leading-snug">{item.text}</span>
+                        <span className="min-w-0 flex-1 break-words leading-snug">{localized.text}</span>
                         {selected && (
                           <span className="shrink-0 rounded-full border border-ink bg-paper-white px-2 py-0.5 text-[0.6875rem] font-extrabold text-ink">
                             Đã chọn
@@ -383,8 +455,8 @@ export function RecapQuizOverlay({
                       <button
                         type="button"
                         data-testid={`recap-speak-item-${item.id}`}
-                        aria-label={`Nghe đọc lựa chọn: ${item.text}`}
-                        onClick={() => speakVietnamesePrompt(item.text)}
+                        aria-label={`Nghe đọc lựa chọn: ${localized.text}`}
+                        onClick={() => speakAndReport(localized.text)}
                         className="inline-flex min-h-[56px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border-2 border-ink bg-paper-white px-2.5 text-ink hover:bg-[#fef3c7] cursor-pointer"
                       >
                         <Volume2 size={17} aria-hidden="true" />

@@ -103,6 +103,7 @@ export function ParentQuizBankSection({
   const [qActive, setQActive] = useState(true);
 
   const [csvText, setCsvText] = useState('');
+  const [pastedCsvText, setPastedCsvText] = useState('');
   const [csvFileName, setCsvFileName] = useState('');
   const [csvDelimiterUsed, setCsvDelimiterUsed] = useState<',' | ';' | '\t'>(',');
   const [csvPreview, setCsvPreview] = useState<QuizCsvPreview | null>(null);
@@ -177,6 +178,7 @@ export function ParentQuizBankSection({
     setPin('');
     setDialogError('');
     setCsvText('');
+    setPastedCsvText('');
     setCsvFileName('');
     setCsvPreview(null);
     setCsvPreviewLoading(false);
@@ -219,6 +221,7 @@ export function ParentQuizBankSection({
     } else if (next?.kind === 'csv') {
       previewRequestRef.current += 1;
       setCsvText('');
+      setPastedCsvText('');
       setCsvFileName('');
       setCsvDelimiterUsed(',');
       setCsvPreview(null);
@@ -287,6 +290,45 @@ export function ParentQuizBankSection({
         type: 'error',
         text: err instanceof Error ? err.message : 'Chưa tải được tệp mẫu CSV.',
       });
+    }
+  };
+
+  const handleExportInvalidRows = () => {
+    if (!csvPreview) return;
+    const invalidRows = csvPreview.rows.filter((row) => !row.valid);
+    if (invalidRows.length === 0) return;
+    const escapeCell = (val: string) =>
+      val.includes(',') || val.includes('"') || val.includes('\n') || val.includes('\r')
+        ? `"${val.replace(/"/g, '""')}"`
+        : val;
+    const header = 'cau_hoi,a,b,c,d,dap_an,giai_thich,mon,lop,loi_can_sua';
+    const bodyLines = invalidRows.map((row) =>
+      [
+        row.questionText || '',
+        row.optionA || '',
+        row.optionB || '',
+        row.optionC || '',
+        row.optionD || '',
+        row.correctOption || '',
+        row.explanation || '',
+        row.subject || '',
+        row.grade || '',
+        (row.errors || []).join('; '),
+      ]
+        .map(escapeCell)
+        .join(',')
+    );
+    const csvWithBom = `\uFEFF${[header, ...bodyLines].join('\n')}`;
+    if (typeof window !== 'undefined' && typeof Blob !== 'undefined' && typeof URL !== 'undefined') {
+      const blob = new Blob([csvWithBom], { type: 'text/csv;charset=utf-8' });
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.download = 'dong-loi-cau-hoi.csv';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(href);
     }
   };
 
@@ -1091,6 +1133,43 @@ export function ParentQuizBankSection({
                   Đã tự nhận diện tệp ngăn cách bằng {csvDelimiterUsed === ';' ? 'dấu chấm phẩy (;) từ Excel' : 'ký tự Tab'}.
                 </p>
               )}
+
+              <details data-testid="csv-paste-details" className="rounded-xl border border-surface-border bg-paper-white p-3">
+                <summary className="flex min-h-[44px] items-center text-xs font-bold text-ink cursor-pointer">
+                  Hoặc dán trực tiếp các dòng từ Excel / Google Trang tính
+                </summary>
+                <div className="mt-2 space-y-2">
+                  <label htmlFor="quiz-csv-paste-input" className="sr-only">
+                    Nội dung bảng câu hỏi dán từ Excel
+                  </label>
+                  <textarea
+                    id="quiz-csv-paste-input"
+                    name="csvPaste"
+                    data-testid="quiz-csv-paste-input"
+                    rows={4}
+                    disabled={busy}
+                    value={pastedCsvText}
+                    onChange={(event) => setPastedCsvText(event.target.value)}
+                    placeholder={'cau_hoi\ta\tb\tc\td\tdap_an\n5 + 5 = ?\t8\t9\t10\t11\tC'}
+                    className="w-full rounded-lg border border-surface-border bg-surface-muted p-2.5 font-mono text-xs text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      data-testid="quiz-csv-paste-preview-button"
+                      disabled={busy || !pastedCsvText.trim()}
+                      onClick={() => {
+                        setCsvFileName('Nội dung vừa dán');
+                        setCsvText(pastedCsvText);
+                        void runCsvPreview(dialog.set.id, pastedCsvText);
+                      }}
+                      className="btn-secondary min-h-[44px] px-3.5 text-xs font-bold disabled:opacity-50"
+                    >
+                      Kiểm tra nội dung vừa dán
+                    </button>
+                  </div>
+                </div>
+              </details>
             </div>
 
             {csvPreviewLoading && (
@@ -1160,17 +1239,28 @@ export function ParentQuizBankSection({
                     )}
 
                     {csvPreview.invalidCount > 0 && (
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-xs text-muted">Nhấn vào từng dòng để xem đầy đủ 4 đáp án A–D và đáp án đúng.</span>
-                        <button
-                          type="button"
-                          data-testid="csv-filter-errors-toggle"
-                          aria-pressed={onlyErrorRows}
-                          onClick={() => setOnlyErrorRows((prev) => !prev)}
-                          className="btn-secondary min-h-[44px] px-3 text-xs font-semibold"
-                        >
-                          {onlyErrorRows ? 'Hiện tất cả dòng' : `Chỉ hiện dòng lỗi (${csvPreview.invalidCount})`}
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            data-testid="csv-export-errors-button"
+                            onClick={handleExportInvalidRows}
+                            className="btn-secondary min-h-[44px] px-3 text-xs font-semibold"
+                          >
+                            <Download size={13} aria-hidden="true" />
+                            <span>Tải dòng lỗi (.csv)</span>
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="csv-filter-errors-toggle"
+                            aria-pressed={onlyErrorRows}
+                            onClick={() => setOnlyErrorRows((prev) => !prev)}
+                            className="btn-secondary min-h-[44px] px-3 text-xs font-semibold"
+                          >
+                            {onlyErrorRows ? 'Hiện tất cả dòng' : `Chỉ hiện dòng lỗi (${csvPreview.invalidCount})`}
+                          </button>
+                        </div>
                       </div>
                     )}
 

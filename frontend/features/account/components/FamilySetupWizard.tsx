@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '@/lib/context/AuthContext';
 import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
+import { useDetectedStandaloneFilmCount } from '@/features/profiles/components/KidModeDashboard';
 import {
   CHILD_AVATARS,
   MAX_CHILD_PROFILES,
@@ -42,11 +43,13 @@ export function FamilySetupWizard({
   onCancel,
   onCompleted,
   sessionPin = '',
+  standaloneFilmCount,
   onPinVerified,
 }: {
   onCancel?: () => void;
   onCompleted?: (created: ChildProfile, pin: string) => void;
   sessionPin?: string;
+  standaloneFilmCount?: number;
   onPinVerified?: (pin: string) => void;
 }) {
   const {
@@ -58,7 +61,11 @@ export function FamilySetupWizard({
   } = useAuth();
   const navigate = useNavigate();
 
+  const [startedWithPinStep] = useState<boolean>(() => !parentModeEnabled);
   const [step, setStep] = useState<WizardStep>(() => (parentModeEnabled ? 'child' : 'pin'));
+  const detectedStandalone = useDetectedStandaloneFilmCount(Boolean(token) && standaloneFilmCount === undefined);
+  const zeroStandaloneFilms =
+    (typeof standaloneFilmCount === 'number' ? standaloneFilmCount : detectedStandalone) === 0;
   const [pin, setPin] = useState(sessionPin || '');
   const [confirmPin, setConfirmPin] = useState('');
   const [showPin, setShowPin] = useState(false);
@@ -123,14 +130,15 @@ export function FamilySetupWizard({
 
   const sanitizePin = (raw: string) => raw.replace(/[^0-9]/g, '').slice(0, 6);
 
-  const visibleSteps: { key: Exclude<WizardStep, 'done'>; label: string }[] = parentModeEnabled
+  const includePinStep = startedWithPinStep || !parentModeEnabled;
+  const visibleSteps: { key: Exclude<WizardStep, 'done'>; label: string }[] = includePinStep
     ? [
+        { key: 'pin', label: 'Mã PIN phụ huynh' },
         { key: 'child', label: 'Hồ sơ của bé' },
         { key: 'time', label: 'Giờ xem mỗi ngày' },
         { key: 'learning', label: 'Câu hỏi & Mặc định' },
       ]
     : [
-        { key: 'pin', label: 'Mã PIN phụ huynh' },
         { key: 'child', label: 'Hồ sơ của bé' },
         { key: 'time', label: 'Giờ xem mỗi ngày' },
         { key: 'learning', label: 'Câu hỏi & Mặc định' },
@@ -682,9 +690,11 @@ export function FamilySetupWizard({
               <li>
                 • <strong>Tương tác khi xem:</strong> Rương câu hỏi bất ngờ và câu hỏi nhớ nội dung tập phim đều bật sẵn
               </li>
-              <li>
-                • <strong>Phim lẻ cuối tuần:</strong> Mở vào thứ Bảy &amp; Chủ nhật khi bé giữ đúng giờ xem trong tuần (ba mẹ luôn mở sớm được bằng mã PIN)
-              </li>
+              {!zeroStandaloneFilms && (
+                <li>
+                  • <strong>Phim lẻ cuối tuần:</strong> Mở vào thứ Bảy &amp; Chủ nhật khi bé giữ đúng giờ xem trong tuần (ba mẹ luôn mở sớm được bằng mã PIN)
+                </li>
+              )}
             </ul>
             <p className="text-xs text-muted">
               Mọi mục trên đều có thể chỉnh riêng từng bé ở trang Gia đình sau khi lưu.

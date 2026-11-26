@@ -226,6 +226,7 @@ export default function SeriesDetailPage() {
           <div className="min-w-0 lg:col-span-2 space-y-4">
             <EpisodePlayerPanel
               seriesTitle={series.title}
+              seriesPosterUrl={playback.seriesCard?.posterUrl || playback.seriesCard?.backdropUrl || ''}
               selectedEpisode={selectedEpisode}
               episodeDetail={playback.episodeDetail}
               playbackSource={playback.playbackSource}
@@ -278,6 +279,7 @@ export default function SeriesDetailPage() {
                 onSubmitLootAnswer: playback.playFeatures.handleSubmitLootAnswer,
                 onDismissLootQuiz: playback.playFeatures.handleDismissLootQuiz,
                 onSelectLootDraftOption: playback.playFeatures.setLootSelectedOption,
+                onExtendLootTimer: playback.playFeatures.extendLootTimerForReadAloud,
                 activeRecapEpisodeId: playback.activeRecapEpisodeId,
                 onRecapUnlocked: playback.handleRecapUnlocked,
                 onRecapRewatch: playback.handleRecapRewatch,
@@ -320,6 +322,7 @@ export default function SeriesDetailPage() {
                   poster={playback.seriesCard?.posterUrl || ''}
                   scopeLabel="Tập này"
                   testIdPrefix="episode"
+                  compact
                 />
 
                 {visibleMediaAssets.length > 0 && (
@@ -369,6 +372,7 @@ export default function SeriesDetailPage() {
           </div>
 
           <EpisodeSidebar
+            seriesTitle={series.title}
             orderedSeasons={playback.orderedSeasons}
             hasSeasons={playback.hasSeasons}
             selectedSeasonId={playback.selectedSeasonId}

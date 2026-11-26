@@ -9,6 +9,7 @@ import { QuickSaveButtons } from '@/features/library/components/LibraryControls'
 import { VipBadge } from '@/features/profiles/components/VipBadge';
 
 export type EpisodeSidebarProps = {
+  seriesTitle?: string;
   orderedSeasons: CatalogSeason[];
   hasSeasons: boolean;
   selectedSeasonId: string | null;
@@ -28,7 +29,41 @@ export type EpisodeSidebarProps = {
   unlockedVipEpisodeIds?: string[];
 };
 
+function foldEpisodeText(value: string): string {
+  if (typeof foldVietnamese === 'function') {
+    return foldVietnamese(value);
+  }
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'd')
+    .toLowerCase();
+}
+
+function formatSeasonTabLabel(season: CatalogSeason, seriesTitle?: string): string {
+  const rawTitle = (season.title || '').trim();
+  const cleanSeries = cleanMediaTitle(seriesTitle || '').trim();
+  let stripped = rawTitle;
+  if (cleanSeries && stripped) {
+    const lowerRaw = foldEpisodeText(stripped);
+    const lowerSeries = foldEpisodeText(cleanSeries);
+    if (lowerRaw.startsWith(lowerSeries)) {
+      const remainder = stripped.slice(cleanSeries.length).replace(/^\s*[-–—:·|]\s*/, '').trim();
+      if (remainder) {
+        stripped = remainder;
+      }
+    }
+  }
+  if (!stripped || /^các tập đánh số$/i.test(stripped) || /^cac tap danh so$/i.test(foldEpisodeText(stripped))) {
+    const seasonNum = season.number ?? season.seasonNumber;
+    return seasonNum ? `Mùa ${seasonNum}` : 'Phần 1';
+  }
+  return stripped;
+}
+
 export function EpisodeSidebar({
+  seriesTitle = '',
   orderedSeasons,
   hasSeasons,
   selectedSeasonId,
@@ -50,14 +85,21 @@ export function EpisodeSidebar({
   const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
   const isKidMode = Boolean(auth?.isKidMode);
   const trimmedQuery = episodeQuery.trim();
-  const foldedQuery = trimmedQuery ? foldVietnamese(trimmedQuery) : '';
+  const foldedQuery = trimmedQuery ? foldEpisodeText(trimmedQuery) : '';
   const filteredEpisodes = foldedQuery
     ? seasonEpisodes.filter((episode) =>
-        foldVietnamese(
+        foldEpisodeText(
           `${episode.number ?? episode.episodeNumber ?? ''} ${cleanMediaTitle(episode.title)} ${episode.synopsis || ''}`
         ).includes(foldedQuery)
       )
     : seasonEpisodes;
+
+  const showSeasonTabs =
+    hasSeasons &&
+    !(
+      orderedSeasons.length === 1 &&
+      foldEpisodeText((orderedSeasons[0]?.title || '').trim()) === 'cac tap danh so'
+    );
 
   return (
     <div className="space-y-6">
@@ -68,7 +110,7 @@ export function EpisodeSidebar({
           </div>
         </div>
 
-        {hasSeasons && (
+        {showSeasonTabs && (
           <div className="mt-4 flex flex-wrap gap-2" aria-label="Chọn mùa">
             {orderedSeasons.map((season) => (
               <button
@@ -83,7 +125,7 @@ export function EpisodeSidebar({
                     : 'border-surface-border bg-surface-elevated text-muted hover:text-ink'
                 }`}
               >
-                {season.title || `Mùa ${season.number ?? season.seasonNumber ?? ''}`}
+                {formatSeasonTabLabel(season, seriesTitle)}
               </button>
             ))}
           </div>
@@ -115,9 +157,11 @@ export function EpisodeSidebar({
           </div>
         )}
 
-        <label className="mt-4 block">
+        <label htmlFor="episode-search-input" className="mt-4 block">
           <span className="sr-only">Tìm tập trong phim bộ này</span>
           <input
+            id="episode-search-input"
+            name="episodeQuery"
             data-testid="episode-search-input"
             type="search"
             value={episodeQuery}

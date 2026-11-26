@@ -175,7 +175,7 @@ test('1. /account is reachable in mobile Navbar menu and desktop dropdown has me
   const menu = findNodes(tree, (n) => n.props?.role === 'menu')[0];
   assert.ok(menu, 'Desktop user dropdown must expose role="menu"');
   const menuItems = findNodes(menu, (n) => n.props?.role === 'menuitem');
-  assert.equal(menuItems.length, 6);
+  assert.equal(menuItems.length, 7);
   assert.ok(menuItems.some((item) => item.props.to === '/lich-su'));
 
   const mobileNav = findNodes(tree, (n) => n.props?.id === 'mobile-navigation')[0];

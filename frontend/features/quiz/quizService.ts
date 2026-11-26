@@ -239,14 +239,64 @@ export function getQuizSubjectLabel(code?: string | null): string {
   return found ? found.label : 'Khác';
 }
 
+const BEGINNER_ENGLISH_VI_HINTS: Record<string, string> = {
+  "What animal says 'Meow'?": "Con vật nào kêu 'meo meo'?",
+  'What color is a ripe banana?': 'Quả chuối chín có màu gì?',
+  'Which number comes after four?': 'Số nào đứng liền sau số 4 (four)?',
+  "What animal says 'Woof'?": "Con vật nào kêu 'gâu gâu'?",
+  'Which one is a red fruit?': 'Từ nào chỉ quả táo màu đỏ?',
+  'What color is the clear daytime sky?': 'Bầu trời ban ngày trong xanh có màu gì?',
+  'Which animal lives in water and swims?': 'Con vật nào sống và bơi dưới nước?',
+  'What do you say in the morning to greet someone?': 'Buổi sáng bé chào mọi người thế nào?',
+  'Which item do you read at school?': 'Đồ vật nào bé dùng để đọc ở trường?',
+  'Who is your mom in English?': "Từ tiếng Anh nào có nghĩa là 'mẹ'?",
+};
+
+function isBeginnerGradeLabel(gradeOrLabel?: string | null): boolean {
+  if (!gradeOrLabel) return false;
+  const trimmed = gradeOrLabel.trim();
+  return (
+    trimmed === 'MAU_GIAO' ||
+    trimmed === 'LOP_1' ||
+    trimmed === 'Mẫu giáo' ||
+    trimmed === 'Lớp 1'
+  );
+}
+
+export function formatQuestionForDisplay(
+  question: string,
+  subject?: string | null,
+  gradeOrLabel?: string | null
+): string {
+  const trimmed = (question || '').trim();
+  if (!trimmed || subject !== 'TIENG_ANH' || !isBeginnerGradeLabel(gradeOrLabel)) {
+    return trimmed;
+  }
+  const viHint = BEGINNER_ENGLISH_VI_HINTS[trimmed];
+  if (!viHint) {
+    return trimmed;
+  }
+  return `${viHint} (${trimmed})`;
+}
+
+function extractEnglishSpeechSegment(question: string): string {
+  const trimmed = (question || '').trim();
+  const parenMatch = trimmed.match(/\(([^()]+[?.!]?)\)\s*$/);
+  if (parenMatch && /[A-Za-z]/.test(parenMatch[1])) {
+    return parenMatch[1].trim();
+  }
+  return trimmed;
+}
+
 export function getSpeechLangForSubject(subject?: string | null): 'en-US' | 'vi-VN' {
   return subject === 'TIENG_ANH' ? 'en-US' : 'vi-VN';
 }
 
 export function formatSpeechTextForKids(text: string, lang: 'en-US' | 'vi-VN' = 'vi-VN'): string {
   const trimmed = (text || '').trim();
-  if (!trimmed || lang !== 'vi-VN') {
-    return trimmed;
+  if (!trimmed) return '';
+  if (lang === 'en-US') {
+    return extractEnglishSpeechSegment(trimmed);
   }
   return trimmed
     .replace(/(\d+)\s*\+\s*(\d+)/g, '$1 cộng $2')
@@ -270,6 +320,24 @@ export function speakWithWebSpeech(text: string, lang: 'en-US' | 'vi-VN' = 'vi-V
   if (!synth || typeof synth.speak !== 'function' || typeof UtteranceCtor !== 'function') {
     return false;
   }
+  let matchedVoice: SpeechSynthesisVoice | undefined;
+  if (typeof synth.getVoices === 'function') {
+    try {
+      const voices = synth.getVoices();
+      if (!Array.isArray(voices) || voices.length === 0) {
+        return false;
+      }
+      const targetPrefix = lang.toLowerCase().split('-')[0];
+      matchedVoice = voices.find(
+        (voice) => typeof voice?.lang === 'string' && voice.lang.toLowerCase().startsWith(targetPrefix)
+      );
+      if (!matchedVoice) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  }
   try {
     if (typeof synth.cancel === 'function') {
       synth.cancel();
@@ -277,6 +345,9 @@ export function speakWithWebSpeech(text: string, lang: 'en-US' | 'vi-VN' = 'vi-V
     const utterance = new UtteranceCtor(cleanText);
     utterance.lang = lang;
     utterance.rate = 0.92;
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
+    }
     synth.speak(utterance);
     return true;
   } catch {
@@ -813,7 +884,7 @@ function parseDelimitedRecords(content: string, delimiter: string): string[][] {
       continue;
     }
 
-    if (ch === '"') {
+    if (ch === '"' && currentField.length === 0) {
       inQuotes = true;
     } else if (ch === delimiter) {
       currentRow.push(currentField);

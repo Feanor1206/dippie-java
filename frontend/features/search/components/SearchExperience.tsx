@@ -10,6 +10,7 @@ import {
   getCatalogGenres,
   type CatalogGenreOption,
 } from '@/lib/services/catalogService';
+import { listSeriesCards, type SeriesCard } from '@/lib/services/seriesCardService';
 import { FilmGrid } from '@/features/movies/components/FilmShelf';
 import type { Movie } from '@/types/movie';
 
@@ -39,6 +40,8 @@ type SearchFilterKey = {
   yearMax?: number;
   sort?: SortField;
   direction?: SortDirection;
+  contentType: ContentTypeFilter;
+  shortOnly: boolean;
   page: number;
   size: number;
 };
@@ -48,6 +51,119 @@ type SearchSnapshot = SearchFilterKey & {
   totalElements: number;
   totalPages: number;
 };
+
+function foldSearchText(raw: string): string {
+  return (raw || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLowerCase()
+    .trim();
+}
+
+function parseMovieRuntimeMinutes(movie: Movie): number | null {
+  const startMs = movie.start_ms ?? movie.startMs;
+  const endMs = movie.end_ms ?? movie.endMs;
+  if (typeof startMs === 'number' && typeof endMs === 'number' && endMs > startMs) {
+    return Math.max(1, Math.round((endMs - startMs) / 60000));
+  }
+  const raw = typeof movie.runtime === 'string' ? movie.runtime.trim() : '';
+  if (!raw) return null;
+  const hourMatch = raw.match(/(\d+)\s*(?:giờ|gio|g|h)\s*(\d+)?/i);
+  if (hourMatch) {
+    return Number(hourMatch[1]) * 60 + (hourMatch[2] ? Number(hourMatch[2]) : 0);
+  }
+  const minMatch = raw.match(/(\d+)/);
+  return minMatch ? Number(minMatch[1]) : null;
+}
+
+function isShortDurationMovie(movie: Movie): boolean {
+  if (movie.item_type === 'series' || movie.type === 'series') return false;
+  const mins = parseMovieRuntimeMinutes(movie);
+  return mins !== null && mins > 0 && mins <= 10;
+}
+
+function resolveSeriesCardYear(card: SeriesCard): number | null {
+  if (typeof card.releaseYearStart === 'number') return card.releaseYearStart;
+  if (typeof card.releaseYearEnd === 'number') return card.releaseYearEnd;
+  return null;
+}
+
+function extractSeriesGenreTokens(g: SeriesCard['genres'][number] | string): { id: string; label: string } {
+  if (typeof g === 'string') {
+    return { id: g, label: genreLabel(g) };
+  }
+  return { id: g.id || '', label: g.label || genreLabel(g.id || '') };
+}
+
+function seriesCardToMovie(card: SeriesCard): Movie {
+  const art = card.backdropUrl || card.posterUrl || '';
+  return {
+    id: card.id,
+    item_type: 'series',
+    type: 'series',
+    series_id: card.id,
+    seriesId: card.id,
+    title: card.title,
+    year: resolveSeriesCardYear(card),
+    rating: typeof card.averageRating === 'number' ? card.averageRating : 0,
+    averageRating: card.averageRating,
+    ratingCount: card.ratingCount,
+    runtime: '',
+    genres: Array.isArray(card.genres)
+      ? card.genres.map((g) => extractSeriesGenreTokens(g).label).filter(Boolean)
+      : [],
+    description: card.synopsis || '',
+    poster: card.posterUrl || art,
+    backdrop: card.backdropUrl || art,
+    thumbnailUrl: art || null,
+  };
+}
+
+function filterAndSortSeriesCards(cards: SeriesCard[], key: SearchFilterKey): Movie[] {
+  const foldedQuery = key.query ? foldSearchText(key.query) : '';
+  const foldedGenre = key.genre ? foldSearchText(key.genre) : '';
+  const foldedTranslatedGenre = key.genre ? foldSearchText(genreLabel(key.genre)) : '';
+
+  const filtered = cards.filter((card) => {
+    if (foldedQuery) {
+      const haystack = foldSearchText(`${card.title} ${card.originalTitle || ''} ${card.synopsis || ''}`);
+      if (!haystack.includes(foldedQuery)) return false;
+    }
+    if (foldedGenre) {
+      const cardGenres = Array.isArray(card.genres) ? card.genres : [];
+      const matchesGenre = cardGenres.some((g) => {
+        const tokens = extractSeriesGenreTokens(g);
+        const fg = foldSearchText(tokens.id);
+        const fl = foldSearchText(tokens.label);
+        return fg === foldedGenre || fl === foldedGenre || Boolean(foldedTranslatedGenre && fl === foldedTranslatedGenre);
+      });
+      if (!matchesGenre) return false;
+    }
+    const cardYear = resolveSeriesCardYear(card);
+    if (key.yearMin !== undefined) {
+      if (cardYear === null || cardYear < key.yearMin) return false;
+    }
+    if (key.yearMax !== undefined) {
+      if (cardYear === null || cardYear > key.yearMax) return false;
+    }
+    return true;
+  });
+
+  const sorted = filtered.slice();
+  if (key.sort === 'year') {
+    sorted.sort((a, b) => {
+      const ay = resolveSeriesCardYear(a) ?? 0;
+      const by = resolveSeriesCardYear(b) ?? 0;
+      return key.direction === 'asc' ? ay - by : by - ay;
+    });
+  } else if (key.sort === 'rating') {
+    sorted.sort((a, b) => (b.averageRating ?? -1) - (a.averageRating ?? -1));
+  } else if (key.sort === 'title') {
+    sorted.sort((a, b) => a.title.localeCompare(b.title, 'vi'));
+  }
+  return sorted.map(seriesCardToMovie);
+}
 
 function parseNonNegativeInteger(value: string | null, fallback: number): number {
   if (!value || !/^\d+$/.test(value)) return fallback;
@@ -82,6 +198,8 @@ function isSnapshotMatching(snapshot: SearchSnapshot | null, key: SearchFilterKe
       snapshot.yearMax === key.yearMax &&
       snapshot.sort === key.sort &&
       snapshot.direction === key.direction &&
+      snapshot.contentType === key.contentType &&
+      snapshot.shortOnly === key.shortOnly &&
       snapshot.page === key.page &&
       snapshot.size === key.size
   );
@@ -105,6 +223,13 @@ export function SearchExperience() {
   const requestedSize = parseNonNegativeInteger(searchParams.get('size'), PAGE_SIZE_DEFAULT);
   const pageSize = requestedSize >= 1 && requestedSize <= MAX_PAGE_SIZE ? requestedSize : PAGE_SIZE_DEFAULT;
 
+  const [inputValue, setInputValue] = useState(urlQuery);
+  const [yearMinInput, setYearMinInput] = useState(yearMin !== undefined ? String(yearMin) : '');
+  const [yearMaxInput, setYearMaxInput] = useState(yearMax !== undefined ? String(yearMax) : '');
+  const [contentTypeFilter, setContentTypeFilter] = useState<ContentTypeFilter>('all');
+  const [shortDurationOnly, setShortDurationOnly] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+
   const filterKey: SearchFilterKey = {
     query: urlQuery,
     genre,
@@ -112,15 +237,11 @@ export function SearchExperience() {
     yearMax,
     sort: sortState.sort,
     direction: sortState.direction,
+    contentType: contentTypeFilter,
+    shortOnly: shortDurationOnly,
     page,
     size: pageSize,
   };
-
-  const [inputValue, setInputValue] = useState(urlQuery);
-  const [yearMinInput, setYearMinInput] = useState(yearMin !== undefined ? String(yearMin) : '');
-  const [yearMaxInput, setYearMaxInput] = useState(yearMax !== undefined ? String(yearMax) : '');
-  const [contentTypeFilter, setContentTypeFilter] = useState<ContentTypeFilter>('all');
-  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [serverGenres, setServerGenres] = useState<CatalogGenreOption[] | null>(null);
   const [fallbackGenres, setFallbackGenres] = useState<CatalogGenreOption[]>([]);
   const [snapshot, setSnapshot] = useState<SearchSnapshot | null>(null);
@@ -200,6 +321,144 @@ export function SearchExperience() {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
+
+    const recordDerivedGenres = (items: Movie[]) => {
+      if (items.length === 0) return;
+      const derived = deriveGenresFromMovies(items, genreLabel);
+      if (derived.length > 0) {
+        setFallbackGenres((prev) => {
+          const byKey = new Map<string, CatalogGenreOption>();
+          for (const genreOption of [...prev, ...derived]) {
+            const key = genreOption.label.toLocaleLowerCase('vi');
+            if (!byKey.has(key)) byKey.set(key, genreOption);
+          }
+          return [...byKey.values()];
+        });
+      }
+    };
+
+    const handleFailure = (err: unknown) => {
+      const candidate = err as { name?: unknown; isCanceled?: unknown; message?: unknown } | null;
+      if (
+        controller.signal.aborted ||
+        requestId !== requestIdRef.current ||
+        candidate?.name === 'AbortError' ||
+        candidate?.isCanceled
+      ) {
+        return;
+      }
+      setSnapshot({ ...filterKey, results: [], totalElements: 0, totalPages: 0 });
+      setError(typeof candidate?.message === 'string' ? candidate.message : 'Chưa tải được kho phim. Bạn thử lại nhé.');
+      setLoading(false);
+    };
+
+    if (contentTypeFilter === 'series' && !shortDurationOnly) {
+      const loadSeriesList = async () => {
+        if (typeof listSeriesCards === 'function') {
+          const cards = await listSeriesCards({ signal: controller.signal });
+          return filterAndSortSeriesCards(cards, filterKey);
+        }
+        const fallback = await browseCatalog({
+          query: urlQuery || undefined,
+          genre: genre || undefined,
+          animationOnly: true,
+          yearMin,
+          yearMax,
+          sort: sortState.sort,
+          direction: sortState.direction,
+          page: 0,
+          size: MAX_PAGE_SIZE,
+          signal: controller.signal,
+        });
+        return fallback.items.filter((item) => item.item_type === 'series');
+      };
+
+      loadSeriesList()
+        .then((allSeries) => {
+          if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+          const total = allSeries.length;
+          const pages = total > 0 ? Math.ceil(total / pageSize) : 0;
+          const targetPage = pages > 0 ? Math.min(page, pages - 1) : 0;
+          const sliced = allSeries.slice(targetPage * pageSize, (targetPage + 1) * pageSize);
+          setSnapshot({
+            ...filterKey,
+            results: sliced,
+            totalElements: total,
+            totalPages: pages,
+          });
+          recordDerivedGenres(allSeries);
+          setLoading(false);
+        })
+        .catch(handleFailure);
+
+      return () => controller.abort();
+    }
+
+    if (contentTypeFilter === 'episode' || shortDurationOnly) {
+      const loadFilteredEpisodes = async () => {
+        const batchSize = 100;
+        const firstPage = await browseCatalog({
+          query: urlQuery || undefined,
+          genre: genre || undefined,
+          animationOnly: true,
+          yearMin,
+          yearMax,
+          sort: sortState.sort,
+          direction: sortState.direction,
+          page: 0,
+          size: batchSize,
+          signal: controller.signal,
+        });
+        let combined = [...firstPage.items];
+        if (firstPage.totalPages > 1 && firstPage.totalPages <= 12) {
+          const restPages = await Promise.all(
+            Array.from({ length: firstPage.totalPages - 1 }, (_, idx) =>
+              browseCatalog({
+                query: urlQuery || undefined,
+                genre: genre || undefined,
+                animationOnly: true,
+                yearMin,
+                yearMax,
+                sort: sortState.sort,
+                direction: sortState.direction,
+                page: idx + 1,
+                size: batchSize,
+                signal: controller.signal,
+              })
+            )
+          );
+          for (const extra of restPages) {
+            combined = combined.concat(extra.items);
+          }
+        }
+        return combined.filter((item) => {
+          if (item.item_type === 'series' || item.type === 'series') return false;
+          if (shortDurationOnly && !isShortDurationMovie(item)) return false;
+          return true;
+        });
+      };
+
+      loadFilteredEpisodes()
+        .then((filteredItems) => {
+          if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+          const total = filteredItems.length;
+          const pages = total > 0 ? Math.ceil(total / pageSize) : 0;
+          const targetPage = pages > 0 ? Math.min(page, pages - 1) : 0;
+          const sliced = filteredItems.slice(targetPage * pageSize, (targetPage + 1) * pageSize);
+          setSnapshot({
+            ...filterKey,
+            results: sliced,
+            totalElements: total,
+            totalPages: pages,
+          });
+          recordDerivedGenres(filteredItems);
+          setLoading(false);
+        })
+        .catch(handleFailure);
+
+      return () => controller.abort();
+    }
+
     browseCatalog({
       query: urlQuery || undefined,
       genre: genre || undefined,
@@ -220,38 +479,25 @@ export function SearchExperience() {
           totalElements: result.totalElements,
           totalPages: result.totalPages,
         });
-        if (result.items.length > 0) {
-          const derived = deriveGenresFromMovies(result.items, genreLabel);
-          if (derived.length > 0) {
-            setFallbackGenres((prev) => {
-              const byKey = new Map<string, CatalogGenreOption>();
-              for (const genreOption of [...prev, ...derived]) {
-                const key = genreOption.label.toLocaleLowerCase('vi');
-                if (!byKey.has(key)) byKey.set(key, genreOption);
-              }
-              return [...byKey.values()];
-            });
-          }
-        }
+        recordDerivedGenres(result.items);
         setLoading(false);
       })
-      .catch((err: unknown) => {
-        const candidate = err as { name?: unknown; isCanceled?: unknown; message?: unknown } | null;
-        if (
-          controller.signal.aborted ||
-          requestId !== requestIdRef.current ||
-          candidate?.name === 'AbortError' ||
-          candidate?.isCanceled
-        ) {
-          return;
-        }
-        setSnapshot({ ...filterKey, results: [], totalElements: 0, totalPages: 0 });
-        setError(typeof candidate?.message === 'string' ? candidate.message : 'Chưa tải được kho phim. Bạn thử lại nhé.');
-        setLoading(false);
-      });
+      .catch(handleFailure);
 
     return () => controller.abort();
-  }, [urlQuery, genre, yearMin, yearMax, sortState.sort, sortState.direction, page, pageSize, retryCount]);
+  }, [
+    urlQuery,
+    genre,
+    yearMin,
+    yearMax,
+    sortState.sort,
+    sortState.direction,
+    contentTypeFilter,
+    shortDurationOnly,
+    page,
+    pageSize,
+    retryCount,
+  ]);
 
   const isCurrentSnapshot = isSnapshotMatching(snapshot, filterKey);
   const currentResults = isCurrentSnapshot ? snapshot.results : [];
@@ -276,19 +522,43 @@ export function SearchExperience() {
     });
   }, [serverGenres, fallbackGenres, genre]);
 
-  const activeFilterCount =
+  const sheetFilterCount =
     (genre ? 1 : 0) +
     (yearMin !== undefined || yearMax !== undefined ? 1 : 0) +
-    (sortState.value ? 1 : 0) +
-    (contentTypeFilter !== 'all' ? 1 : 0);
+    (sortState.value ? 1 : 0);
 
-  const hasNonQueryFilters = activeFilterCount > 0;
+  const hasNonQueryFilters =
+    sheetFilterCount > 0 || contentTypeFilter !== 'all' || shortDurationOnly;
 
   const clearNonQueryFilters = () => {
     setYearMinInput('');
     setYearMaxInput('');
     setContentTypeFilter('all');
+    setShortDurationOnly(false);
     updateUrl({ genre: '', yearMin: null, yearMax: null, sort: null, direction: null, page: 0 });
+  };
+
+  const handleSelectContentType = (nextType: ContentTypeFilter) => {
+    setContentTypeFilter(nextType);
+    if (nextType === 'series' && shortDurationOnly) {
+      setShortDurationOnly(false);
+    }
+    if (page !== 0) {
+      updateUrl({ page: 0 });
+    }
+  };
+
+  const handleToggleShortDuration = () => {
+    setShortDurationOnly((prev) => {
+      const next = !prev;
+      if (next && contentTypeFilter === 'series') {
+        setContentTypeFilter('all');
+      }
+      return next;
+    });
+    if (page !== 0) {
+      updateUrl({ page: 0 });
+    }
   };
 
   const handleToggleGenre = (genreId: string) => {
@@ -326,15 +596,7 @@ export function SearchExperience() {
     return matched?.label || genreLabel(genre);
   }, [genre, availableGenres]);
 
-  const displayedResults = useMemo(() => {
-    if (contentTypeFilter === 'series') {
-      return currentResults.filter((item) => item.item_type === 'series');
-    }
-    if (contentTypeFilter === 'episode') {
-      return currentResults.filter((item) => item.item_type !== 'series');
-    }
-    return currentResults;
-  }, [currentResults, contentTypeFilter]);
+  const displayedResults = currentResults;
 
   const seriesItems = useMemo(
     () => displayedResults.filter((item) => item.item_type === 'series'),
@@ -366,6 +628,8 @@ export function SearchExperience() {
         }}
       >
         <input
+          id="search-query-input"
+          name="q"
           data-testid="search-query-input"
           aria-label="Tìm phim hoạt hình"
           type="text"
@@ -412,13 +676,22 @@ export function SearchExperience() {
                   type="button"
                   data-testid={`search-type-${key}`}
                   aria-pressed={active}
-                  onClick={() => setContentTypeFilter(key)}
+                  onClick={() => handleSelectContentType(key)}
                   className={`series-filter-chip min-h-[44px] ${active ? 'series-filter-chip--active' : ''}`}
                 >
                   {label}
                 </button>
               );
             })}
+            <button
+              type="button"
+              data-testid="search-short-duration-toggle"
+              aria-pressed={shortDurationOnly}
+              onClick={handleToggleShortDuration}
+              className={`series-filter-chip min-h-[44px] ${shortDurationOnly ? 'series-filter-chip--active' : ''}`}
+            >
+              Dưới 10 phút
+            </button>
           </div>
 
           <div className="flex items-center gap-2 md:hidden">
@@ -428,7 +701,7 @@ export function SearchExperience() {
               onClick={() => setFilterSheetOpen(true)}
               className="btn-secondary min-h-[44px] px-3.5 text-xs font-bold"
             >
-              Bộ lọc{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+              Bộ lọc{sheetFilterCount > 0 ? ` (${sheetFilterCount})` : ''}
             </button>
           </div>
         </div>
@@ -719,6 +992,7 @@ export function SearchExperience() {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
+                    data-autofocus="true"
                     aria-pressed={!genre}
                     onClick={() => updateUrl({ genre: '', page: 0 })}
                     className={`series-filter-chip min-h-[44px] ${!genre ? 'series-filter-chip--active' : ''}`}

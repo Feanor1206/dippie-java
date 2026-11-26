@@ -450,11 +450,13 @@ export function buildWatchProgressHref(record: WatchProgressRecord): string {
 }
 
 export function readAutoNextPreference(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return true;
   try {
-    return window.localStorage.getItem(AUTO_NEXT_PREFERENCE_KEY) === 'true';
+    const stored = window.localStorage.getItem(AUTO_NEXT_PREFERENCE_KEY);
+    if (stored === 'false') return false;
+    return true;
   } catch {
-    return false;
+    return true;
   }
 }
 

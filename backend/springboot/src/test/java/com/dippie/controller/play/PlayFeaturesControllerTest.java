@@ -433,6 +433,7 @@ class PlayFeaturesControllerTest {
                 .andExpect(status().isConflict());
 
         JsonNode open1 = openLoot(childToken, drop1);
+        assertThat(open1.path("timerSeconds").asInt()).isEqualTo(20);
         // dropToken dùng 1 lần, mở lại bị 400
         mockMvc.perform(post("/api/users/play-features/loot/open")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
@@ -440,6 +441,8 @@ class PlayFeaturesControllerTest {
                         .content(json(Map.of("dropToken", drop1))))
                 .andExpect(status().isBadRequest());
 
+        // bé bấm nghe đọc được cộng thêm 10s trên giao diện nên sau 28s mã câu hỏi vẫn còn hiệu lực
+        clock.advance(Duration.ofSeconds(28));
         String lootToken1 = open1.path("token").asText();
         QuizOptionKey ans1 = decodeQuizOption(lootToken1, QuizChallengeContext.LOOT_DROP);
         mockMvc.perform(post("/api/users/play-features/loot/answer")

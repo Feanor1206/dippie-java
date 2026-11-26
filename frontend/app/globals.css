@@ -26,6 +26,10 @@
 
 html { background: var(--paper); }
 
+html[data-text-size="large"] {
+  font-size: 112.5%;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -493,13 +497,16 @@ h1, h2, h3, h4 { font-family: var(--font-display); }
 }
 @media (max-width: 700px) {
   .comic-navbar nav { height: 64px; }
-  .comic-wordmark { font-size: 26px; letter-spacing: -1.5px; }
+  .comic-wordmark { font-size: 1.625rem; letter-spacing: -1.5px; }
   .home-page { padding-block: 12px 40px; }
   .cover-grid { grid-template-columns: minmax(0, 1fr); }
   .cover-copy { gap: 8px; padding: 16px 18px; }
   .cover-copy h1 { max-width: none; font-size: clamp(1.625rem, 6.4vw, 2.25rem); }
   .cover-art-panel { border-radius: 0 0 9px 9px; }
   .shelf-section { margin-top: 18px; }
+}
+@media (max-width: 420px) {
+  .comic-wordmark { font-size: 1.5rem; letter-spacing: -1px; }
 }
 @media (max-width: 639px) {
   .cover-art-panel { display: none; }

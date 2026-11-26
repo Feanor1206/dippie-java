@@ -33,6 +33,7 @@ export function LootDropOverlay({
   onSubmitAnswer,
   onDismissQuiz,
   onSelectDraftOption,
+  onExtendTimer,
 }: {
   activeDrop: LootDropSpawn | null;
   dropSecondsLeft: number;
@@ -47,6 +48,7 @@ export function LootDropOverlay({
   onSubmitAnswer: (option: QuizOptionKey) => Promise<LootDropAnswerResult | null>;
   onDismissQuiz?: () => void;
   onSelectDraftOption?: (option: QuizOptionKey) => void;
+  onExtendTimer?: () => void;
 }) {
   const quizDialogRef = useRef<HTMLDivElement | null>(null);
   const [localDraft, setLocalDraft] = useState<QuizOptionKey | null>(null);
@@ -62,7 +64,7 @@ export function LootDropOverlay({
           data-testid="loot-chest-button"
           disabled={opening}
           onClick={() => void onOpenChest()}
-          aria-label={`Rương báu bay ngang, bấm để trả lời câu hỏi nhận thêm phút xem, còn ${dropSecondsLeft} giây`}
+          aria-label={`Rương câu hỏi bất ngờ, bấm để trả lời câu hỏi nhận thêm phút xem, còn ${dropSecondsLeft} giây`}
           className="loot-float motion-sheen-loop absolute bottom-14 left-3 z-20 flex min-h-[56px] items-center gap-2 rounded-2xl border-2 border-ink bg-[#fef3c7] px-3 py-1.5 text-left shadow-[3px_3px_0_#203328] hover:scale-105 cursor-pointer transition-transform"
         >
           <TreasureChestSvg />
@@ -83,7 +85,7 @@ export function LootDropOverlay({
           aria-modal="true"
           aria-labelledby="loot-quiz-title"
           data-testid="loot-quiz-card"
-          className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto overscroll-contain bg-ink/85 p-2.5 sm:items-center sm:p-4 animate-fade-in"
+          className="relative z-30 flex min-h-[30rem] sm:min-h-[32rem] w-full flex-1 items-center justify-center bg-ink/85 p-2.5 sm:p-4 animate-fade-in"
         >
           <div className="motion-overlay-overshoot my-auto w-full max-w-lg rounded-2xl border-2 border-ink bg-paper-white p-3.5 shadow-brand-lg sm:p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -113,7 +115,7 @@ export function LootDropOverlay({
 
             {activeQuiz.combo > 0 && (
               <p className="mt-1 text-[0.6875rem] font-bold text-brand-dark">
-                Combo hiện tại: {activeQuiz.combo}
+                Chuỗi trả lời đúng: {activeQuiz.combo}
                 {activeQuiz.potentialComboBonusMinutes > 0 ? ' · Đúng câu này thưởng thêm +1 phút!' : ''}
               </p>
             )}
@@ -175,6 +177,7 @@ export function LootDropOverlay({
               }}
               questionTestId="loot-quiz-question"
               feedbackTestId="loot-quiz-feedback"
+              onReadAloud={onExtendTimer}
               onSelectOption={(option) => void onSubmitAnswer(option)}
             />
           </div>

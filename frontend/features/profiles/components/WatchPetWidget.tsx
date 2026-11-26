@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Home, KeyRound } from 'lucide-react';
+import { Home } from 'lucide-react';
 import { QuizQuestionCard, type QuizWrongReveal } from '@/features/quiz/components/QuizQuestionCard';
 import type { QuizOptionKey } from '@/features/quiz/quizService';
 import { useBlockingOverlayFocus } from '@/features/profiles/hooks/useBlockingOverlayFocus';
@@ -11,10 +11,7 @@ import {
   type WatchPetStage,
   type WatchPetStatus,
 } from '@/lib/services/playFeaturesService';
-import {
-  grantExtraMinutesInKidMode,
-  type ScreenTimeStatus,
-} from '@/lib/services/screenTimeService';
+import type { ScreenTimeStatus } from '@/lib/services/screenTimeService';
 
 const STAGE_LABEL: Record<WatchPetStage, string> = {
   HAPPY: 'Mắt khỏe cùng Dieppie',
@@ -160,9 +157,7 @@ export function WatchPetWidget({
   const [wrongReveal, setWrongReveal] = useState<QuizWrongReveal | null>(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
-  const [showParentGrant, setShowParentGrant] = useState(false);
-  const [parentPin, setParentPin] = useState('');
-  const [grantMinutes, setGrantMinutes] = useState(15);
+  void onScreenTimeUpdated;
 
   const showOverlay = Boolean(watchPet?.enabled && (watchPet.fainted || watchPet.resting));
   useBlockingOverlayFocus(overlayRef, showOverlay);
@@ -251,32 +246,6 @@ export function WatchPetWidget({
     }
   };
 
-  const handleParentGrantSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!token || busy) return;
-    const cleanPin = parentPin.trim();
-    if (!/^\d{4}$/.test(cleanPin)) {
-      setFeedback({ kind: 'error', text: 'Ba mẹ nhập đúng mã PIN 4 chữ số nhé.' });
-      return;
-    }
-    setBusy(true);
-    setFeedback(null);
-    try {
-      const res = await grantExtraMinutesInKidMode(token, cleanPin, grantMinutes);
-      onScreenTimeUpdated?.(res.status);
-      setParentPin('');
-      setShowParentGrant(false);
-      setFeedback({ kind: 'success', text: res.message });
-    } catch (err: unknown) {
-      setFeedback({
-        kind: 'error',
-        text: err instanceof Error ? err.message : 'Chưa cộng thêm giờ xem được.',
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <>
       {!hideCorner && (
@@ -311,7 +280,7 @@ export function WatchPetWidget({
           aria-modal="true"
           aria-labelledby="watch-pet-dialog-title"
           data-testid="watch-pet-overlay"
-          className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto overscroll-contain bg-ink/85 p-3 sm:items-center sm:p-6 animate-fade-in"
+          className="relative z-30 flex min-h-[30rem] sm:min-h-[32rem] w-full flex-1 items-center justify-center bg-ink/85 p-3 sm:p-6 animate-fade-in"
         >
           <div className="motion-overlay-overshoot my-auto w-full max-w-lg rounded-2xl border-2 border-ink bg-paper-white p-4 text-center shadow-brand-lg sm:p-6">
             <div className="mx-auto mb-2 flex justify-center">
@@ -470,74 +439,6 @@ export function WatchPetWidget({
                   >
                     Trả lời 1 câu hỏi để xem tiếp ngay
                   </button>
-
-                  {token && (
-                    <button
-                      type="button"
-                      data-testid="watch-pet-parent-grant-button"
-                      aria-expanded={showParentGrant}
-                      onClick={() => {
-                        setShowParentGrant((prev) => !prev);
-                        setFeedback(null);
-                      }}
-                      className="inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-ink/25 bg-paper-white px-3 py-2 text-xs font-semibold text-muted hover:text-ink cursor-pointer"
-                    >
-                      <KeyRound size={14} aria-hidden="true" />
-                      <span>Ba mẹ cho thêm giờ xem hôm nay (PIN)</span>
-                    </button>
-                  )}
-
-                  {showParentGrant && token && (
-                    <form
-                      onSubmit={handleParentGrantSubmit}
-                      data-testid="watch-pet-parent-grant-form"
-                      className="space-y-2 rounded-xl border-2 border-ink bg-[#fef3c7]/60 p-3"
-                    >
-                      <div className="flex gap-2">
-                        {[15, 30].map((mins) => (
-                          <button
-                            key={mins}
-                            type="button"
-                            aria-pressed={grantMinutes === mins}
-                            onClick={() => setGrantMinutes(mins)}
-                            className={`min-h-[44px] flex-1 rounded-lg border px-2 py-1 text-xs font-bold cursor-pointer ${
-                              grantMinutes === mins
-                                ? 'border-ink bg-ink text-paper-white'
-                                : 'border-ink/40 bg-paper-white text-ink'
-                            }`}
-                          >
-                            +{mins} phút
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label htmlFor="watch-pet-parent-pin" className="sr-only">
-                          Mã PIN phụ huynh 4 chữ số
-                        </label>
-                        <input
-                          id="watch-pet-parent-pin"
-                          data-testid="watch-pet-parent-pin-input"
-                          type="password"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          maxLength={4}
-                          autoComplete="off"
-                          placeholder="PIN 4 số"
-                          value={parentPin}
-                          onChange={(event) => setParentPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
-                          className="min-h-[44px] min-w-0 flex-1 rounded-lg border-2 border-ink bg-paper-white px-3 py-1.5 text-center font-mono text-sm font-bold tracking-widest text-ink"
-                        />
-                        <button
-                          type="submit"
-                          data-testid="watch-pet-parent-grant-submit"
-                          disabled={busy}
-                          className="btn-primary min-h-[44px] shrink-0 px-3 py-1.5 text-xs font-bold"
-                        >
-                          Cộng giờ
-                        </button>
-                      </div>
-                    </form>
-                  )}
                 </div>
               </div>
             )}

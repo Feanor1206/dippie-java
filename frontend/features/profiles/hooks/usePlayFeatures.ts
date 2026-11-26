@@ -23,6 +23,17 @@ export type LootFeedbackBanner = {
   explanation?: string | null;
 };
 
+export function resolveLootTimerSeconds(grade?: string | null, rawSeconds?: number | null): number {
+  const parsed =
+    typeof rawSeconds === 'number' && Number.isFinite(rawSeconds) && rawSeconds > 0
+      ? Math.floor(rawSeconds)
+      : 12;
+  if (grade === 'MAU_GIAO') return Math.max(25, parsed);
+  if (grade === 'LOP_1') return Math.max(20, parsed);
+  if (grade === 'LOP_2') return Math.max(15, parsed);
+  return parsed;
+}
+
 export function usePlayFeatures({
   enabled,
   token,
@@ -51,6 +62,7 @@ export function usePlayFeatures({
   const [lootFeedback, setLootFeedback] = useState<LootFeedbackBanner | null>(null);
   const [lootOpening, setLootOpening] = useState(false);
   const [lootSubmitting, setLootSubmitting] = useState(false);
+  const lootReadExtendedRef = useRef(false);
 
   const scopeKey = enabled && token ? `${token}:${seriesId || ''}` : '';
   const scopeKeyRef = useRef(scopeKey);
@@ -251,12 +263,15 @@ export function usePlayFeatures({
     setLootOpening(true);
     try {
       const quiz = await openLootDrop(tokenRef.current, dropToken);
+      const scaledSeconds = resolveLootTimerSeconds(quiz.grade, quiz.timerSeconds);
+      const normalizedQuiz: LootDropQuiz = { ...quiz, timerSeconds: scaledSeconds };
+      lootReadExtendedRef.current = false;
       setActiveDrop(null);
       setDropSecondsLeft(0);
       setLootSelectedOption(null);
       setLootRetryError(null);
-      setActiveLootQuiz(quiz);
-      setLootQuizSecondsLeft(quiz.timerSeconds);
+      setActiveLootQuiz(normalizedQuiz);
+      setLootQuizSecondsLeft(scaledSeconds);
     } catch (err: unknown) {
       setActiveDrop(null);
       setDropSecondsLeft(0);
@@ -323,10 +338,18 @@ export function usePlayFeatures({
   };
 
   const handleDismissLootQuiz = () => {
+    lootReadExtendedRef.current = false;
     setActiveLootQuiz(null);
     setLootQuizSecondsLeft(0);
     setLootSelectedOption(null);
     setLootRetryError(null);
+  };
+
+  const extendLootTimerForReadAloud = () => {
+    if (!activeLootQuiz || lootReadExtendedRef.current) return;
+    lootReadExtendedRef.current = true;
+    setActiveLootQuiz((prev) => (prev ? { ...prev, timerSeconds: prev.timerSeconds + 10 } : prev));
+    setLootQuizSecondsLeft((prev) => (prev > 0 ? prev + 10 : prev));
   };
 
   const markRecapUnlocked = (targetEpisodeId: string | null) => {
@@ -383,6 +406,7 @@ export function usePlayFeatures({
     handleOpenLootChest,
     handleSubmitLootAnswer,
     handleDismissLootQuiz,
+    extendLootTimerForReadAloud,
     setLootSelectedOption,
     markRecapUnlocked,
     markRecapPendingLocally,

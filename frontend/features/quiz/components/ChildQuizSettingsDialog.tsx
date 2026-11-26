@@ -5,6 +5,7 @@ import { validateParentPin, type ChildProfile } from '@/lib/services/profileServ
 import {
   QUIZ_GRADES,
   fetchQuizSampleQuestions,
+  getQuizGradeLabel,
   updateChildQuizSettings,
   type ChildQuizConfig,
   type QuizGradeCode,
@@ -176,6 +177,23 @@ export function ChildQuizSettingsDialog({
             })}
           </div>
         </fieldset>
+
+        {activeAvailableSets.some(
+          (set) =>
+            selectedSetIds.includes(set.id) &&
+            !set.builtIn &&
+            !set.dynamicGenerator &&
+            Boolean(set.defaultGrade) &&
+            set.defaultGrade !== grade
+        ) && (
+          <div
+            role="status"
+            data-testid="child-quiz-grade-mismatch-warning"
+            className="rounded-xl border border-amber-700/45 bg-[#fef3c7]/75 px-3.5 py-2.5 text-xs leading-relaxed text-ink"
+          >
+            Lưu ý: Một số bộ câu hỏi riêng đang bật khác với khối lớp <strong>{getQuizGradeLabel(grade)}</strong> của {profile.name}. Dippie sẽ ưu tiên lấy các câu khớp {getQuizGradeLabel(grade)} trước, và tự bù bằng bộ câu hỏi có sẵn nếu bộ riêng chưa có câu cùng lớp.
+          </div>
+        )}
 
         <div
           data-testid="child-quiz-sample-preview"

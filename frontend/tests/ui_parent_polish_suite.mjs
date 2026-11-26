@@ -67,6 +67,19 @@ function createHarness(relPath, exportName, mocks = {}, globals = {}, inlineName
 
   const react = {
     Fragment,
+    createContext(defaultValue) {
+      const ctx = { _currentValue: defaultValue };
+      const Provider = ({ value, children }) => {
+        ctx._currentValue = value;
+        return { type: Fragment, props: { children } };
+      };
+      Provider._isContextProvider = true;
+      ctx.Provider = Provider;
+      return ctx;
+    },
+    useContext(ctx) {
+      return ctx ? ctx._currentValue : undefined;
+    },
     useId: () => (slots[cursor++] ||= `id-${++idSeq}`),
     useState(initial) {
       const i = cursor++;
@@ -95,7 +108,7 @@ function createHarness(relPath, exportName, mocks = {}, globals = {}, inlineName
     useEffect,
     useLayoutEffect: useEffect,
     createElement(type, props, ...children) {
-      if (typeof type === 'function' && inlineNames.has(type.name)) {
+      if (typeof type === 'function' && (inlineNames.has(type.name) || type._isContextProvider)) {
         return type({ ...(props || {}), children });
       }
       return { type, props: { ...(props || {}), children } };
@@ -831,8 +844,10 @@ test('SiteDialog sizing & primary input focus, SeriesCard age badges, compact Yo
     'app/gia-dinh/page.tsx',
     'app/main.tsx',
     'app/page.tsx',
+    'app/series/[id]/page.tsx',
     'components/ui/SiteDialog.tsx',
     'components/layout/Navbar.tsx',
+    'components/layout/Footer.tsx',
     'features/account/components/FamilySetupWizard.tsx',
     'features/account/components/FamilySettingsPage.tsx',
     'features/account/components/PostSignupFamilyModal.tsx',
@@ -846,18 +861,30 @@ test('SiteDialog sizing & primary input focus, SeriesCard age badges, compact Yo
     'features/movies/components/ContinueWatching.tsx',
     'features/movies/components/FilmShelf.tsx',
     'features/movies/components/MovieCard.tsx',
+    'features/profiles/components/ChildAvatarBadge.tsx',
+    'features/profiles/components/KidModeDashboard.tsx',
     'features/profiles/components/ProfilePickerModal.tsx',
     'features/profiles/components/ExitKidModeDialog.tsx',
+    'features/profiles/components/ScreenTimeLockOverlay.tsx',
+    'features/profiles/components/WatchPetWidget.tsx',
+    'features/profiles/components/LootDropOverlay.tsx',
+    'features/profiles/components/RecapQuizOverlay.tsx',
+    'features/profiles/hooks/usePlayFeatures.tsx'.replace('.tsx', '.ts'),
     'features/quiz/quizService.ts',
+    'features/quiz/components/QuizQuestionCard.tsx',
     'features/quiz/components/ChildQuizSettingsDialog.tsx',
     'features/quiz/components/ParentQuizBankSection.tsx',
     'features/quiz/components/ParentQuizInsightsSection.tsx',
     'features/search/components/SearchExperience.tsx',
+    'features/series/components/EpisodePlayerPanel.tsx',
+    'features/series/components/EpisodeSidebar.tsx',
     'features/series/components/SeriesCard.tsx',
+    'features/series/hooks/useSeriesPlayback.ts',
     'features/series/seriesBrowseUtils.ts',
     'features/chat/components/CineBot.tsx',
     'lib/context/AuthContext.tsx',
     'lib/context/WatchlistContext.tsx',
+    'lib/hooks/useCatalogData.ts',
     'lib/motion.ts',
     'lib/labels.ts',
     'lib/routeTitle.ts',
@@ -865,17 +892,388 @@ test('SiteDialog sizing & primary input focus, SeriesCard age badges, compact Yo
     'lib/services/catalogService.ts',
     'lib/services/passwordResetService.ts',
     'lib/services/seriesCardService.ts',
+    'lib/services/sessionStorage.ts',
+    'lib/services/watchProgressService.ts',
   ];
+
+  const collectCommentRanges = (node, src, sf, out) => {
+    if (node.getChildCount(sf) === 0) {
+      for (const range of ts.getLeadingCommentRanges(src, node.pos) || []) out.push(range);
+      for (const range of ts.getTrailingCommentRanges(src, node.end) || []) out.push(range);
+      return;
+    }
+    for (const child of node.getChildren(sf)) {
+      collectCommentRanges(child, src, sf, out);
+    }
+  };
 
   for (const rel of touchedFrontendFiles) {
     const src = fs.readFileSync(path.join(root, rel), 'utf8');
     const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true, rel.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-    const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, sf.languageVariant, src);
-    let tok = scanner.scan();
-    while (tok !== ts.SyntaxKind.EndOfFileToken) {
-      assert.notEqual(tok, ts.SyntaxKind.SingleLineCommentTrivia, `Unexpected // comment in ${rel}`);
-      assert.notEqual(tok, ts.SyntaxKind.MultiLineCommentTrivia, `Unexpected /* */ comment in ${rel}`);
-      tok = scanner.scan();
+    const comments = [];
+    collectCommentRanges(sf, src, sf, comments);
+    for (const range of comments) {
+      assert.notEqual(range.kind, ts.SyntaxKind.SingleLineCommentTrivia, `Unexpected // comment in ${rel}`);
+      assert.notEqual(range.kind, ts.SyntaxKind.MultiLineCommentTrivia, `Unexpected /* */ comment in ${rel}`);
     }
   }
+});
+
+test('Round 2 fixes: F5 reload keeps ProfilePickerModal locked, PostSignupFamilyModal suppresses on /gia-dinh, wizard hides duplicate settings and keeps 4 steps, Navbar hides Chọn bé with 0 profiles, Large-Text persists, CSV mid-field quotes stay intact, and CineBot renders card art + empty-match search link', async () => {
+  const localMap = new Map();
+  const sessionMap = new Map();
+  const makeStorage = (map) => ({
+    get length() { return map.size; },
+    key: (i) => Array.from(map.keys())[i] ?? null,
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: (k) => map.delete(k),
+  });
+  const localStorageMock = makeStorage(localMap);
+  const sessionStorageMock = makeStorage(sessionMap);
+
+  const authFetch = async (url, init = {}) => {
+    if (url === '/api/auth/login') {
+      return jsonResponse({
+        success: true,
+        data: { token: 'adult-jwt', id: 7, username: 'mebe', email: 'm@dippie.vn', role: 'ROLE_USER' },
+      });
+    }
+    if (url === '/api/auth/me') {
+      return jsonResponse({
+        success: true,
+        data: { id: 7, username: 'mebe', email: 'm@dippie.vn', role: 'ROLE_USER' },
+      });
+    }
+    if (url === '/api/users/profiles') {
+      return jsonResponse({
+        success: true,
+        data: {
+          parentModeEnabled: true,
+          activeProfile: null,
+          profiles: [{ id: 10, name: 'Bé Bống', avatarKey: 'bunny', createdAt: '' }],
+          availableAvatars: [],
+        },
+      });
+    }
+    if (url === '/api/users/profiles/exit') {
+      const body = JSON.parse(init.body || '{}');
+      if (body.pin === '123456') {
+        return jsonResponse({
+          success: true,
+          message: 'OK',
+          data: { token: 'adult-jwt-2', user: { id: 7, username: 'mebe', email: 'm@dippie.vn', role: 'ROLE_USER' } },
+        });
+      }
+      return jsonResponse({ success: false, message: 'Mã PIN phụ huynh chưa đúng.' }, 400);
+    }
+    throw new Error(`Unexpected auth fetch ${url}`);
+  };
+
+  let capturedAuth = null;
+  let authHarnessMod = null;
+  const makeAuthHarness = () => {
+    const h = createHarness(
+      'lib/context/AuthContext.tsx',
+      'AuthProvider',
+      {},
+      {
+        fetch: authFetch,
+        localStorage: localStorageMock,
+        sessionStorage: sessionStorageMock,
+        window: { addEventListener() {}, removeEventListener() {}, dispatchEvent() {} },
+      }
+    );
+    authHarnessMod = h.exports;
+    return h;
+  };
+  const renderAuth = (h) => {
+    h.render({ children: null });
+    capturedAuth = authHarnessMod.useOptionalAuth();
+  };
+
+  const authH1 = makeAuthHarness();
+  renderAuth(authH1);
+  await capturedAuth.login('mebe', 'secret123');
+  renderAuth(authH1);
+  assert.equal(capturedAuth.showProfilePicker, true);
+  assert.equal(sessionMap.get('dippie_picker_locked'), '1');
+  authH1.unmount();
+
+  const authH2 = makeAuthHarness();
+  renderAuth(authH2);
+  await new Promise((r) => setTimeout(r, 20));
+  renderAuth(authH2);
+  assert.equal(capturedAuth.showProfilePicker, true, 'F5 reload must keep ProfilePickerModal locked until PIN verified');
+  const pinRes = await capturedAuth.exitKidMode('123456');
+  assert.equal(pinRes.success, true);
+  renderAuth(authH2);
+  assert.equal(capturedAuth.showProfilePicker, false);
+  assert.equal(sessionMap.has('dippie_picker_locked'), false);
+  authH2.unmount();
+
+  let familyModalDismissed = 0;
+  const suppressedModal = createHarness(
+    'features/account/components/PostSignupFamilyModal.tsx',
+    'PostSignupFamilyModal',
+    {
+      'react-router': {
+        useNavigate: () => () => {},
+        useLocation: () => ({ pathname: '/gia-dinh' }),
+      },
+      '@/lib/context/AuthContext': {
+        useAuth: () => ({
+          showPostSignupFamilyOffer: true,
+          isAuthenticated: true,
+          user: { id: 1, username: 'mebe', email: 'm@dippie.vn', role: 'ROLE_USER' },
+          isKidMode: false,
+          dismissPostSignupFamilyOffer: () => { familyModalDismissed += 1; },
+        }),
+      },
+    }
+  );
+  assert.equal(suppressedModal.render(), null);
+  assert.equal(familyModalDismissed, 1);
+  suppressedModal.unmount();
+
+  const emptyChildrenNav = createHarness(
+    'components/layout/Navbar.tsx',
+    'Navbar',
+    {
+      'react-router': { Link: 'route-link', useLocation: () => ({ pathname: '/gia-dinh' }) },
+      '@/lib/context/WatchlistContext': { useWatchlist: () => ({ watchlist: [], openChat() {} }) },
+      '@/lib/context/AuthContext': {
+        useAuth: () => ({
+          isAuthenticated: true,
+          user: { id: 1, username: 'ba', fullName: 'Ba Mẹ', email: 'ba@dippie.vn', role: 'ROLE_USER' },
+          isKidMode: false,
+          parentModeEnabled: true,
+          childProfiles: [],
+          openProfilePicker() {},
+          logout() {},
+          openAuthModal() {},
+        }),
+      },
+    },
+    { document: { addEventListener() {}, removeEventListener() {} } }
+  );
+  const emptyNavTree = emptyChildrenNav.render();
+  assert.equal(collectNodes(emptyNavTree, (n) => n.props?.['data-testid'] === 'header-pick-child-button').length, 0);
+  assert.equal(collectNodes(emptyNavTree, (n) => n.props?.['data-testid'] === 'tablet-pick-child-button').length, 0);
+  emptyChildrenNav.unmount();
+
+  let wizardParentEnabled = false;
+  const wizardStepH = createHarness(
+    'features/account/components/FamilySetupWizard.tsx',
+    'FamilySetupWizard',
+    {
+      'react-router': { useNavigate: () => () => {} },
+      '@/lib/context/AuthContext': {
+        useAuth: () => ({
+          token: 'tok',
+          parentModeEnabled: wizardParentEnabled,
+          childProfiles: [],
+          refreshProfiles: async () => null,
+          selectChildProfile: async () => ({ success: true }),
+        }),
+      },
+    },
+    {
+      fetch: async (url) => {
+        if (url === '/api/users/parent-mode/enable') {
+          wizardParentEnabled = true;
+          return jsonResponse({ success: true, data: { enabled: true } });
+        }
+        return jsonResponse({ success: true, data: { sets: [] } });
+      },
+    }
+  );
+  let wTree = wizardStepH.render({ standaloneFilmCount: 0 });
+  assert.equal(collectNodes(wTree, (n) => n.type === 'li').length, 4);
+  collectNodes(wTree, (n) => n.props?.['data-testid'] === 'wizard-pin-input')[0].props.onChange({ target: { value: '123456' } });
+  collectNodes(wTree, (n) => n.props?.['data-testid'] === 'wizard-pin-confirm-input')[0].props.onChange({ target: { value: '123456' } });
+  wTree = wizardStepH.render({ standaloneFilmCount: 0 });
+  await collectNodes(wTree, (n) => n.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  await new Promise((r) => setTimeout(r, 10));
+  wTree = wizardStepH.render({ standaloneFilmCount: 0 });
+  const stepLis = collectNodes(wTree, (n) => n.type === 'li');
+  assert.equal(stepLis.length, 4, 'Completing step 1 must keep all 4 steps visible without renumbering');
+  assert.match(collectText(stepLis[0]), /✓.*Mã PIN phụ huynh/);
+  wizardStepH.unmount();
+
+  const familyPageH = createHarness(
+    'features/account/components/FamilySettingsPage.tsx',
+    'FamilySettingsPage',
+    {
+      'react-router': {
+        Link: 'route-link',
+        useNavigate: () => () => {},
+        useSearchParams: () => [new URLSearchParams('setup=1'), () => {}],
+      },
+      '@/lib/context/AuthContext': {
+        useAuth: () => ({
+          isAuthenticated: true,
+          isLoading: false,
+          status: 'authenticated',
+          user: { id: 1, username: 'mebe', email: 'm@dippie.vn', role: 'ROLE_USER' },
+          token: 'tok',
+          isKidMode: false,
+          parentModeEnabled: true,
+          childProfiles: [{ id: 10, name: 'Bé Bống', avatarKey: 'bunny', createdAt: '' }],
+          openAuthModal() {},
+          retryVerify: async () => {},
+          refreshProfiles: async () => null,
+          selectChildProfile: async () => ({ success: true }),
+        }),
+      },
+      './FamilySetupWizard': {
+        FamilySetupWizard: (props) => ({ type: 'section', props: { 'data-testid': 'family-setup-wizard', ...props } }),
+      },
+      './ChildProfilesSection': {
+        ChildProfilesSection: (props) => ({ type: 'section', props: { 'data-testid': 'child-profiles-section', ...props } }),
+      },
+    },
+    { fetch: async () => jsonResponse({ success: true, data: { sets: [] } }) },
+    new Set(['FamilySetupWizard', 'ChildProfilesSection'])
+  );
+  let fpTree = familyPageH.render({ standaloneFilmCount: 0 });
+  const wizNode = collectNodes(fpTree, (n) => n.props?.['data-testid'] === 'family-setup-wizard')[0];
+  assert.ok(wizNode);
+  assert.equal(collectNodes(fpTree, (n) => n.props?.['data-testid'] === 'child-profiles-section').length, 0);
+  wizNode.props.onPinVerified('123456');
+  wizNode.props.onCancel();
+  fpTree = familyPageH.render({ standaloneFilmCount: 0 });
+  assert.equal(collectNodes(fpTree, (n) => n.props?.['data-testid'] === 'family-setup-wizard').length, 0);
+  const cpNode = collectNodes(fpTree, (n) => n.props?.['data-testid'] === 'child-profiles-section')[0];
+  assert.ok(cpNode);
+  assert.equal(cpNode.props.initialSessionPin, '123456');
+  familyPageH.unmount();
+
+  const attrs = new Map();
+  const docEl = {
+    dataset: {},
+    setAttribute(k, v) {
+      attrs.set(k, v);
+      if (k === 'data-text-size') this.dataset.textSize = v;
+    },
+    removeAttribute(k) {
+      attrs.delete(k);
+      if (k === 'data-text-size') delete this.dataset.textSize;
+    },
+  };
+  const motionMod = { exports: {} };
+  runWithSharedModules(transpileRel('lib/motion.ts'), {
+    module: motionMod,
+    exports: motionMod.exports,
+    window: { localStorage: localStorageMock, addEventListener() {}, removeEventListener() {}, dispatchEvent() {} },
+    document: { documentElement: docEl },
+  });
+  assert.equal(motionMod.exports.toggleLargeText(), true);
+  assert.equal(attrs.get('data-text-size'), 'large');
+  assert.equal(localMap.get('dippie_large_text'), '1');
+
+  const quizMod = { exports: {} };
+  runWithSharedModules(transpileRel('features/quiz/quizService.ts'), {
+    module: quizMod,
+    exports: quizMod.exports,
+  });
+  const midQuoteSemi = 'cau_hoi;a;b;c;d;dap_an\nCon vật nào kêu "Meow"?;Cat;Dog;Duck;Cow;A';
+  assert.equal(
+    quizMod.exports.normalizeQuizCsvDelimiters(midQuoteSemi),
+    'cau_hoi,a,b,c,d,dap_an\n"Con vật nào kêu ""Meow""?",Cat,Dog,Duck,Cow,A'
+  );
+
+  const mismatchDialogH = createHarness(
+    'features/quiz/components/ChildQuizSettingsDialog.tsx',
+    'ChildQuizSettingsDialog',
+    {},
+    { fetch: async () => jsonResponse({ success: true, data: [] }) },
+    new Set(['SiteDialog'])
+  );
+  const mismatchTree = mismatchDialogH.render({
+    token: 'tok',
+    profile: { id: 10, name: 'Bé Bống', avatarKey: 'bunny', quizGrade: 'LOP_1', createdAt: '' },
+    currentConfig: {
+      profileId: 10,
+      name: 'Bé Bống',
+      avatarKey: 'bunny',
+      grade: 'LOP_1',
+      gradeLabel: 'Lớp 1',
+      vipGrade: 'LOP_2',
+      vipGradeLabel: 'Lớp 2',
+      activeSetIds: [99],
+      activeSets: [],
+      weeklySummary: { days: 7, totalAnswered: 0, correctCount: 0, accuracyPercent: 0, averageResponseMs: 0, bySet: [], hardestQuestions: [], suggestion: null },
+    },
+    availableSets: [
+      { id: 99, name: 'Phiếu Lớp 3', description: null, defaultSubject: 'TOAN', defaultSubjectLabel: 'Toán', defaultGrade: 'LOP_3', defaultGradeLabel: 'Lớp 3', builtIn: false, dynamicGenerator: false, active: true, questionCount: 10, maxQuestionsPerSet: 500, createdAt: '', updatedAt: '' },
+    ],
+    sessionPin: '123456',
+    onSaved() {},
+    onClose() {},
+  });
+  assert.equal(collectNodes(mismatchTree, (n) => n.props?.['data-testid'] === 'child-quiz-grade-mismatch-warning').length, 1);
+  mismatchDialogH.unmount();
+
+  const cinebotH = createHarness(
+    'features/chat/components/CineBot.tsx',
+    'CineBot',
+    {
+      'react-router': { Link: 'route-link' },
+      '@/lib/context/AuthContext': {
+        useAuth: () => ({ status: 'guest', user: null, token: null, isKidMode: false }),
+      },
+      '@/lib/context/WatchlistContext': {
+        useWatchlist: () => ({ isWatchlisted: () => false, toggleWatchlist: async () => {} }),
+      },
+      '@/lib/services/seriesCardService': {
+        listSeriesCards: async () => [
+          { id: 'ser_jadoo', title: 'Xin Chào Jadoo', posterUrl: 'https://cdn.example.com/jadoo.jpg', backdropUrl: null, genres: [] },
+        ],
+      },
+      '@/lib/services/mediaRouting': {
+        buildMediaItemHref: (m) => `/series/${m.series_id}?episode=${m.id}`,
+      },
+      '@/features/series/components/ArtworkImage': {
+        ArtworkImage: (props) => (props.src ? { type: 'img', props: { src: props.src, alt: props.alt } } : { type: 'div', props }),
+      },
+      '@/lib/services/chatService': {
+        sendChatMessage: async (prompt, _hist, opts) => {
+          const reply = prompt.includes('không lời')
+            ? { text: 'Chưa tìm thấy tập khớp hoàn toàn.', recommendedMovies: [] }
+            : {
+                text: 'Tìm thấy tập Jadoo!',
+                recommendedMovies: [
+                  { id: 'ep_jadoo_1', item_type: 'episode', series_id: 'ser_jadoo', seriesTitle: 'Xin Chào Jadoo', title: 'Muốn ăn nhưng lại sợ tăng cân', poster: '', backdrop: '', runtime: '12 phút', genres: [], year: 2022, rating: 0, description: '' },
+                ],
+              };
+          opts?.onUpdate?.(reply);
+          return reply;
+        },
+      },
+    },
+    {
+      document: { activeElement: null, body: { style: {} } },
+      window: { addEventListener() {}, removeEventListener() {} },
+    },
+    new Set(['CineBotConversation', 'ChatMovieCard', 'ArtworkImage'])
+  );
+
+  let cbTree = cinebotH.render({ isOpen: true, onClose() {}, initialPrompt: 'Jadoo sợ tăng cân' });
+  await new Promise((r) => setTimeout(r, 15));
+  cbTree = cinebotH.render({ isOpen: true, onClose() {} });
+  const cbImgs = collectNodes(cbTree, (n) => n.type === 'img');
+  assert.equal(cbImgs.length, 1);
+  assert.equal(cbImgs[0].props.src, 'https://cdn.example.com/jadoo.jpg');
+
+  const cbInput = collectNodes(cbTree, (n) => n.props?.id === 'cinebot-message-input')[0];
+  cbInput.props.onChange({ target: { value: 'phim ngắn hài không lời' } });
+  cbTree = cinebotH.render({ isOpen: true, onClose() {} });
+  await collectNodes(cbTree, (n) => n.props?.['aria-label'] === 'Gửi tin nhắn')[0].props.onClick();
+  await new Promise((r) => setTimeout(r, 15));
+  cbTree = cinebotH.render({ isOpen: true, onClose() {} });
+  const emptySearchLink = collectNodes(cbTree, (n) => n.props?.['data-testid'] === 'cinebot-empty-search-link')[0];
+  assert.ok(emptySearchLink, 'Empty-match CineBot reply must offer Tìm trong Kho phim');
+  assert.match(String(emptySearchLink.props.to), /\/search\?q=/);
+  cinebotH.unmount();
 });

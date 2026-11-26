@@ -5,6 +5,7 @@ import { SiteDialog } from '@/components/ui/SiteDialog';
 import { PlayFeaturesSettings } from '@/features/account/components/PlayFeaturesSettings';
 import { useAuth } from '@/lib/context/AuthContext';
 import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
+import { useDetectedStandaloneFilmCount } from '@/features/profiles/components/KidModeDashboard';
 import {
   CHILD_AVATARS,
   MAX_CHILD_PROFILES,
@@ -64,7 +65,15 @@ type DialogMode =
 const GRANT_PRESETS = [10, 15, 30] as const;
 const SESSION_PIN_TTL_MS = 5 * 60 * 1000;
 
-export function ChildProfilesSection() {
+export function ChildProfilesSection({
+  initialSessionPin = '',
+  onSessionPinChange,
+  standaloneFilmCount,
+}: {
+  initialSessionPin?: string;
+  onSessionPinChange?: (pin: string) => void;
+  standaloneFilmCount?: number;
+} = {}) {
   const {
     token,
     parentModeEnabled,
@@ -77,8 +86,13 @@ export function ChildProfilesSection() {
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [playSettingsProfile, setPlaySettingsProfile] = useState<ChildProfile | null>(null);
   const [quizSettingsProfile, setQuizSettingsProfile] = useState<ChildProfile | null>(null);
-  const [verifiedPin, setVerifiedPin] = useState('');
-  const verifiedPinExpiryRef = useRef(0);
+  const [verifiedPin, setVerifiedPin] = useState<string>(() => initialSessionPin || '');
+  const verifiedPinExpiryRef = useRef<number>(initialSessionPin ? Date.now() + SESSION_PIN_TTL_MS : 0);
+  const detectedStandalone = useDetectedStandaloneFilmCount(
+    Boolean(token && parentModeEnabled) && standaloneFilmCount === undefined
+  );
+  const zeroStandaloneFilms =
+    (typeof standaloneFilmCount === 'number' ? standaloneFilmCount : detectedStandalone) === 0;
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [currentPin, setCurrentPin] = useState('');
@@ -119,16 +133,28 @@ export function ChildProfilesSection() {
     return verifiedPin;
   }, [verifiedPin]);
 
-  const rememberSessionPin = useCallback((nextPin: string) => {
-    if (!nextPin) return;
-    verifiedPinExpiryRef.current = Date.now() + SESSION_PIN_TTL_MS;
-    setVerifiedPin(nextPin);
-  }, []);
+  const rememberSessionPin = useCallback(
+    (nextPin: string) => {
+      if (!nextPin) return;
+      verifiedPinExpiryRef.current = Date.now() + SESSION_PIN_TTL_MS;
+      setVerifiedPin(nextPin);
+      onSessionPinChange?.(nextPin);
+    },
+    [onSessionPinChange]
+  );
 
   const clearSessionPin = useCallback(() => {
     verifiedPinExpiryRef.current = 0;
     setVerifiedPin('');
-  }, []);
+    onSessionPinChange?.('');
+  }, [onSessionPinChange]);
+
+  useEffect(() => {
+    if (initialSessionPin) {
+      verifiedPinExpiryRef.current = Date.now() + SESSION_PIN_TTL_MS;
+      setVerifiedPin(initialSessionPin);
+    }
+  }, [initialSessionPin]);
 
   useEffect(() => {
     return () => {
@@ -647,7 +673,9 @@ export function ChildProfilesSection() {
             </span>
           </div>
           <p className="mt-1 text-base leading-relaxed text-muted">
-            Quản lý tập trung từng bé ở cùng một nơi: thời gian xem, bộ câu hỏi theo lớp, phim lẻ cuối tuần, phim cần trả lời câu hỏi và nhiệm vụ đổi giờ.
+            {zeroStandaloneFilms
+              ? 'Quản lý tập trung từng bé ở cùng một nơi: thời gian xem, bộ câu hỏi theo lớp, phim cần trả lời câu hỏi và nhiệm vụ đổi giờ.'
+              : 'Quản lý tập trung từng bé ở cùng một nơi: thời gian xem, bộ câu hỏi theo lớp, phim lẻ cuối tuần, phim cần trả lời câu hỏi và nhiệm vụ đổi giờ.'}
           </p>
         </div>
 
@@ -729,12 +757,14 @@ export function ChildProfilesSection() {
               >
                 Hồ sơ &amp; Thời gian
               </a>
-              <a
-                href="#parent-weekend-vault-section"
-                className="inline-flex min-h-[44px] items-center rounded-lg border border-surface-border bg-paper-white px-3 text-xs font-bold text-ink hover:bg-mint/60"
-              >
-                Phim lẻ cuối tuần
-              </a>
+              {!zeroStandaloneFilms && (
+                <a
+                  href="#parent-weekend-vault-section"
+                  className="inline-flex min-h-[44px] items-center rounded-lg border border-surface-border bg-paper-white px-3 text-xs font-bold text-ink hover:bg-mint/60"
+                >
+                  Phim lẻ cuối tuần
+                </a>
+              )}
               <a
                 href="#parent-vip-series-section"
                 className="inline-flex min-h-[44px] items-center rounded-lg border border-surface-border bg-paper-white px-3 text-xs font-bold text-ink hover:bg-mint/60"
@@ -863,16 +893,34 @@ export function ChildProfilesSection() {
                     }`}
                   >
                     <div className="space-y-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <ChildAvatarBadge avatarKey={profile.avatarKey} size="md" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-base font-bold text-ink">{profile.name}</p>
-                          <p
-                            data-testid={`child-quiz-summary-${profile.id}`}
-                            className="mt-0.5 text-xs font-medium leading-snug text-muted"
+                      <div className="flex items-start justify-between gap-2 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <ChildAvatarBadge avatarKey={profile.avatarKey} size="md" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-base font-bold text-ink">{profile.name}</p>
+                            <p
+                              data-testid={`child-quiz-summary-${profile.id}`}
+                              className="mt-0.5 text-xs font-medium leading-snug text-muted"
+                            >
+                              {quizSummaryLine}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openDialog({ kind: 'edit', profile })}
+                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-surface-border bg-surface-muted px-2.5 text-xs font-semibold text-ink hover:bg-surface-elevated cursor-pointer"
                           >
-                            {quizSummaryLine}
-                          </p>
+                            Sửa
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openDialog({ kind: 'delete', profile })}
+                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-surface-border bg-surface-muted px-2.5 text-xs font-semibold text-red-900 hover:bg-red-50 cursor-pointer"
+                          >
+                            Xóa
+                          </button>
                         </div>
                       </div>
 
@@ -963,20 +1011,6 @@ export function ChildProfilesSection() {
                         >
                           Tính năng xem phim
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => openDialog({ kind: 'edit', profile })}
-                          className="btn-secondary min-h-[44px] px-3 text-xs"
-                        >
-                          Sửa
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openDialog({ kind: 'delete', profile })}
-                          className="btn-secondary min-h-[44px] px-3 text-xs text-red-900"
-                        >
-                          Xóa
-                        </button>
                       </div>
                     </div>
                   </li>
@@ -1003,7 +1037,9 @@ export function ChildProfilesSection() {
                       Mọi cài đặt của {activeChildProfile.name} ở cùng một nơi
                     </p>
                     <p className="text-sm text-muted">
-                      Phim lẻ cuối tuần, phim cần trả lời câu hỏi, nhiệm vụ đổi giờ và báo cáo học tập của bé.
+                      {zeroStandaloneFilms
+                        ? 'Phim cần trả lời câu hỏi, nhiệm vụ đổi giờ và báo cáo học tập của bé.'
+                        : 'Phim lẻ cuối tuần, phim cần trả lời câu hỏi, nhiệm vụ đổi giờ và báo cáo học tập của bé.'}
                     </p>
                   </div>
                 </div>
@@ -1034,14 +1070,16 @@ export function ChildProfilesSection() {
                 )}
               </div>
 
-              <ParentWeekendVaultSection
-                token={token}
-                childProfiles={childProfiles}
-                activeProfileId={activeChildProfile.id}
-                sessionPin={activeSessionPin}
-                onPinVerified={rememberSessionPin}
-                onPinRejected={clearSessionPin}
-              />
+              {!zeroStandaloneFilms && (
+                <ParentWeekendVaultSection
+                  token={token}
+                  childProfiles={childProfiles}
+                  activeProfileId={activeChildProfile.id}
+                  sessionPin={activeSessionPin}
+                  onPinVerified={rememberSessionPin}
+                  onPinRejected={clearSessionPin}
+                />
+              )}
               <ParentVipSeriesSection
                 token={token}
                 childProfiles={childProfiles}
@@ -1564,22 +1602,37 @@ export function ChildProfilesSection() {
                     />
                   </div>
                 </div>
-                <div>
-                  <label htmlFor="child-max-bonus-minutes" className="mb-1.5 block text-xs font-semibold text-ink">
-                    Phút thưởng tối đa mỗi ngày (0–120 phút)
+                <div className="space-y-2">
+                  <label className="flex min-h-[44px] items-center gap-2.5 rounded-lg border border-surface-border bg-surface-muted px-3 py-2 text-xs font-semibold text-ink cursor-pointer">
+                    <input
+                      type="checkbox"
+                      data-testid="screen-time-disable-bonus-toggle"
+                      checked={maxBonusMinutes.trim() !== '' && Number(maxBonusMinutes) === 0}
+                      disabled={busy}
+                      onChange={(event) => {
+                        setMaxBonusMinutes(event.target.checked ? '0' : '30');
+                      }}
+                      className="h-4 w-4 shrink-0 accent-brand"
+                    />
+                    <span>Hết giờ là nghỉ (tắt cộng thêm phút từ câu hỏi trong ngày)</span>
                   </label>
-                  <input
-                    id="child-max-bonus-minutes"
-                    data-testid="screen-time-max-bonus-input"
-                    type="number"
-                    min={0}
-                    max={120}
-                    required
-                    disabled={busy}
-                    value={maxBonusMinutes}
-                    onChange={(event) => setMaxBonusMinutes(event.target.value)}
-                    className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
-                  />
+                  <div>
+                    <label htmlFor="child-max-bonus-minutes" className="mb-1.5 block text-xs font-semibold text-ink">
+                      Phút thưởng tối đa mỗi ngày (0–120 phút)
+                    </label>
+                    <input
+                      id="child-max-bonus-minutes"
+                      data-testid="screen-time-max-bonus-input"
+                      type="number"
+                      min={0}
+                      max={120}
+                      required
+                      disabled={busy}
+                      value={maxBonusMinutes}
+                      onChange={(event) => setMaxBonusMinutes(event.target.value)}
+                      className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label htmlFor="screen-time-settings-pin" className="mb-1.5 block text-xs font-semibold text-ink">

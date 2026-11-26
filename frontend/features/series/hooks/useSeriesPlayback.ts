@@ -263,7 +263,9 @@ export function useSeriesPlayback(
   const [streamUrl, setStreamUrl] = useState('');
   const [isResolvingStream, setIsResolvingStream] = useState(false);
   const [dismissedResume, setDismissedResume] = useState('');
-  const [autoNext, setAutoNext] = useState(false);
+  const [autoNext, setAutoNext] = useState<boolean>(() =>
+    typeof readAutoNextPreference === 'function' ? readAutoNextPreference() : true
+  );
   const [nextCountdown, setNextCountdown] = useState<number | null>(null);
   const [playerScrollNonce, setPlayerScrollNonce] = useState(0);
   const requestPlayerScroll = () => setPlayerScrollNonce((value) => value + 1);

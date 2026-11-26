@@ -27,6 +27,8 @@ public interface QuizQuestionRepository extends JpaRepository<QuizQuestion, Long
 
     boolean existsBySeedKey(String seedKey);
 
+    Optional<QuizQuestion> findBySeedKey(String seedKey);
+
     @Query("""
             select q.setId as setId, count(q) as questionCount
             from QuizQuestion q

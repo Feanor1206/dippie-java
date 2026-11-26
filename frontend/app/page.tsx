@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import * as ReactRouter from 'react-router';
 import { Link } from 'react-router';
 import { FilmShelf } from '@/features/movies/components/FilmShelf';
 import { ContinueWatching } from '@/features/movies/components/ContinueWatching';
@@ -36,9 +37,11 @@ const DEFAULT_GENRE_TOPICS: CatalogGenreOption[] = [
 
 export default function HomePage() {
   const { status, token, user } = useAuth();
+  const navigate = typeof ReactRouter.useNavigate === 'function' ? ReactRouter.useNavigate() : null;
   const pageRef = useRef<HTMLElement>(null);
   const userId = status === 'authenticated' ? user?.id ?? null : null;
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [heroQuery, setHeroQuery] = useState('');
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
@@ -168,9 +171,46 @@ export default function HomePage() {
             <span data-hero-word="" className="motion-underline-sweep">cả nhà</span>
           </h1>
           <p data-hero-fade="" className="cover-intro">Tìm nhanh theo tên phim, tập phim hoặc câu chuyện yêu thích.</p>
-          <Link to="/search" data-hero-fade="" className="cover-cta motion-sheen">
-            Tìm phim
-          </Link>
+          <form
+            role="search"
+            data-hero-fade=""
+            data-testid="home-hero-search-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const trimmed = heroQuery.trim();
+              const target = trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : '/search';
+              if (navigate) {
+                navigate(target);
+              } else if (typeof window !== 'undefined') {
+                window.location.assign(target);
+              }
+            }}
+            className="flex w-full max-w-md flex-wrap items-center gap-2 sm:flex-nowrap"
+          >
+            <div className="input-shell flex min-h-[46px] min-w-0 flex-1 items-center rounded-md border border-[#a6b4a4] bg-paper-white px-3">
+              <label htmlFor="home-search-input" className="sr-only">
+                Tìm phim hoạt hình hoặc nhân vật
+              </label>
+              <input
+                id="home-search-input"
+                name="q"
+                data-testid="home-hero-search-input"
+                type="search"
+                enterKeyHint="search"
+                value={heroQuery}
+                onChange={(event) => setHeroQuery(event.target.value)}
+                placeholder="Nhập tên phim hoặc nhân vật…"
+                className="w-full min-w-0 bg-transparent text-base sm:text-sm text-ink placeholder:text-muted focus:outline-none"
+              />
+            </div>
+            <button
+              type="submit"
+              data-testid="home-hero-search-submit"
+              className="cover-cta motion-sheen shrink-0 cursor-pointer"
+            >
+              Tìm phim
+            </button>
+          </form>
 
           <nav className="topics-list" aria-label="Gợi ý tìm phim">
             {quickTopics.map((topic, index) => (

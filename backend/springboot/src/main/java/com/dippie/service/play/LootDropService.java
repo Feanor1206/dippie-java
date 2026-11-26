@@ -178,11 +178,12 @@ public class LootDropService {
         int currentCombo = state == null ? 0 : state.getLootCombo();
 
         int timerSeconds = timerSecondsForGrade(profile.getQuizGrade());
+        // cộng thêm 20 giây đệm để bé bấm nghe đọc câu hỏi và 4 đáp án không bị hết hạn
         QuizSelectionService.IssuedQuizChallenge issued = quizSelectionService.issueForChild(
                 profile,
                 QuizChallengeContext.LOOT_DROP,
                 "",
-                Duration.ofSeconds(timerSeconds + 5),
+                Duration.ofSeconds(timerSeconds + 20),
                 false
         );
         int potentialComboBonus = ((currentCombo + 1) % 3 == 0) ? 1 : 0;

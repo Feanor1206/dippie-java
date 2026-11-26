@@ -241,6 +241,9 @@ function createSearchHarness(initialUrl = '', catalogMocks = {}) {
       if (mod === 'lucide-react') {
         return new Proxy({}, { get: (_, key) => key });
       }
+      if (mod.includes('seriesCardService')) {
+        return mocks.listSeriesCards ? { listSeriesCards: mocks.listSeriesCards } : {};
+      }
       if (mod.includes('MovieCard')) {
         return {
           MovieCard: 'MovieCard',
@@ -814,5 +817,66 @@ test('Search genre chips fall back to genres present in loaded items when GET /a
   assert.ok(ids.includes('comedy'));
   assert.ok(ids.includes('family'));
   assert.ok(ids.includes('school'));
+  h.unmount();
+});
+
+test('Phim bộ filter queries full series catalog, Dưới 10 phút filters short episodes, and Bộ lọc (N) excludes type chips', async () => {
+  const allSeriesCards = Array.from({ length: 6 }, (_, idx) => ({
+    id: `ser_${idx + 1}`,
+    slug: `series-${idx + 1}`,
+    title: `Phim Bộ Số ${idx + 1}`,
+    originalTitle: null,
+    synopsis: 'Hoạt hình vui nhộn',
+    releaseYear: 2022,
+    posterUrl: `https://img.example.com/s${idx + 1}.jpg`,
+    backdropUrl: null,
+    genres: ['comedy'],
+    seasonCount: 1,
+    episodeCount: 20,
+    averageRating: 8.5,
+    ratingCount: 10,
+  }));
+
+  const h = createSearchHarness('', {
+    listSeriesCards: async () => allSeriesCards,
+    browse: async () => ({
+      items: [
+        sampleMovie({ id: 'ser_1', item_type: 'series', title: 'Phim Bộ Số 1', runtime: '' }),
+        sampleMovie({ id: 'ep_short', item_type: 'episode', title: 'Ấu trùng vui nhộn', runtime: '7 phút' }),
+        sampleMovie({ id: 'ep_long', item_type: 'episode', title: 'Hành trình dài', runtime: '24 phút' }),
+      ],
+      page: 0,
+      size: 12,
+      totalElements: 3,
+      totalPages: 1,
+      hasNext: false,
+      hasPrevious: false,
+    }),
+  });
+
+  h.render();
+  await h.settle();
+
+  const seriesChip = findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-type-series')[0];
+  seriesChip.props.onClick();
+  h.render();
+  await h.settle();
+
+  const seriesCardsRendered = findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-result-card');
+  assert.equal(seriesCardsRendered.length, 6, 'Phim bộ pill must show all 6 matching series from listSeriesCards');
+  const statusBar = findNodes(h.tree, (n) => n.props?.className === 'catalog-status')[0];
+  assert.match(getText(statusBar), /6 phim/);
+
+  const sheetToggle = findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-filter-sheet-toggle')[0];
+  assert.equal(getText(sheetToggle), 'Bộ lọc', 'Outer content-type pills must not inflate Bộ lọc (N) modal counter');
+
+  const shortToggle = findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-short-duration-toggle')[0];
+  shortToggle.props.onClick();
+  h.render();
+  await h.settle();
+
+  const shortCards = findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-result-card');
+  assert.equal(shortCards.length, 1);
+  assert.equal(shortCards[0].props['data-result-id'], 'ep_short');
   h.unmount();
 });

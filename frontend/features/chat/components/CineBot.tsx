@@ -1,5 +1,8 @@
 import { YouTubeLink } from '@/components/ui/YouTubeLink';
-import { safeImageUrl } from '@/lib/safeUrl';
+import { ArtworkImage } from '@/features/series/components/ArtworkImage';
+import { foldVietnamese } from '@/features/series/seriesBrowseUtils';
+import { useSeriesCards } from '@/lib/hooks/useCatalogData';
+import type { SeriesCard } from '@/lib/services/seriesCardService';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { sendChatMessage, type ChatMessage, type ChatServiceResponse } from '@/lib/services/chatService';
@@ -39,23 +42,70 @@ function createWelcomeMessage(id: string, text: string): ChatMessage {
   return { id, sender: 'bot', text, timestamp: 'Vừa xong', followUps: QUICK_PROMPTS.slice(0, 3) };
 }
 
+function extractYoutubeVideoId(rawUrl?: string | null): string | null {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const watchMatch = rawUrl.match(/[?&]v=([A-Za-z0-9_-]{6,})/);
+  if (watchMatch) return watchMatch[1];
+  const shortMatch = rawUrl.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/);
+  if (shortMatch) return shortMatch[1];
+  const embedMatch = rawUrl.match(/youtube(?:-nocookie)?\.com\/embed\/([A-Za-z0-9_-]{6,})/);
+  if (embedMatch) return embedMatch[1];
+  return null;
+}
+
+function resolveChatCardArtwork(movie: Movie, seriesCards: SeriesCard[]): string {
+  const direct = movie.poster || movie.thumbnailUrl || movie.backdrop || '';
+  if (direct && direct.trim()) return direct.trim();
+
+  const targetSeriesId = (movie.series_id || movie.seriesId || '').trim();
+  const targetSeriesTitle = (movie.series_title || movie.seriesTitle || '').trim();
+  const foldedSeriesTitle = targetSeriesTitle && typeof foldVietnamese === 'function' ? foldVietnamese(targetSeriesTitle) : '';
+
+  for (const card of seriesCards) {
+    if (targetSeriesId && card.id === targetSeriesId) {
+      const matchedArt = card.posterUrl || card.backdropUrl || '';
+      if (matchedArt) return matchedArt;
+    }
+    if (
+      foldedSeriesTitle &&
+      typeof foldVietnamese === 'function' &&
+      foldVietnamese(card.title) === foldedSeriesTitle
+    ) {
+      const matchedArt = card.posterUrl || card.backdropUrl || '';
+      if (matchedArt) return matchedArt;
+    }
+  }
+
+  const ytUrl =
+    (typeof resolveExternalYoutubeWatchUrl === 'function' ? resolveExternalYoutubeWatchUrl(movie) : null) ||
+    movie.youtubeWatchUrl ||
+    movie.youtube_watch_url ||
+    null;
+  const ytId = extractYoutubeVideoId(ytUrl);
+  if (ytId) {
+    return `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`;
+  }
+  return '';
+}
+
 function ChatMovieCard({
   movie,
+  seriesCards = [],
   inWatchlist,
   onToggleWatchlist,
   onClose,
   isKidMode = false,
 }: {
   movie: Movie;
+  seriesCards?: SeriesCard[];
   inWatchlist: boolean;
   onToggleWatchlist: () => void;
   onClose: () => void;
   isKidMode?: boolean;
 }) {
   const mediaHref = buildMediaItemHref(movie);
-  const rawArt = movie.poster || movie.thumbnailUrl || movie.backdrop || '';
+  const rawArt = resolveChatCardArtwork(movie, seriesCards);
   const compactArt = typeof toCompactCardArtworkUrl === 'function' ? toCompactCardArtworkUrl(rawArt) : rawArt;
-  const hasPoster = Boolean(compactArt && compactArt.trim());
   const seriesTitle = (movie.series_title || movie.seriesTitle || '').trim();
   const displayTitle = cleanMediaTitle(movie.title);
   const showSeriesName =
@@ -76,23 +126,21 @@ function ChatMovieCard({
     formatYear(movie.year),
     formatRuntime(movie.runtime),
     chatGenres(movie.genres || []),
-    ratingSummary.hasRating ? `★ ${ratingSummary.compactLabel}` : ratingSummary.label,
+    ratingSummary.hasRating ? `★ ${ratingSummary.compactLabel}` : '',
   ]
     .filter(Boolean)
     .join(' · ');
 
   return (
     <div className="flex gap-3 rounded-lg border border-surface-border bg-surface-muted p-2.5 transition-colors hover:border-ink/30">
-      {hasPoster && (
-        <img
-          src={safeImageUrl(compactArt || undefined)}
-          alt={displayTitle}
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-          className="h-20 w-14 shrink-0 rounded border border-surface-border object-cover"
-        />
-      )}
+      <ArtworkImage
+        src={compactArt || null}
+        alt={displayTitle}
+        title={seriesTitle || displayTitle}
+        seed={movie.series_id || movie.seriesId || movie.id}
+        aspectClassName="h-20 w-16"
+        className="h-20 w-16 shrink-0 rounded border border-surface-border"
+      />
       <div className="flex flex-col justify-between flex-1 min-w-0">
         <div>
           {showSeriesName && (
@@ -190,6 +238,8 @@ function CineBotConversation({
   onConsumeInitialPrompt?: () => void;
 }) {
   const { isWatchlisted, toggleWatchlist } = useWatchlist();
+  const seriesCardsData = typeof useSeriesCards === 'function' ? useSeriesCards(isOpen) : null;
+  const seriesCards = Array.isArray(seriesCardsData?.cards) ? seriesCardsData.cards : [];
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     createWelcomeMessage('welcome', 'Hôm nay bạn muốn xem gì? Nhập tên phim, nhân vật hoặc cảnh phim bạn nhớ nhé.'),
   ]);
@@ -446,7 +496,23 @@ function CineBotConversation({
           data-testid="cinebot-message-list"
           className="flex-1 overflow-y-auto p-4 space-y-4"
         >
-          {messages.map((message) => (
+          {messages.map((message, messageIndex) => {
+            const isWelcomeMsg = message.id.startsWith('welcome');
+            const showEmptySearchLink =
+              message.sender === 'bot' &&
+              !isWelcomeMsg &&
+              !message.isError &&
+              (!message.movies || message.movies.length === 0) &&
+              !(isTyping && messageIndex === messages.length - 1);
+            const matchedUserPrompt = showEmptySearchLink
+              ? messages
+                  .slice(0, messageIndex)
+                  .reverse()
+                  .find((item) => item.sender === 'user')
+                  ?.text.trim() || ''
+              : '';
+
+            return (
             <div key={message.id} className={`flex flex-col ${message.sender === 'user' ? 'items-end' : 'items-start'}`}>
               <div
                 role={message.isError ? 'alert' : undefined}
@@ -482,12 +548,26 @@ function CineBotConversation({
                     <ChatMovieCard
                       key={movie.id}
                       movie={movie}
+                      seriesCards={seriesCards}
                       inWatchlist={isWatchlisted(movie.id)}
                       onToggleWatchlist={() => void toggleWatchlist(movie.id, movie.title)}
                       onClose={onClose}
                       isKidMode={isKidMode}
                     />
                   ))}
+                </div>
+              )}
+
+              {showEmptySearchLink && (
+                <div className="mt-2">
+                  <Link
+                    to={matchedUserPrompt ? `/search?q=${encodeURIComponent(matchedUserPrompt)}` : '/search'}
+                    data-testid="cinebot-empty-search-link"
+                    onClick={onClose}
+                    className="btn-secondary min-h-[44px] px-3.5 text-xs font-semibold"
+                  >
+                    Tìm trong Kho phim
+                  </Link>
                 </div>
               )}
 
@@ -507,7 +587,8 @@ function CineBotConversation({
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
 
           {isTyping && (
             <div className="flex flex-wrap items-center gap-2">
@@ -554,6 +635,8 @@ function CineBotConversation({
           <div className="input-shell flex items-center gap-2 rounded-md border border-surface-border bg-surface px-3 py-2">
             <input
               ref={inputRef}
+              id="cinebot-message-input"
+              name="message"
               type="text"
               aria-label="Tin nhắn cho CineBot"
               maxLength={MAX_MESSAGE_LENGTH}
@@ -569,7 +652,7 @@ function CineBotConversation({
                   void handleSend();
                 }
               }}
-              placeholder="Hỏi tên phim, nhân vật hoặc cảnh nhớ được…"
+              placeholder="Hỏi tên phim, nhân vật, cảnh nhớ…"
               className="w-full bg-transparent text-base sm:text-sm text-ink placeholder:text-muted focus:outline-none disabled:opacity-60"
             />
             {isTyping ? (

@@ -16,6 +16,8 @@ const PRIVATE_KEYS = [
   'dippie_auto_next_enabled_v1',
 ];
 
+const PERSISTENT_PREFERENCE_KEYS = new Set(['dippie_motion', 'dippie_large_text']);
+
 function hasNonEmptyGuestLibrary(raw: string | null): boolean {
   if (!raw) return false;
   try {
@@ -84,7 +86,9 @@ export function clearPrivateStorage({
     const keys = new Set(PRIVATE_KEYS);
     for (let index = 0; index < store.length; index += 1) {
       const key = store.key(index);
-      if (key?.startsWith('dippie_') && key !== AUTH_TOKEN_KEY) keys.add(key);
+      if (key?.startsWith('dippie_') && key !== AUTH_TOKEN_KEY && !PERSISTENT_PREFERENCE_KEYS.has(key)) {
+        keys.add(key);
+      }
     }
     for (const key of keys) {
       if (!preserved.has(key)) store.removeItem(key);

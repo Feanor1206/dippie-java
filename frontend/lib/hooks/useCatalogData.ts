@@ -23,22 +23,23 @@ export function useCatalogGenres(): CatalogGenreOption[] | null {
 }
 
 export function useSeriesCards(enabled = true, fallbackError = 'Chưa tải được danh sách phim bộ.') {
+  const canLoadSeries = Boolean(enabled && typeof listSeriesCards === 'function');
   const [cards, setCards] = useState<SeriesCard[]>([]);
-  const [loading, setLoading] = useState(enabled);
+  const [loading, setLoading] = useState(canLoadSeries);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [ratingRefreshCount, setRatingRefreshCount] = useState(0);
 
   useEffect(() => {
-    if (!enabled || typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+    if (!canLoadSeries || typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
     const eventName = typeof RATING_CHANGED_EVENT === 'string' ? RATING_CHANGED_EVENT : 'dippie:rating-changed';
     const onRatingChanged = () => setRatingRefreshCount((n) => n + 1);
     window.addEventListener(eventName, onRatingChanged);
     return () => window.removeEventListener(eventName, onRatingChanged);
-  }, [enabled]);
+  }, [canLoadSeries]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!canLoadSeries) return;
     const controller = new AbortController();
     const silentRefresh = ratingRefreshCount > 0 && retryCount === 0;
     if (!silentRefresh) {
@@ -61,7 +62,7 @@ export function useSeriesCards(enabled = true, fallbackError = 'Chưa tải đư
         }
       });
     return () => controller.abort();
-  }, [enabled, retryCount, ratingRefreshCount, fallbackError]);
+  }, [canLoadSeries, retryCount, ratingRefreshCount, fallbackError]);
 
   const retry = useCallback(() => setRetryCount((n) => n + 1), []);
 

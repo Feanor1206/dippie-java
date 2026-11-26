@@ -1,17 +1,26 @@
-import React from 'react';
-import { useNavigate } from 'react-router';
+import React, { useEffect } from 'react';
+import * as ReactRouter from 'react-router';
 import { SiteDialog } from '@/components/ui/SiteDialog';
 import { useAuth } from '@/lib/context/AuthContext';
 
 export function PostSignupFamilyModal() {
   const auth = useAuth();
-  const navigate = useNavigate();
+  const navigate = ReactRouter.useNavigate();
+  const location = typeof ReactRouter.useLocation === 'function' ? ReactRouter.useLocation() : null;
+  const pathname = location?.pathname || '';
+  const isOnFamilyRoute = pathname === '/gia-dinh' || pathname.startsWith('/gia-dinh/');
 
-  const isVisible = Boolean(
+  const shouldOffer = Boolean(
     auth.showPostSignupFamilyOffer && auth.isAuthenticated && auth.user && !auth.isKidMode
   );
 
-  if (!isVisible) return null;
+  useEffect(() => {
+    if (shouldOffer && isOnFamilyRoute) {
+      auth.dismissPostSignupFamilyOffer?.();
+    }
+  }, [shouldOffer, isOnFamilyRoute, auth]);
+
+  if (!shouldOffer || isOnFamilyRoute) return null;
 
   const handleClose = () => {
     auth.dismissPostSignupFamilyOffer?.();

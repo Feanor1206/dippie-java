@@ -60,7 +60,8 @@ test('Guest storage is defensive, bounded and persists file identity without tou
   assert.equal(service.isUsableResumeProgress(record({ positionMs: 1000000 })), false);
   assert.throws(() => service.saveGuestWatchProgress(draft({ positionMs: NaN })));
   assert.throws(() => service.saveGuestWatchProgress(draft({ positionMs: -1 })));
-  assert.equal(service.readAutoNextPreference(), false);
+  assert.equal(service.readAutoNextPreference(), true);
+  service.writeAutoNextPreference(false); assert.equal(service.readAutoNextPreference(), false);
   service.writeAutoNextPreference(true); assert.equal(service.readAutoNextPreference(), true);
 });
 

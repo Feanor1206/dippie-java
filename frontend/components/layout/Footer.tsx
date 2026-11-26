@@ -5,15 +5,23 @@ import { useCatalogGenres } from '@/lib/hooks/useCatalogData';
 import * as motion from '@/lib/motion';
 
 const FALLBACK_FOOTER_GENRES: CatalogGenreOption[] = [
-  { id: 'family', label: 'Gia đình', count: 1 },
+  { id: 'family', label: 'Phim gia đình', count: 1 },
   { id: 'comedy', label: 'Hài hước', count: 1 },
 ];
 
 const FOOTER_LINK_CLASS = 'inline-flex min-h-[44px] items-center hover:text-ink transition-colors';
 
+function formatFooterGenreLabel(option: CatalogGenreOption): string {
+  if (option.id.toLowerCase() === 'family' || option.label.trim() === 'Gia đình') {
+    return 'Phim gia đình';
+  }
+  return option.label;
+}
+
 export function Footer() {
   const fetchedGenres = useCatalogGenres();
   const motionPref = typeof motion.useReducedMotion === 'function' ? motion.useReducedMotion() : { reduced: false, toggle: () => {} };
+  const largeTextPref = typeof motion.useLargeText === 'function' ? motion.useLargeText() : { largeText: false, toggle: () => {} };
   const genreLinks = useMemo(() => {
     if (!fetchedGenres || fetchedGenres.length === 0) return FALLBACK_FOOTER_GENRES;
     const nonDefault = fetchedGenres.filter((g) => g.count > 0 && g.id.toLowerCase() !== 'animation');
@@ -39,11 +47,14 @@ export function Footer() {
           </Link>
           {genreLinks.map((g) => (
             <Link key={g.id} to={`/search?genre=${encodeURIComponent(g.id)}`} className={FOOTER_LINK_CLASS}>
-              {g.label}
+              {formatFooterGenreLabel(g)}
             </Link>
           ))}
           <Link to="/profile" className={FOOTER_LINK_CLASS}>
             Thư viện
+          </Link>
+          <Link to="/gia-dinh" className={FOOTER_LINK_CLASS}>
+            Góc gia đình
           </Link>
           <Link to="/dieu-khoan" className={FOOTER_LINK_CLASS}>Điều khoản sử dụng</Link>
           <Link to="/quyen-rieng-tu" className={FOOTER_LINK_CLASS}>Chính sách quyền riêng tư</Link>
@@ -55,6 +66,15 @@ export function Footer() {
             className={`${FOOTER_LINK_CLASS} cursor-pointer`}
           >
             {motionPref.reduced ? 'Đã giảm chuyển động' : 'Giảm chuyển động'}
+          </button>
+          <button
+            type="button"
+            data-testid="footer-large-text-toggle"
+            aria-pressed={largeTextPref.largeText}
+            onClick={largeTextPref.toggle}
+            className={`${FOOTER_LINK_CLASS} cursor-pointer`}
+          >
+            {largeTextPref.largeText ? 'Đã bật cỡ chữ lớn' : 'Cỡ chữ lớn'}
           </button>
         </nav>
         <span className="text-xs text-ink/85">© Dippie 2026</span>

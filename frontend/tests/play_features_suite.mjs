@@ -540,7 +540,7 @@ test('LootDropOverlay shows floating chest, quick 10s multiple-choice quiz with 
   };
   let quizTree = harness.render(quizProps);
   assert.match(collectText(quizTree).replace(/\s+/g, ' '), /\+\s*4 phút/);
-  assert.match(collectText(quizTree).replace(/\s+/g, ' '), /Combo hiện tại: 2/);
+  assert.match(collectText(quizTree).replace(/\s+/g, ' '), /Chuỗi trả lời đúng: 2/);
   assert.equal(collectNodes(quizTree, (n) => n.props?.['data-testid'] === 'quiz-read-aloud-button').length, 1);
 
   collectNodes(quizTree, (n) => n.props?.['data-testid'] === 'quiz-option-B')[0].props.onClick();

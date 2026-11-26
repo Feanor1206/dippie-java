@@ -1,12 +1,50 @@
-import React, { useLayoutEffect, useId, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useId, useRef } from 'react';
 
 export type SiteDialogSize = 'sm' | 'md' | 'lg' | 'xl';
 
 const FOCUSABLE_SELECTOR =
   'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+const EXPLICIT_AUTOFOCUS_SELECTOR = '[autofocus], [data-autofocus="true"]';
+
 const PRIMARY_INPUT_SELECTOR =
   '[autofocus], [data-autofocus="true"], input:not([disabled]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), select:not([disabled]), textarea:not([disabled])';
+
+const NON_TYPING_FOCUSABLE_SELECTOR =
+  'button:not([disabled]), select:not([disabled]), [href], input[type="checkbox"]:not([disabled]), input[type="radio"]:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function isCoarseOrCompactViewport(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (typeof window.innerWidth === 'number' && window.innerWidth < 768) return true;
+  if (typeof window.matchMedia === 'function') {
+    try {
+      return Boolean(window.matchMedia('(pointer: coarse)').matches);
+    } catch {}
+  }
+  return false;
+}
+
+function resolvePreferredDialogTarget(
+  bodyEl: HTMLElement | null,
+  footerEl: HTMLElement | null
+): HTMLElement | null {
+  if (isCoarseOrCompactViewport()) {
+    return (
+      bodyEl?.querySelector<HTMLElement>(EXPLICIT_AUTOFOCUS_SELECTOR) ||
+      bodyEl?.querySelector<HTMLElement>(NON_TYPING_FOCUSABLE_SELECTOR) ||
+      footerEl?.querySelector<HTMLElement>(NON_TYPING_FOCUSABLE_SELECTOR) ||
+      bodyEl?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ||
+      footerEl?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ||
+      null
+    );
+  }
+  return (
+    bodyEl?.querySelector<HTMLElement>(PRIMARY_INPUT_SELECTOR) ||
+    bodyEl?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ||
+    footerEl?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ||
+    null
+  );
+}
 
 export function SiteDialog({
   title,
@@ -29,6 +67,7 @@ export function SiteDialog({
   const bodyRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const settledFocusRef = useRef(false);
   const titleId = useId();
 
   useLayoutEffect(() => {
@@ -37,14 +76,14 @@ export function SiteDialog({
     if (dialog && typeof dialog.showModal === 'function' && !dialog.open) {
       dialog.showModal();
     }
-    const bodyEl = bodyRef.current;
-    const footerEl = footerRef.current;
-    const preferredTarget =
-      bodyEl?.querySelector<HTMLElement>(PRIMARY_INPUT_SELECTOR) ||
-      bodyEl?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ||
-      footerEl?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ||
-      closeBtnRef.current;
-    preferredTarget?.focus?.();
+    const contentTarget = resolvePreferredDialogTarget(bodyRef.current, footerRef.current);
+    if (contentTarget) {
+      settledFocusRef.current = true;
+      contentTarget.focus?.();
+    } else {
+      settledFocusRef.current = false;
+      closeBtnRef.current?.focus?.();
+    }
 
     return () => {
       if (dialog && typeof dialog.close === 'function' && dialog.open) {
@@ -53,6 +92,23 @@ export function SiteDialog({
       if (opener?.isConnected) opener.focus();
     };
   }, []);
+
+  const useSettledFocusEffect = typeof useEffect === 'function' ? useEffect : useLayoutEffect;
+  useSettledFocusEffect(() => {
+    if (settledFocusRef.current) return;
+    if (typeof document !== 'undefined') {
+      const active = document.activeElement;
+      if (active && active !== closeBtnRef.current && active !== dialogRef.current && active !== document.body) {
+        settledFocusRef.current = true;
+        return;
+      }
+    }
+    const contentTarget = resolvePreferredDialogTarget(bodyRef.current, footerRef.current);
+    if (contentTarget) {
+      settledFocusRef.current = true;
+      contentTarget.focus?.();
+    }
+  }, [children]);
 
   const headerToneClass =
     tone === 'danger'

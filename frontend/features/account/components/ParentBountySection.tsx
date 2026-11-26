@@ -60,6 +60,11 @@ export function ParentBountySection({
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showAllChildren, setShowAllChildren] = useState(false);
+
+  useEffect(() => {
+    setShowAllChildren(false);
+  }, [activeProfileId]);
 
   const loadBoard = useCallback(async () => {
     if (!token) return;
@@ -230,7 +235,17 @@ export function ParentBountySection({
     }
   };
 
-  const pendingSubmissions = submissions.filter((item) => item.status === 'PENDING');
+  const allPendingSubmissions = submissions.filter((item) => item.status === 'PENDING');
+  const shouldScopeToActiveChild = Boolean(activeProfileId && childProfiles.length > 1 && !showAllChildren);
+  const pendingSubmissions = shouldScopeToActiveChild
+    ? allPendingSubmissions.filter((item) => item.profileId === activeProfileId)
+    : allPendingSubmissions;
+  const visibleTasks = shouldScopeToActiveChild
+    ? tasks.filter((task) => task.profileIds.length === 0 || task.profileIds.includes(activeProfileId!))
+    : tasks;
+  const activeChildName = activeProfileId
+    ? childProfiles.find((profile) => profile.id === activeProfileId)?.name || ''
+    : '';
   const profileNameById = new Map(childProfiles.map((profile) => [profile.id, profile.name]));
 
   return (
@@ -332,6 +347,27 @@ export function ParentBountySection({
         </div>
       )}
 
+      {activeProfileId && childProfiles.length > 1 && (tasks.length > 0 || allPendingSubmissions.length > 0) && (
+        <div
+          data-testid="bounty-child-scope-bar"
+          className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-surface-border bg-surface-muted px-3.5 py-2 text-xs text-ink"
+        >
+          <span>
+            {showAllChildren
+              ? `Đang hiện nhiệm vụ của cả ${childProfiles.length} bé`
+              : `Đang lọc nhiệm vụ của ${activeChildName || 'bé đang chọn'}`}
+          </span>
+          <button
+            type="button"
+            data-testid="bounty-toggle-all-children"
+            onClick={() => setShowAllChildren((prev) => !prev)}
+            className="inline-flex min-h-[44px] items-center px-2 font-bold text-brand-dark underline cursor-pointer"
+          >
+            {showAllChildren ? `Chỉ xem của ${activeChildName || 'bé này'}` : `Xem tất cả (${tasks.length})`}
+          </button>
+        </div>
+      )}
+
       <div className="mt-4">
         {loadError ? (
           <div
@@ -352,13 +388,15 @@ export function ParentBountySection({
           <p role="status" className="rounded-xl border border-surface-border bg-surface-muted p-4 text-center text-xs text-muted">
             Đang tải bảng nhiệm vụ…
           </p>
-        ) : tasks.length === 0 ? (
+        ) : visibleTasks.length === 0 ? (
           <p className="rounded-xl border border-dashed border-surface-border bg-surface-muted p-4 text-center text-xs text-muted">
-            Chưa có nhiệm vụ nào. Nhấn &ldquo;Thêm nhiệm vụ&rdquo; để tạo bảng nhiệm vụ cho bé nhé.
+            {tasks.length > 0 && shouldScopeToActiveChild
+              ? `Chưa có nhiệm vụ riêng nào cho ${activeChildName || 'bé này'}. Bấm "Thêm nhiệm vụ" hoặc "Xem tất cả" để gán nhiệm vụ cho bé nhé.`
+              : 'Chưa có nhiệm vụ nào. Nhấn “Thêm nhiệm vụ” để tạo bảng nhiệm vụ cho bé nhé.'}
           </p>
         ) : (
           <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {tasks.map((task) => {
+            {visibleTasks.map((task) => {
               const iconMeta = getBountyIconMeta(task.icon);
               const assignedNames = task.profileIds
                 .map((id) => profileNameById.get(id))

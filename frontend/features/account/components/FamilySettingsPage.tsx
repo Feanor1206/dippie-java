@@ -5,10 +5,15 @@ import * as motion from '@/lib/motion';
 import { MAX_CHILD_PROFILES } from '@/lib/services/profileService';
 import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
 import { ExitKidModeDialog } from '@/features/profiles/components/ExitKidModeDialog';
+import { useDetectedStandaloneFilmCount } from '@/features/profiles/components/KidModeDashboard';
 import { ChildProfilesSection } from './ChildProfilesSection';
 import { FamilySetupWizard } from './FamilySetupWizard';
 
-export function FamilySettingsPage() {
+export function FamilySettingsPage({
+  standaloneFilmCount,
+}: {
+  standaloneFilmCount?: number;
+} = {}) {
   const {
     user,
     token,
@@ -26,11 +31,15 @@ export function FamilySettingsPage() {
   const kidMode = Boolean(isKidMode);
   const setupRequested = searchParams.get('setup') === '1';
 
-  const [wizardOpen, setWizardOpen] = useState<boolean>(false);
+  const [wizardOpen, setWizardOpen] = useState<boolean>(() => setupRequested);
   const [wizardDismissedManually, setWizardDismissedManually] = useState(false);
   const [sessionPin, setSessionPin] = useState('');
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
   const pageRef = useRef<HTMLElement | null>(null);
+  const detectedStandalone = useDetectedStandaloneFilmCount(!isLoading && standaloneFilmCount === undefined);
+  const effectiveStandaloneCount =
+    typeof standaloneFilmCount === 'number' ? standaloneFilmCount : detectedStandalone;
+  const zeroStandaloneFilms = effectiveStandaloneCount === 0;
 
   motion.useScrollReveal?.(pageRef, [isLoading, isAuthenticated, kidMode, wizardOpen]);
 
@@ -109,8 +118,14 @@ export function FamilySettingsPage() {
               <span className="mt-1 block text-muted">Có sẵn câu hỏi từ Mẫu giáo tới Lớp 5, hỗ trợ ba mẹ tự thêm hoặc tải lên từ bảng tính Excel.</span>
             </li>
             <li className="rounded-xl border border-surface-border bg-surface p-4">
-              <strong className="block font-bold">Phim lẻ cuối tuần &amp; Nhiệm vụ</strong>
-              <span className="mt-1 block text-muted">Khuyến khích bé giữ thói quen tốt trong tuần để mở rạp phim cuối tuần cùng cả nhà.</span>
+              <strong className="block font-bold">
+                {zeroStandaloneFilms ? 'Phim thử thách & Nhiệm vụ thưởng giờ' : 'Phim lẻ cuối tuần & Nhiệm vụ'}
+              </strong>
+              <span className="mt-1 block text-muted">
+                {zeroStandaloneFilms
+                  ? 'Giao việc tốt hằng ngày để bé nhận thêm phút xem và mở khóa tập phim thử thách cùng ba mẹ.'
+                  : 'Khuyến khích bé giữ thói quen tốt trong tuần để mở rạp phim cuối tuần cùng cả nhà.'}
+              </span>
             </li>
           </ul>
           <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -201,15 +216,20 @@ export function FamilySettingsPage() {
             </div>
           </div>
 
-          {shouldShowWizard && (
+          {shouldShowWizard ? (
             <FamilySetupWizard
               sessionPin={sessionPin}
+              standaloneFilmCount={standaloneFilmCount}
               onPinVerified={setSessionPin}
               onCancel={closeWizardToFullSettings}
             />
+          ) : (
+            <ChildProfilesSection
+              initialSessionPin={sessionPin}
+              onSessionPinChange={setSessionPin}
+              standaloneFilmCount={standaloneFilmCount}
+            />
           )}
-
-          <ChildProfilesSection />
         </div>
       )}
     </main>

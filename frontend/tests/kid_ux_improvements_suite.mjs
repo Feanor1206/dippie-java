@@ -800,7 +800,7 @@ test('EpisodePlayerPanel pauses and resumes video on loot quiz and blocking over
 
   const expandedFrame = collectNodes(tree, (n) => n.props?.['data-testid'] === 'series-player-frame')[0];
   assert.ok(String(expandedFrame.props.className).includes('min-h-[30rem]'));
-  assert.ok(String(expandedFrame.props.className).includes('lg:aspect-video'));
+  assert.ok(String(expandedFrame.props.className).includes('aspect-auto'));
   assert.equal(pauseCalls, 1);
   assert.equal(scrollCalls, 1);
 
@@ -1194,4 +1194,199 @@ test('RecapQuizOverlay reads prompt and scene choices aloud, guides step by step
   const seriesPageSource = fs.readFileSync(path.join(root, 'app/series/[id]/page.tsx'), 'utf8');
   assert.ok(seriesPageSource.includes('order-2 md:order-1'));
   assert.ok(seriesPageSource.includes('order-1 grid grid-cols-1 gap-8 md:order-2'));
+});
+
+test('Round 2 Kid UX fixes: 6-digit PIN on ScreenTimeLockOverlay, normal-flow overlays, WatchPet without daily grant trap, reactive TTS fallback notice, bilingual pre-reader English, and scaled loot timer', async () => {
+  const grantedCalls = [];
+  const lockHarness = createComponentHarness(
+    '../features/profiles/components/ScreenTimeLockOverlay.tsx',
+    'ScreenTimeLockOverlay',
+    {
+      '@/lib/services/screenTimeService': {
+        fetchScreenTimeChallenge: async () => ({}),
+        formatRemainingTime: () => '15 phút',
+        grantExtraMinutesInKidMode: async (_tok, pin, mins) => {
+          grantedCalls.push({ pin, mins });
+          return {
+            message: 'Đã cộng thêm 15 phút.',
+            status: {
+              limited: true,
+              unlimited: false,
+              locked: false,
+              dailyMinutes: 30,
+              dailySeconds: 1800,
+              watchedSeconds: 1800,
+              rewardSeconds: 0,
+              grantSeconds: 900,
+              bountySeconds: 0,
+              remainingSeconds: 900,
+              rewardMinutes: 5,
+              maxBonusMinutes: 30,
+              bonusRemainingSeconds: 1800,
+              bonusCapReached: false,
+            },
+          };
+        },
+        submitScreenTimeChallengeAnswer: async () => ({}),
+      },
+    }
+  );
+
+  const lockStatus = {
+    limited: true,
+    unlimited: false,
+    locked: true,
+    dailyMinutes: 30,
+    dailySeconds: 1800,
+    watchedSeconds: 1800,
+    rewardSeconds: 0,
+    grantSeconds: 0,
+    bountySeconds: 0,
+    remainingSeconds: 0,
+    rewardMinutes: 5,
+    maxBonusMinutes: 0,
+    bonusRemainingSeconds: 0,
+    bonusCapReached: true,
+  };
+  const lockProps = {
+    status: lockStatus,
+    token: 'kid-jwt',
+    savedProgressLabel: 'Tập 2 · 04:12',
+    onStatusUpdated() {},
+    onContinueWatching() {},
+  };
+
+  let lockTree = lockHarness.render(lockProps);
+  const lockRoot = collectNodes(lockTree, (n) => n.props?.['data-testid'] === 'screen-time-lock-overlay')[0];
+  assert.ok(String(lockRoot.props.className).includes('relative'));
+  assert.equal(String(lockRoot.props.className).includes('absolute inset-0'), false);
+  assert.match(collectText(lockTree), /chế độ hết giờ là nghỉ ngơi hôm nay/);
+
+  collectNodes(lockTree, (n) => n.props?.['data-testid'] === 'time-up-parent-grant-button')[0].props.onClick();
+  lockTree = lockHarness.render(lockProps);
+  collectNodes(lockTree, (n) => n.props?.['data-testid'] === 'time-up-parent-pin-input')[0].props.onChange({
+    target: { value: '123456' },
+  });
+  lockTree = lockHarness.render(lockProps);
+  await collectNodes(lockTree, (n) => n.props?.['data-testid'] === 'time-up-parent-grant-form')[0].props.onSubmit({
+    preventDefault() {},
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(grantedCalls, [{ pin: '123456', mins: 15 }]);
+  lockHarness.unmount();
+
+  const petHarness = createComponentHarness(
+    '../features/profiles/components/WatchPetWidget.tsx',
+    'WatchPetWidget',
+    {}
+  );
+  const petTree = petHarness.render({
+    watchPet: {
+      enabled: true,
+      stage: 'FAINTED',
+      fainted: true,
+      resting: false,
+      faintMinutes: 20,
+      restMinutes: 3,
+      continuousWatchSeconds: 1200,
+      restRemainingSeconds: 0,
+    },
+    token: 'kid-jwt',
+    restCountdown: 0,
+    onStartRest: async () => null,
+    onWatchPetUpdated() {},
+    hideCorner: true,
+  });
+  const petOverlay = collectNodes(petTree, (n) => n.props?.['data-testid'] === 'watch-pet-overlay')[0];
+  assert.ok(String(petOverlay.props.className).includes('relative'));
+  assert.equal(collectNodes(petTree, (n) => n.props?.['data-testid'] === 'watch-pet-parent-grant-button').length, 0);
+  petHarness.unmount();
+
+  const englishSpoken = [];
+  class FakeUtterance {
+    constructor(text) {
+      this.text = text;
+      this.lang = '';
+      this.rate = 1;
+    }
+  }
+  const enOnlyWindow = {
+    speechSynthesis: {
+      getVoices: () => [{ lang: 'en-US', name: 'English' }],
+      cancel() {},
+      speak(u) {
+        englishSpoken.push(u);
+      },
+    },
+    SpeechSynthesisUtterance: FakeUtterance,
+  };
+
+  const cardHarness = createComponentHarness(
+    '../features/quiz/components/QuizQuestionCard.tsx',
+    'QuizQuestionCard',
+    {},
+    { window: enOnlyWindow, SpeechSynthesisUtterance: FakeUtterance }
+  );
+
+  let readAloudNotified = 0;
+  const viCardProps = {
+    question: '4 + 3 = ?',
+    options: [
+      { key: 'A', text: '6' },
+      { key: 'B', text: '7' },
+      { key: 'C', text: '8' },
+      { key: 'D', text: '9' },
+    ],
+    subject: 'TOAN',
+    subjectLabel: 'Toán',
+    gradeLabel: 'Mẫu giáo',
+    submitting: false,
+    onReadAloud: () => {
+      readAloudNotified += 1;
+    },
+    onSelectOption() {},
+  };
+
+  let viCardTree = cardHarness.render(viCardProps);
+  assert.equal(collectNodes(viCardTree, (n) => n.props?.['data-testid'] === 'quiz-speech-notice').length, 0);
+  collectNodes(viCardTree, (n) => n.props?.['data-testid'] === 'quiz-read-aloud-button')[0].props.onClick();
+  viCardTree = cardHarness.render(viCardProps);
+  assert.equal(readAloudNotified, 1);
+  assert.equal(
+    collectNodes(viCardTree, (n) => n.props?.['data-testid'] === 'quiz-speech-notice').length,
+    1,
+    'Missing vi-VN voice must trigger a reactive speech notice re-render'
+  );
+
+  const enCardProps = {
+    question: "What animal says 'Meow'?",
+    options: [
+      { key: 'A', text: 'Cat' },
+      { key: 'B', text: 'Dog' },
+      { key: 'C', text: 'Duck' },
+      { key: 'D', text: 'Cow' },
+    ],
+    subject: 'TIENG_ANH',
+    subjectLabel: 'Tiếng Anh',
+    gradeLabel: 'Mẫu giáo',
+    submitting: false,
+    onSelectOption() {},
+  };
+  const enCardTree = cardHarness.render(enCardProps);
+  const stemNode = collectNodes(enCardTree, (n) => n.props?.['data-testid'] === 'quiz-question-text')[0];
+  assert.match(collectText(stemNode), /Con vật nào kêu 'meo meo'\? \(What animal says 'Meow'\?\)/);
+  collectNodes(enCardTree, (n) => n.props?.['data-testid'] === 'quiz-read-aloud-button')[0].props.onClick();
+  assert.equal(englishSpoken.length, 1);
+  assert.equal(englishSpoken[0].lang, 'en-US');
+  assert.match(englishSpoken[0].text, /^What animal says 'Meow'\?/);
+  cardHarness.unmount();
+
+  const playFeaturesHook = createComponentHarness('../features/profiles/hooks/usePlayFeatures.ts', null);
+  assert.equal(playFeaturesHook.exports.resolveLootTimerSeconds('MAU_GIAO', 10), 25);
+  assert.equal(playFeaturesHook.exports.resolveLootTimerSeconds('LOP_1', 10), 20);
+  assert.equal(playFeaturesHook.exports.resolveLootTimerSeconds('LOP_2', 10), 15);
+
+  const recapExports = createComponentHarness('../features/profiles/components/RecapQuizOverlay.tsx', null).exports;
+  assert.equal(recapExports.localizeRecapItemText('Violet').text, 'Ấu trùng Tím (Violet)');
+  assert.equal(recapExports.localizeRecapItemText('Yellow').text, 'Ấu trùng Vàng (Yellow)');
 });

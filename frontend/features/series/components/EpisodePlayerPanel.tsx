@@ -40,6 +40,7 @@ import {
 
 export type EpisodePlayerPanelProps = {
   seriesTitle: string;
+  seriesPosterUrl?: string;
   selectedEpisode: CatalogEpisode | null;
   episodeDetail: CatalogEpisodeResponse | null;
   playbackSource: PlaybackSourceSelection;
@@ -108,6 +109,7 @@ export type EpisodePlayerPanelProps = {
     onSubmitLootAnswer: (option: QuizOptionKey) => Promise<LootDropAnswerResult | null>;
     onDismissLootQuiz?: () => void;
     onSelectLootDraftOption?: (option: QuizOptionKey) => void;
+    onExtendLootTimer?: () => void;
     activeRecapEpisodeId: string | null;
     onRecapUnlocked: (targetEpisodeId: string | null) => void;
     onRecapRewatch: () => void;
@@ -126,6 +128,7 @@ function prefersReducedScroll(): boolean {
 
 export function EpisodePlayerPanel({
   seriesTitle,
+  seriesPosterUrl = '',
   selectedEpisode,
   episodeDetail,
   playbackSource,
@@ -397,7 +400,7 @@ export function EpisodePlayerPanel({
             : 'bg-black'
         } ${
           needsOverlayHeight
-            ? 'min-h-[30rem] sm:min-h-[32rem] lg:aspect-video'
+            ? 'min-h-[30rem] sm:min-h-[32rem] aspect-auto flex-col'
             : youtubeEmbed
             ? 'aspect-video min-h-[200px]'
             : 'aspect-video'
@@ -411,7 +414,7 @@ export function EpisodePlayerPanel({
             aria-modal="true"
             aria-label="Mở khóa tập phim thử thách"
             data-testid="vip-episode-lock-overlay"
-            className="motion-overlay-overshoot flex h-full w-full flex-col items-center justify-center overflow-y-auto overscroll-contain bg-ink/95 p-5 text-center text-paper-white sm:p-6"
+            className="motion-overlay-overshoot relative z-30 flex min-h-[30rem] sm:min-h-[32rem] w-full flex-1 flex-col items-center justify-center bg-ink/95 p-5 text-center text-paper-white sm:p-6"
           >
             <VipBadge data-testid="player-vip-badge" />
             <h3 className="mt-3 font-display text-lg font-bold text-paper-white sm:text-xl">
@@ -430,106 +433,116 @@ export function EpisodePlayerPanel({
               Trả lời câu hỏi mở khóa tập này
             </button>
           </div>
-        ) : isLoadingEpisode || isResolvingStream ? (
-          <p role="status" className="p-6 text-center text-xs text-zinc-200">
-            Đang tải tập…
-          </p>
-        ) : episodeError ? (
-          <div role="alert" aria-live="assertive" className="p-6 text-center text-xs text-zinc-200">
-            <p>{episodeError}</p>
-            <button data-testid="retry-episode" onClick={onRetryEpisode} className="btn-secondary mt-3">
-              Thử lại
-            </button>
-          </div>
-        ) : playbackSource.kind === 'youtube' ? (
-          <YouTubePlayer
-            key={`${selectedEpisode?.id || ''}:${playbackSource.youtube.videoId}`}
-            data-testid="series-youtube-player"
-            videoId={playbackSource.youtube.videoId}
-            src={playbackSource.embedUrl}
-            title={cleanMediaTitle(selectedEpisode?.title) || 'Tập trên YouTube'}
-            seekRequest={youtubeSeekRequest}
-            autoPlay={shouldAutoPlayYoutube && !isPlaybackPaused}
-            kidMode={isKidMode}
-            paused={isPlaybackPaused}
-            {...youtubeHandlers}
-          />
-        ) : playbackSource.kind === 'file' && streamUrl ? (
-          <video
-            ref={videoRef}
-            data-testid="series-video-player"
-            key={`${selectedEpisode?.id || ''}:${streamUrl}:${fileRetryCount}`}
-            src={streamUrl}
-            controls
-            playsInline
-            {...videoHandlers}
-            className="h-full w-full object-contain"
-          />
-        ) : showLockOverlay || showWatchPetOverlay || showRecapOverlay ? (
-          <div className="h-full w-full bg-ink" />
         ) : (
           <div
-            role="alert"
-            aria-live="assertive"
-            data-testid="playback-unavailable-card"
-            className="flex h-full w-full flex-col items-center justify-center p-6 text-center text-ink"
+            className={
+              needsOverlayHeight
+                ? 'pointer-events-none invisible absolute inset-0 h-full w-full overflow-hidden'
+                : 'flex h-full w-full items-center justify-center'
+            }
           >
-            {!isKidMode && playbackSource.kind === 'unavailable' && playbackSource.youtubeWatchUrl && (
-              <span
-                data-testid="player-external-badge"
-                className="mb-2 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[0.6875rem] font-semibold text-amber-900"
+            {isLoadingEpisode || isResolvingStream ? (
+              <p role="status" className="p-6 text-center text-xs text-zinc-200">
+                Đang tải tập…
+              </p>
+            ) : episodeError ? (
+              <div role="alert" aria-live="assertive" className="p-6 text-center text-xs text-zinc-200">
+                <p>{episodeError}</p>
+                <button data-testid="retry-episode" onClick={onRetryEpisode} className="btn-secondary mt-3">
+                  Thử lại
+                </button>
+              </div>
+            ) : playbackSource.kind === 'youtube' ? (
+              <YouTubePlayer
+                key={`${selectedEpisode?.id || ''}:${playbackSource.youtube.videoId}`}
+                data-testid="series-youtube-player"
+                videoId={playbackSource.youtube.videoId}
+                src={playbackSource.embedUrl}
+                title={cleanMediaTitle(selectedEpisode?.title) || 'Tập trên YouTube'}
+                seekRequest={youtubeSeekRequest}
+                autoPlay={shouldAutoPlayYoutube && !isPlaybackPaused}
+                kidMode={isKidMode}
+                paused={isPlaybackPaused}
+                {...youtubeHandlers}
+              />
+            ) : playbackSource.kind === 'file' && streamUrl ? (
+              <video
+                ref={videoRef}
+                data-testid="series-video-player"
+                key={`${selectedEpisode?.id || ''}:${streamUrl}:${fileRetryCount}`}
+                src={streamUrl}
+                controls
+                playsInline
+                {...videoHandlers}
+                className="h-full w-full object-contain"
+              />
+            ) : showLockOverlay || showWatchPetOverlay || showRecapOverlay ? (
+              <div className="h-full w-full bg-ink" />
+            ) : (
+              <div
+                role="alert"
+                aria-live="assertive"
+                data-testid="playback-unavailable-card"
+                className="flex h-full w-full flex-col items-center justify-center p-6 text-center text-ink"
               >
-                Chỉ mở trên YouTube
-              </span>
-            )}
-            <p className="text-xs font-semibold text-brand-dark">
-              {cleanMediaTitle(episodeDetail?.episode?.title || selectedEpisode?.title || seriesTitle)}
-            </p>
-            <h3 className="mt-1 text-base font-bold text-ink sm:text-lg">Chưa phát được tập này</h3>
-            <p className="mt-2 max-w-md text-xs leading-relaxed text-muted">
-              {requiresGuestLogin
-                ? 'Bạn đăng nhập tài khoản Dippie để xem bản video này nhé.'
-                : isKidMode &&
-                  playbackSource.kind === 'unavailable' &&
-                  (playbackSource.reason === 'youtube_embed_disabled' ||
-                    playbackSource.reason === 'file_unreachable_youtube_external')
-                ? 'Tập này tạm chưa xem được trong hồ sơ trẻ em.'
-                : getUnavailableReasonMessage(
-                    playbackSource.kind === 'unavailable' ? playbackSource.reason : 'file_unreachable'
+                {!isKidMode && playbackSource.kind === 'unavailable' && playbackSource.youtubeWatchUrl && (
+                  <span
+                    data-testid="player-external-badge"
+                    className="mb-2 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[0.6875rem] font-semibold text-amber-900"
+                  >
+                    Chỉ mở trên YouTube
+                  </span>
+                )}
+                <p className="text-xs font-semibold text-brand-dark">
+                  {cleanMediaTitle(episodeDetail?.episode?.title || selectedEpisode?.title || seriesTitle)}
+                </p>
+                <h3 className="mt-1 text-base font-bold text-ink sm:text-lg">Chưa phát được tập này</h3>
+                <p className="mt-2 max-w-md text-xs leading-relaxed text-muted">
+                  {requiresGuestLogin
+                    ? 'Bạn đăng nhập tài khoản Dippie để xem bản video này nhé.'
+                    : isKidMode &&
+                      playbackSource.kind === 'unavailable' &&
+                      (playbackSource.reason === 'youtube_embed_disabled' ||
+                        playbackSource.reason === 'file_unreachable_youtube_external')
+                    ? 'Tập này tạm chưa xem được trong hồ sơ trẻ em.'
+                    : getUnavailableReasonMessage(
+                        playbackSource.kind === 'unavailable' ? playbackSource.reason : 'file_unreachable'
+                      )}
+                </p>
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                  {requiresGuestLogin && auth?.openAuthModal && (
+                    <button
+                      type="button"
+                      data-testid="player-login-button"
+                      onClick={() => auth.openAuthModal('login')}
+                      className="btn-primary inline-flex min-h-[44px] items-center justify-center px-4 py-2 text-xs font-semibold"
+                    >
+                      Đăng nhập để xem
+                    </button>
                   )}
-            </p>
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-              {requiresGuestLogin && auth?.openAuthModal && (
-                <button
-                  type="button"
-                  data-testid="player-login-button"
-                  onClick={() => auth.openAuthModal('login')}
-                  className="btn-primary inline-flex min-h-[44px] items-center justify-center px-4 py-2 text-xs font-semibold"
-                >
-                  Đăng nhập để xem
-                </button>
-              )}
-              {!isKidMode && playbackSource.kind === 'unavailable' && playbackSource.youtubeWatchUrl && (
-                <YouTubeLink
-                  url={playbackSource.youtubeWatchUrl}
-                  testId="open-on-youtube-link"
-                  className="btn-primary inline-flex min-h-[44px] items-center justify-center px-4 py-2 text-xs font-semibold"
-                >
-                  Mở trên YouTube
-                </YouTubeLink>
-              )}
-              {((playbackSource.kind === 'unavailable' && playbackSource.canRetryFile) ||
-                playbackSource.kind === 'file') && (
-                <button
-                  type="button"
-                  data-testid="retry-original-file"
-                  onClick={onRetryOriginalFile}
-                  className="btn-secondary inline-flex min-h-[44px] items-center justify-center px-4 py-2 text-xs font-semibold"
-                >
-                  Thử lại bản gốc
-                </button>
-              )}
-            </div>
+                  {!isKidMode && playbackSource.kind === 'unavailable' && playbackSource.youtubeWatchUrl && (
+                    <YouTubeLink
+                      url={playbackSource.youtubeWatchUrl}
+                      testId="open-on-youtube-link"
+                      className="btn-primary inline-flex min-h-[44px] items-center justify-center px-4 py-2 text-xs font-semibold"
+                    >
+                      Mở trên YouTube
+                    </YouTubeLink>
+                  )}
+                  {((playbackSource.kind === 'unavailable' && playbackSource.canRetryFile) ||
+                    playbackSource.kind === 'file') && (
+                    <button
+                      type="button"
+                      data-testid="retry-original-file"
+                      onClick={onRetryOriginalFile}
+                      className="btn-secondary inline-flex min-h-[44px] items-center justify-center px-4 py-2 text-xs font-semibold"
+                    >
+                      Thử lại bản gốc
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
         {showLockOverlay && screenTime?.screenTime && auth?.token && (
@@ -565,6 +578,8 @@ export function EpisodePlayerPanel({
             token={auth.token}
             episodeId={kidPlayOverlay.activeRecapEpisodeId}
             nextEpisodeLabel={nextEpisodeLabel}
+            seriesTitle={seriesTitle}
+            artworkUrl={seriesPosterUrl || null}
             onUnlocked={kidPlayOverlay.onRecapUnlocked}
             onRewatchEpisode={kidPlayOverlay.onRecapRewatch}
             onFinishSession={onFinishSession}
@@ -597,6 +612,7 @@ export function EpisodePlayerPanel({
             onSubmitAnswer={kidPlayOverlay.onSubmitLootAnswer}
             onDismissQuiz={kidPlayOverlay.onDismissLootQuiz}
             onSelectDraftOption={kidPlayOverlay.onSelectLootDraftOption}
+            onExtendTimer={kidPlayOverlay.onExtendLootTimer}
           />
         )}
       </div>

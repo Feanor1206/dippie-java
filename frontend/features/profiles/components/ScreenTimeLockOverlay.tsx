@@ -3,6 +3,7 @@ import { CheckCircle2, Clock, HelpCircle, Home, KeyRound } from 'lucide-react';
 import { QuizQuestionCard, type QuizWrongReveal } from '@/features/quiz/components/QuizQuestionCard';
 import type { QuizOptionKey } from '@/features/quiz/quizService';
 import { useBlockingOverlayFocus } from '@/features/profiles/hooks/useBlockingOverlayFocus';
+import { validateParentPin } from '@/lib/services/profileService';
 import {
   fetchScreenTimeChallenge,
   formatRemainingTime,
@@ -120,8 +121,11 @@ export function ScreenTimeLockOverlay({
   const handleParentGrantSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const cleanPin = parentPin.trim();
-    if (!/^\d{4}$/.test(cleanPin) || grantingByPin) {
-      setFeedback({ kind: 'error', text: 'Ba mẹ nhập đúng mã PIN 4 chữ số nhé.' });
+    const pinErr = validateParentPin(cleanPin);
+    if (pinErr || grantingByPin) {
+      if (pinErr) {
+        setFeedback({ kind: 'error', text: pinErr });
+      }
       return;
     }
     setGrantingByPin(true);
@@ -150,7 +154,7 @@ export function ScreenTimeLockOverlay({
       aria-modal="true"
       aria-labelledby="screen-time-lock-title"
       data-testid="screen-time-lock-overlay"
-      className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto overscroll-contain bg-ink/90 p-3 sm:items-center sm:p-6 animate-fade-in"
+      className="relative z-30 flex min-h-[30rem] sm:min-h-[32rem] w-full flex-1 items-center justify-center overflow-y-auto bg-ink/90 p-3 sm:p-6 animate-fade-in"
     >
       <div className="motion-overlay-overshoot my-auto w-full max-w-lg rounded-2xl border-2 border-ink bg-paper-white p-4 text-center shadow-brand-lg sm:p-6">
         <div
@@ -209,7 +213,9 @@ export function ScreenTimeLockOverlay({
                   data-testid="bonus-cap-reached-note"
                   className="text-center text-xs leading-relaxed text-muted sm:text-sm"
                 >
-                  Bé đã nhận đủ số phút thưởng từ câu hỏi hôm nay rồi. Bé hãy nhờ ba mẹ nhập mã PIN bên dưới nếu muốn xem thêm nhé.
+                  {effectiveStatus.maxBonusMinutes <= 0
+                    ? 'Ba mẹ đã đặt chế độ hết giờ là nghỉ ngơi hôm nay. Bé có thể nhờ ba mẹ nhập mã PIN bên dưới nếu muốn xem thêm nhé.'
+                    : 'Bé đã nhận đủ số phút thưởng từ câu hỏi hôm nay rồi. Bé hãy nhờ ba mẹ nhập mã PIN bên dưới nếu muốn xem thêm nhé.'}
                 </p>
               ) : (
                 <button
@@ -266,19 +272,20 @@ export function ScreenTimeLockOverlay({
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <label htmlFor="time-up-parent-pin" className="sr-only">
-                      Mã PIN phụ huynh 4 chữ số
+                      Mã PIN phụ huynh (4–6 chữ số)
                     </label>
                     <input
                       id="time-up-parent-pin"
+                      name="parentPin"
                       data-testid="time-up-parent-pin-input"
                       type="password"
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={4}
+                      maxLength={6}
                       autoComplete="off"
-                      placeholder="Mã PIN 4 số"
+                      placeholder="Mã PIN 4–6 số"
                       value={parentPin}
-                      onChange={(event) => setParentPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                      onChange={(event) => setParentPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
                       className="min-h-[44px] min-w-0 flex-1 rounded-lg border-2 border-ink bg-paper-white px-3 py-2 text-center font-mono text-sm font-bold tracking-widest text-ink"
                     />
                     <button

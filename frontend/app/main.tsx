@@ -10,7 +10,7 @@ import { ProfilePickerModal } from '@/features/profiles/components/ProfilePicker
 import { AuthProvider, useAuth } from '@/lib/context/AuthContext';
 import { ScreenTimeProvider } from '@/lib/context/ScreenTimeContext';
 import { WatchlistProvider } from '@/lib/context/WatchlistContext';
-import { initMotionPreference, isMotionReduced } from '@/lib/motion';
+import { initLargeTextPreference, initMotionPreference, isMotionReduced } from '@/lib/motion';
 import { resolveRouteTitle } from '@/lib/routeTitle';
 import HomePage from './page';
 import NotFound from './not-found';
@@ -42,7 +42,14 @@ function App() {
   const [renderedLocation, setRenderedLocation] = useState(location);
   const prevPathnameRef = useRef(location.pathname);
 
-  useEffect(() => initMotionPreference(), []);
+  useEffect(() => {
+    const cleanupMotion = initMotionPreference();
+    const cleanupLargeText = initLargeTextPreference();
+    return () => {
+      cleanupMotion();
+      cleanupLargeText();
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (prevPathnameRef.current === location.pathname) {

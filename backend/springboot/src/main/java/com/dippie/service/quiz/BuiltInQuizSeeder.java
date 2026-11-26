@@ -98,7 +98,8 @@ public class BuiltInQuizSeeder implements ApplicationRunner {
 
     private void seedQuestions(Long setId, List<BuiltInQuizCatalog.SeedQuestion> items, LocalDateTime now) {
         for (BuiltInQuizCatalog.SeedQuestion item : items) {
-            if (!quizQuestionRepository.existsBySeedKey(item.seedKey())) {
+            QuizQuestion existing = quizQuestionRepository.findBySeedKey(item.seedKey()).orElse(null);
+            if (existing == null) {
                 quizQuestionRepository.save(new QuizQuestion(
                         setId,
                         item.seedKey(),
@@ -114,6 +115,22 @@ public class BuiltInQuizSeeder implements ApplicationRunner {
                         true,
                         now
                 ));
+            } else if (!existing.getQuestionText().equals(item.questionText())) {
+                // đồng bộ lại câu hỏi mặc định khi cập nhật lời dẫn song ngữ cho bé nhỏ
+                existing.update(
+                        item.questionText(),
+                        item.optionA(),
+                        item.optionB(),
+                        item.optionC(),
+                        item.optionD(),
+                        item.correctOption(),
+                        item.explanation(),
+                        item.subject(),
+                        item.grade(),
+                        existing.isActive(),
+                        now
+                );
+                quizQuestionRepository.save(existing);
             }
         }
         quizQuestionRepository.flush();

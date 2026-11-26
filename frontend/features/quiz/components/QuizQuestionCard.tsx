@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Check, RefreshCw, Volume2, X } from 'lucide-react';
 import {
+  formatQuestionForDisplay,
   speakQuizOption,
   speakQuizQuestionAndOptions,
   type QuizOption,
@@ -37,8 +38,11 @@ const OPTION_STYLES: Record<
   },
 };
 
-const fallbackDraftByQuestion = new Map<string, QuizOptionKey>();
-const fallbackSpeechNoticeByQuestion = new Map<string, string | null>();
+const SPEECH_FALLBACK_NOTICE =
+  'Thiết bị này chưa có giọng đọc tự động phù hợp, ba mẹ đọc giúp bé nhé.';
+
+const DRAFT_STORE = new Map<string, QuizOptionKey | null>();
+const SPEECH_NOTICE_STORE = new Map<string, string | null>();
 
 function OptionShapeIcon({ shape }: { shape: 'triangle' | 'diamond' | 'circle' | 'square' }) {
   return (
@@ -73,6 +77,7 @@ export function QuizQuestionCard({
   compact = false,
   selectedOption,
   onDraftSelectOption,
+  onReadAloud,
   questionTestId = 'quiz-question-text',
   feedbackTestId = 'quiz-feedback',
   onSelectOption,
@@ -92,6 +97,7 @@ export function QuizQuestionCard({
   compact?: boolean;
   selectedOption?: QuizOptionKey | null;
   onDraftSelectOption?: (option: QuizOptionKey) => void;
+  onReadAloud?: () => void;
   questionTestId?: string;
   feedbackTestId?: string;
   onSelectOption: (option: QuizOptionKey) => void;
@@ -100,33 +106,43 @@ export function QuizQuestionCard({
 }) {
   const lockedByReveal = Boolean(wrongReveal);
   const questionKey = `${question}::${options.map((o) => `${o.key}:${o.text}`).join('|')}`;
+  const hasRealReactRuntime = typeof React.version === 'string' && typeof useState === 'function';
+  const renderTickState = hasRealReactRuntime ? useState(0) : null;
+  const bumpRender = renderTickState ? renderTickState[1] : null;
+
   const isControlled = selectedOption !== undefined || onDraftSelectOption !== undefined;
   const effectiveDraft = isControlled
     ? selectedOption ?? null
-    : fallbackDraftByQuestion.get(questionKey) ?? null;
-  const speechNotice = fallbackSpeechNoticeByQuestion.get(questionKey) ?? null;
+    : DRAFT_STORE.get(questionKey) ?? null;
+  const speechNotice = SPEECH_NOTICE_STORE.get(questionKey) ?? null;
   const chosenOptionObj = effectiveDraft ? options.find((opt) => opt.key === effectiveDraft) ?? null : null;
+  const displayQuestion =
+    typeof formatQuestionForDisplay === 'function'
+      ? formatQuestionForDisplay(question, subject, gradeLabel)
+      : question;
 
   const handleReadAloud = () => {
-    const ok = speakQuizQuestionAndOptions(question, options, subject);
-    fallbackSpeechNoticeByQuestion.set(
-      questionKey,
-      ok ? null : 'Thiết bị này chưa bật giọng đọc tự động, ba mẹ đọc giúp bé nhé.'
-    );
+    onReadAloud?.();
+    const ok = speakQuizQuestionAndOptions(displayQuestion, options, subject);
+    if (SPEECH_NOTICE_STORE.size > 64) SPEECH_NOTICE_STORE.clear();
+    SPEECH_NOTICE_STORE.set(questionKey, ok ? null : SPEECH_FALLBACK_NOTICE);
+    bumpRender?.((n) => n + 1);
   };
 
   const handleSpeakSingleOption = (opt: QuizOption) => {
+    onReadAloud?.();
     const ok = speakQuizOption(opt.key, opt.text, subject);
-    fallbackSpeechNoticeByQuestion.set(
-      questionKey,
-      ok ? null : 'Thiết bị này chưa bật giọng đọc tự động, ba mẹ đọc giúp bé nhé.'
-    );
+    if (SPEECH_NOTICE_STORE.size > 64) SPEECH_NOTICE_STORE.clear();
+    SPEECH_NOTICE_STORE.set(questionKey, ok ? null : SPEECH_FALLBACK_NOTICE);
+    bumpRender?.((n) => n + 1);
   };
 
   const handleChooseDraft = (key: QuizOptionKey) => {
     if (submitting || lockedByReveal) return;
     if (!isControlled) {
-      fallbackDraftByQuestion.set(questionKey, key);
+      if (DRAFT_STORE.size > 64) DRAFT_STORE.clear();
+      DRAFT_STORE.set(questionKey, key);
+      bumpRender?.((n) => n + 1);
     }
     onDraftSelectOption?.(key);
   };
@@ -134,7 +150,8 @@ export function QuizQuestionCard({
   const handleConfirmAnswer = () => {
     if (!effectiveDraft || submitting || lockedByReveal) return;
     if (!isControlled) {
-      fallbackDraftByQuestion.delete(questionKey);
+      DRAFT_STORE.delete(questionKey);
+      bumpRender?.((n) => n + 1);
     }
     onSelectOption(effectiveDraft);
   };
@@ -186,7 +203,7 @@ export function QuizQuestionCard({
               : 'mt-2 text-center font-display text-lg font-bold leading-snug text-ink sm:text-xl'
           }
         >
-          {question}
+          {displayQuestion}
         </p>
 
         {speechNotice && (

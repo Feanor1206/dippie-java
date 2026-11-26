@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useOptionalScreenTime } from '@/lib/context/ScreenTimeContext';
 import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
 import { ExitKidModeDialog } from '@/features/profiles/components/ExitKidModeDialog';
+import { useDetectedStandaloneFilmCount } from '@/features/profiles/components/KidModeDashboard';
 import { ScreenTimeChip } from '@/features/profiles/components/ScreenTimeChip';
 
 export function Navbar() {
@@ -15,6 +16,7 @@ export function Navbar() {
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
   const [preferSiblingSwitch, setPreferSiblingSwitch] = useState(false);
   const [fallbackReducedMotion, setFallbackReducedMotion] = useState(false);
+  const [fallbackLargeText, setFallbackLargeText] = useState(false);
 
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
@@ -43,8 +45,21 @@ export function Navbar() {
       setFallbackReducedMotion((prev) => !prev);
     }
   };
+  const largeTextPref = typeof motion.useLargeText === 'function' ? motion.useLargeText() : null;
+  const isLargeText = largeTextPref ? largeTextPref.largeText : fallbackLargeText;
+  const handleToggleLargeText = () => {
+    if (largeTextPref) {
+      largeTextPref.toggle();
+    } else {
+      setFallbackLargeText((prev) => !prev);
+    }
+  };
 
   const kidMode = Boolean(isKidMode);
+  const detectedStandaloneCount =
+    typeof useDetectedStandaloneFilmCount === 'function' ? useDetectedStandaloneFilmCount(kidMode) : null;
+  const zeroStandaloneFilms = detectedStandaloneCount === 0;
+  const canPickChild = Boolean(isAuthenticated && !kidMode && parentModeEnabled && childProfiles.length > 0);
   const screenTime = typeof useOptionalScreenTime === 'function' ? useOptionalScreenTime() : null;
   const showAdmin = user?.role === 'ROLE_ADMIN' && !kidMode;
   const siblingCount = Array.isArray(childProfiles)
@@ -120,61 +135,62 @@ export function Navbar() {
   };
 
   return (
-    <header className="comic-navbar sticky top-0 z-40 border-b border-surface-border/25 bg-background">
-      <nav aria-label="Điều hướng chính" className="page-shell flex h-[68px] items-center justify-between gap-1.5 sm:gap-2">
-        <div className="flex min-w-0 items-center gap-3 lg:gap-7">
-          <Link
-            to="/"
-            className="flex shrink-0 items-center gap-2 text-xl font-bold tracking-tight text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand rounded px-0.5 sm:px-1"
-          >
-            <span className="comic-wordmark">Dippie</span>
-          </Link>
+    <>
+      <header className="comic-navbar sticky top-0 z-40 border-b border-surface-border/25 bg-background">
+        <nav aria-label="Điều hướng chính" className="page-shell flex h-[68px] items-center justify-between gap-1 sm:gap-2">
+          <div className="flex shrink-0 items-center gap-2 md:gap-3.5 lg:gap-7">
+            <Link
+              to="/"
+              className="flex shrink-0 items-center gap-2 text-xl font-bold tracking-tight text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand rounded px-0.5 sm:px-1"
+            >
+              <span className="comic-wordmark">Dippie</span>
+            </Link>
 
-          <div className="hidden lg:flex items-center gap-5">
-            {desktopNavLinks.map((link) => {
-              const isActive = isActiveLink(link.href);
-              return (
-                <Link
-                  key={link.name}
-                  to={link.href}
-                  data-testid={link.href === '/gia-dinh' ? 'nav-family-link' : undefined}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={`inline-flex min-h-[44px] items-center whitespace-nowrap text-sm font-medium transition-colors ${
-                    isActive ? 'text-brand-dark font-semibold' : 'text-muted hover:text-ink'
-                  }`}
-                >
-                  {link.name}
-                  {link.count !== undefined && link.count > 0 && (
-                    <span className="ml-1 rounded-full bg-surface-elevated px-1.5 py-0.5 text-[0.6875rem] font-semibold text-brand-dark">
-                      {link.count}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
+            <div className="hidden md:flex items-center gap-2.5 lg:gap-5">
+              {desktopNavLinks.map((link) => {
+                const isActive = isActiveLink(link.href);
+                return (
+                  <Link
+                    key={link.name}
+                    to={link.href}
+                    data-testid={link.href === '/gia-dinh' ? 'nav-family-link' : undefined}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`inline-flex min-h-[44px] items-center whitespace-nowrap text-xs lg:text-sm font-medium transition-colors ${
+                      isActive ? 'text-brand-dark font-semibold' : 'text-muted hover:text-ink'
+                    }`}
+                  >
+                    {link.name}
+                    {link.count !== undefined && link.count > 0 && (
+                      <span className="ml-1 rounded-full bg-surface-elevated px-1.5 py-0.5 text-[0.6875rem] font-semibold text-brand-dark">
+                        {link.count}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        <div className="hidden lg:flex shrink-0 items-center gap-2.5">
-          {isAuthenticated && !kidMode && parentModeEnabled && (
+          <div className="hidden lg:flex shrink-0 items-center gap-2.5">
+            {canPickChild && (
+              <button
+                type="button"
+                data-testid="header-pick-child-button"
+                onClick={() => openProfilePicker?.()}
+                className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-mint px-3.5 text-sm font-bold text-ink shadow-[2px_2px_0_#203328] transition-colors hover:bg-brand cursor-pointer"
+              >
+                Chọn bé
+              </button>
+            )}
+
             <button
               type="button"
-              data-testid="header-pick-child-button"
-              onClick={() => openProfilePicker?.()}
-              className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-mint px-3.5 text-sm font-bold text-ink shadow-[2px_2px_0_#203328] transition-colors hover:bg-brand cursor-pointer"
+              title="Nhờ CineBot tìm phim theo tên, nhân vật hoặc cảnh phim bạn nhớ"
+              onClick={openChat}
+              className="min-h-[44px] min-w-[44px] inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-[#f2d18c] px-3.5 text-sm font-bold text-ink shadow-[2px_2px_0_#203328] transition-colors hover:bg-[#f7dfa8] cursor-pointer"
             >
-              Chọn bé
+              Hỏi CineBot
             </button>
-          )}
-
-          <button
-            type="button"
-            title="Nhờ CineBot gợi ý phim theo chủ đề hoặc nhân vật bé thích"
-            onClick={openChat}
-            className="min-h-[44px] min-w-[44px] inline-flex items-center gap-1.5 rounded-lg border-2 border-ink bg-[#f2d18c] px-3.5 text-sm font-bold text-ink shadow-[2px_2px_0_#203328] transition-colors hover:bg-[#f7dfa8] cursor-pointer"
-          >
-            Hỏi CineBot
-          </button>
 
           {isAuthenticated && user ? (
             <div className="relative" ref={dropdownRef} onBlur={(event) => {
@@ -271,7 +287,7 @@ export function Navbar() {
                     >
                       Lịch sử xem
                     </Link>
-                    {!kidMode && parentModeEnabled && (
+                    {canPickChild && (
                       <button
                         type="button"
                         role="menuitem"
@@ -297,6 +313,19 @@ export function Navbar() {
                       <span>Giảm chuyển động</span>
                       <span className="rounded border border-ink/30 bg-surface-muted px-1.5 py-0.5 text-[0.625rem] font-bold">
                         {isReducedMotion ? 'Đang bật' : 'Đang tắt'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      tabIndex={-1}
+                      data-testid="nav-large-text-toggle"
+                      onClick={() => handleToggleLargeText()}
+                      className="flex min-h-[44px] w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-mint/60 transition-colors cursor-pointer"
+                    >
+                      <span>Cỡ chữ lớn</span>
+                      <span className="rounded border border-ink/30 bg-surface-muted px-1.5 py-0.5 text-[0.625rem] font-bold">
+                        {isLargeText ? 'Đang bật' : 'Đang tắt'}
                       </span>
                     </button>
                   </div>
@@ -346,13 +375,13 @@ export function Navbar() {
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2 lg:hidden">
-          {isAuthenticated && !kidMode && parentModeEnabled && (
+        <div className="flex shrink-0 items-center gap-1 sm:gap-1.5 lg:hidden">
+          {canPickChild && (
             <button
               type="button"
               data-testid="tablet-pick-child-button"
               onClick={() => openProfilePicker?.()}
-              className="hidden md:inline-flex min-h-[44px] items-center rounded-lg border-2 border-ink bg-mint px-3 text-xs font-bold text-ink shadow-[2px_2px_0_#203328] hover:bg-brand cursor-pointer"
+              className="hidden md:inline-flex min-h-[44px] items-center rounded-lg border-2 border-ink bg-mint px-2.5 text-xs font-bold text-ink shadow-[2px_2px_0_#203328] hover:bg-brand cursor-pointer"
             >
               Chọn bé
             </button>
@@ -363,23 +392,23 @@ export function Navbar() {
             data-testid="mobile-search-link"
             aria-label="Tìm phim"
             onClick={() => setOpen(false)}
-            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-lg border border-surface-border bg-surface px-2 sm:px-3 text-xs font-semibold text-ink hover:bg-surface-elevated"
+            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-lg border border-surface-border bg-surface px-2.5 text-xs font-semibold text-ink hover:bg-surface-elevated"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <circle cx="11" cy="11" r="7" />
               <path d="m20 20-3.5-3.5" />
             </svg>
-            <span>Tìm</span>
+            <span className="hidden sm:max-md:inline">Tìm</span>
           </Link>
 
           <button
             type="button"
             data-testid="mobile-cinebot-launcher"
-            aria-label="Mở CineBot"
+            aria-label="Mở trợ lý tìm phim CineBot"
             onClick={openChat}
-            className="min-h-[44px] min-w-[44px] rounded-lg border-2 border-ink bg-[#f2d18c] px-2 sm:px-3 text-xs font-bold text-ink shadow-[2px_2px_0_#203328] hover:bg-[#f7dfa8] cursor-pointer"
+            className="min-h-[44px] min-w-[44px] rounded-lg border-2 border-ink bg-[#f2d18c] px-2.5 text-xs font-bold text-ink shadow-[2px_2px_0_#203328] hover:bg-[#f7dfa8] cursor-pointer"
           >
-            CineBot
+            Hỏi phim
           </button>
 
           {isAuthenticated ? (
@@ -449,7 +478,7 @@ export function Navbar() {
                     </p>
                   </div>
                 </div>
-                {!kidMode && parentModeEnabled && (
+                {canPickChild && (
                   <button
                     type="button"
                     data-testid="mobile-switch-profile"
@@ -536,6 +565,16 @@ export function Navbar() {
                 <span className="font-bold">{isReducedMotion ? 'Đang bật' : 'Đang tắt'}</span>
               </button>
 
+              <button
+                type="button"
+                data-testid="mobile-large-text-toggle"
+                onClick={() => handleToggleLargeText()}
+                className="btn-secondary min-h-[44px] w-full justify-between px-4 text-xs"
+              >
+                <span>Cỡ chữ lớn</span>
+                <span className="font-bold">{isLargeText ? 'Đang bật' : 'Đang tắt'}</span>
+              </button>
+
               {isAuthenticated && (
                 <>
                   {!kidMode && (
@@ -587,12 +626,27 @@ export function Navbar() {
         </div>
       )}
 
+        {exitDialogOpen && (
+          <ExitKidModeDialog
+            open={exitDialogOpen}
+            preferSiblingSwitch={preferSiblingSwitch}
+            onClose={() => {
+              setExitDialogOpen(false);
+              setPreferSiblingSwitch(false);
+            }}
+          />
+        )}
+      </header>
+
       {isAuthenticated && kidMode && (
-        <div data-testid="kid-mode-banner" className="border-t border-ink/20 bg-[#f2d18c]/45">
-          <div className="page-shell flex flex-wrap items-center justify-between gap-2 py-2">
-            <div className="flex min-w-0 items-center gap-2.5">
+        <div
+          data-testid="kid-mode-banner"
+          className="border-b border-ink/20 bg-[#f2d18c]/45 sm:sticky sm:top-[68px] sm:z-30"
+        >
+          <div className="page-shell flex flex-wrap items-center justify-between gap-2 py-1.5 sm:py-2">
+            <div className="flex min-w-0 items-center gap-2">
               <ChildAvatarBadge avatarKey={activeProfile?.avatarKey} size="sm" />
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
                 <span className="inline-flex items-center rounded-full border border-ink/30 bg-paper-white px-2 py-0.5 text-[0.625rem] font-bold text-brand-dark">
                   Hồ sơ trẻ em
                 </span>
@@ -609,20 +663,20 @@ export function Navbar() {
                 )}
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <Link
                 to="/#goc-cua-be"
                 data-testid="kid-mode-dashboard-link"
-                className="btn-secondary min-h-[44px] px-3 py-1.5 text-xs font-bold"
+                className="btn-secondary min-h-[44px] px-2.5 sm:px-3 py-1.5 text-xs font-bold"
               >
-                Nhiệm vụ &amp; Vé phim
+                {zeroStandaloneFilms ? 'Nhiệm vụ của bé' : 'Nhiệm vụ & Vé phim'}
               </Link>
               {siblingCount > 0 && (
                 <button
                   type="button"
                   data-testid="kid-switch-sibling-button"
                   onClick={() => openExitDialog(true)}
-                  className="btn-secondary min-h-[44px] px-3 py-1.5 text-xs font-bold"
+                  className="btn-secondary min-h-[44px] px-2.5 sm:px-3 py-1.5 text-xs font-bold"
                 >
                   Đổi bé
                 </button>
@@ -631,7 +685,7 @@ export function Navbar() {
                 type="button"
                 data-testid="exit-kid-mode-button"
                 onClick={() => openExitDialog(false)}
-                className="btn-secondary min-h-[44px] px-3 py-1.5 text-xs font-bold"
+                className="btn-secondary min-h-[44px] px-2.5 sm:px-3 py-1.5 text-xs font-bold"
               >
                 Thoát hồ sơ trẻ em
               </button>
@@ -639,17 +693,6 @@ export function Navbar() {
           </div>
         </div>
       )}
-
-      {exitDialogOpen && (
-        <ExitKidModeDialog
-          open={exitDialogOpen}
-          preferSiblingSwitch={preferSiblingSwitch}
-          onClose={() => {
-            setExitDialogOpen(false);
-            setPreferSiblingSwitch(false);
-          }}
-        />
-      )}
-    </header>
+    </>
   );
 }

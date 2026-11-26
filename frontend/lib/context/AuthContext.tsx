@@ -75,6 +75,27 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const API = '/api';
 const REQUEST_TIMEOUT_MS = 8000;
+export const PICKER_LOCK_STORAGE_KEY = 'dippie_picker_locked';
+
+function readPickerLock(): boolean {
+  if (typeof sessionStorage === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(PICKER_LOCK_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writePickerLock(locked: boolean): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    if (locked) {
+      sessionStorage.setItem(PICKER_LOCK_STORAGE_KEY, '1');
+    } else {
+      sessionStorage.removeItem(PICKER_LOCK_STORAGE_KEY);
+    }
+  } catch {}
+}
 
 function validateAuthPayload(payload: any, fallbackToken?: string): { user: AuthUser; token: string } | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -125,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [parentModeEnabled, setParentModeEnabled] = useState(false);
   const [childProfiles, setChildProfiles] = useState<ChildProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
-  const [showProfilePicker, setShowProfilePicker] = useState(false);
+  const [showProfilePicker, setShowProfilePicker] = useState<boolean>(() => readPickerLock());
   const [showPostSignupFamilyOffer, setShowPostSignupFamilyOffer] = useState(false);
   const activeToken = useRef<string | null>(null);
   const activeUserId = useRef<number | null>(null);
@@ -163,6 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     abortActiveRequest();
     activeToken.current = null;
     activeUserId.current = null;
+    writePickerLock(false);
     clearPrivateStorage({ clearLocal: clearStorage });
     notifySessionReset();
     setSessionEpoch((epoch) => epoch + 1);
@@ -207,8 +229,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setParentModeEnabled(enabled);
         setChildProfiles(profiles);
         setActiveProfile(active);
-        if (openPickerIfEnabled && enabled && !active) {
+        const shouldOpenPicker = (openPickerIfEnabled || readPickerLock()) && enabled && !active;
+        if (shouldOpenPicker) {
+          writePickerLock(true);
           setShowProfilePicker(true);
+        } else if (!enabled || active !== null) {
+          writePickerLock(false);
+          setShowProfilePicker(false);
         }
         return {
           parentModeEnabled: enabled,
@@ -267,9 +294,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           const validated = validateAuthPayload(json?.data, authToken);
           if (json?.success && validated) {
+            const wasPickerLocked = readPickerLock();
             applyVerifiedSession(validated.token, validated.user, false);
             if (!background) {
-              await loadProfilesSilently(validated.token, generation, false);
+              await loadProfilesSilently(validated.token, generation, wasPickerLocked);
             }
           } else if (!background) {
             endSession();
@@ -645,11 +673,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const openProfilePicker = useCallback(() => {
     if (parentModeEnabled && !activeProfile) {
+      writePickerLock(true);
       setShowProfilePicker(true);
     }
   }, [parentModeEnabled, activeProfile]);
 
   const closeProfilePicker = useCallback(() => {
+    writePickerLock(false);
     setShowProfilePicker(false);
   }, []);
 
@@ -666,6 +696,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setParentModeEnabled(state.parentModeEnabled);
       setChildProfiles(state.profiles);
       setActiveProfile(state.activeProfile);
+      if (!state.parentModeEnabled || state.activeProfile) {
+        writePickerLock(false);
+        setShowProfilePicker(false);
+      }
       return state;
     } catch {
       return null;
@@ -675,6 +709,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const applyProfileSwitch = useCallback((nextToken: string, nextUser: AuthUser, nextProfile: ChildProfile | null) => {
     abortActiveRequest();
     generationRef.current += 1;
+    writePickerLock(false);
     clearPrivateStorage({ keepToken: true, keepNonEmptyGuest: false });
     notifySessionReset();
     setSessionEpoch((epoch) => epoch + 1);

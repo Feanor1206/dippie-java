@@ -240,7 +240,7 @@ export function ParentQuizInsightsSection({
 
           {activeChild.weeklySummary.totalAnswered === 0 ? (
             <p className="rounded-xl border border-dashed border-surface-border bg-surface-muted p-4 text-center text-xs text-muted">
-              Tuần này {activeChild.name} chưa trả lời câu hỏi nào. Khi bé trả lời câu hỏi thưởng phút, thuốc Dieppie, rương báu hoặc phim cần trả lời câu hỏi, kết quả sẽ tự tổng hợp tại đây.
+              Tuần này {activeChild.name} chưa trả lời câu hỏi nào. Khi bé trả lời câu hỏi thưởng phút, câu hỏi nghỉ mắt cùng Dieppie, rương câu hỏi bất ngờ hoặc phim cần trả lời câu hỏi, kết quả sẽ tự tổng hợp tại đây.
             </p>
           ) : (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

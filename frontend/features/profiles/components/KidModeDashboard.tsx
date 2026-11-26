@@ -22,6 +22,60 @@ export function isStandaloneCatalogFilm(item: Movie | null | undefined): boolean
   return true;
 }
 
+let cachedStandaloneFilmCount: number | null = null;
+let pendingStandaloneFilmRequest: Promise<number | null> | null = null;
+
+export function resetStandaloneFilmCountCache(): void {
+  cachedStandaloneFilmCount = null;
+  pendingStandaloneFilmRequest = null;
+}
+
+export function useDetectedStandaloneFilmCount(
+  enabled = true,
+  options: { allowWithoutLocation?: boolean } = {}
+): number | null {
+  const [detected, setDetected] = useState<number | null>(() => cachedStandaloneFilmCount);
+  const allowWithoutLocation = Boolean(options.allowWithoutLocation);
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (cachedStandaloneFilmCount !== null) {
+      setDetected(cachedStandaloneFilmCount);
+      return;
+    }
+    if (!allowWithoutLocation && (typeof window === 'undefined' || !window.location?.href)) {
+      return;
+    }
+    if (typeof browseCatalog !== 'function') return;
+    if (!pendingStandaloneFilmRequest) {
+      pendingStandaloneFilmRequest = browseCatalog({ page: 0, size: 48 })
+        .then((page) => {
+          if (!page || !Array.isArray(page.items)) return null;
+          const total = typeof page.totalElements === 'number' ? page.totalElements : page.items.length;
+          if (total <= 0 && page.items.length === 0) return null;
+          const count = page.items.filter(isStandaloneCatalogFilm).length;
+          cachedStandaloneFilmCount = count;
+          return count;
+        })
+        .catch(() => null)
+        .finally(() => {
+          pendingStandaloneFilmRequest = null;
+        });
+    }
+    let active = true;
+    void pendingStandaloneFilmRequest.then((count) => {
+      if (active && count !== null) {
+        setDetected(count);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [enabled]);
+
+  return detected;
+}
+
 export function KidModeDashboard({
   standaloneFilmCount,
 }: {
@@ -33,7 +87,9 @@ export function KidModeDashboard({
   const profileId = auth?.activeProfile?.id ?? null;
 
   const [vaultStatus, setVaultStatus] = useState<WeekendVaultStatus | null>(null);
-  const [detectedStandaloneCount, setDetectedStandaloneCount] = useState<number>(0);
+  const detectedStandalone = useDetectedStandaloneFilmCount(isKidMode && standaloneFilmCount === undefined, {
+    allowWithoutLocation: true,
+  });
 
   useEffect(() => {
     if (!isKidMode || !token) {
@@ -55,33 +111,12 @@ export function KidModeDashboard({
     return () => controller?.abort();
   }, [isKidMode, token, profileId]);
 
-  useEffect(() => {
-    if (!isKidMode || standaloneFilmCount !== undefined || typeof browseCatalog !== 'function') {
-      return;
-    }
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    browseCatalog({ page: 0, size: 48, signal: controller?.signal })
-      .then((page) => {
-        if (controller?.signal.aborted) return;
-        const count = Array.isArray(page?.items)
-          ? page.items.filter(isStandaloneCatalogFilm).length
-          : 0;
-        setDetectedStandaloneCount(count);
-      })
-      .catch(() => {
-        if (!controller?.signal.aborted) {
-          setDetectedStandaloneCount(0);
-        }
-      });
-    return () => controller?.abort();
-  }, [isKidMode, standaloneFilmCount]);
-
   if (!isKidMode || !token) {
     return null;
   }
 
   const effectiveStandaloneCount =
-    typeof standaloneFilmCount === 'number' ? standaloneFilmCount : detectedStandaloneCount;
+    typeof standaloneFilmCount === 'number' ? standaloneFilmCount : (detectedStandalone ?? 0);
   const showWeekendVault = Boolean(
     vaultStatus && vaultStatus.enabled && effectiveStandaloneCount > 0
   );

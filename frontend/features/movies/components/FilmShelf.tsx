@@ -143,9 +143,19 @@ export function FilmGrid({
                     Chỉ mở trên YouTube
                   </span>
                 )}
-                <span className="text-xs font-medium text-muted" data-testid="film-card-rating">
-                  {ratingSummary.hasRating ? `★ ${ratingSummary.label}` : ratingSummary.label}
-                </span>
+                {search && !externalOnly && type !== 'series' && (
+                  <span
+                    data-testid="film-playable-badge"
+                    className="inline-flex items-center rounded border border-ink/25 bg-mint/55 px-2 py-0.5 text-[0.6875rem] font-semibold text-ink"
+                  >
+                    Phát ngay trên Dippie
+                  </span>
+                )}
+                {ratingSummary.hasRating && (
+                  <span className="text-xs font-medium text-muted" data-testid="film-card-rating">
+                    ★ {ratingSummary.label}
+                  </span>
+                )}
                 {displayGenres.length > 0 && (
                   <div className="flex flex-wrap gap-1" data-testid="film-card-genres">
                     {displayGenres.map((genre) => (

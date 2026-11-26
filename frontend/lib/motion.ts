@@ -4,6 +4,8 @@ import { useGSAP } from '@gsap/react';
 
 export const MOTION_STORAGE_KEY = 'dippie_motion';
 export const MOTION_CHANGE_EVENT = 'dippie:motion-change';
+export const LARGE_TEXT_STORAGE_KEY = 'dippie_large_text';
+export const LARGE_TEXT_CHANGE_EVENT = 'dippie:large-text-change';
 
 export const MOTION_EASING = {
   inOut: 'cubic-bezier(0.65, 0, 0.35, 1)',
@@ -147,6 +149,88 @@ export function useReducedMotion(): { reduced: boolean; toggle: () => void } {
     toggle: () => {
       const next = toggleMotionReduced();
       setReduced(next);
+    },
+  };
+}
+
+function readStoredLargeText(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage?.getItem(LARGE_TEXT_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function isLargeTextEnabled(): boolean {
+  if (typeof document !== 'undefined' && document.documentElement?.dataset?.textSize === 'large') {
+    return true;
+  }
+  return readStoredLargeText();
+}
+
+export function syncDocumentLargeTextAttribute(): boolean {
+  const enabled = readStoredLargeText();
+  if (typeof document !== 'undefined' && document.documentElement) {
+    if (enabled) {
+      document.documentElement.setAttribute('data-text-size', 'large');
+    } else {
+      document.documentElement.removeAttribute('data-text-size');
+    }
+  }
+  return enabled;
+}
+
+export function initLargeTextPreference(): () => void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return () => {};
+  }
+  syncDocumentLargeTextAttribute();
+  return () => {};
+}
+
+export function setLargeTextPreference(enabled: boolean): void {
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage?.setItem(LARGE_TEXT_STORAGE_KEY, enabled ? '1' : '0');
+    } catch {}
+  }
+  syncDocumentLargeTextAttribute();
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(LARGE_TEXT_CHANGE_EVENT));
+  }
+}
+
+export function toggleLargeText(): boolean {
+  const next = !isLargeTextEnabled();
+  setLargeTextPreference(next);
+  return next;
+}
+
+export function useLargeText(): { largeText: boolean; toggle: () => void } {
+  const [largeText, setLargeText] = useState<boolean>(() => isLargeTextEnabled());
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sync = () => setLargeText(syncDocumentLargeTextAttribute());
+    sync();
+    if (typeof window.addEventListener === 'function') {
+      window.addEventListener(LARGE_TEXT_CHANGE_EVENT, sync);
+      window.addEventListener('storage', sync);
+    }
+    return () => {
+      if (typeof window.removeEventListener === 'function') {
+        window.removeEventListener(LARGE_TEXT_CHANGE_EVENT, sync);
+        window.removeEventListener('storage', sync);
+      }
+    };
+  }, []);
+
+  return {
+    largeText,
+    toggle: () => {
+      const next = toggleLargeText();
+      setLargeText(next);
     },
   };
 }

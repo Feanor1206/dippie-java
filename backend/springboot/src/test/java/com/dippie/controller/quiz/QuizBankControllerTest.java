@@ -165,6 +165,10 @@ class QuizBankControllerTest {
         assertThat(builtInEnglishId).isPositive();
         assertThat(builtInScienceId).isPositive();
 
+        // câu tiếng anh mẫu giáo và lớp 1 luôn có lời dẫn song ngữ tiếng việt cho bé chưa biết đọc
+        QuizQuestion mgEnglish = quizQuestionRepository.findBySeedKey("en_mg_1").orElseThrow();
+        assertThat(mgEnglish.getQuestionText()).contains("meo meo").contains("What animal says 'Meow'?");
+
         // không sửa hay xóa được bộ có sẵn
         mockMvc.perform(delete("/api/users/quiz/sets/" + builtInEnglishId)
                         .header(HttpHeaders.AUTHORIZATION, bearer(parentA))

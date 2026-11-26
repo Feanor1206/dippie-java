@@ -25,28 +25,28 @@ public final class BuiltInQuizCatalog {
     // 30 câu từ vựng tiếng Anh viết câu hỏi ngắn gọn để bé bấm nghe đọc chuẩn giọng en-US, giải thích tiếng Việt
     public static List<SeedQuestion> englishQuestions() {
         return List.of(
-                // mẫu giáo (5)
-                new SeedQuestion("en_mg_1", "What animal says 'Meow'?", "Cat", "Dog", "Duck", "Cow",
+                // mẫu giáo (5) kèm nghĩa tiếng việt cho bé chưa biết đọc tiếng anh
+                new SeedQuestion("en_mg_1", "Con vật nào kêu 'meo meo'? (What animal says 'Meow'?)", "Cat", "Dog", "Duck", "Cow",
                         QuizOptionKey.A, "Cat là con mèo, kêu meo meo đó!", QuizSubject.TIENG_ANH, QuizGrade.MAU_GIAO),
-                new SeedQuestion("en_mg_2", "What color is a ripe banana?", "Blue", "Yellow", "Purple", "Black",
+                new SeedQuestion("en_mg_2", "Quả chuối chín có màu gì? (What color is a ripe banana?)", "Blue", "Yellow", "Purple", "Black",
                         QuizOptionKey.B, "Yellow là màu vàng giống quả chuối chín!", QuizSubject.TIENG_ANH, QuizGrade.MAU_GIAO),
-                new SeedQuestion("en_mg_3", "Which number comes after four?", "Two", "Three", "Five", "One",
+                new SeedQuestion("en_mg_3", "Số nào đứng liền sau số 4? (Which number comes after four?)", "Two", "Three", "Five", "One",
                         QuizOptionKey.C, "Đếm 1-2-3-4-5: sau four (4) là five (5).", QuizSubject.TIENG_ANH, QuizGrade.MAU_GIAO),
-                new SeedQuestion("en_mg_4", "What animal says 'Woof'?", "Fish", "Bird", "Pig", "Dog",
+                new SeedQuestion("en_mg_4", "Con vật nào kêu 'gâu gâu'? (What animal says 'Woof'?)", "Fish", "Bird", "Pig", "Dog",
                         QuizOptionKey.D, "Dog là chú chó con kêu gâu gâu!", QuizSubject.TIENG_ANH, QuizGrade.MAU_GIAO),
-                new SeedQuestion("en_mg_5", "Which one is a red fruit?", "Apple", "Chair", "Book", "Car",
+                new SeedQuestion("en_mg_5", "Từ nào chỉ quả táo màu đỏ? (Which one is a red fruit?)", "Apple", "Chair", "Book", "Car",
                         QuizOptionKey.A, "Apple là quả táo đỏ giòn ngọt.", QuizSubject.TIENG_ANH, QuizGrade.MAU_GIAO),
 
-                // lớp 1 (5)
-                new SeedQuestion("en_l1_1", "What color is the clear daytime sky?", "Green", "Blue", "Brown", "Pink",
+                // lớp 1 (5) kèm nghĩa tiếng việt để bé dễ hiểu đề bài
+                new SeedQuestion("en_l1_1", "Bầu trời ban ngày trong xanh có màu gì? (What color is the clear daytime sky?)", "Green", "Blue", "Brown", "Pink",
                         QuizOptionKey.B, "Blue là màu xanh dương của bầu trời.", QuizSubject.TIENG_ANH, QuizGrade.LOP_1),
-                new SeedQuestion("en_l1_2", "Which animal lives in water and swims?", "Lion", "Monkey", "Fish", "Rabbit",
+                new SeedQuestion("en_l1_2", "Con vật nào sống và bơi dưới nước? (Which animal lives in water and swims?)", "Lion", "Monkey", "Fish", "Rabbit",
                         QuizOptionKey.C, "Fish là con cá sống và bơi dưới nước.", QuizSubject.TIENG_ANH, QuizGrade.LOP_1),
-                new SeedQuestion("en_l1_3", "What do you say in the morning to greet someone?", "Good morning", "Good night", "Goodbye", "Sorry",
+                new SeedQuestion("en_l1_3", "Buổi sáng bé chào mọi người thế nào? (What do you say in the morning to greet someone?)", "Good morning", "Good night", "Goodbye", "Sorry",
                         QuizOptionKey.A, "Good morning nghĩa là chào buổi sáng.", QuizSubject.TIENG_ANH, QuizGrade.LOP_1),
-                new SeedQuestion("en_l1_4", "Which item do you read at school?", "Shoe", "Plate", "Pillow", "Book",
+                new SeedQuestion("en_l1_4", "Đồ vật nào bé dùng để đọc ở trường? (Which item do you read at school?)", "Shoe", "Plate", "Pillow", "Book",
                         QuizOptionKey.D, "Book là quyển sách dùng để đọc và học.", QuizSubject.TIENG_ANH, QuizGrade.LOP_1),
-                new SeedQuestion("en_l1_5", "Who is your mom in English?", "Brother", "Mother", "Father", "Sister",
+                new SeedQuestion("en_l1_5", "Từ tiếng Anh nào có nghĩa là 'mẹ'? (Who is your mom in English?)", "Brother", "Mother", "Father", "Sister",
                         QuizOptionKey.B, "Mother là mẹ của bé.", QuizSubject.TIENG_ANH, QuizGrade.LOP_1),
 
                 // lớp 2 (5)

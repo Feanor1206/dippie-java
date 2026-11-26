@@ -84,9 +84,11 @@ function AvatarGlyph({ avatarKey, color }: { avatarKey: string; color: string })
 export function ChildAvatarBadge({
   avatarKey,
   size = 'md',
+  decorative = true,
 }: {
   avatarKey?: string | null;
   size?: 'sm' | 'md' | 'lg';
+  decorative?: boolean;
 }) {
   const meta = getChildAvatarMeta(avatarKey);
   const sizeClass =
@@ -97,7 +99,9 @@ export function ChildAvatarBadge({
       : 'h-11 w-11 rounded-xl';
   return (
     <span
-      aria-label={meta.label}
+      role={decorative ? undefined : 'img'}
+      aria-label={decorative ? undefined : meta.label}
+      aria-hidden={decorative ? 'true' : undefined}
       className={`inline-flex shrink-0 items-center justify-center border-2 border-ink ${meta.bgClass} ${sizeClass}`}
     >
       <AvatarGlyph avatarKey={meta.key} color={meta.accentHex} />
