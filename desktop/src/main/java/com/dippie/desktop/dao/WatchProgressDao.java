@@ -1,6 +1,7 @@
 package com.dippie.desktop.dao;
 
 import com.dippie.desktop.db.JdbcDatabase;
+import com.dippie.desktop.model.MostWatched;
 import com.dippie.desktop.model.WatchProgress;
 
 import java.sql.Connection;
@@ -27,9 +28,5 @@ public final class WatchProgressDao extends AbstractJdbcDao<WatchProgress, Long>
                 ORDER BY viewers DESC, s.id
                 LIMIT 10
                 """, row -> new MostWatched(row.getString("id"), row.getString("title"), row.getLong("viewers")));
-    }
-
-    // Một dòng trong bảng các bộ phim nhiều người xem nhất.
-    public record MostWatched(String seriesId, String title, long viewers) {
     }
 }

@@ -9,6 +9,8 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
 
+import team_info as team
+
 BASE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
 SCREENSHOTS_DIR = ASSETS_DIR / "screenshots"
@@ -219,7 +221,7 @@ def add_code_card(slide, left, top, width, height, pillar_title, path_caption, c
                 pillar_title, size=12.4, bold=True, color=SAGE_DARK, valign=MSO_ANCHOR.MIDDLE,
                 margin_x=0.02, margin_y=0.0)
     add_textbox(slide, left + Inches(0.11), top + Inches(0.25), width - Inches(0.22), Inches(0.20),
-                path_caption, size=9.0, italic=True, color=MUTED, valign=MSO_ANCHOR.MIDDLE,
+                path_caption, size=7.8, italic=True, color=MUTED, valign=MSO_ANCHOR.MIDDLE,
                 font_name=CODE_FONT, margin_x=0.02, margin_y=0.0)
 
     code_top = top + hdr_h + Inches(0.04)
@@ -282,7 +284,7 @@ def build_slides():
 
     kpis = [
         ("6 bộ · 806 tập", "Kho hoạt hình tiếng Việt\n1.705 phân đoạn có mốc cảnh"),
-        ("908 ca kiểm thử", "589 Backend (1 bỏ qua Win)\n286 Frontend · 33 Desktop · 36/36 khói"),
+        ("908 ca kiểm thử", "589 backend (1 ca bỏ qua trên Windows)\n286 frontend · 33 desktop · chạy thử 36/36"),
         ("8,2 / 10 điểm UX", "Tăng từ 3,2 lên 6,8 rồi 8,2/10\nqua 3 vòng kiểm thử người dùng"),
     ]
     for i, (big, sub) in enumerate(kpis):
@@ -295,13 +297,15 @@ def build_slides():
                     sub, size=11.3, color=MUTED, line_spacing=1.16)
 
     add_textbox(s1, Inches(0.92), Inches(4.64), Inches(11.6), Inches(0.32),
-                "Trường: ............................   ·   Lớp: ..................   ·   GVHD: ..............................",
+                team.labeled("Trường", "truong", "............................", also=("Đại học", "Học viện", "Viện")) + "   ·   " +
+                f"Lớp: {team.field('lop', '..................')}   ·   "
+                f"Giảng viên: {team.field('giang_vien', '..............................')}",
                 size=12.0, bold=True, color=HONEY_DARK)
     members_s1 = [
-        ("Thành viên 1", "Họ và tên: ..................\nNhóm trưởng · Kiến trúc, Backend"),
-        ("Thành viên 2", "Họ và tên: ..................\nFrontend React và Trải nghiệm UX"),
-        ("Thành viên 3", "Họ và tên: ..................\nCineBot, Tìm kiếm và Gợi ý"),
-        ("Thành viên 4", "Họ và tên: ..................\nJavaFX, CSDL và Triển khai"),
+        (team.label(1), f"Mã SV: {team.student_id(1)}\nNhóm trưởng · backend, CineBot"),
+        (team.label(2), f"Mã SV: {team.student_id(2)}\nJavaFX, JDBC và CSDL"),
+        (team.label(3), f"Mã SV: {team.student_id(3)}\nFrontend React và UX"),
+        (team.label(4), f"Mã SV: {team.student_id(4)}\nDữ liệu phim, triển khai"),
     ]
     for i, (m_name, m_role) in enumerate(members_s1):
         x = Inches(0.92 + i * 2.96)
@@ -314,7 +318,7 @@ def build_slides():
                 size=11.8, italic=True, color=MUTED)
 
     set_notes(s1, (
-        "Dạ em chào thầy và các bạn. Em là Hùng, đại diện nhóm 4 bạn trình bày bài tập lớn Java OOP "
+        f"Dạ em chào thầy và các bạn. Em là {team.nickname(1) or 'nhóm trưởng'}, đại diện nhóm 4 bạn trình bày bài tập lớn Java OOP "
         "với đề tài Dippie, website xem và gợi ý phim hoạt hình cho gia đình kèm ứng dụng quản trị JavaFX. "
         "Trong 5 phút tới, nhóm em sẽ đi qua bài toán, MVC, 4 trụ cột OOP, mẫu GoF rồi demo trực tiếp ạ."
     ))
@@ -396,7 +400,7 @@ def build_slides():
 
     set_notes(s3, (
         "Dippie gom 6 bộ hoạt hình quen thuộc gồm 20 mùa, 806 tập và 1.705 phân đoạn có mốc thời gian. "
-        "Bên phải là ảnh trang chủ do bạn Thành viên 2 dựng. Người dùng tìm không dấu được, lưu tiến độ "
+        f"Bên phải là ảnh trang chủ do {team.call(3)} dựng. Người dùng tìm không dấu được, lưu tiến độ "
         "xem, chấm điểm 1 đến 10, chọn 6 tâm trạng và hỏi CineBot nhảy đúng cảnh phim ạ."
     ))
 
@@ -464,38 +468,49 @@ def build_slides():
 
     left_badges = [
         "1 tiến trình JVM (:3000)\nĐộ trễ API demo 3 đến 43 ms",
-        "32 bảng BCNF · 29 package · 5 Flyway\nH2 AUTO_SERVER dùng chung Web, JavaFX",
+        "32 bảng BCNF · 74 package MVC · 5 Flyway\nH2 AUTO_SERVER dùng chung Web, JavaFX",
     ]
     for i, btxt in enumerate(left_badges):
         bx = Inches(0.60 + i * 3.88)
         add_banner(s5, bx, Inches(5.76), Inches(3.74), Inches(1.06), btxt,
                    fill=MINT_SOFT, border=SAGE, color=SAGE_DARK, size=11.5, bold=True)
 
-    # Bên phải: bảng ánh xạ MVC rõ ràng cho Web và Desktop
-    add_textbox(s5, Inches(8.46), Inches(1.24), Inches(4.27), Inches(0.32),
-                "ÁNH XẠ KIẾN TRÚC MVC", size=12.5, bold=True, color=SAGE_DARK, valign=MSO_ANCHOR.MIDDLE)
+    # Bên phải: ánh xạ MVC và 5 tầng backend (controller / service / repository / model / dto)
+    add_textbox(s5, Inches(8.46), Inches(1.18), Inches(4.27), Inches(0.28),
+                "ÁNH XẠ MVC VÀ 5 TẦNG BACKEND", size=11.8, bold=True, color=SAGE_DARK, valign=MSO_ANCHOR.MIDDLE)
     mvc_cards = [
-        ("Model",
-         "Web: JPA Entities, record DTO, Services, Repositories.\nDesktop: Models, Services, 10 JDBC DAO.",
-         WHITE, SAGE_DARK),
-        ("View",
-         "Web: React 19 SPA nhận JSON từ REST API.\nDesktop: DippieAdminApp và 9 lớp JavaFX View.",
-         MINT_SOFT, SAGE_DARK),
-        ("Controller",
-         "Web: 25 Spring MVC @RestController.\nDesktop: AdminController, LoginController, UiTasks.",
+        ("Controller (C)",
+         "BE: controller (25 REST + GlobalExceptionHandler).\nDesktop: AdminController (filterCatalog), LoginController.",
          HONEY_SOFT, HONEY_DARK),
+        ("Service (giữa C và M)",
+         "BE: service (nghiệp vụ, BM25, CineBot, DiscoverService).\nDesktop: service (AdminServices, Command, Proxy).",
+         MINT_SOFT, SAGE_DARK),
+        ("Model (M: model + repository)",
+         "BE: model (JPA, quy tắc) + repository (JPA, query).\nDesktop: model (TopRated, RatingRow...) + dao + db.",
+         WHITE, SAGE_DARK),
+        ("View (V: React + dto)",
+         "Web: React 19 SPA nhận JSON từ dto (60 record).\nDesktop: 9 lớp view chỉ gọi controller, model, export.",
+         MINT_SOFT, SAGE_DARK),
     ]
     for i, (mt, mb, mfill, mclr) in enumerate(mvc_cards):
-        my = Inches(1.62 + i * 1.76)
-        add_card(s5, Inches(8.46), my, Inches(4.27), Inches(1.64),
+        my = Inches(1.50 + i * 1.22)
+        add_card(s5, Inches(8.46), my, Inches(4.27), Inches(1.14),
                  mt, mb, fill=mfill, border=BORDER, title_color=mclr,
-                 title_size=14.0, body_size=11.8, accent_top=False,
-                 title_h=Inches(0.32), body_line_spacing=1.18)
+                 title_size=12.0, body_size=10.0, accent_top=False,
+                 title_h=Inches(0.25), body_line_spacing=1.14)
+
+    add_banner(
+        s5, Inches(8.46), Inches(6.40), Inches(4.27), Inches(0.50),
+        "Controller chỉ gọi service, không gọi thẳng repository\nModel độc lập tầng trên · Repository không gọi service",
+        fill=MINT, border=SAGE_DARK, color=SAGE_DARK, size=8.8, bold=True
+    )
 
     set_notes(s5, (
         "Dạ, phần này em trình bày kiến trúc tổng thể và ánh xạ MVC. Bên trái là một tiến trình Spring Boot "
-        "phục vụ cả React lẫn API, nối chung cơ sở dữ liệu 32 bảng với Dippie Admin. Bên phải, cả Web lẫn "
-        "JavaFX đều tách rõ Model, View và Controller; backend gồm 25 controller chia trên 29 package theo tính năng ạ."
+        "phục vụ cả React lẫn API, nối chung cơ sở dữ liệu 32 bảng với Dippie Admin. Bên phải, backend chia "
+        "theo tầng trước thành controller, service, repository, model và dto rồi chia gói con theo tính năng; "
+        "controller chỉ gọi service chứ không chạm thẳng repository, còn tầng model độc lập. Bản JavaFX cũng "
+        "tách chặt MVC, tầng view chỉ gọi controller, model và export ạ."
     ))
 
     # =========================================================================
@@ -552,25 +567,25 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
 
     oop_cards = [
         (Inches(0.58), Inches(1.20), "1. Kế thừa (extends)",
-         "common/error/DomainException.java & NotFoundException.java",
+         "exception/DomainException.java & exception/NotFoundException.java",
          code_extends, SAGE, MINT_SOFT),
         (Inches(6.74), Inches(1.20), "2. Giao diện (interface)",
-         "recommendation/RecommendationStrategy.java & desktop/dao/Dao.java",
+         "service/recommendation/RecommendationStrategy.java & desktop/dao/Dao.java",
          code_interface, SAGE, MINT_SOFT),
         (Inches(0.58), Inches(3.86), "3. Lớp trừu tượng (abstract / Template Method)",
-         "library/AbstractLibraryListService.java & FavoriteService.java",
+         "service/library/AbstractLibraryListService.java & service/library/FavoriteService.java",
          code_abstract, HONEY_DARK, HONEY_SOFT),
         (Inches(6.74), Inches(3.86), "4. Đa hình (Polymorphism)",
-         "RecommendationService.java & web/GlobalExceptionHandler.java",
+         "service/recommendation/RecommendationService.java & controller/web/GlobalExceptionHandler.java",
          code_poly, SAGE, MINT_SOFT),
     ]
     for cx, cy, ctitle, cpath, ccode, cbdr, chdr in oop_cards:
         add_code_card(s6, cx, cy, Inches(6.00), Inches(2.58), ctitle, cpath, ccode,
-                      border=cbdr, title_bg=chdr, code_size=9.0)
+                      border=cbdr, title_bg=chdr, code_size=8.3)
 
     add_banner(
         s6, Inches(0.58), Inches(6.52), Inches(12.16), Inches(0.42),
-        "Backend chính (321 tệp): 4 lớp abstract · 35 interface (4 sealed) · 11 lớp con CatalogRecord · 11 lớp con DomainException · 72 @Override",
+        "Backend chính (333 tệp): 4 lớp abstract · 35 interface (4 sealed) · 11 lớp con CatalogRecord · 11 lớp con DomainException · 72 @Override",
         fill=MINT, border=SAGE_DARK, color=SAGE_DARK, size=11.0, bold=True
     )
 
@@ -590,18 +605,18 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
     add_rect(s7, Inches(0.60), Inches(1.34), Inches(12.13), Inches(5.48),
              fill_color=WHITE, border_color=SAGE, border_pt=1.2, rounded=True)
     add_bullets(s7, Inches(0.84), Inches(1.50), Inches(11.65), Inches(5.16), [
-        "Java 21 và I/O: 141 tệp record, 4 sealed interface backend (ChatEvent, PlaybackPrincipal, PlaybackAssetId, HealthStatus), CatalogNode ở desktop; FileChannel 64 KB (ResolvedMediaStream) và CsvExporter UTF-8 BOM.",
-        "Adapter (tách phụ thuộc các gói cốt lõi trong 29 package): ActiveViewerLookup / UserViewerAdapter, MediaFileAvailabilityAdapter, MoviePresentationAdapter và RatingLookup / RatingSummaries.",
-        "Proxy và Facade: Caching Proxy CatalogReadModelCache, Protection Proxy AdminQuery<T> và PlaybackAccess; Facade CatalogImportService, ChatService và AdminServices.",
+        "Java 21 và I/O: 145 tệp record, 4 sealed interface backend (ChatEvent, PlaybackPrincipal, PlaybackAssetId, HealthStatus), CatalogNode ở desktop; FileChannel 64 KB (ResolvedMediaStream) và CsvExporter UTF-8 BOM.",
+        "Adapter (tách phụ thuộc chéo giữa các tính năng ở tầng service): ActiveViewerLookup / UserViewerAdapter, MediaFileAvailabilityAdapter, MoviePresentationAdapter và RatingLookup / RatingSummaries.",
+        "Proxy và Facade: Caching Proxy CatalogReadModelCache, Protection Proxy AdminQuery<T> và PlaybackAccess; Facade CatalogImportService, ChatService, DiscoverService và AdminServices.",
         "Strategy, Observer và Template Method: RecommendationStrategy, AnswerGenerator, MailDeliveryStrategy, CsvStrategy; CatalogImportedEvent và JavaFX Property; AbstractLibraryListService và AbstractJdbcDao.",
         "State, Command, Composite và Creational: CatalogSnapshot.Status và ConnectionState; WatchProgressCommand, ChatStreamGuard.Permit, AccountCommand + CommandHistory (Hoàn tác); CatalogNode; ConnectionProvider và DatabaseFactory.",
     ], size=13.6, space_after=12, line_spacing=1.18)
 
     set_notes(s7, (
         "Về mẫu thiết kế GoF, backend dùng các lớp Adapter như UserViewerAdapter, MediaFileAvailabilityAdapter và "
-        "MoviePresentationAdapter để tách phụ thuộc giữa các gói cốt lõi. Ngoài ra có Proxy CatalogReadModelCache, "
-        "Strategy cho gợi ý và gửi mail, State trên CatalogSnapshot, 4 sealed interface Java 21, còn desktop dùng "
-        "Composite CatalogNode và Command cho nút Hoàn tác ạ."
+        "MoviePresentationAdapter để tách phụ thuộc chéo giữa các tính năng trong tầng service. Ngoài ra có Proxy "
+        "CatalogReadModelCache, Strategy cho gợi ý và gửi mail, State trên CatalogSnapshot, 4 sealed interface "
+        "Java 21, còn desktop dùng Composite CatalogNode và Command cho nút Hoàn tác ạ."
     ))
 
     # =========================================================================
@@ -619,7 +634,8 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
     ], size=14.8, space_after=11, line_spacing=1.20)
 
     set_notes(s8, (
-        "Phần CineBot này do bạn Thành viên 3 phụ trách và trình bày. Câu hỏi đi qua 5 bước trong Java, "
+        "Phần CineBot này em làm. "
+        + "Câu hỏi đi qua 5 bước trong Java, "
         "tìm trên chỉ mục BM25 trong RAM hơn 2.517 tài liệu rồi phát luồng SSE. Nhờ bám dữ liệu chuẩn, "
         "bấm Xem tập sẽ mở đúng giây cảnh phim và từ chối phim ngoài kho ạ."
     ))
@@ -640,7 +656,7 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
 
     add_banner(
         s9, Inches(0.60), Inches(6.24), Inches(6.38), Inches(0.66),
-        "59 tệp Java (3.582 dòng) · 9 package · 9 lớp View · 33/33 ca JUnit 5 đạt",
+        "64 tệp Java (3.605 dòng) · 9 package MVC · 9 lớp View · 33/33 ca JUnit 5 đạt",
         fill=MINT_SOFT, border=SAGE, color=SAGE_DARK, size=11.8, bold=True
     )
 
@@ -664,8 +680,9 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
     )
 
     set_notes(s9, (
-        "Phần ứng dụng desktop Dippie Admin này do bạn Thành viên 4 xây dựng và trình bày. Ứng dụng gồm "
-        "59 tệp Java và 33 ca test JUnit 5, dùng JavaFX 21 với JDBC thuần trên 4 tab: Tổng quan có BarChart, "
+        (f"Phần Dippie Admin này do {team.nickname(2)} làm và trình bày. " if team.nickname(2) else "Tiếp theo là ứng dụng desktop Dippie Admin. ")
+        + "Ứng dụng gồm "
+        "64 tệp Java và 33 ca test JUnit 5, dùng JavaFX 21 với JDBC thuần trên 4 tab: Tổng quan có BarChart, "
         "Danh mục dùng Composite, Người dùng có Hoàn tác bằng Command và Xuất CSV UTF-8 BOM ạ."
     ))
 
@@ -678,9 +695,9 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
     add_picture_fit(s10, ASSETS_DIR / "ux_audit_chart.png", Inches(0.55), Inches(1.32), Inches(7.92), Inches(5.46))
 
     metrics_s10 = [
-        ("3,2 lên 6,8 lên 8,2", "Điểm UX trung bình trên thang 10\nSửa 5/5 lỗi Vòng 1 · 36/36 khói cuối đạt", MINT_SOFT, SAGE_DARK, 17.5),
-        ("589 ca Backend", "69 lớp JUnit Surefire (1 bỏ qua Win)\nSửa 6/6 lỗi nghiêm trọng OWASP (30 mục)", WHITE, SAGE_DARK, 17.5),
-        ("286 FE · 33 Desktop", "29 bộ Frontend · 5 lớp JUnit Desktop\n0 tràn ngang mobile 375 px · chạm 44 px", HONEY_SOFT, HONEY_DARK, 17.5),
+        ("3,2 lên 6,8 lên 8,2", "Điểm UX trung bình trên thang 10\nSửa 5/5 lỗi vòng 1 · chạy thử cuối 36/36", MINT_SOFT, SAGE_DARK, 17.5),
+        ("589 ca backend", "69 lớp JUnit, 1 ca bỏ qua trên Windows\nSửa 6/6 lỗi nghiêm trọng OWASP (30 mục)", WHITE, SAGE_DARK, 17.5),
+        ("286 FE · 33 desktop", "29 bộ test frontend · 5 lớp JUnit desktop\n0 tràn ngang mobile 375 px · chạm 44 px", HONEY_SOFT, HONEY_DARK, 17.5),
     ]
     for i, (m_big, m_desc, m_bg, m_clr, big_sz) in enumerate(metrics_s10):
         y = Inches(1.40 + i * 1.80)
@@ -694,7 +711,7 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
     set_notes(s10, (
         "Dạ, nhóm em chạy 3 vòng kiểm thử trải nghiệm trên cả máy tính lẫn điện thoại 375 pixel, điểm trung "
         "bình tăng từ 3,2 lên 6,8 rồi đạt 8,2 trên 10. Về kiểm thử tự động có 589 ca backend, 286 ca frontend, "
-        "33 ca desktop, kiểm thử khói trên bản dựng cuối đạt 36 trên 36, và đợt rà soát OWASP xử lý xong 6 trên 6 lỗi nghiêm trọng ạ."
+        "33 ca desktop, chạy thử trọn bộ trên bản cuối đạt 36 trên 36, và đợt rà soát OWASP xử lý xong 6 trên 6 lỗi nghiêm trọng ạ."
     ))
 
     # =========================================================================
@@ -736,12 +753,13 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
     add_rect(s11, Inches(0.60), Inches(5.26), Inches(12.13), Inches(1.60),
              fill_color=MINT_SOFT, border_color=SAGE, border_pt=1.2, rounded=True)
     add_bullets(s11, Inches(0.80), Inches(5.36), Inches(11.73), Inches(1.40), [
-        "Đo tải và khói cuối: API demo 3 đến 43 ms; khói cuối đạt 36/36 (nạp 6 bộ 806 tập ~7 giây); MySQL 100.000 tập giữ chi tiết 6,4 ms.",
+        "Đo tải và chạy thử cuối: API demo 3 đến 43 ms; chạy thử trọn bộ đạt 36/36 (nạp 6 bộ, 806 tập trong khoảng 7 giây); MySQL 100.000 tập vẫn mở chi tiết trong 6,4 ms.",
         "Mục còn mở: 707/806 tập phụ thuộc YouTube (44 tập Ori mở ngoài), 99 tập Jadoo cần tệp Drive, chưa có hồ sơ trẻ em/PIN phụ huynh và phụ đề.",
     ], size=12.8, space_after=8, line_spacing=1.18)
 
     set_notes(s11, (
-        "Phần triển khai do bạn Thành viên 4 chuẩn bị. Người dùng chỉ cần giải nén gói phát hành tạo bằng "
+        (f"Phần triển khai do {team.nickname(4)} lo. Người dùng" if team.nickname(4) else "Về triển khai, người dùng")
+        + " chỉ cần giải nén gói phát hành tạo bằng "
         "make-release-zip.ps1 rồi nhấp đúp CHAY_DIPPIE.bat là tự tải JDK nếu thiếu, nạp 6 bộ phim và mở cả Web lẫn "
         "Dippie Admin. Bản production chạy 3 container Caddy HTTPS, app non-root và MySQL TLS cùng Flyway ạ."
     ))
@@ -753,14 +771,14 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
     add_header_footer(s12, "11 · Tổ chức nhóm", "Phân công 4 thành viên và quy trình phối hợp", 12)
 
     team_rows = [
-        ("Thành viên 1", "Nhóm trưởng · Backend lõi",
-         "Spring Boot 3.5, bảo mật JWT và rà soát OWASP, đăng xuất thu hồi token, xóa tài khoản, đặt lại mật khẩu, báo lỗi phát và kiểm toán."),
-        ("Thành viên 2", "Frontend React và UX",
-         "81 tệp React 19/Tailwind, YouTube IFrame API, gộp dữ liệu khách có xác nhận, trang pháp lý, lịch sử xem, báo mất mạng và 29 bộ test (286 ca)."),
-        ("Thành viên 3", "CineBot, Tìm kiếm và Gợi ý",
-         "Chỉ mục BM25 (LexicalIndex), tìm kiếm không dấu và lỗi gõ, luồng CineBot SSE (ChatStreamGuard, Template/DeepSeek), gợi ý Affinity và Mood."),
-        ("Thành viên 4", "JavaFX, CSDL và Triển khai",
-         "32 bảng MySQL/H2 với Flyway và view/trigger, Dippie Admin JavaFX (59 tệp, 33 test), CHAY_DIPPIE.bat, Docker, Caddy HTTPS, CI và kịch bản demo."),
+        (team.label(1), "Nhóm trưởng · backend, CineBot",
+         "Spring Boot 3.5, bảo mật JWT và rà soát OWASP, danh mục, tiến độ xem; chỉ mục BM25, luồng CineBot SSE, gợi ý Affinity và Mood."),
+        (team.label(2), "JavaFX, JDBC và CSDL",
+         "Dippie Admin JavaFX 21 với JDBC thuần (64 tệp, 33 test, MVC, DAO, Composite, Command); 32 bảng MySQL/H2, Flyway, view, trigger và đo tải."),
+        (team.label(3), "Frontend React và UX",
+         "81 tệp React 19/Tailwind, trình phát YouTube, đồng bộ dữ liệu khách, trang lịch sử, 286 ca test; phía Java làm DTO và test API thư viện."),
+        (team.label(4), "Dữ liệu phim và triển khai",
+         "Chuẩn hóa 6 bộ phim, CHAY_DIPPIE.bat, Docker, Caddy HTTPS, CI và kịch bản demo; phía Java làm CatalogPackageValidator kèm test."),
     ]
     for i, (m_id, m_role, m_work) in enumerate(team_rows):
         y = Inches(1.36 + i * 1.12)
@@ -782,8 +800,9 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
     )
 
     set_notes(s12, (
-        "Dạ, nhóm chia 4 mảng đều nhau: em làm backend lõi; Thành viên 2 làm frontend React và UX; "
-        "Thành viên 3 làm BM25, gợi ý và CineBot; Thành viên 4 làm CSDL, JavaFX và triển khai. "
+        f"Dạ, phần Java chính do em và {team.nickname(2) or 'một bạn'} chia nhau: em làm backend và CineBot, {team.nickname(2) or 'bạn ấy'} làm Dippie Admin "
+        f"bằng JavaFX cùng cơ sở dữ liệu. {team.nickname(3) or 'Một bạn'} làm frontend, {team.nickname(4) or 'bạn còn lại'} lo dữ liệu phim và triển khai, "
+        "hai bạn đều nhận thêm một phần Java nhỏ có test. "
         "Nhóm chốt hợp đồng API trong CONTRACT.md và review chéo qua Pull Request ạ."
     ))
 
@@ -831,7 +850,8 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
     )
 
     set_notes(s13, (
-        "Phần giao diện này bạn Thành viên 2 trình bày nhanh. Đây là 4 ảnh chụp thật: trang Phim bộ lọc "
+        (f"Phần giao diện này {team.nickname(3)} trình bày nhanh. " if team.nickname(3) else "Phần giao diện nhóm em đi nhanh. ")
+        + "Đây là 4 ảnh chụp thật: trang Phim bộ lọc "
         "6 thể loại, trang Kho phim tìm khủng long ra 9 tập Doraemon, trang chi tiết có chấm điểm trực tiếp "
         "và bản di động 390 nhân 844 pixel không tràn ngang ạ."
     ))
@@ -845,7 +865,7 @@ public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception)
     add_bullets(s14, Inches(0.60), Inches(1.44), Inches(6.58), Inches(4.42), [
         "Hoàn thành web cho gia đình (6 bộ, 806 tập) và ứng dụng desktop Dippie Admin dùng chung CSDL.",
         "Áp dụng trực tiếp Java 21, OOP, MVC, JavaFX 21, JDBC và các mẫu thiết kế GoF vào mã nguồn.",
-        "589 ca Backend (1 bỏ qua Win), 286 ca Frontend, 33 ca Desktop, 36/36 khói cuối; UX đạt 8,2/10.",
+        "589 ca test backend (1 ca bỏ qua trên Windows), 286 ca frontend, 33 ca desktop, chạy thử cuối 36/36; UX đạt 8,2/10.",
         "Hướng mở rộng: hồ sơ trẻ em có mã PIN phụ huynh, phụ đề, giảm phụ thuộc YouTube và đủ năm phát hành.",
     ], size=14.6, space_after=14, line_spacing=1.20)
 

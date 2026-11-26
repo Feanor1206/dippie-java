@@ -6,54 +6,49 @@ This module is the standalone Java backend for Dippie. It runs both the core bus
 
 ## Hard rules (every contributor, no exceptions)
 
-1. No comments anywhere in code: no `//`, no `/* */`, and no Javadoc. Express intent through names, small methods, value objects, and enums. Reviews reject any file with a comment.
+1. Java code carries short Vietnamese `//` comments written for teammates (what a class is for, why a non-obvious choice was made). Names, small methods, value objects and enums still carry the intent; comments never restate the code. Frontend code has no comments.
 2. The HTTP contract in `CONTRACT.md` is frozen. JSON field names, envelope vs raw bodies, status codes, and Vietnamese messages must match the Python version in meaning because the frontend depends on them.
-3. Business rules live in domain objects, not in controllers and not as long `if` chains in services. Controllers only map HTTP requests to application service calls; services orchestrate while entities and value objects decide.
+3. Strict MVC layering (see below). Business rules live in `model` objects and `service` classes, never in controllers. Controllers only map HTTP requests to service calls and return `dto` records; they never touch a repository.
 4. No Lombok. Use Java `record` types for DTOs. Entities use explicit constructors and intention-revealing methods (like `progress.advanceTo(...)` or `asset.isAccessibleBy(viewer)`), with no public setters for invariants.
 5. Constructor injection only, with `final` fields and no field `@Autowired`.
-6. Throw errors as `com.dippie.common.error.*Exception` and let `GlobalExceptionHandler` render them into the standard envelope. Do not build error `ResponseEntity` objects by hand in controllers unless the contract requires a raw error body (catalog validate and media 416).
+6. Throw errors as `com.dippie.exception.*Exception` and let `GlobalExceptionHandler` render them into the standard envelope. Do not build error `ResponseEntity` objects by hand in controllers unless the contract requires a raw error body (catalog validate and media 416).
 7. Database portability: code must run on both H2 (`MODE=MySQL`) and MySQL 8 against `database/schema/01_init.sql`. Avoid MySQL-only functions (`JSON_EXTRACT`, `HEX`) in queries. JSON columns are `LONGTEXT` mapped to `String`, parsed with Jackson in Java.
 8. Time is UTC `LocalDateTime` from the injected `java.time.Clock`. Do not call `LocalDateTime.now()` directly in domain or service code.
 9. Every feature package ships JUnit 5 tests. Domain rules get plain unit tests; HTTP behaviour gets `@SpringBootTest` + `@AutoConfigureMockMvc` + `@ActiveProfiles("test")` tests checking status codes and JSON.
 10. The build must pass with `./mvnw -o -B test` from `backend/springboot`.
 
-## Package layout (package-by-feature)
+## Package layout (MVC, layer first)
 
 ```
 com.dippie
 ├── DippieApplication
-├── common
-│   ├── error        DomainException hierarchy + GlobalExceptionHandler
-│   ├── web          ApiResponse envelope, ClockConfig
-│   ├── json         JsonText helper (parse LONGTEXT JSON safely)
-│   └── text         UnicodeText (Python-compatible case-folding & whitespace stripping)
-├── security         SecurityConfig, JwtService, JwtAuthenticationFilter, Viewer, CurrentViewer, Role,
-│                    LoginRateLimiter, PasswordPolicy
-├── user             User entity, UserRepository, AuthService, AuthController, HealthController, AdminBootstrap,
-│                    DemoAccountSeeder
-├── account          AccountController, AccountService (profile update, password change + token version bump)
-├── admin            AdminUserController, AdminUserService, AdminUserPolicy, AdminAuditController, AdminAuditService,
-│                    AdminStatsController, AdminStatsService, AdminStatsQuery
-├── movie            Movie entity, MovieRepository, MovieVisibility, MovieQueryService, MovieController, MovieFilter
-├── catalog
-│   ├── domain       Catalog* entities, PublicationStatus, AccessPolicy, repositories
-│   ├── query        CatalogQueryService, CatalogSearchService, CatalogController, CatalogReadModelCache
-│   └── importing    CatalogPackageValidator, CatalogDiff, CatalogImportService, CatalogExportService,
-│                    AdminCatalogController, CatalogSnapshotService, CatalogIndexPublisher
-├── library          Watchlist / Favorite / Rating (AbstractLibraryListService, shared LibraryEntry base)
-├── progress         WatchProgress entity, CompletionPolicy, WatchProgressService, NextEpisodePolicy, controllers
-├── media            MediaAsset entity, PlaybackGrantService, ByteRange, MediaFileResolver (Strategy),
-│                    MediaStreamController
-├── recommendation   RecommendationService + AffinityRecommendationStrategy, MoodRecommendationStrategy (via CatalogSearch)
-├── assistant        AssistantProperties (dippie.assistant.*), AssistantStatusController (GET /api/assistant/status)
-│   ├── search       CatalogSearch (LocalCatalogSearch), LexicalIndex, SearchCatalogFlattener,
-│   │                LocalDiscoverController (/v1/search, /v1/discover), LocalIndexPublisher
-│   └── chat         IntentParser, ChatService, AnswerGenerator (TemplateAnswerGenerator, DeepSeekAnswerGenerator),
-│                    LocalChatController (/api/chat SSE), CatalogReplies, MoodEvidence, ChatConfiguration
-└── web              SpaController (serves frontend/dist), WebResourceConfig, OpenApiConfig
+├── controller   C  REST controllers per feature (account, admin, assistant, catalog, library, media, movie,
+│                   progress, recommendation, report, user, web). Map HTTP to service calls, return dto records.
+│                   web also holds SpaController, HealthController and GlobalExceptionHandler.
+├── service         Business logic per feature: AuthService, WatchProgressService, CatalogImportService,
+│                   CatalogQueryService, RecommendationService + strategies, LocalCatalogSearch, LexicalIndex,
+│                   ChatService, DiscoverService, MediaStreamService, MailDeliveryStrategy ...
+├── repository  M  Spring Data JPA repositories and hand-written queries (AdminStatsQuery, ViewerSignalsRepository)
+├── model       M  JPA entities (User, WatchProgress, Catalog*, MediaAsset ...), enums (Role, PublicationStatus),
+│                   domain records and policies (CompletionPolicy, NextEpisodePolicy, EpisodeRuntime, MovieFilter)
+├── dto         V  Request/response records exchanged with the React frontend (the View) as JSON
+├── exception      DomainException hierarchy and feature exceptions, rendered by GlobalExceptionHandler
+├── config         @Configuration and @ConfigurationProperties per feature
+├── security       SecurityConfig, JwtService, JwtAuthenticationFilter, Viewer, CurrentViewer, rate limiters
+└── common         collection, json, rating, text, web (ApiResponse, ClockConfig)
 ```
 
-Cross-package rule: a package may depend on `common`, `security`, and another feature's domain or repository types, never on another feature's controller.
+Layer rules (checked during review):
+
+| Layer | May depend on |
+| --- | --- |
+| controller | service, dto, model, exception, security, config, common |
+| service | repository, model, dto, exception, security, config, common, other services |
+| repository | model, dto (JPQL constructor projections), common |
+| model | model, exception, common |
+| dto | dto, model, exception, common |
+
+The View is the React 19 frontend in `frontend/`; `dto` records are the JSON it receives and sends.
 
 ## Design patterns used
 
@@ -67,4 +62,4 @@ Cross-package rule: a package may depend on `common`, `security`, and another fe
 
 ## Configuration
 
-`application.yml` defines `dippie.*` properties bound to `@ConfigurationProperties` records in each feature (`JwtProperties`, `MediaProperties`, `AssistantProperties`, and so on). Profiles: `demo` (default, file-backed H2 database, seeds demo accounts), `mysql` (validates schema), and `test` (in-memory H2 for tests).
+`application.yml` defines `dippie.*` properties bound to `@ConfigurationProperties` records under `com.dippie.config.<feature>` and `com.dippie.security` (`JwtProperties`, `MediaProperties`, `AssistantProperties`, and so on). Profiles: `demo` (default, file-backed H2 database, seeds demo accounts), `mysql` (validates schema), and `test` (in-memory H2 for tests).

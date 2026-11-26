@@ -950,3 +950,51 @@ test('Closing a trailer or an unstarted or ended feature does not overwrite prog
     harness.unmount();
   }
 });
+
+test('Feature playback does not overwrite saved position with 0 before resume seek lands or on pause right before ended', async () => {
+  const saved = [];
+  const harness = createMovieDetailHarness({
+    movieProgress: {
+      getMovieResumeSeconds: () => 60,
+      saveMovieProgress: (record) => saved.push(record),
+      isMovieProgressCompleted: (pos, dur) => Boolean(dur && dur > 0 && pos >= dur - Math.min(60000, Math.max(1, Math.floor(dur / 20)))),
+    },
+  });
+  harness.render('A');
+  await new Promise((resolve) => setImmediate(resolve));
+  harness.render('A');
+
+  walk(harness.getTree(), (node) => node.props?.['data-testid'] === 'play-feature-btn').props.onClick({ currentTarget: harness.opener });
+  harness.render('A');
+
+  const videoNode = walk(harness.getTree(), (node) => node.type === 'video');
+  videoNode.props.ref.current.currentTime = 0;
+  videoNode.props.ref.current.duration = 600;
+  videoNode.props.onTimeUpdate();
+  videoNode.props.onPause();
+  assert.equal(saved.length, 0);
+
+  videoNode.props.onPlay();
+  videoNode.props.ref.current.currentTime = 2;
+  videoNode.props.onTimeUpdate();
+  assert.equal(saved.length, 0);
+
+  videoNode.props.onLoadedMetadata({ currentTarget: videoNode.props.ref.current });
+  assert.equal(videoNode.props.ref.current.currentTime, 60);
+
+  videoNode.props.ref.current.currentTime = 75;
+  videoNode.props.onPause();
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].positionMs, 75000);
+  assert.equal(saved[0].completed, false);
+
+  videoNode.props.ref.current.currentTime = 600;
+  videoNode.props.ref.current.ended = true;
+  videoNode.props.onPause();
+  assert.equal(saved.length, 1);
+
+  videoNode.props.onEnded();
+  assert.equal(saved.length, 2);
+  assert.equal(saved[1].completed, true);
+  harness.unmount();
+});

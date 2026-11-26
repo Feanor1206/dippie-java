@@ -478,3 +478,81 @@ test('WatchHistory groups entries by day (Hôm nay / Hôm qua / older) and suppo
   assert.equal(saved[0].expectedVersion, -1);
   assert.equal(findNodes(tree, (n) => n.props?.['data-testid'] === 'history-item-ep_today').length, 1);
 });
+
+test('Clearing all watch history on /lich-su also clears local movie progress for that account and notifies listeners', async () => {
+  const clearedMovieUsers = [];
+  let clearedServer = 0;
+  let notified = 0;
+  const iconStub = () => null;
+  const h = createHarness('app/lich-su/page.tsx', {
+    'react-router': { Link: 'route-link' },
+    'lucide-react': new Proxy({}, { get: () => iconStub }),
+    '*AuthContext': {
+      useAuth: () => ({ status: 'authenticated', token: 'tok-9', user: { id: 9 }, openAuthModal() {}, retryVerify() {} }),
+    },
+    '*useWatchProgress': {
+      useWatchProgress: () => ({
+        records: [
+          {
+            episodeId: 'ep_1',
+            seriesId: 'ser_doraemon',
+            seriesTitle: 'Doraemon',
+            episodeNumber: 1,
+            episodeTitle: 'Tập 1',
+            assetId: 'youtube:11111111111',
+            positionMs: 60000,
+            durationMs: 600000,
+            completed: false,
+            version: 0,
+            updatedAt: '2026-11-26T00:00:00Z',
+          },
+        ],
+        loading: false,
+        error: null,
+        reload() {},
+      }),
+    },
+    '*ArtworkImage': { ArtworkImage: 'ArtworkImage' },
+    '*SiteDialog': { SiteDialog: 'SiteDialog' },
+    '*seriesBrowseUtils': {
+      computeProgressPercent: () => 10,
+      formatEpisodeTag: (n) => (n ? `Tập ${n}` : ''),
+    },
+    '*movieProgress': {
+      clearMovieProgress: (uid) => clearedMovieUsers.push(uid),
+    },
+    '*watchProgressService': {
+      buildWatchProgressHref: (entry) => `/series/${entry.seriesId}?episode=${entry.episodeId}`,
+      clearWatchProgress: async () => { clearedServer += 1; },
+      deleteWatchProgress: async () => {},
+      saveWatchProgress: async () => {},
+      notifyWatchHistoryChanged: () => { notified += 1; },
+    },
+  });
+
+  const renderInner = () => {
+    const pageTree = h.render((m) => m.default());
+    const inner = findNodes(pageTree, (n) => typeof n.type === 'function' && n.type.name === 'WatchHistory')[0];
+    return h.render(() => inner.type(inner.props));
+  };
+
+  let tree = renderInner();
+  const clearBtn = findNodes(tree, (n) => n.props?.['data-testid'] === 'clear-watch-history-button')[0];
+  clearBtn.props.onClick();
+  tree = renderInner();
+
+  const confirmBtn = findNodes(
+    tree,
+    (n) =>
+      n.type === 'button' &&
+      n.props?.['data-testid'] !== 'clear-watch-history-button' &&
+      JSON.stringify(n.props?.children).includes('Xóa hết lịch sử')
+  )[0];
+  assert.ok(confirmBtn);
+  confirmBtn.props.onClick();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(clearedServer, 1);
+  assert.deepEqual(clearedMovieUsers, [9]);
+  assert.equal(notified, 1);
+});

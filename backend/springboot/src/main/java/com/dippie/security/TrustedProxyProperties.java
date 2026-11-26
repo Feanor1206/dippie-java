@@ -1,7 +1,8 @@
 package com.dippie.security;
 
-import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+
+import java.util.List;
 
 // Danh sách dải IP/CIDR của reverse proxy được phép gửi X-Forwarded-For, đọc từ dippie.proxy; điền "none" để tắt hoàn toàn.
 @ConfigurationProperties("dippie.proxy")

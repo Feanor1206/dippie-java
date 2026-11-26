@@ -1,0 +1,32 @@
+# Thông tin nhóm cho trang bìa báo cáo, slide 1, slide phân công và lời thoại.
+# Điền vào sau dấu hai chấm, gõ chữ thường bình thường. Chỗ nào chưa biết thì để trống, báo cáo sẽ in dòng chấm để điền tay sau.
+# Sửa xong thì bấm đúp tao-lai-bao-cao-va-slide.bat là có báo cáo và slide mới.
+# "Tên gọi" là tên ngắn dùng trong lời thoại slide.
+
+Trường: Học viện Công nghệ Bưu chính Viễn thông
+Khoa: Khoa Công nghệ thông tin
+Học phần: Lập trình hướng đối tượng
+Mã học phần:
+Lớp: D24CTCN01
+Giảng viên hướng dẫn: Nguyễn Mạnh Sơn
+Nơi làm báo cáo: Hà Nội
+
+[Thành viên 1: nhóm trưởng, backend Spring Boot, CineBot và gợi ý]
+Họ và tên: Nguyễn Thế Hùng
+Tên gọi: Hùng
+Mã sinh viên: B24DCCN256
+
+[Thành viên 2: Dippie Admin JavaFX, JDBC, cơ sở dữ liệu và kiểm thử]
+Họ và tên: Nguyễn Đức Việt
+Tên gọi: Việt
+Mã sinh viên: B24DCCN613
+
+[Thành viên 3: frontend React và trải nghiệm người dùng, phụ phần Java]
+Họ và tên: Nguyễn Văn Nam
+Tên gọi: Nam
+Mã sinh viên: B24DCCN411
+
+[Thành viên 4: dữ liệu phim, triển khai và kịch bản demo, phụ phần Java]
+Họ và tên: Đặng Mạnh Đạt
+Tên gọi: Đạt
+Mã sinh viên: B24DCCN104

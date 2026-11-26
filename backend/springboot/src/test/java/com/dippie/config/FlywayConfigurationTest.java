@@ -1,13 +1,14 @@
 package com.dippie.config;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-import java.nio.charset.StandardCharsets;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 // Kiểm tra cấu hình Flyway theo từng profile và xác nhận đủ các file migration từ V1 đến V5.
 class FlywayConfigurationTest {

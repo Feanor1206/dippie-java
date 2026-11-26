@@ -31,6 +31,7 @@ import { cleanMediaTitle } from '@/lib/labels';
 import { RATING_CHANGED_EVENT } from '@/lib/context/WatchlistContext';
 import { useWatchProgress, type WatchProgressSaveReason } from '@/lib/hooks/useWatchProgress';
 import {
+  isProgressCompleted,
   isUsableResumeProgress,
   isYoutubeAssetId,
   readAutoNextPreference,
@@ -56,10 +57,53 @@ import type {
 
 const RESUME_MIN_POSITION_MS = 5000;
 const RESUME_BACKTRACK_TOLERANCE_MS = 2000;
-const COMPLETED_RATIO_THRESHOLD = 0.95;
 const COMPLETED_REMAINING_MAX_MS = 60_000;
 const AUTO_NEXT_COUNTDOWN_SEC = 8;
 const SEEK_END_MARGIN_SEC = 0.5;
+const KNOWN_EPISODE_MIN_DURATION_MS = 60_000;
+
+function isEpisodeCompleted(positionMs: number, durationMs: number | null): boolean {
+  if (typeof isProgressCompleted === 'function') {
+    return isProgressCompleted(positionMs, durationMs);
+  }
+  if (durationMs === null || !Number.isFinite(durationMs) || durationMs <= 0) return false;
+  const total = Math.floor(durationMs);
+  const fivePercent = Math.max(1, Math.floor(total / 20));
+  const nearEnd = Math.min(COMPLETED_REMAINING_MAX_MS, fivePercent);
+  return positionMs >= total - nearEnd;
+}
+
+function resolveEffectiveDurationMs(
+  episodeDurationMs: number | null | undefined,
+  assetDurationMs: number | null | undefined,
+  fallbackDurationMs: number | null
+): number | null {
+  const episodeKnown =
+    typeof episodeDurationMs === 'number' && Number.isFinite(episodeDurationMs) && episodeDurationMs >= KNOWN_EPISODE_MIN_DURATION_MS
+      ? Math.floor(episodeDurationMs)
+      : null;
+  const assetKnown =
+    typeof assetDurationMs === 'number' && Number.isFinite(assetDurationMs) && assetDurationMs > 0
+      ? Math.floor(assetDurationMs)
+      : null;
+  if (episodeKnown !== null && assetKnown !== null) return Math.min(episodeKnown, assetKnown);
+  if (episodeKnown !== null) return episodeKnown;
+  if (assetKnown !== null) return assetKnown;
+  return fallbackDurationMs !== null && Number.isFinite(fallbackDurationMs) && fallbackDurationMs > 0
+    ? Math.floor(fallbackDurationMs)
+    : null;
+}
+
+function buildDeepLinkKey(params: URLSearchParams): string {
+  return [
+    params.get('episode') || '',
+    params.get('asset') || '',
+    params.get('scene') || '',
+    params.get('segment') || '',
+    params.get('t') || '',
+    params.get('timeline') || params.get('timescale') || '',
+  ].join('|');
+}
 
 type EpisodePlaybackState = {
   started: boolean;
@@ -86,13 +130,11 @@ export class EpisodePlaybackTracker {
   canSave(episodeId: string | null, reason: WatchProgressSaveReason): boolean {
     if (!episodeId) return false;
     const session = this.sessions.get(episodeId);
-    if (!session || !session.started) return false;
+    if (!session || !session.started || session.switchFlushed) return false;
     if (reason === 'episode-change') {
-      if (session.switchFlushed) return false;
       session.switchFlushed = true;
       return true;
     }
-    if (reason === 'leave') return !session.switchFlushed;
     return true;
   }
 }
@@ -184,6 +226,8 @@ export function useSeriesPlayback(
   const targetSegmentId = searchParams.get('segment');
   const targetAssetId = searchParams.get('asset');
   const targetTimeMs = searchParams.get('t');
+  const targetTimeline = searchParams.get('timeline') || searchParams.get('timescale');
+  const currentUrlDeepLinkKey = buildDeepLinkKey(searchParams);
 
   const [seriesData, setSeriesData] = useState<CatalogSeriesResponse | null>(null);
   const [seriesCard, setSeriesCard] = useState<SeriesCard | null>(null);
@@ -219,7 +263,11 @@ export function useSeriesPlayback(
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const youtubeSeekCountRef = useRef(0);
-  const lastYoutubeSnapshotRef = useRef<YouTubeProgressSnapshot>({ currentTimeSec: 0, durationSec: 0 });
+  const lastYoutubeSnapshotRef = useRef<{ episodeId: string | null; currentTimeSec: number; durationSec: number }>({
+    episodeId: null,
+    currentTimeSec: 0,
+    durationSec: 0,
+  });
   const playbackTrackerRef = useRef<EpisodePlaybackTracker | null>(null);
   if (!playbackTrackerRef.current) playbackTrackerRef.current = new EpisodePlaybackTracker();
   const fileLeaveFlushRef = useRef<() => void>(() => {});
@@ -229,7 +277,8 @@ export function useSeriesPlayback(
   const seekGenerationRef = useRef(0);
   const pendingSeekRef = useRef<PendingSeekIdentity | null>(null);
   const pendingResumeRef = useRef<{ episodeId: string; positionMs: number; assetId?: string | null } | null>(null);
-  const deepLinkHandledRef = useRef(false);
+  const deepLinkHandledKeyRef = useRef<string | null>(null);
+  const selfHandledUrlKeyRef = useRef<string | null>(null);
   const previousUrlEpisodeIdRef = useRef<string | null>(targetEpisodeId);
   const selectedEpisodeIdRef = useRef<string | null>(null);
   selectedEpisodeIdRef.current = selectedEpisode?.id || null;
@@ -381,10 +430,6 @@ export function useSeriesPlayback(
   }, []);
 
   useEffect(() => {
-    deepLinkHandledRef.current = false;
-  }, [targetEpisodeId, targetAssetId, targetSceneId, targetSegmentId, targetTimeMs]);
-
-  useEffect(() => {
     if (!seriesId) return;
     setIsLoadingSeries(true);
     setError(null);
@@ -449,15 +494,21 @@ export function useSeriesPlayback(
     if (targetEpisodeId) {
       const matched = seriesData.episodes.find((episode) => episode.id === targetEpisodeId);
       if (matched) {
+        if (matched.id !== selectedEpisode?.id) saveCurrentProgress('episode-change');
         setSelectedSeasonId(matched.seasonId || null);
         setSelectedEpisode(matched);
       }
     } else if (seriesData.episodes.length > 0) {
       const firstSeasonId = getInitialSeasonId(seriesData.seasons || [], seriesData.episodes);
-      setSelectedSeasonId(firstSeasonId);
-      setSelectedEpisode(
-        getInitialEpisode(seriesData.episodes, firstSeasonId, null, (seriesData.seasons || []).length > 0)
+      const firstEpisode = getInitialEpisode(
+        seriesData.episodes,
+        firstSeasonId,
+        null,
+        (seriesData.seasons || []).length > 0
       );
+      if (firstEpisode && firstEpisode.id !== selectedEpisode?.id) saveCurrentProgress('episode-change');
+      setSelectedSeasonId(firstSeasonId);
+      setSelectedEpisode(firstEpisode);
     }
   }, [targetEpisodeId, seriesData]);
 
@@ -502,37 +553,51 @@ export function useSeriesPlayback(
     let thumbnailUrl: string | undefined;
 
     if (playbackSource.kind === 'youtube') {
+      if (!youtubeSnapshot && lastYoutubeSnapshotRef.current.episodeId !== selectedEpisode.id) return;
       const snapshot = youtubeSnapshot ?? lastYoutubeSnapshotRef.current;
       const currentSec = Number.isFinite(snapshot.currentTimeSec) && snapshot.currentTimeSec >= 0 ? snapshot.currentTimeSec : 0;
       if (reason !== 'ended' && currentSec < 1) return;
-      const catalogDurationMs =
-        typeof selectedEpisode.durationMs === 'number' && selectedEpisode.durationMs > 0 ? selectedEpisode.durationMs : null;
       const playerDurationMs =
         Number.isFinite(snapshot.durationSec) && snapshot.durationSec > 0 ? Math.round(snapshot.durationSec * 1000) : null;
-      durationMs = catalogDurationMs ?? playerDurationMs;
+      durationMs = resolveEffectiveDurationMs(selectedEpisode.durationMs, null, playerDurationMs);
       const rawPositionMs = reason === 'ended' && durationMs !== null ? durationMs : Math.floor(currentSec * 1000);
       positionMs = Math.min(rawPositionMs, durationMs ?? Number.MAX_SAFE_INTEGER);
       assetId = toYoutubeAssetId(playbackSource.youtube.videoId);
       thumbnailUrl = `https://i.ytimg.com/vi/${encodeURIComponent(playbackSource.youtube.videoId)}/hqdefault.jpg`;
     } else {
       const video = videoRef.current;
+      const videoDurationMs =
+        video && Number.isFinite(video.duration) && video.duration > 0 ? Math.round(video.duration * 1000) : null;
+      const resolvedDurationMs = selectedAsset
+        ? resolveEffectiveDurationMs(selectedEpisode.durationMs, selectedAsset.durationMs, videoDurationMs)
+        : null;
+      const currentSec = video && Number.isFinite(video.currentTime) && video.currentTime >= 0 ? video.currentTime : 0;
       if (
         playbackSource.kind !== 'file' ||
         !video ||
         !selectedAsset ||
-        !Number.isFinite(video.currentTime) ||
-        video.currentTime < 1 ||
+        (reason !== 'ended' && currentSec < 1) ||
+        (reason === 'ended' && currentSec < 1 && resolvedDurationMs === null) ||
         !playbackTrackerRef.current?.hasStarted(selectedEpisode.id) ||
         !(video.currentSrc || video.src || '').includes(encodeURIComponent(selectedAsset.id)) ||
         !isFullEpisodeAsset(selectedAsset, selectedEpisode.id)
       ) {
         return;
       }
-      durationMs =
-        Number.isFinite(video.duration) && video.duration > 0
-          ? Math.round(video.duration * 1000)
-          : selectedAsset.durationMs ?? null;
-      positionMs = Math.min(Math.floor(video.currentTime * 1000), durationMs ?? Number.MAX_SAFE_INTEGER);
+      const pendingSeek = pendingSeekRef.current;
+      if (
+        reason !== 'ended' &&
+        pendingSeek &&
+        pendingSeek.episodeId === selectedEpisode.id &&
+        pendingSeek.assetId === selectedAsset.id &&
+        pendingSeek.targetSec > 0 &&
+        currentSec * 1000 + RESUME_BACKTRACK_TOLERANCE_MS < pendingSeek.targetSec * 1000
+      ) {
+        return;
+      }
+      durationMs = resolvedDurationMs;
+      const rawPositionMs = reason === 'ended' && durationMs !== null ? durationMs : Math.floor(currentSec * 1000);
+      positionMs = Math.min(rawPositionMs, durationMs ?? Number.MAX_SAFE_INTEGER);
       assetId = selectedAsset.id;
     }
 
@@ -555,11 +620,7 @@ export function useSeriesPlayback(
       episodeNumber: selectedEpisode.number ?? selectedEpisode.episodeNumber,
       positionMs,
       durationMs,
-      completed:
-        reason === 'ended' ||
-        (durationMs != null &&
-          positionMs >= durationMs * COMPLETED_RATIO_THRESHOLD &&
-          durationMs - positionMs <= COMPLETED_REMAINING_MAX_MS),
+      completed: reason === 'ended' || isEpisodeCompleted(positionMs, durationMs),
     };
     void progress.saveProgress(draft, reason)?.catch?.(() => {});
   }
@@ -616,28 +677,37 @@ export function useSeriesPlayback(
         ? Math.floor(recommendation.resumePositionMs)
         : 0;
 
+    const isSameEpisode = targetEpisode.id === selectedEpisode?.id;
+    if (!isSameEpisode) {
+      saveCurrentProgress('episode-change');
+    }
+
+    const nextParams = episodeSearchParams(searchParams, targetEpisode.id, { startMs, assetId: nextAssetId });
+    selfHandledUrlKeyRef.current = buildDeepLinkKey(nextParams);
+
     setNextCountdown(null);
     setSelectedSeasonId(targetEpisode.seasonId || null);
     setEpisodeQuery('');
-    replaceEpisodeUrl(targetEpisode.id, { startMs, assetId: nextAssetId });
+    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
     previousUrlEpisodeIdRef.current = targetEpisode.id;
 
-    if (targetEpisode.id === selectedEpisode?.id) {
+    if (isSameEpisode) {
       if (startMs > 0) {
         setDismissedResume(progressIdentity);
-        if (youtubeVideoId) {
-          requestYoutubeSeek(startMs, true);
-          return;
-        }
-        if (selectedAsset) queueOrSeekVideo(startMs / 1000, { assetId: selectedAsset.id });
+      }
+      if (youtubeVideoId) {
+        requestYoutubeSeek(startMs, true);
+        return;
+      }
+      if (selectedAsset) {
+        queueOrSeekVideo(startMs / 1000, { assetId: selectedAsset.id });
       } else if (videoRef.current) {
-        videoRef.current.currentTime = 0;
+        videoRef.current.currentTime = startMs / 1000;
         void videoRef.current.play().catch(() => {});
       }
       return;
     }
 
-    saveCurrentProgress('episode-change');
     if (startMs > 0) {
       pendingResumeRef.current = { episodeId: targetEpisode.id, positionMs: startMs, assetId: nextAssetId };
       autoPlayEpisodeRef.current = null;
@@ -788,6 +858,7 @@ export function useSeriesPlayback(
 
   useEffect(() => {
     pendingSeekRef.current = null;
+    deepLinkHandledKeyRef.current = null;
     setPlaybackWarning(null);
     setActiveSegmentId(null);
     setEpisodeError(null);
@@ -804,7 +875,11 @@ export function useSeriesPlayback(
     setCurrentTime(0);
     setYoutubeSeekMs(null);
     setYoutubeSeekRequest(null);
-    lastYoutubeSnapshotRef.current = { currentTimeSec: 0, durationSec: 0 };
+    lastYoutubeSnapshotRef.current = {
+      episodeId: selectedEpisode?.id || null,
+      currentTimeSec: 0,
+      durationSec: 0,
+    };
     playbackTrackerRef.current?.prepareEpisode(selectedEpisode?.id || null);
     setActiveSceneId(null);
 
@@ -832,81 +907,6 @@ export function useSeriesPlayback(
           hasDetailRatingRef.current = false;
           refreshEpisodeRating(detail.episode.id);
         }
-
-        const pendingResume =
-          pendingResumeRef.current && pendingResumeRef.current.episodeId === detail.episode.id
-            ? pendingResumeRef.current
-            : null;
-        if (pendingResume) pendingResumeRef.current = null;
-
-        const isUrlEpisode = targetEpisodeId ? detail.episode.id === targetEpisodeId : false;
-        const scene = isUrlEpisode && targetSceneId ? detail.scenes?.find((entry) => entry.id === targetSceneId) : undefined;
-        const segment = isUrlEpisode && targetSegmentId ? detail.segments?.find((entry) => entry.id === targetSegmentId) : undefined;
-
-        const nextPreferredAssetId =
-          (pendingResume?.assetId && !isYoutubeAssetId(pendingResume.assetId) ? pendingResume.assetId : null) ||
-          (isUrlEpisode && targetAssetId && !isYoutubeAssetId(targetAssetId) ? targetAssetId : null) ||
-          (scene?.mediaAssetId || null);
-        setPreferredAssetId(nextPreferredAssetId);
-
-        const initialSelection = selectPlaybackSource({
-          episodeDetail: detail,
-          selectedEpisodeId: detail.episode.id,
-          episodeDurationMs: detail.episode.durationMs,
-          preferredAssetId: nextPreferredAssetId,
-          manualAssetId,
-          startTimeMs: pendingResume?.positionMs ?? (isUrlEpisode ? targetTimeMs ?? segment?.episodeStartMs ?? scene?.startMs : 0),
-        });
-        const assetToSelect = initialSelection.kind === 'file' ? initialSelection.asset : null;
-
-        if (pendingResume && pendingResume.positionMs > 0) {
-          if (assetToSelect) {
-            setDismissedResume(`${detail.episode.id}:${assetToSelect.id}`);
-            pendingSeekRef.current = {
-              seriesId: String(seriesId),
-              episodeId: detail.episode.id,
-              assetId: assetToSelect.id,
-              sceneId: null,
-              segmentId: null,
-              targetSec: pendingResume.positionMs / 1000,
-              generation: ++seekGenerationRef.current,
-            };
-          } else if (initialSelection.kind === 'youtube') {
-            setDismissedResume(`${detail.episode.id}:${toYoutubeAssetId(initialSelection.youtube.videoId)}`);
-            requestYoutubeSeek(pendingResume.positionMs, true);
-          }
-        } else if (isUrlEpisode && !deepLinkHandledRef.current) {
-          deepLinkHandledRef.current = true;
-          if (targetSegmentId && segment) setActiveSegmentId(segment.id);
-          if (targetSceneId && scene) setActiveSceneId(scene.id);
-          if (assetToSelect) {
-            const seekSec = resolveMediaSeekSeconds({
-              timeMs: targetTimeMs,
-              timeline: searchParams.get('timeline') || searchParams.get('timescale'),
-              isScene: Boolean(targetSceneId),
-              isSegment: Boolean(targetSegmentId),
-              asset: assetToSelect,
-              segmentId: targetSegmentId || undefined,
-              episodeId: detail.episode.id,
-              sceneStartMs: scene?.startMs,
-              segmentStartMs: segment?.episodeStartMs,
-            });
-            if (seekSec === null) {
-              if (targetSegmentId && segment) setPlaybackWarning(`Phân đoạn "${segment.title || 'này'}" chưa có mốc thời gian bắt đầu.`);
-              if (targetSceneId && scene) setPlaybackWarning(`Phân cảnh "${scene.title || 'này'}" chưa có mốc thời gian bắt đầu.`);
-            } else if (Number.isFinite(seekSec) && seekSec >= 0) {
-              pendingSeekRef.current = {
-                seriesId: String(seriesId),
-                episodeId: detail.episode.id,
-                assetId: assetToSelect.id,
-                sceneId: targetSceneId || null,
-                segmentId: targetSegmentId || null,
-                targetSec: seekSec,
-                generation: ++seekGenerationRef.current,
-              };
-            }
-          }
-        }
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted || requestId !== episodeRequestIdRef.current) return;
@@ -919,7 +919,113 @@ export function useSeriesPlayback(
       });
 
     return () => controller.abort();
-  }, [selectedEpisode?.id, targetAssetId, targetSceneId, targetSegmentId, targetTimeMs, seriesId, targetEpisodeId, episodeRetry]);
+  }, [selectedEpisode?.id, seriesId, episodeRetry]);
+
+  useEffect(() => {
+    if (!episodeDetail || episodeDetail.episode.id !== selectedEpisode?.id) return;
+
+    const pendingResume =
+      pendingResumeRef.current && pendingResumeRef.current.episodeId === episodeDetail.episode.id
+        ? pendingResumeRef.current
+        : null;
+    if (pendingResume) {
+      pendingResumeRef.current = null;
+      deepLinkHandledKeyRef.current = currentUrlDeepLinkKey;
+      const nextPreferredAssetId =
+        pendingResume.assetId && !isYoutubeAssetId(pendingResume.assetId) ? pendingResume.assetId : null;
+      setPreferredAssetId(nextPreferredAssetId);
+      const initialSelection = selectPlaybackSource({
+        episodeDetail,
+        selectedEpisodeId: episodeDetail.episode.id,
+        episodeDurationMs: episodeDetail.episode.durationMs,
+        preferredAssetId: nextPreferredAssetId,
+        manualAssetId,
+        startTimeMs: pendingResume.positionMs,
+      });
+      const assetToSelect = initialSelection.kind === 'file' ? initialSelection.asset : null;
+      if (pendingResume.positionMs > 0) {
+        if (assetToSelect) {
+          setDismissedResume(`${episodeDetail.episode.id}:${assetToSelect.id}`);
+          queueOrSeekVideo(pendingResume.positionMs / 1000, { assetId: assetToSelect.id });
+        } else if (initialSelection.kind === 'youtube') {
+          setDismissedResume(`${episodeDetail.episode.id}:${toYoutubeAssetId(initialSelection.youtube.videoId)}`);
+          requestYoutubeSeek(pendingResume.positionMs, true);
+        }
+      }
+      return;
+    }
+
+    if (selfHandledUrlKeyRef.current && selfHandledUrlKeyRef.current === currentUrlDeepLinkKey) {
+      selfHandledUrlKeyRef.current = null;
+      deepLinkHandledKeyRef.current = currentUrlDeepLinkKey;
+      return;
+    }
+
+    const isUrlEpisode = targetEpisodeId ? episodeDetail.episode.id === targetEpisodeId : false;
+    if (!isUrlEpisode || deepLinkHandledKeyRef.current === currentUrlDeepLinkKey) return;
+    const isInitialLoadForEpisode = deepLinkHandledKeyRef.current === null;
+    deepLinkHandledKeyRef.current = currentUrlDeepLinkKey;
+
+    const scene = targetSceneId ? episodeDetail.scenes?.find((entry) => entry.id === targetSceneId) : undefined;
+    const segment = targetSegmentId ? episodeDetail.segments?.find((entry) => entry.id === targetSegmentId) : undefined;
+    const nextPreferredAssetId =
+      (targetAssetId && !isYoutubeAssetId(targetAssetId) ? targetAssetId : null) ||
+      (scene?.mediaAssetId || null);
+    setPreferredAssetId(nextPreferredAssetId);
+    if (targetSegmentId && segment) setActiveSegmentId(segment.id);
+    if (targetSceneId && scene) setActiveSceneId(scene.id);
+
+    const startTimeMs = targetTimeMs ?? segment?.episodeStartMs ?? scene?.startMs ?? 0;
+    const initialSelection = selectPlaybackSource({
+      episodeDetail,
+      selectedEpisodeId: episodeDetail.episode.id,
+      episodeDurationMs: episodeDetail.episode.durationMs,
+      preferredAssetId: nextPreferredAssetId,
+      manualAssetId,
+      startTimeMs,
+    });
+    const assetToSelect = initialSelection.kind === 'file' ? initialSelection.asset : null;
+
+    if (assetToSelect) {
+      const seekSec = resolveMediaSeekSeconds({
+        timeMs: targetTimeMs,
+        timeline: targetTimeline,
+        isScene: Boolean(targetSceneId),
+        isSegment: Boolean(targetSegmentId),
+        asset: assetToSelect,
+        segmentId: targetSegmentId || undefined,
+        episodeId: episodeDetail.episode.id,
+        sceneStartMs: scene?.startMs,
+        segmentStartMs: segment?.episodeStartMs,
+      });
+      if (seekSec === null) {
+        if (targetSegmentId && segment) setPlaybackWarning(`Phân đoạn "${segment.title || 'này'}" chưa có mốc thời gian bắt đầu.`);
+        if (targetSceneId && scene) setPlaybackWarning(`Phân cảnh "${scene.title || 'này'}" chưa có mốc thời gian bắt đầu.`);
+      } else if (Number.isFinite(seekSec) && seekSec >= 0) {
+        queueOrSeekVideo(seekSec, {
+          assetId: assetToSelect.id,
+          sceneId: targetSceneId || null,
+          segmentId: targetSegmentId || null,
+        });
+      }
+    } else if (!isInitialLoadForEpisode && initialSelection.kind === 'youtube') {
+      const parsedMs = Number(startTimeMs);
+      if (Number.isFinite(parsedMs) && parsedMs >= 0) {
+        requestYoutubeSeek(parsedMs, false);
+      }
+    }
+  }, [
+    episodeDetail,
+    selectedEpisode?.id,
+    seriesId,
+    targetEpisodeId,
+    targetAssetId,
+    targetSceneId,
+    targetSegmentId,
+    targetTimeMs,
+    targetTimeline,
+    currentUrlDeepLinkKey,
+  ]);
 
   useEffect(() => {
     setHasLoadedMetadata(false);
@@ -1090,13 +1196,13 @@ export function useSeriesPlayback(
   };
 
   const handleYoutubeTimeTick = (snapshot: YouTubeProgressSnapshot) => {
-    lastYoutubeSnapshotRef.current = snapshot;
+    lastYoutubeSnapshotRef.current = { ...snapshot, episodeId: selectedEpisode?.id || null };
     setCurrentTime(snapshot.currentTimeSec);
     syncTimelineMarkers(snapshot.currentTimeSec);
   };
 
   const handleYoutubeProgress = (snapshot: YouTubeProgressSnapshot, reason: YouTubeProgressReason) => {
-    lastYoutubeSnapshotRef.current = snapshot;
+    lastYoutubeSnapshotRef.current = { ...snapshot, episodeId: selectedEpisode?.id || null };
     if ((reason === 'interval' || reason === 'pause' || reason === 'ended') && selectedEpisode?.id) {
       playbackTrackerRef.current?.markStarted(selectedEpisode.id);
     }
@@ -1131,15 +1237,13 @@ export function useSeriesPlayback(
       requestYoutubeSeek(targetMs, true);
       return;
     }
+    if (selectedAsset) {
+      queueOrSeekVideo(targetMs / 1000, { assetId: selectedAsset.id });
+      return;
+    }
     const video = videoRef.current;
     if (!video) return;
-    if (fromStart) {
-      video.currentTime = 0;
-      void video.play().catch(() => {});
-    } else if (Number.isFinite(video.duration) && targetMs < video.duration * 1000) {
-      video.currentTime = targetMs / 1000;
-      void video.play().catch(() => {});
-    }
+    seekVideoNow(video, targetMs / 1000);
   };
 
   const handleAutoNextToggle = (checked: boolean) => {
@@ -1166,7 +1270,7 @@ export function useSeriesPlayback(
 
   const videoHandlers = {
     onLoadedMetadata: handleVideoLoadedMetadata,
-    onLoadedData: () => setHasLoadedMetadata(true),
+    onLoadedData: handleVideoLoadedMetadata,
     onCanPlay: handleVideoLoadedMetadata,
     onError: () => {
       if (selectedAsset) handleFilePlaybackFailure(selectedAsset.id, 'file_unreachable');

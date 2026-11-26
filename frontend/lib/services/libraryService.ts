@@ -1,5 +1,6 @@
 import { apiFetch, RequestTimeoutError, withRequestTimeout } from '@/lib/services/apiRequest';
 import { clearSeriesCardsCache } from '@/lib/services/seriesCardService';
+import { parseTimestamp } from '@/lib/timestamps';
 
 const API = '/api';
 const GUEST_LIBRARY_STORAGE_KEY = 'dippie_guest_library_v1';
@@ -644,11 +645,18 @@ export async function syncGuestDataToAccount(
       remainingProgress.push(...guestProgress);
       failedCount += guestProgress.length;
     } else if (!authExpired) {
-      for (let i = 0; i < guestProgress.length; i++) {
+      const orderedGuestProgress = [...guestProgress].reverse().sort((a, b) => {
+        const timeA = typeof a.raw.updatedAt === 'string' ? parseTimestamp(a.raw.updatedAt) : NaN;
+        const timeB = typeof b.raw.updatedAt === 'string' ? parseTimestamp(b.raw.updatedAt) : NaN;
+        if (Number.isFinite(timeA) && Number.isFinite(timeB)) return timeA - timeB;
+        return 0;
+      });
+      const failedProgress: GuestProgressItem[] = [];
+      for (let i = 0; i < orderedGuestProgress.length; i++) {
         if (!isStillCurrent() || signal.aborted) {
           return { aborted: true, authExpired: false, hasGuestItems: true, syncedWriteCount, failedCount, mergedProgressCount, mergedRatingsCount };
         }
-        const progressEntry = guestProgress[i];
+        const progressEntry = orderedGuestProgress[i];
         const existing = existingByEpisode.get(progressEntry.episodeId);
         if (existing && (existing.completed || existing.positionMs >= progressEntry.positionMs)) continue;
         try {
@@ -680,7 +688,7 @@ export async function syncGuestDataToAccount(
           }
           if (outcome === 'unauthorized') {
             authExpired = true;
-            remainingProgress.push(...guestProgress.slice(i));
+            remainingProgress.push(...orderedGuestProgress.slice(i).reverse());
             break;
           }
           if (outcome === 'ok') {
@@ -688,15 +696,18 @@ export async function syncGuestDataToAccount(
             syncedWriteCount += 1;
           } else {
             failedCount += 1;
-            remainingProgress.push(progressEntry);
+            failedProgress.push(progressEntry);
           }
         } catch {
           if (!isStillCurrent() || signal.aborted) {
             return { aborted: true, authExpired: false, hasGuestItems: true, syncedWriteCount, failedCount, mergedProgressCount, mergedRatingsCount };
           }
           failedCount += 1;
-          remainingProgress.push(progressEntry);
+          failedProgress.push(progressEntry);
         }
+      }
+      if (failedProgress.length > 0) {
+        remainingProgress.push(...failedProgress.reverse());
       }
     }
   }

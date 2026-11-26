@@ -1,7 +1,8 @@
 package com.dippie.security;
 
-import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+
+import java.util.List;
 
 // Danh sách origin được phép gọi API từ trình duyệt qua CORS, đọc từ dippie.cors.
 @ConfigurationProperties("dippie.cors")

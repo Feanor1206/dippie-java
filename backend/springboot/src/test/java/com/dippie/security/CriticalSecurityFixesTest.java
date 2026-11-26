@@ -1,23 +1,12 @@
 package com.dippie.security;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.dippie.config.user.BootstrapAdminProperties;
+import com.dippie.model.user.Role;
+import com.dippie.model.user.User;
+import com.dippie.repository.user.UserRepository;
+import com.dippie.service.assistant.ChatStreamGuard;
+import com.dippie.service.user.AdminBootstrap;
 
-import com.dippie.assistant.chat.ChatStreamGuard;
-import com.dippie.user.AdminBootstrap;
-import com.dippie.user.BootstrapAdminProperties;
-import com.dippie.user.DemoAccountSeeder;
-import com.dippie.user.User;
-import com.dippie.user.UserRepository;
-import java.nio.charset.StandardCharsets;
-import java.time.Clock;
-import java.time.LocalDateTime;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -36,6 +25,19 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // Bộ test hồi quy cho mấy lỗi bảo mật nặng: không bật profile demo mặc định, giới hạn tần suất và luồng SSE ở /api/chat, và chặn body JSON quá cỡ.
 @SpringBootTest

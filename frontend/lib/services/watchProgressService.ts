@@ -4,6 +4,7 @@ const API = '/api';
 export const WATCH_PROGRESS_LIMIT = 30;
 export const GUEST_WATCH_PROGRESS_KEY = 'dippie_guest_watch_progress_v1';
 export const WATCH_HISTORY_CHANGED_EVENT = 'dippie:watch-history-changed';
+export const WATCH_PROGRESS_UPDATED_EVENT = 'dippie:watch-progress-updated';
 export const AUTO_NEXT_PREFERENCE_KEY = 'dippie_auto_next_enabled_v1';
 export const YOUTUBE_ASSET_PREFIX = 'youtube:';
 const DEFAULT_TIMEOUT_MS = 7000;
@@ -76,6 +77,18 @@ function nullableNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null;
 }
 
+function positiveNullableNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+}
+
+export function isProgressCompleted(positionMs: number, durationMs: number | null | undefined): boolean {
+  if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) return false;
+  const total = Math.floor(durationMs);
+  const fivePercent = Math.max(1, Math.floor(total / 20));
+  const nearEnd = Math.min(60_000, fivePercent);
+  return positionMs >= total - nearEnd;
+}
+
 export function normalizeWatchProgressRecord(raw: unknown): WatchProgressRecord {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new WatchProgressError('Dữ liệu tiến độ xem không hợp lệ.', 502);
@@ -112,7 +125,7 @@ export function normalizeWatchProgressRecord(raw: unknown): WatchProgressRecord 
     ...(thumbnailUrl ? { thumbnailUrl } : {}),
     assetId: record.assetId.trim(),
     positionMs: record.positionMs,
-    durationMs: nullableNumber(record.durationMs),
+    durationMs: positiveNullableNumber(record.durationMs),
     completed: record.completed,
     version: record.version,
     updatedAt: new Date(parseTimestamp(record.updatedAt)).toISOString(),
@@ -133,8 +146,9 @@ function normalizeDraft(draft: WatchProgressDraft): WatchProgressDraft {
   if (!Number.isSafeInteger(draft.positionMs) || draft.positionMs < 0) {
     throw new WatchProgressError('Mốc phát video không hợp lệ.', 400);
   }
-  const durationMs = nullableNumber(draft.durationMs);
+  const durationMs = positiveNullableNumber(draft.durationMs);
   const thumbnailUrl = nullableString(draft.thumbnailUrl);
+  const positionMs = durationMs === null ? draft.positionMs : Math.min(draft.positionMs, durationMs);
   return {
     episodeId: draft.episodeId.trim(),
     seriesId: draft.seriesId.trim(),
@@ -146,9 +160,9 @@ function normalizeDraft(draft: WatchProgressDraft): WatchProgressDraft {
     episodeTitle: draft.episodeTitle.trim(),
     ...(thumbnailUrl ? { thumbnailUrl } : {}),
     assetId: draft.assetId.trim(),
-    positionMs: durationMs === null ? draft.positionMs : Math.min(draft.positionMs, durationMs),
+    positionMs,
     durationMs,
-    completed: Boolean(draft.completed),
+    completed: Boolean(draft.completed) || isProgressCompleted(positionMs, durationMs),
   };
 }
 
@@ -297,8 +311,25 @@ export async function clearWatchProgress(token: string, options: { signal?: Abor
   }, options);
 }
 
+export type WatchProgressUpdateDetail = {
+  scopeId: string;
+  record: WatchProgressRecord;
+};
+
 export function notifyWatchHistoryChanged(): void {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function' || typeof Event !== 'function') {
+    return;
+  }
   window.dispatchEvent(new Event(WATCH_HISTORY_CHANGED_EVENT));
+}
+
+export function notifyWatchProgressUpdated(scopeId: string, record: WatchProgressRecord): void {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent<WatchProgressUpdateDetail>(WATCH_PROGRESS_UPDATED_EVENT, { detail: { scopeId, record } })
+  );
 }
 
 function readGuestStorage(): WatchProgressRecord[] {
@@ -370,7 +401,7 @@ export function isUsableResumeProgress(record: WatchProgressRecord | null | unde
       nonEmptyString(record.assetId) &&
       Number.isSafeInteger(record.positionMs) &&
       record.positionMs > 0 &&
-      (record.durationMs === null || record.positionMs < record.durationMs)
+      (record.durationMs === null || (record.durationMs > 0 && !isProgressCompleted(record.positionMs, record.durationMs)))
   );
 }
 

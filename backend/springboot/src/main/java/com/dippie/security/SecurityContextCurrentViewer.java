@@ -1,11 +1,13 @@
 package com.dippie.security;
 
-import com.dippie.common.error.ForbiddenException;
-import com.dippie.common.error.UnauthorizedException;
-import java.util.Optional;
+import com.dippie.exception.ForbiddenException;
+import com.dippie.exception.UnauthorizedException;
+
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+
+import java.util.Optional;
 
 // Đọc Viewer hiện tại từ SecurityContextHolder sau khi JwtAuthenticationFilter đã xác thực xong.
 @Component

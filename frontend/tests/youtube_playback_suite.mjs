@@ -799,3 +799,191 @@ test('Finding 1: File playback shares the same playback-start gate and single-fl
   assert.equal(played.savedDrafts[0].draft.positionMs, 145000);
   assert.equal(played.savedDrafts[0].reason, 'episode-change');
 });
+
+test('YouTubePlayer preserves pending seek in onReady snapshot and file playback queues resume, blocks premature overwrite, clamps ended, and stops post-switch saves', async () => {
+  const h = makeReact();
+  let playerConfig = null;
+  const seeks = [];
+  const fakePlayer = {
+    getCurrentTime: () => 0,
+    getDuration: () => 600,
+    seekTo: (sec) => seeks.push(sec),
+    playVideo: () => {},
+    destroy: () => {},
+  };
+  const ytMod = loadTsModule('../features/series/components/YouTubePlayer.tsx', {
+    window: {
+      location: { origin: 'http://localhost:3000' },
+      YT: {
+        PlayerState: { ENDED: 0, PLAYING: 1, PAUSED: 2 },
+        Player: function Player(_el, config) {
+          playerConfig = config;
+          return fakePlayer;
+        },
+      },
+      addEventListener() {},
+      removeEventListener() {},
+    },
+    document: { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} },
+    require: (name) => (name === 'react' ? { __esModule: true, default: h.react, ...h.react } : {}),
+  });
+  const ticks = [];
+  h.reset();
+  const ytTree = ytMod.YouTubePlayer({
+    videoId: '0FHNLZszGiU',
+    src: 'https://www.youtube-nocookie.com/embed/0FHNLZszGiU?start=0&enablejsapi=1',
+    title: 'Tập 1',
+    seekRequest: { seconds: 120, nonce: 1, autoPlay: true },
+    onTimeTick: (snap) => ticks.push(snap),
+  });
+  if (ytTree.props.ref) ytTree.props.ref.current = { id: ytTree.props.id };
+  h.flush();
+  await new Promise(setImmediate);
+  playerConfig.events.onReady({ target: fakePlayer });
+  assert.deepEqual(seeks, [120]);
+  assert.equal(ticks.at(-1).currentTimeSec, 120);
+  h.unmount();
+
+  const fh = makeReact();
+  const playbackSource = loadTsModule('../lib/services/playbackSource.ts', {});
+  const mediaRouting = loadTsModule('../lib/services/mediaRouting.ts', {});
+  const watchProgressService = loadTsModule('../lib/services/watchProgressService.ts', {
+    window: { localStorage: { getItem: () => null, setItem() {}, removeItem() {} } },
+  });
+  const episodeNavigation = loadTsModule('../lib/services/episodeNavigation.ts', {});
+  const savedDrafts = [];
+  const episode = { id: 'ep_f1', seriesId: 'ser_file', seasonId: 's1', number: 1, title: 'Tập 1', durationMs: 600000 };
+  const pageMod = loadTsModule('../app/series/[id]/page.tsx', {
+    window: {
+      location: { href: 'http://localhost:3000/series/ser_file?episode=ep_f1' },
+      history: { replaceState() {} },
+      addEventListener() {},
+      removeEventListener() {},
+      setTimeout,
+      clearTimeout,
+    },
+    document: { hidden: false, visibilityState: 'visible', addEventListener() {}, removeEventListener() {} },
+    require: (name) => {
+      if (name === '@/lib/labels') return labels;
+      if (name === 'react') return { __esModule: true, default: fh.react, ...fh.react };
+      if (name === 'react-router') return { Link: 'route-link', useParams: () => ({ id: 'ser_file' }), useSearchParams: () => [new URLSearchParams('episode=ep_f1'), () => {}] };
+      if (name.includes('catalogService')) {
+        return {
+          getCatalogSeriesDetail: async () => ({
+            series: { id: 'ser_file', title: 'Phim Tệp' },
+            seasons: [{ id: 's1', seriesId: 'ser_file', number: 1, title: 'Mùa 1' }],
+            episodes: [episode],
+          }),
+          getCatalogEpisodeDetail: async () => ({
+            episode,
+            mediaAssets: [
+              {
+                id: 'ast1',
+                contentType: 'video',
+                role: 'feature',
+                storageProvider: 'local',
+                available: true,
+                durationMs: 600000,
+                coverageJson: JSON.stringify([{ episode_id: 'ep_f1', scope: 'full_episode' }]),
+              },
+            ],
+            scenes: [],
+            segments: [],
+            youtube: null,
+          }),
+        };
+      }
+      if (name.includes('episodeNavigation')) return episodeNavigation;
+      if (name.includes('mediaService')) return { resolveStreamUrl: (u) => u, getStoredAuthToken: () => null };
+      if (name.includes('mediaRouting')) return mediaRouting;
+      if (name.includes('playbackSource')) return playbackSource;
+      if (name.includes('useWatchProgress')) {
+        return {
+          useWatchProgress: () => ({
+            records: [
+              {
+                episodeId: 'ep_f1',
+                seriesId: 'ser_file',
+                seriesTitle: 'Phim Tệp',
+                seasonId: 's1',
+                seasonNumber: 1,
+                seasonTitle: 'Mùa 1',
+                episodeNumber: 1,
+                episodeTitle: 'Tập 1',
+                assetId: 'ast1',
+                positionMs: 120000,
+                durationMs: 600000,
+                completed: false,
+                version: 1,
+                updatedAt: '2026-11-26T00:00:00Z',
+              },
+            ],
+            saveProgress: async (draft, reason) => {
+              savedDrafts.push({ draft, reason });
+              return null;
+            },
+          }),
+        };
+      }
+      if (name.includes('watchProgressService')) {
+        return { ...watchProgressService, readAutoNextPreference: () => false, writeAutoNextPreference: () => {} };
+      }
+      if (name.includes('YouTubePlayer')) return { YouTubePlayer: 'YouTubePlayer' };
+      if (name.includes('SeriesDetailBanner')) return { SeriesDetailBanner: 'SeriesDetailBanner' };
+      if (name.includes('NextEpisodeAction')) return { NextEpisodeAction: 'NextEpisodeAction' };
+      if (name.includes('LibraryControls')) return { ItemLibraryPanel: 'ItemLibraryPanel', QuickSaveButtons: 'QuickSaveButtons' };
+      return {};
+    },
+  });
+
+  let tree;
+  for (let i = 0; i < 6; i++) {
+    fh.reset();
+    tree = pageMod.default();
+    fh.flush();
+    await new Promise(setImmediate);
+  }
+  fh.reset();
+  tree = pageMod.default();
+
+  const video = findNodes(tree, (n) => n.props?.['data-testid'] === 'series-video-player')[0];
+  const videoEl = {
+    currentTime: 1.5,
+    duration: Number.NaN,
+    readyState: 0,
+    paused: false,
+    src: '/api/media/stream/ast1',
+    play: async () => {},
+  };
+  video.props.ref.current = videoEl;
+
+  const resumeBox = findNodes(tree, (n) => n.props?.['data-testid'] === 'resume-choice')[0];
+  const resumeBtn = findNodes(resumeBox, (n) => n.type === 'button' && getText(n) === 'Xem tiếp')[0];
+  resumeBtn.props.onClick();
+  video.props.onPlay();
+  video.props.onTimeUpdate();
+  assert.equal(savedDrafts.length, 0);
+
+  videoEl.duration = 600.4;
+  videoEl.readyState = 2;
+  video.props.onLoadedMetadata();
+  assert.equal(videoEl.currentTime, 120);
+
+  videoEl.currentTime = 600.4;
+  video.props.onEnded();
+  assert.equal(savedDrafts.length, 1);
+  assert.equal(savedDrafts[0].reason, 'ended');
+  assert.equal(savedDrafts[0].draft.positionMs, 600000);
+  assert.equal(savedDrafts[0].draft.completed, true);
+  fh.unmount();
+
+  const trackerMod = loadTsModule('../features/series/hooks/useSeriesPlayback.ts', {
+    require: (name) => (name === 'react' ? { __esModule: true, default: fh.react, ...fh.react } : {}),
+  });
+  const tracker = new trackerMod.EpisodePlaybackTracker();
+  tracker.markStarted('ep_x');
+  assert.equal(tracker.canSave('ep_x', 'episode-change'), true);
+  assert.equal(tracker.canSave('ep_x', 'pause'), false);
+  assert.equal(tracker.canSave('ep_x', 'leave'), false);
+  assert.equal(tracker.canSave('ep_x', 'interval'), false);
+});

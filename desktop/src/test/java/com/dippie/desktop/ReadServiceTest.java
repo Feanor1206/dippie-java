@@ -1,6 +1,8 @@
 package com.dippie.desktop;
 
 import com.dippie.desktop.dao.*;
+import com.dippie.desktop.model.DashboardCounts;
+import com.dippie.desktop.model.TopRated;
 import com.dippie.desktop.model.catalog.EpisodeNode;
 import com.dippie.desktop.model.catalog.SeasonNode;
 import com.dippie.desktop.service.CatalogService;
@@ -18,8 +20,8 @@ class ReadServiceTest extends TestDatabase {
         var dashboard = new DashboardService(db, new SeriesDao(db), new EpisodeDao(db),
                 new UserDao(db), new RatingDao(db), new WatchProgressDao(db)).load();
 
-        assertEquals(new DashboardService.Counts(2, 3, 3, 5, 4), dashboard.counts());
-        assertEquals(List.of("e2", "e1"), dashboard.topRated().stream().map(RatingDao.TopRated::episodeId).toList());
+        assertEquals(new DashboardCounts(2, 3, 3, 5, 4), dashboard.counts());
+        assertEquals(List.of("e2", "e1"), dashboard.topRated().stream().map(TopRated::episodeId).toList());
         assertEquals(8.5, dashboard.topRated().get(1).average());
         assertEquals(2, dashboard.topRated().get(1).count());
         assertEquals(1L, dashboard.ratingCounts().get(10));

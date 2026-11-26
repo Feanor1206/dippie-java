@@ -72,10 +72,20 @@ function readResumeSeconds(movieId: string, userId: number | null): number {
 
 function saveFilmProgress(movie: Movie, seconds: number, durationSeconds: number, completed: boolean, userId: number | null) {
   if (typeof movieProgress.saveMovieProgress !== 'function') return;
-  const positionMs = Math.max(0, Math.round(seconds * 1000));
   const durationMs = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null;
+  const rawPositionMs = Math.max(0, Math.round(seconds * 1000));
+  const positionMs = durationMs === null ? rawPositionMs : Math.min(rawPositionMs, durationMs);
+  const isDone =
+    completed ||
+    (typeof movieProgress.isMovieProgressCompleted === 'function' &&
+      movieProgress.isMovieProgressCompleted(positionMs, durationMs));
+  const thumbnailUrl = movie.backdrop?.trim() || movie.poster?.trim() || null;
   try {
-    movieProgress.saveMovieProgress({ movieId: movie.id, title: movie.title, positionMs, durationMs, completed }, Date.now(), userId);
+    movieProgress.saveMovieProgress(
+      { movieId: movie.id, title: movie.title, thumbnailUrl, positionMs, durationMs, completed: isDone },
+      Date.now(),
+      userId
+    );
   } catch {}
 }
 
@@ -175,6 +185,9 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
   const playerOpenerRef = useRef<HTMLElement | null>(null);
   const resumeSecondsRef = useRef(0);
   const lastSavedMsRef = useRef(0);
+  const pendingResumeSeekRef = useRef(false);
+  const hasStartedFeatureRef = useRef(false);
+  const leaveFlushRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     setDescriptor(null);
@@ -235,6 +248,8 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
     if (!safeUrl) return;
     const resumeSeconds = kind === 'feature' && progressOwner !== undefined ? readResumeSeconds(movie.id, progressOwner) : 0;
     resumeSecondsRef.current = resumeSeconds;
+    pendingResumeSeekRef.current = kind === 'feature' && resumeSeconds > 0;
+    hasStartedFeatureRef.current = false;
     lastSavedMsRef.current = Math.round(resumeSeconds * 1000);
     setActiveMediaUrl(safeUrl);
     setPlayerState('buffering');
@@ -246,10 +261,30 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
 
   const rememberPosition = (seconds: number, durationSeconds: number, completed: boolean, force = false) => {
     if (activeMediaKind !== 'feature' || progressOwner === undefined) return;
+    if (!completed) {
+      if (!Number.isFinite(seconds) || seconds < 1) return;
+      if (pendingResumeSeekRef.current && seconds + 2 < resumeSecondsRef.current) return;
+    }
     const positionMs = Math.max(0, Math.round(seconds * 1000));
     if (!force && !completed && Math.abs(positionMs - lastSavedMsRef.current) < PROGRESS_SAVE_MIN_DELTA_MS) return;
     lastSavedMsRef.current = positionMs;
     saveFilmProgress(movie, seconds, durationSeconds, completed, progressOwner);
+  };
+
+  leaveFlushRef.current = () => {
+    const video = videoRef.current;
+    if (
+      isPlaying &&
+      activeMediaKind === 'feature' &&
+      hasStartedFeatureRef.current &&
+      video &&
+      Number.isFinite(video.currentTime) &&
+      video.currentTime >= 1 &&
+      !video.ended &&
+      (!Number.isFinite(video.duration) || video.duration <= 0 || video.currentTime < video.duration)
+    ) {
+      rememberPosition(video.currentTime, video.duration || duration, false, true);
+    }
   };
 
   const closePlayer = () => {
@@ -257,7 +292,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
     if (
       video &&
       Number.isFinite(video.currentTime) &&
-      video.currentTime > 0 &&
+      video.currentTime >= 1 &&
       !video.ended &&
       (!Number.isFinite(video.duration) || video.duration <= 0 || video.currentTime < video.duration)
     ) {
@@ -388,12 +423,29 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
     }, MODAL_FOCUS_DELAY_MS);
 
     const handleKeyDown = (event: KeyboardEvent) => handlePlayerKey.current(event);
+    const handlePageHide = () => leaveFlushRef.current();
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') leaveFlushRef.current();
+    };
 
-    window.addEventListener('keydown', handleKeyDown);
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('pagehide', handlePageHide);
+    }
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
     return () => {
       clearTimeout(timer);
+      leaveFlushRef.current();
       document.body.style.overflow = originalOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('pagehide', handlePageHide);
+      }
+      if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
       (playerOpenerRef.current || playButtonRef.current)?.focus();
     };
   }, [isPlaying]);
@@ -500,16 +552,26 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                     } catch {}
                     setCurrentTime(startAt);
                   }
+                  pendingResumeSeekRef.current = false;
                 }}
                 onTimeUpdate={() => {
                   const seconds = videoRef.current?.currentTime || 0;
                   setCurrentTime(seconds);
-                  rememberPosition(seconds, videoRef.current?.duration || duration, false);
+                  if (hasStartedFeatureRef.current) {
+                    rememberPosition(seconds, videoRef.current?.duration || duration, false);
+                  }
                 }}
                 onWaiting={() => setPlayerState('buffering')}
-                onPlaying={() => setPlayerState('playing')}
+                onPlay={() => {
+                  hasStartedFeatureRef.current = true;
+                }}
+                onPlaying={() => {
+                  hasStartedFeatureRef.current = true;
+                  setPlayerState('playing');
+                }}
                 onPause={() => {
                   if (playerState !== 'buffering' && playerState !== 'error') setPlayerState('paused');
+                  if (videoRef.current?.ended || !hasStartedFeatureRef.current) return;
                   rememberPosition(videoRef.current?.currentTime || 0, videoRef.current?.duration || duration, false, true);
                 }}
                 onEnded={() => {

@@ -258,11 +258,20 @@ export function YouTubePlayer({
               const pending = pendingSeekRef.current;
               if (pending) {
                 applySeekAndPlay(event.target, pending.seconds, pending.autoPlay);
+                const snapshot = readSnapshot(event.target);
+                const syncedSnapshot: YouTubeProgressSnapshot = {
+                  currentTimeSec: pending.seconds,
+                  durationSec: snapshot.durationSec,
+                };
+                lastSnapshotRef.current = syncedSnapshot;
                 pendingSeekRef.current = null;
-              } else if (autoPlayRef.current && typeof event.target.playVideo === 'function') {
-                event.target.playVideo();
+                callbacksRef.current.onTimeTick?.(syncedSnapshot);
+              } else {
+                if (autoPlayRef.current && typeof event.target.playVideo === 'function') {
+                  event.target.playVideo();
+                }
+                callbacksRef.current.onTimeTick?.(readSnapshot(event.target));
               }
-              callbacksRef.current.onTimeTick?.(readSnapshot(event.target));
             },
             onStateChange: (event) => {
               if (!active) return;

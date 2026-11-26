@@ -7,7 +7,6 @@ import com.dippie.desktop.model.catalog.CatalogNode;
 import com.dippie.desktop.model.catalog.EpisodeNode;
 import com.dippie.desktop.model.catalog.SeasonNode;
 import com.dippie.desktop.model.catalog.SeriesNode;
-import com.dippie.desktop.service.CatalogService;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -159,7 +158,7 @@ public final class CatalogPane extends DataPane {
     // Lọc lại cây theo từ khóa và giữ nguyên trạng thái đóng mở cùng mục đang chọn nếu nó vẫn còn khớp.
     private void showTree() {
         String term = SearchText.normalize(search.getText());
-        var matches = CatalogService.filter(catalog, search.getText());
+        var matches = controller.filterCatalog(catalog, search.getText());
         Key selected = keyOf(tree.getSelectionModel().getSelectedItem());
         Set<Key> expanded = new HashSet<>();
         rememberExpanded(tree.getRoot(), expanded);

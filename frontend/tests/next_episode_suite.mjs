@@ -577,3 +577,172 @@ test('R5: nextEpisodeService preserves backend assetId and chooses episode vs fi
   assert.equal(fileUrl.searchParams.get('asset'), 'asset_file_42');
   slots.forEach((slot) => slot?.cleanup?.());
 });
+
+test('Selecting NextEpisodeAction on the currently loaded episode seeks in place without refetching episode detail', async () => {
+  const slots = [];
+  let cursor = 0;
+  let effects = [];
+  let currentParams = new URLSearchParams('episode=ep_doraemon_s05_0209');
+  let episodeFetchCount = 0;
+  const sameDeps = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+  const react = {
+    useState(init) {
+      const i = cursor++;
+      if (!(i in slots)) slots[i] = { value: typeof init === 'function' ? init() : init };
+      return [
+        slots[i].value,
+        (next) => {
+          slots[i].value = typeof next === 'function' ? next(slots[i].value) : next;
+        },
+      ];
+    },
+    useRef(init) {
+      const i = cursor++;
+      return (slots[i] ||= { current: init });
+    },
+    useMemo(factory, deps) {
+      const i = cursor++;
+      if (!slots[i] || !sameDeps(slots[i].deps, deps)) slots[i] = { value: factory(), deps };
+      return slots[i].value;
+    },
+    useCallback(fn, deps) {
+      return react.useMemo(() => fn, deps);
+    },
+    useEffect(fn, deps) {
+      const i = cursor++;
+      const prev = slots[i];
+      if (!prev || !deps || !sameDeps(prev.deps, deps)) {
+        slots[i] = { deps, cleanup: prev?.cleanup };
+        effects.push(() => {
+          slots[i].cleanup?.();
+          slots[i].cleanup = fn();
+        });
+      }
+    },
+    createElement(type, props, ...children) {
+      if (shouldInlineComponent(type)) return type(props || {});
+      return { type, props: { ...props, children } };
+    },
+  };
+
+  const playbackSource = loadTsModule('../lib/services/playbackSource.ts', {});
+  const mediaRouting = loadTsModule('../lib/services/mediaRouting.ts', {});
+  const episodeNavigation = loadTsModule('../lib/services/episodeNavigation.ts', {});
+  const ep209 = { id: 'ep_doraemon_s05_0209', seriesId: 'ser_doraemon', seasonId: 's5', number: 209, title: 'Tập 209', durationMs: 600000 };
+
+  const pageMod = loadTsModule('../app/series/[id]/page.tsx', {
+    URL,
+    window: {
+      location: { href: 'http://localhost:3000/series/ser_doraemon?episode=ep_doraemon_s05_0209' },
+      history: { replaceState() {} },
+      setTimeout,
+      clearTimeout,
+    },
+    document: { title: '', hidden: false, addEventListener() {}, removeEventListener() {} },
+    require(name) {
+      if (name === '@/lib/labels') return labels;
+      if (name === 'react') return { __esModule: true, default: react, ...react };
+      if (name === 'react-router') {
+        return {
+          Link: 'route-link',
+          useParams: () => ({ id: 'ser_doraemon' }),
+          useSearchParams: () => [
+            currentParams,
+            (nextParams) => {
+              currentParams = new URLSearchParams(nextParams);
+            },
+          ],
+        };
+      }
+      if (name.includes('catalogService')) {
+        return {
+          getCatalogSeriesDetail: async () => ({
+            series: { id: 'ser_doraemon', title: 'Doraemon' },
+            seasons: [{ id: 's5', seriesId: 'ser_doraemon', number: 5, title: 'Mùa 5' }],
+            episodes: [ep209],
+          }),
+          getCatalogEpisodeDetail: async () => {
+            episodeFetchCount += 1;
+            return {
+              episode: ep209,
+              segments: [],
+              mediaAssets: [],
+              scenes: [],
+              youtube: { videoId: '0FHNLZszGiU', canEmbed: true },
+            };
+          },
+        };
+      }
+      if (name.includes('episodeNavigation')) return episodeNavigation;
+      if (name.includes('playbackSource')) return playbackSource;
+      if (name.includes('mediaRouting')) return mediaRouting;
+      if (name.includes('mediaService')) return { resolveStreamUrl: (u) => u, getStoredAuthToken: () => null };
+      if (name.includes('useWatchProgress')) return { useWatchProgress: () => ({ records: [], saveProgress() {} }) };
+      if (name.includes('watchProgressService')) {
+        return {
+          readAutoNextPreference: () => false,
+          writeAutoNextPreference() {},
+          isUsableResumeProgress: () => false,
+          toYoutubeAssetId: (id) => `youtube:${id}`,
+          isYoutubeAssetId: (id) => Boolean(id?.startsWith('youtube:')),
+        };
+      }
+      if (name.includes('seriesCardService')) return { getSeriesCardById: async () => null };
+      if (name.includes('SeriesDetailBanner')) return { SeriesDetailBanner: 'SeriesDetailBanner' };
+      if (name.includes('NextEpisodeAction')) return { NextEpisodeAction: 'NextEpisodeAction' };
+      if (name.includes('LibraryControls')) return { ItemLibraryPanel: 'ItemLibraryPanel', QuickSaveButtons: 'QuickSaveButtons' };
+      if (name.includes('YouTubePlayer')) return { YouTubePlayer: 'YouTubePlayer' };
+      return {};
+    },
+  });
+
+  const settle = async () => {
+    let tree;
+    for (let i = 0; i < 5; i++) {
+      cursor = 0;
+      tree = pageMod.default();
+      const pending = effects;
+      effects = [];
+      pending.forEach((fn) => fn());
+      await tick();
+    }
+    return tree;
+  };
+
+  let tree = await settle();
+  assert.equal(episodeFetchCount, 1);
+
+  const banner = findNode(tree, (n) => n.type === 'SeriesDetailBanner');
+  banner.props.nextEpisodeAction.props.onSelectRecommendation({
+    seriesId: 'ser_doraemon',
+    episodeId: 'ep_doraemon_s05_0209',
+    episodeTitle: 'Tập 209',
+    seasonNumber: 5,
+    episodeNumber: 209,
+    resumePositionMs: 360000,
+    reason: 'RESUME',
+    assetId: 'youtube:0FHNLZszGiU',
+  });
+  tree = await settle();
+  assert.equal(episodeFetchCount, 1);
+  let ytNode = findNode(tree, (n) => n.type === 'YouTubePlayer');
+  assert.equal(ytNode.props.seekRequest.seconds, 360);
+  assert.equal(ytNode.props.seekRequest.autoPlay, true);
+
+  const bannerAfter = findNode(tree, (n) => n.type === 'SeriesDetailBanner');
+  bannerAfter.props.nextEpisodeAction.props.onSelectRecommendation({
+    seriesId: 'ser_doraemon',
+    episodeId: 'ep_doraemon_s05_0209',
+    episodeTitle: 'Tập 209',
+    seasonNumber: 5,
+    episodeNumber: 209,
+    resumePositionMs: 0,
+    reason: 'NEXT_UNWATCHED',
+  });
+  tree = await settle();
+  assert.equal(episodeFetchCount, 1);
+  ytNode = findNode(tree, (n) => n.type === 'YouTubePlayer');
+  assert.equal(ytNode.props.seekRequest.seconds, 0);
+  assert.equal(ytNode.props.seekRequest.autoPlay, true);
+  slots.forEach((slot) => slot?.cleanup?.());
+});

@@ -888,3 +888,118 @@ test('R2: null and zero years never render "null", "0", or empty separators acro
   assert.ok(pageSource.includes('lọc theo thể loại hoặc xếp theo tên, năm và số tập.'));
   assert.equal(pageSource.includes('theo thể loại, năm phát hành và số tập.'), false);
 });
+
+test('ContinueWatching keeps only the most recent unfinished episode per series, preserves same-second order, and handles unknown durations', () => {
+  const h = makeReactHarness();
+  const watchProgressService = loadTsModule('../lib/services/watchProgressService.ts', {
+    window: { localStorage: { getItem: () => null, setItem() {}, removeItem() {} } },
+  });
+  const movieProgress = loadTsModule('../lib/services/movieProgress.ts', {
+    window: { localStorage: { getItem: () => null, setItem() {}, removeItem() {} } },
+  });
+
+  const records = [
+    watchProgressService.normalizeWatchProgressRecord({
+      episodeId: 'ep_doraemon_211',
+      seriesId: 'ser_doraemon',
+      seriesTitle: 'Doraemon',
+      episodeNumber: 211,
+      episodeTitle: 'Tập 211 mới nhất',
+      assetId: 'youtube:11111111111',
+      positionMs: 45000,
+      durationMs: 0,
+      completed: false,
+      version: 1,
+      updatedAt: '2026-11-26T00:33:45Z',
+    }),
+    watchProgressService.normalizeWatchProgressRecord({
+      episodeId: 'ep_doraemon_210',
+      seriesId: 'ser_doraemon',
+      seriesTitle: 'Doraemon',
+      episodeNumber: 210,
+      episodeTitle: 'Tập 210 cùng giây nhưng cũ hơn',
+      assetId: 'youtube:22222222222',
+      positionMs: 120000,
+      durationMs: 600000,
+      completed: false,
+      version: 1,
+      updatedAt: '2026-11-26T00:33:45Z',
+    }),
+    watchProgressService.normalizeWatchProgressRecord({
+      episodeId: 'ep_doraemon_209',
+      seriesId: 'ser_doraemon',
+      seriesTitle: 'Doraemon',
+      episodeNumber: 209,
+      episodeTitle: 'Tập 209 cũ hơn nữa',
+      assetId: 'youtube:33333333333',
+      positionMs: 90000,
+      durationMs: 600000,
+      completed: false,
+      version: 1,
+      updatedAt: '2026-11-26T00:30:00Z',
+    }),
+    watchProgressService.normalizeWatchProgressRecord({
+      episodeId: 'ep_near_end',
+      seriesId: 'ser_ori',
+      seriesTitle: 'Công chúa Ori',
+      episodeNumber: 1,
+      episodeTitle: 'Tập gần xong',
+      assetId: 'youtube:44444444444',
+      positionMs: 570000,
+      durationMs: 600000,
+      completed: false,
+      version: 1,
+      updatedAt: '2026-11-26T00:35:00Z',
+    }),
+    watchProgressService.normalizeWatchProgressRecord({
+      episodeId: 'ep_jadoo_1',
+      seriesId: 'ser_jadoo',
+      seriesTitle: 'Xin Chào Jadoo',
+      episodeNumber: 1,
+      episodeTitle: 'Tập Jadoo',
+      assetId: 'youtube:55555555555',
+      positionMs: 120000,
+      durationMs: 600000,
+      completed: false,
+      version: 1,
+      updatedAt: '2026-11-26T00:25:00Z',
+    }),
+    watchProgressService.normalizeWatchProgressRecord({
+      episodeId: 'ep_larva_1',
+      seriesId: 'ser_larva',
+      seriesTitle: 'Larva',
+      episodeNumber: 1,
+      episodeTitle: 'Tập Larva',
+      assetId: 'youtube:66666666666',
+      positionMs: 30000,
+      durationMs: 120000,
+      completed: false,
+      version: 1,
+      updatedAt: '2026-11-26T00:20:00Z',
+    }),
+  ];
+
+  const mod = loadTsModule('../features/movies/components/ContinueWatching.tsx', {
+    require: (name) => {
+      if (name === '@/lib/labels') return labels;
+      if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
+      if (name === 'react-router') return { Link: 'route-link' };
+      if (name.includes('useWatchProgress')) return { useWatchProgress: () => ({ records }) };
+      if (name.includes('watchProgressService')) return watchProgressService;
+      if (name.includes('movieProgress')) return movieProgress;
+      if (name.includes('ArtworkImage')) return { ArtworkImage: 'ArtworkImage' };
+      if (name.includes('seriesBrowseUtils')) return utils;
+      return {};
+    },
+  });
+
+  h.resetCursor();
+  const tree = mod.ContinueWatching({ films: [] });
+  const cards = findNodes(tree, (n) => n.props?.['data-testid'] === 'continue-card');
+  assert.equal(cards.length, 3);
+  assert.equal(cards[0].props.to, '/series/ser_doraemon?episode=ep_doraemon_211&t=45000&timeline=episode');
+  assert.equal(cards[1].props.to, '/series/ser_jadoo?episode=ep_jadoo_1&t=120000&timeline=episode');
+  assert.equal(cards[2].props.to, '/series/ser_larva?episode=ep_larva_1&t=30000&timeline=episode');
+  assert.equal(findNodes(cards[0], (n) => n.props?.['data-testid'] === 'continue-progress-bar').length, 0);
+  assert.equal(findNodes(cards[1], (n) => n.props?.['data-testid'] === 'continue-progress-bar').length, 1);
+});

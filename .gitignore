@@ -54,3 +54,4 @@ frontend/public/videos/*
 .worktrees/
 .tools/
 dist-release/
+__pycache__/

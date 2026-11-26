@@ -1,11 +1,13 @@
-# Kịch bản Demo 5 phút: Dippie (Web gia đình và Dippie Admin JavaFX)
+# Kịch bản demo 5 phút: Dippie (web cho gia đình và Dippie Admin JavaFX)
 
-Thời lượng dự kiến là 5 phút (300 giây), khớp thời gian thuyết trình của môn học. Phân vai trên máy trình chiếu như sau:
+Cả bài gói trong 5 phút (300 giây), đúng thời gian thuyết trình của môn. Mỗi người lo một đoạn, ai làm phần nào thì đứng máy phần đó:
 
-- Thành viên 1 (nhóm trưởng, backend): mở lời, giữ nhịp chuyển phần và kết bài.
-- Thành viên 2 (frontend và UX): thao tác đăng nhập `user`, lọc tâm trạng, tìm kiếm và chấm điểm.
-- Thành viên 3 (CineBot và gợi ý): gõ câu hỏi vào CineBot, mở đúng mốc cảnh và thử câu ngoài danh mục.
-- Thành viên 4 (JavaFX và triển khai): mở quản trị Web, chuyển sang cửa sổ Dippie Admin (JavaFX) thao tác Danh mục, Hoàn tác và Xuất CSV.
+| Ai | Làm gì lúc demo |
+| --- | --- |
+| Hùng (nhóm trưởng, backend và CineBot) | Mở lời, demo CineBot và chốt bài. |
+| Nam (frontend) | Đăng nhập `user`, lọc tâm trạng, tìm kiếm và chấm điểm. |
+| Đạt (dữ liệu phim và triển khai) | Đăng xuất, vào trang quản trị web bằng tài khoản `admin`. |
+| Việt (JavaFX và cơ sở dữ liệu) | Chuyển sang Dippie Admin để thao tác Danh mục, Hoàn tác và Xuất CSV. |
 
 ## 0. Chuẩn bị máy trước khi lên bảng (3 đến 5 phút)
 
@@ -30,7 +32,7 @@ Thời lượng dự kiến là 5 phút (300 giây), khớp thời gian thuyết
 
 ### 0:00 đến 0:45 (45 giây): Mở đầu, đăng nhập và mục "Xem tiếp"
 
-Người phụ trách: Thành viên 1 nói mở lời, Thành viên 2 bấm trên máy.
+Ai đứng: Hùng nói mở lời, Nam bấm máy.
 
 Các bước trên máy:
 1. Mở sẵn trang chủ `http://localhost:3000/` khi chưa đăng nhập. Trỏ nhanh vào khối Kho phim hoạt hình, hàng 6 bộ phim và lưới Gợi ý cho bạn (khách mới thấy 6 tập chia đều cho 6 bộ).
@@ -38,12 +40,12 @@ Các bước trên máy:
 3. Gõ `user`, mật khẩu `password123`, rồi bấm Đăng nhập.
 4. Trỏ vào hàng Xem tiếp vừa hiện ở đầu trang chủ với tiến độ đã lưu sẵn (Heo Peppa Tập 1 ở mốc `01:32`, Doraemon Tập 209 ở mốc `06:00`).
 
-Câu nói gợi ý (Thành viên 1):
+Hùng nói:
 > "Dạ đây là giao diện chính của Dippie chạy trên cổng 3000 với 6 bộ hoạt hình, tổng 806 tập. Khi bạn em đăng nhập tài khoản user, hàng Xem tiếp hiện ra ngay ở đầu trang để phụ huynh mở tiếp đúng đoạn bé xem dở hôm trước ạ."
 
 ### 0:45 đến 1:40 (55 giây): Lọc tâm trạng, tìm kiếm chịu lỗi gõ và chấm điểm
 
-Người phụ trách: Thành viên 2.
+Ai đứng: Nam.
 
 Các bước trên máy:
 1. Ngay trên trang chủ, phía trên mục Gợi ý cho bạn, bấm chip Nhẹ nhàng trước giờ ngủ rồi bấm tiếp chip Tập ngắn dưới 10 phút để thấy danh sách gợi ý đổi ngay theo `MoodRecommendationStrategy`.
@@ -53,12 +55,12 @@ Các bước trên máy:
 5. Bấm mở một bộ phim (Heo Peppa hoặc Larva) sang trang `/series/{id}`.
 6. Bấm Lưu xem sau hoặc Yêu thích, mở khung chấm điểm và chọn 9/10. Chỉ vào điểm trung bình trên màn hình cập nhật lại ngay mà không cần tải lại trang.
 
-Câu nói gợi ý (Thành viên 2):
+Nam nói:
 > "Ở trang chủ phụ huynh có thể chọn nhanh theo tâm trạng, ví dụ tập ngắn trước giờ ngủ. Sang Kho phim em thử gõ không dấu hoặc gõ sai chính tả thì hệ thống vẫn tìm ra đúng tập. Khi bấm chấm 9 điểm ở đây, điểm trung bình cộng đồng cập nhật lại luôn không phải tải lại trang ạ."
 
 ### 1:40 đến 2:55 (75 giây): Trợ lý CineBot (SSE, mở đúng mốc cảnh và từ chối ngoài kho)
 
-Người phụ trách: Thành viên 3.
+Ai đứng: Hùng.
 
 Các bước trên máy:
 1. Bấm nút Hỏi CineBot trên thanh điều hướng.
@@ -69,12 +71,12 @@ Các bước trên máy:
    - `gợi ý phim hài nhẹ nhàng ngắn dưới 5 phút cho bé xem trước khi ngủ`: trả các tập ngắn dưới 5 phút, không lẫn video tổng hợp dài.
    - `có phim Naruto hoặc One Piece không`: CineBot từ chối rõ ràng và liệt kê lại 6 bộ có trong kho.
 
-Câu nói gợi ý (Thành viên 3):
+Hùng nói (phần CineBot):
 > "CineBot chạy cục bộ trong Java bằng chỉ mục BM25 trên hơn 2.500 tài liệu và đẩy chữ qua SSE. Khi em hỏi cảnh Red đội kem rồi bấm Xem tập, trình phát mở đúng giây thứ 33. Còn khi hỏi phim không có trong kho như Naruto thì hệ thống từ chối luôn chứ không bịa tên tập ạ."
 
-### 2:55 đến 3:40 (45 giây): Quản trị Web (phân quyền, thống kê và nhật ký kiểm toán)
+### 2:55 đến 3:40 (45 giây): Quản trị trên web (phân quyền, thống kê và nhật ký kiểm toán)
 
-Người phụ trách: Thành viên 1 hoặc Thành viên 4.
+Ai đứng: Đạt.
 
 Các bước trên máy:
 1. Bấm vào tên tài khoản `user` ở góc phải, chọn Đăng xuất (phía máy chủ gọi `POST /api/auth/logout` tăng `tokenVersion` để thu hồi ngay JWT cũ).
@@ -82,32 +84,32 @@ Các bước trên máy:
 3. Bấm Thống kê (`/admin/stats`), chỉ nhanh tổng số người dùng, 806 tập đã xuất bản, tỷ lệ xem xong và bảng top tập xem nhiều, đánh giá cao.
 4. Bấm Nhật ký (`/admin/audit`), chỉ vào các dòng sự kiện `CATALOG_IMPORTED` hoặc cập nhật tài khoản được ghi tự động bởi `CatalogImportAuditListener`.
 
-Câu nói gợi ý:
+Đạt nói:
 > "Khi bấm Đăng xuất thì backend thu hồi luôn token cũ ở phía máy chủ. Sang tài khoản admin, thanh điều hướng mở đủ 5 mục quản trị gồm cả Báo lỗi video. Mọi lần nhập danh mục hay đổi tài khoản đều có log lại trong Nhật ký kiểm toán, và nếu đổi quyền thì phiên đăng nhập cũ cũng hết hiệu lực ngay nhờ tăng tokenVersion ạ."
 
-### 3:40 đến 4:35 (55 giây): Ứng dụng Desktop Dippie Admin (JavaFX và JDBC)
+### 3:40 đến 4:35 (55 giây): Ứng dụng desktop Dippie Admin (JavaFX và JDBC)
 
-Người phụ trách: Thành viên 4.
+Ai đứng: Việt.
 
 Các bước trên máy:
 1. Nhấn Alt+Tab chuyển sang cửa sổ Dippie Admin đã mở sẵn (từ `CHAY_DIPPIE.bat` hoặc `.\start-desktop.ps1`).
 2. Nhập `admin` / `password123` rồi bấm Đăng nhập (ứng dụng kiểm tra BCrypt trực tiếp trên bảng `users` qua JDBC `PreparedStatement`).
 3. Tab Tổng quan: chỉ nhanh 5 ô số liệu, biểu đồ cột phân bố điểm 1 đến 10 (`BarChart`) và hai bảng top phim lấy từ cùng tệp H2 của web.
-4. Tab Danh mục: gõ thử một từ khóa vào ô Tìm danh mục, mở rộng cây Bộ phim, Mùa, Tập trên `TreeView` (cài theo mẫu Composite với `CatalogNode`) rồi bấm vào một tập để xem chi tiết bên phải.
+4. Tab Danh mục: gõ thử một từ khóa vào ô Tìm danh mục (lọc qua `AdminController.filterCatalog`), mở rộng cây Bộ phim, Mùa, Tập trên `TreeView` (cài theo mẫu Composite với `CatalogNode`) rồi bấm vào một tập để xem chi tiết bên phải.
 5. Tab Người dùng: chọn một tài khoản khác `admin`, bấm Khóa tài khoản (hoặc Đổi vai trò) và xác nhận. Danh sách tự làm mới và đồng bộ sang tab Tổng quan nhờ Observer (`usersChangedProperty`). Sau đó bấm nút Hoàn tác để khôi phục trạng thái qua Command Pattern (`AccountCommand` và `CommandHistory`).
 6. Xuất CSV: bấm nút Xuất CSV (trên tab Người dùng lưu mặc định `nguoi-dung.csv`), lưu ra thư mục tạm rồi mở nhanh tệp để thấy tiếng Việt hiển thị đúng (UTF-8 BOM qua `CsvExporter` và `CsvStrategy`).
 
-Câu nói gợi ý (Thành viên 4):
+Việt nói:
 > "Song song với bản web, em chạy ứng dụng Dippie Admin viết bằng JavaFX 21 và JDBC thuần nối vào cùng cơ sở dữ liệu. Ở đây có cây danh mục dùng Composite trên TreeView, nút Hoàn tác dùng Command Pattern có giao dịch JDBC, các tab tự làm mới bằng Observer và xuất báo cáo CSV bằng luồng I/O ạ."
 
 ### 4:35 đến 5:00 (25 giây): Chốt bài và chuyển sang hỏi đáp
 
-Người phụ trách: Thành viên 1.
+Ai đứng: Hùng.
 
 Các bước trên máy: chuyển về Slide 14 (slide tổng kết) hoặc để hai cửa sổ Web và Dippie Admin cạnh nhau trên màn hình.
 
-Câu nói gợi ý (Thành viên 1):
-> "Dạ hệ thống hiện có 589 ca kiểm thử backend JUnit (1 ca bỏ qua trên Windows do tạo symlink cần quyền quản trị), 286 ca frontend, 33 ca desktop JavaFX, 36/36 phép kiểm thử khói trên bản dựng cuối đều đạt, điểm đánh giá UX tăng từ 3,2 lên 8,2 trên 10 sau 3 vòng. Ngoài Docker Compose với Caddy HTTPS, nhóm còn đóng gói sẵn `CHAY_DIPPIE.bat` để nhấp đúp chạy thử ngay. Nhóm em xin kết thúc phần trình bày, cảm ơn thầy và các bạn đã lắng nghe, mong nhận được góp ý từ thầy ạ."
+Hùng nói:
+> "Dạ hệ thống hiện có 589 ca kiểm thử backend JUnit (1 ca bỏ qua trên Windows do tạo symlink cần quyền quản trị), 286 ca frontend, 33 ca desktop JavaFX, chạy thử trọn bộ trên bản cuối đạt 36 trên 36 bước, điểm đánh giá UX tăng từ 3,2 lên 8,2 trên 10 sau 3 vòng. Ngoài Docker Compose với Caddy HTTPS, nhóm còn đóng gói sẵn `CHAY_DIPPIE.bat` để nhấp đúp chạy thử ngay. Nhóm em xin kết thúc phần trình bày, cảm ơn thầy và các bạn đã lắng nghe, mong nhận được góp ý từ thầy ạ."
 
 ## 2. Bộ câu hỏi CineBot dự phòng (đã chạy thử trên dữ liệu demo)
 

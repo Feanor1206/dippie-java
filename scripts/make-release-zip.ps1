@@ -96,7 +96,8 @@ foreach ($d in @(
     ".metadata",
     ".gradle",
     "mysql_data",
-    "backups"
+    "backups",
+    "__pycache__"
 )) {
     [void]$excludedDirNames.Add($d)
 }

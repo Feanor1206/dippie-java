@@ -24,6 +24,7 @@ import {
   saveWatchProgress,
   type WatchProgressRecord,
 } from '@/lib/services/watchProgressService';
+import * as movieProgress from '@/lib/services/movieProgress';
 import { parseTimestamp } from '@/lib/timestamps';
 
 export type WatchHistoryDayGroup = {
@@ -118,7 +119,7 @@ function WatchHistorySkeleton() {
   );
 }
 
-function WatchHistory({ token }: { token: string }) {
+function WatchHistory({ token, userId }: { token: string; userId: number | null }) {
   const { records, loading, error, reload } = useWatchProgress();
   const [confirmClear, setConfirmClear] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -207,6 +208,9 @@ function WatchHistory({ token }: { token: string }) {
     try {
       await clearWatchProgress(token, { signal: controller.signal });
       if (controller.signal.aborted) return;
+      if (typeof movieProgress.clearMovieProgress === 'function') {
+        movieProgress.clearMovieProgress(userId);
+      }
       setConfirmClear(false);
       setLastRemoved(null);
       setRemovedIds(new Set());
@@ -512,7 +516,7 @@ function WatchHistory({ token }: { token: string }) {
 }
 
 export default function WatchHistoryPage() {
-  const { status, token, openAuthModal, retryVerify } = useAuth();
+  const { status, token, user, openAuthModal, retryVerify } = useAuth();
 
   return (
     <main id="main-content" tabIndex={-1} className="page-shell min-h-[72vh] max-w-4xl py-8 sm:py-12">
@@ -530,7 +534,7 @@ export default function WatchHistoryPage() {
         </div>
       </header>
 
-      {status === 'authenticated' && token && <WatchHistory token={token} />}
+      {status === 'authenticated' && token && <WatchHistory token={token} userId={user?.id ?? null} />}
 
       {status === 'checking' && <WatchHistorySkeleton />}
 

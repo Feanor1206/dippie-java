@@ -1,16 +1,19 @@
 package com.dippie.security;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.dippie.exception.ForbiddenException;
+import com.dippie.exception.UnauthorizedException;
+import com.dippie.model.user.Role;
 
-import com.dippie.common.error.ForbiddenException;
-import com.dippie.common.error.UnauthorizedException;
-import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // Test đơn vị cho SecurityContextCurrentViewer khi chưa đăng nhập, đăng nhập user thường và đăng nhập admin.
 class SecurityContextCurrentViewerTest {

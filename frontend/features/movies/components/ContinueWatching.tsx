@@ -24,6 +24,7 @@ export function ContinueWatching({ films }: { films: MovieProgressRecord[] }) {
   const entries = [
     ...records.filter(isUsableResumeProgress).map((episode) => ({
       id: episode.episodeId,
+      seriesId: episode.seriesId,
       title: cleanMediaTitle(episode.episodeTitle || episode.seriesTitle),
       seriesTitle: cleanMediaTitle(episode.seriesTitle),
       episodeTag: formatEpisodeTag(episode.episodeNumber),
@@ -35,6 +36,7 @@ export function ContinueWatching({ films }: { films: MovieProgressRecord[] }) {
     })),
     ...films.filter(isUsableMovieProgress).map((film) => ({
       id: film.movieId,
+      seriesId: null as string | null,
       title: cleanMediaTitle(film.title),
       seriesTitle: '',
       episodeTag: '',
@@ -44,11 +46,19 @@ export function ContinueWatching({ films }: { films: MovieProgressRecord[] }) {
       duration: film.durationMs,
       updatedAt: film.updatedAt,
     })),
-  ];
+  ].sort((a, b) => parseTimestamp(b.updatedAt) - parseTimestamp(a.updatedAt));
 
-  const unique = [...new Map(entries.reverse().map((entry) => [entry.id, entry])).values()]
-    .sort((a, b) => parseTimestamp(b.updatedAt) - parseTimestamp(a.updatedAt))
-    .slice(0, MAX_CONTINUE_ITEMS);
+  const seenIds = new Set<string>();
+  const seenSeries = new Set<string>();
+  const unique: typeof entries = [];
+  for (const entry of entries) {
+    if (seenIds.has(entry.id)) continue;
+    if (entry.seriesId && seenSeries.has(entry.seriesId)) continue;
+    seenIds.add(entry.id);
+    if (entry.seriesId) seenSeries.add(entry.seriesId);
+    unique.push(entry);
+    if (unique.length >= MAX_CONTINUE_ITEMS) break;
+  }
 
   if (!unique.length) return null;
 
