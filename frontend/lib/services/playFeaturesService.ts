@@ -1,4 +1,10 @@
-import { apiFetch, withRequestTimeout } from '@/lib/services/apiRequest';
+import {
+  NETWORK_ERROR_MESSAGE,
+  apiFetch,
+  formatRateLimitMessage,
+  isLikelyNetworkError,
+  withRequestTimeout,
+} from '@/lib/services/apiRequest';
 import type { ScreenTimeStatus } from '@/lib/services/screenTimeService';
 
 const API = '/api';
@@ -181,10 +187,10 @@ export function formatCountdownSeconds(seconds: number): string {
 
 export function validatePlaySettings(input: PlaySettings): string | null {
   if (!Number.isInteger(input.watchPetFaintMinutes) || input.watchPetFaintMinutes < 10 || input.watchPetFaintMinutes > 60) {
-    return 'Ngưỡng thú ảo mệt xỉu cần từ 10 đến 60 phút.';
+    return 'Thời gian Dieppie nhắc nghỉ mắt cần từ 10 đến 60 phút.';
   }
   if (!Number.isInteger(input.watchPetRestMinutes) || input.watchPetRestMinutes < 3 || input.watchPetRestMinutes > 15) {
-    return 'Thời gian cho thú nghỉ mắt cần từ 3 đến 15 phút.';
+    return 'Thời gian cho Dieppie nghỉ mắt cần từ 3 đến 15 phút.';
   }
   return null;
 }
@@ -293,6 +299,23 @@ function normalizeScreenTimeStatus(raw: any): ScreenTimeStatus {
   };
 }
 
+async function runPlayFeaturesRequest<T>(
+  action: (signal: AbortSignal) => Promise<T>,
+  options: PlayFeaturesRequestOptions = {}
+): Promise<T> {
+  try {
+    return await withRequestTimeout(action, {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (isLikelyNetworkError(error)) {
+      throw new PlayFeaturesApiError(NETWORK_ERROR_MESSAGE, 0);
+    }
+    throw error;
+  }
+}
+
 async function parseEnvelope(response: Response, fallbackMessage: string): Promise<{ data: any; message: string }> {
   const retryHeader = response.headers?.get?.('Retry-After');
   const retryAfter = retryHeader && /^\d+$/.test(retryHeader) ? parseInt(retryHeader, 10) : undefined;
@@ -300,11 +323,19 @@ async function parseEnvelope(response: Response, fallbackMessage: string): Promi
   try {
     json = await response.json();
   } catch {
-    throw new PlayFeaturesApiError(fallbackMessage, response.status, retryAfter);
+    const message =
+      response.status === 429
+        ? formatRateLimitMessage('', fallbackMessage, retryAfter)
+        : fallbackMessage;
+    throw new PlayFeaturesApiError(message, response.status, retryAfter);
   }
   const serverMessage = typeof json?.message === 'string' && json.message.trim() ? json.message.trim() : '';
   if (!response.ok || json?.success !== true) {
-    throw new PlayFeaturesApiError(serverMessage || fallbackMessage, response.status, retryAfter);
+    const message =
+      response.status === 429
+        ? formatRateLimitMessage(serverMessage, fallbackMessage, retryAfter)
+        : serverMessage || fallbackMessage;
+    throw new PlayFeaturesApiError(message, response.status, retryAfter);
   }
   return { data: json.data, message: serverMessage };
 }
@@ -316,7 +347,7 @@ export async function fetchPlayFeaturesStatus(
 ): Promise<PlayFeaturesStatus> {
   const query = seriesId ? `?seriesId=${encodeURIComponent(seriesId)}` : '';
   const url = `${options.baseUrl || API}/users/play-features/status${query}`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'GET',
@@ -356,7 +387,7 @@ export async function fetchPlayFeaturesStatus(
         },
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -365,17 +396,17 @@ export async function startWatchPetRest(
   options: PlayFeaturesRequestOptions = {}
 ): Promise<WatchPetStatus> {
   const url = `${options.baseUrl || API}/users/play-features/watch-pet/rest`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
         headers: authHeaders(token),
         signal,
       });
-      const { data } = await parseEnvelope(response, 'Chưa cho thú ảo đi ngủ được.');
+      const { data } = await parseEnvelope(response, 'Chưa cho Dieppie đi ngủ được.');
       return normalizeWatchPet(data);
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -384,14 +415,14 @@ export async function fetchWatchPetMedicineChallenge(
   options: PlayFeaturesRequestOptions = {}
 ): Promise<WatchPetMedicineChallenge> {
   const url = `${options.baseUrl || API}/users/play-features/watch-pet/medicine`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'GET',
         headers: authHeaders(token),
         signal,
       });
-      const { data } = await parseEnvelope(response, 'Chưa lấy được bài toán mua thuốc hồi máu.');
+      const { data } = await parseEnvelope(response, 'Chưa lấy được bài toán mua thuốc hồi sức cho Dieppie.');
       return {
         token: typeof data?.token === 'string' ? data.token : '',
         question: typeof data?.question === 'string' ? data.question : '',
@@ -400,7 +431,7 @@ export async function fetchWatchPetMedicineChallenge(
         expiresInSeconds: nonNeg(data?.expiresInSeconds, 120),
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -411,7 +442,7 @@ export async function submitWatchPetMedicineAnswer(
   options: PlayFeaturesRequestOptions = {}
 ): Promise<WatchPetMedicineAnswerResult> {
   const url = `${options.baseUrl || API}/users/play-features/watch-pet/medicine`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -419,14 +450,14 @@ export async function submitWatchPetMedicineAnswer(
         body: JSON.stringify({ token: challengeToken, answer }),
         signal,
       });
-      const { data, message } = await parseEnvelope(response, 'Chưa kiểm tra được đáp án mua thuốc.');
+      const { data, message } = await parseEnvelope(response, 'Chưa kiểm tra được đáp án mua thuốc cho Dieppie.');
       return {
         correct: Boolean(data?.correct),
         message,
         watchPet: normalizeWatchPet(data?.watchPet),
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -435,7 +466,7 @@ export async function spawnLootDrop(
   options: PlayFeaturesRequestOptions = {}
 ): Promise<LootDropSpawn> {
   const url = `${options.baseUrl || API}/users/play-features/loot/spawn`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -450,7 +481,7 @@ export async function spawnLootDrop(
         combo: nonNeg(data?.combo, 0),
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -460,7 +491,7 @@ export async function openLootDrop(
   options: PlayFeaturesRequestOptions = {}
 ): Promise<LootDropQuiz> {
   const url = `${options.baseUrl || API}/users/play-features/loot/open`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -480,7 +511,7 @@ export async function openLootDrop(
         potentialComboBonusMinutes: nonNeg(data?.potentialComboBonusMinutes, 0),
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -491,7 +522,7 @@ export async function submitLootDropAnswer(
   options: PlayFeaturesRequestOptions = {}
 ): Promise<LootDropAnswerResult> {
   const url = `${options.baseUrl || API}/users/play-features/loot/answer`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -511,7 +542,7 @@ export async function submitLootDropAnswer(
         status: normalizeScreenTimeStatus(data?.status),
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -521,7 +552,7 @@ export async function missLootDrop(
   options: PlayFeaturesRequestOptions = {}
 ): Promise<LootStatus> {
   const url = `${options.baseUrl || API}/users/play-features/loot/miss`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -536,7 +567,7 @@ export async function missLootDrop(
         combo: nonNeg(data?.combo, 0),
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -546,7 +577,7 @@ export async function fetchRecapQuiz(
   options: PlayFeaturesRequestOptions = {}
 ): Promise<RecapQuiz> {
   const url = `${options.baseUrl || API}/users/play-features/recap/quiz?episodeId=${encodeURIComponent(episodeId)}`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'GET',
@@ -571,7 +602,7 @@ export async function fetchRecapQuiz(
         expiresInSeconds: nonNeg(data?.expiresInSeconds, 600),
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -581,7 +612,7 @@ export async function submitRecapQuizAnswer(
   options: PlayFeaturesRequestOptions = {}
 ): Promise<RecapQuizAnswerResult> {
   const url = `${options.baseUrl || API}/users/play-features/recap/answer`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -598,7 +629,7 @@ export async function submitRecapQuizAnswer(
         message,
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -607,7 +638,7 @@ export async function fetchParentPlaySettings(
   options: PlayFeaturesRequestOptions = {}
 ): Promise<ChildProfilePlaySettings[]> {
   const url = `${options.baseUrl || API}/users/profiles/play-features`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'GET',
@@ -620,7 +651,7 @@ export async function fetchParentPlaySettings(
         .map(normalizeChildSettings)
         .filter((item: ChildProfilePlaySettings | null): item is ChildProfilePlaySettings => item !== null);
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -631,7 +662,7 @@ export async function updateParentPlaySettings(
   options: PlayFeaturesRequestOptions = {}
 ): Promise<ChildProfilePlaySettings> {
   const url = `${options.baseUrl || API}/users/profiles/${encodeURIComponent(String(profileId))}/play-features`;
-  return withRequestTimeout(
+  return runPlayFeaturesRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'PUT',
@@ -646,6 +677,6 @@ export async function updateParentPlaySettings(
       }
       return normalized;
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }

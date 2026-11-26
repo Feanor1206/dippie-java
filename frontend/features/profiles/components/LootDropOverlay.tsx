@@ -79,7 +79,7 @@ export function LootDropOverlay({
           aria-modal="false"
           aria-labelledby="loot-quiz-title"
           data-testid="loot-quiz-card"
-          className="absolute bottom-14 left-3 z-30 w-[min(92%,310px)] rounded-2xl border-2 border-ink bg-paper-white p-4 shadow-brand-lg"
+          className="absolute bottom-3 left-3 right-3 z-30 rounded-2xl border-2 border-ink bg-paper-white p-4 shadow-brand-lg sm:bottom-14 sm:right-auto sm:w-[310px]"
         >
           <div className="flex items-center justify-between gap-2">
             <h4 id="loot-quiz-title" className="font-display text-sm font-bold text-ink">
@@ -120,6 +120,8 @@ export function LootDropOverlay({
               data-testid="loot-quiz-input"
               type="text"
               inputMode="numeric"
+              pattern="[0-9]*"
+              enterKeyHint="done"
               autoComplete="off"
               autoFocus
               disabled={submitting}
@@ -129,7 +131,7 @@ export function LootDropOverlay({
                 if (inputError) setInputError('');
               }}
               placeholder="Đáp án"
-              className="min-h-[44px] w-full rounded-lg border-2 border-ink/40 bg-surface-muted px-3 text-center text-base font-bold text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+              className="min-h-[48px] w-full rounded-lg border-2 border-ink/40 bg-surface-muted px-3 text-center text-lg font-bold text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
             />
             <button
               type="submit"
@@ -154,7 +156,7 @@ export function LootDropOverlay({
           role="status"
           aria-live="polite"
           data-testid="loot-result-banner"
-          className={`absolute bottom-14 left-3 z-20 max-w-[300px] rounded-xl border-2 border-ink px-3.5 py-2 text-xs font-bold shadow-[2px_2px_0_#203328] ${
+          className={`absolute bottom-3 left-3 right-3 z-20 rounded-xl border-2 border-ink px-3.5 py-2 text-xs font-bold shadow-[2px_2px_0_#203328] sm:bottom-14 sm:right-auto sm:max-w-[300px] ${
             feedback.kind === 'success' ? 'bg-mint text-ink' : 'bg-paper-white text-ink'
           }`}
         >

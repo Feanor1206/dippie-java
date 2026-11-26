@@ -395,7 +395,7 @@ function CineBotConversation({
                       key={prompt}
                       disabled={isTyping}
                       onClick={() => handleSend(prompt)}
-                      className="inline-flex min-h-[44px] items-center rounded border border-ink/30 bg-mint px-3 py-2 text-xs text-muted transition-colors hover:border-ink hover:text-ink cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex min-h-[44px] items-center rounded border border-ink/30 bg-mint px-3 py-2 text-xs font-medium text-ink transition-colors hover:border-ink hover:bg-mint/80 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {prompt}
                     </button>

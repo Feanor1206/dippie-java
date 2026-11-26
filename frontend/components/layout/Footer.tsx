@@ -21,7 +21,7 @@ export function Footer() {
 
   return (
     <footer className="comic-footer mt-auto border-t border-surface-border bg-surface">
-      <div className="page-shell flex flex-col gap-6 py-8 sm:flex-row sm:items-center sm:justify-between text-muted">
+      <div className="page-shell flex flex-col gap-6 py-8 sm:flex-row sm:items-center sm:justify-between text-ink/85">
         <Link
           to="/"
           className="comic-wordmark inline-flex min-h-[44px] items-center text-2xl font-bold text-ink hover:text-brand-dark transition-colors"
@@ -46,7 +46,7 @@ export function Footer() {
           <Link to="/dieu-khoan" className={FOOTER_LINK_CLASS}>Điều khoản sử dụng</Link>
           <Link to="/quyen-rieng-tu" className={FOOTER_LINK_CLASS}>Chính sách quyền riêng tư</Link>
         </nav>
-        <span className="text-xs text-muted">© Dippie 2026</span>
+        <span className="text-xs text-ink/85">© Dippie 2026</span>
       </div>
     </footer>
   );

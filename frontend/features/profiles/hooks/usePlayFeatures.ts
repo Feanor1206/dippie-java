@@ -27,6 +27,7 @@ export function usePlayFeatures({
   seriesId,
   isPlaying,
   isScreenTimeLocked,
+  isBlockedByHigherOverlay = false,
   onScreenTimeUpdated,
 }: {
   enabled: boolean;
@@ -34,6 +35,7 @@ export function usePlayFeatures({
   seriesId?: string | null;
   isPlaying: boolean;
   isScreenTimeLocked: boolean;
+  isBlockedByHigherOverlay?: boolean;
   onScreenTimeUpdated?: (next: ScreenTimeStatus) => void;
 }) {
   const [status, setStatus] = useState<PlayFeaturesStatus | null>(null);
@@ -106,6 +108,18 @@ export function usePlayFeatures({
 
   const watchPet = status?.watchPet ?? null;
   const isPetLocked = Boolean(watchPet?.enabled && (watchPet.fainted || watchPet.resting));
+  const isLootSuppressed = Boolean(isScreenTimeLocked || isPetLocked || isBlockedByHigherOverlay);
+  const isLootSuppressedRef = useRef(isLootSuppressed);
+  isLootSuppressedRef.current = isLootSuppressed;
+
+  useEffect(() => {
+    if (!isLootSuppressed) return;
+    setActiveDrop(null);
+    setDropSecondsLeft(0);
+    setActiveLootQuiz(null);
+    setLootQuizSecondsLeft(0);
+    setLootFeedback(null);
+  }, [isLootSuppressed]);
 
   useEffect(() => {
     if (!watchPet?.resting || restCountdown <= 0) return;
@@ -126,8 +140,7 @@ export function usePlayFeatures({
       !scopeKey ||
       !token ||
       !isPlaying ||
-      isScreenTimeLocked ||
-      isPetLocked ||
+      isLootSuppressed ||
       !status?.loot.enabled ||
       !status?.loot.ready ||
       activeDrop ||
@@ -139,7 +152,7 @@ export function usePlayFeatures({
     spawningRef.current = true;
     void spawnLootDrop(token)
       .then((spawned) => {
-        if (scopeKeyRef.current !== scopeKey || !spawned.dropToken) return;
+        if (scopeKeyRef.current !== scopeKey || isLootSuppressedRef.current || !spawned.dropToken) return;
         setActiveDrop(spawned);
         setDropSecondsLeft(spawned.visibleSeconds);
         setStatus((prev) =>
@@ -154,8 +167,7 @@ export function usePlayFeatures({
     scopeKey,
     token,
     isPlaying,
-    isScreenTimeLocked,
-    isPetLocked,
+    isLootSuppressed,
     status?.loot.enabled,
     status?.loot.ready,
     activeDrop,

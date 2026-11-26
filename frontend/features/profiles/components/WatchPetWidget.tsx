@@ -9,11 +9,11 @@ import {
 } from '@/lib/services/playFeaturesService';
 
 const STAGE_LABEL: Record<WatchPetStage, string> = {
-  HAPPY: 'Thú ảo đang rất vui',
-  SWEATY: 'Mắt hơi mỏi rồi nhé',
-  DIZZY: 'Sắp mệt xỉu rồi, nghỉ xíu nhé',
-  FAINTED: 'Thú ảo mệt xỉu rồi',
-  RESTING: 'Thú ảo đang ngủ nghỉ mắt',
+  HAPPY: 'Dieppie đang rất vui',
+  SWEATY: 'Dieppie hơi mỏi mắt rồi nhé',
+  DIZZY: 'Dieppie mệt quá rồi, nghỉ mắt chút nha',
+  FAINTED: 'Dieppie buồn ngủ lắm rồi',
+  RESTING: 'Dieppie đang ngủ nghỉ mắt',
 };
 
 const STAGE_ANIMATION: Record<WatchPetStage, string> = {
@@ -29,7 +29,7 @@ export function WatchPetArt({ stage, size = 56 }: { stage: WatchPetStage; size?:
     stage === 'RESTING'
       ? '#d9e6f7'
       : stage === 'FAINTED'
-      ? '#e5e7eb'
+      ? '#fde68a'
       : stage === 'DIZZY'
       ? '#fde68a'
       : stage === 'SWEATY'
@@ -92,10 +92,12 @@ export function WatchPetArt({ stage, size = 56 }: { stage: WatchPetStage; size?:
 
         {stage === 'FAINTED' && (
           <>
-            <path d="M27 36 L35 44 M35 36 L27 44" stroke="#203328" strokeWidth="2.5" strokeLinecap="round" />
-            <path d="M45 36 L53 44 M53 36 L45 44" stroke="#203328" strokeWidth="2.5" strokeLinecap="round" />
-            <path d="M35 51 Q40 47 45 51" fill="none" stroke="#203328" strokeWidth="2.4" strokeLinecap="round" />
-            <ellipse cx="42" cy="53" rx="3" ry="2.2" fill="#f87171" stroke="#203328" strokeWidth="1.4" />
+            <path d="M26 39 Q31 44 36 39" fill="none" stroke="#203328" strokeWidth="2.5" strokeLinecap="round" />
+            <path d="M44 39 Q49 44 54 39" fill="none" stroke="#203328" strokeWidth="2.5" strokeLinecap="round" />
+            <path d="M36 51 Q40 48 44 51" fill="none" stroke="#203328" strokeWidth="2.4" strokeLinecap="round" />
+            <text x="58" y="25" fontSize="11" fontWeight="800" fill="#203328" className="watch-pet-zzz">
+              z
+            </text>
           </>
         )}
 
@@ -123,12 +125,14 @@ export function WatchPetWidget({
   restCountdown,
   onStartRest,
   onWatchPetUpdated,
+  hideCorner = false,
 }: {
   watchPet: WatchPetStatus | null;
   token: string | null;
   restCountdown: number;
   onStartRest: () => Promise<WatchPetStatus | null>;
   onWatchPetUpdated: (next: WatchPetStatus) => void;
+  hideCorner?: boolean;
 }) {
   const [medicineChallenge, setMedicineChallenge] = useState<WatchPetMedicineChallenge | null>(null);
   const [answerInput, setAnswerInput] = useState('');
@@ -152,7 +156,7 @@ export function WatchPetWidget({
     } catch (err: unknown) {
       setFeedback({
         kind: 'error',
-        text: err instanceof Error ? err.message : 'Chưa cho thú ảo nghỉ mắt được.',
+        text: err instanceof Error ? err.message : 'Chưa cho Dieppie nghỉ mắt được.',
       });
     } finally {
       setBusy(false);
@@ -170,7 +174,7 @@ export function WatchPetWidget({
     } catch (err: unknown) {
       setFeedback({
         kind: 'error',
-        text: err instanceof Error ? err.message : 'Chưa lấy được bài toán mua thuốc hồi máu.',
+        text: err instanceof Error ? err.message : 'Chưa lấy được bài toán mua thuốc hồi sức cho Dieppie.',
       });
     } finally {
       setBusy(false);
@@ -213,24 +217,26 @@ export function WatchPetWidget({
 
   return (
     <>
-      <div
-        role="status"
-        aria-live="polite"
-        data-testid="watch-pet-corner"
-        data-pet-stage={watchPet.stage}
-        aria-label={`${STAGE_LABEL[watchPet.stage]}, đã xem liên tục ${watchedMinutes} phút`}
-        className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-1.5 rounded-full border-2 border-ink bg-paper-white/95 px-2.5 py-1 shadow-[2px_2px_0_#203328]"
-      >
-        <WatchPetArt stage={watchPet.stage} size={34} />
-        <div className="pr-1 text-left leading-tight">
-          <p className="text-[10px] font-bold text-ink">{STAGE_LABEL[watchPet.stage]}</p>
-          <p className="font-mono text-[10px] text-muted">
-            {watchPet.resting
-              ? `Ngủ ${formatCountdownSeconds(restCountdown)}`
-              : `${watchedMinutes}/${Math.round(watchPet.faintThresholdSeconds / 60)} phút`}
-          </p>
+      {!hideCorner && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="watch-pet-corner"
+          data-pet-stage={watchPet.stage}
+          aria-label={`${STAGE_LABEL[watchPet.stage]}, đã xem liên tục ${watchedMinutes} phút`}
+          className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-1.5 rounded-full border-2 border-ink bg-paper-white/95 px-2.5 py-1 shadow-[2px_2px_0_#203328]"
+        >
+          <WatchPetArt stage={watchPet.stage} size={34} />
+          <div className="pr-1 text-left leading-tight">
+            <p className="text-[10px] font-bold text-ink">{STAGE_LABEL[watchPet.stage]}</p>
+            <p className="font-mono text-[10px] text-muted">
+              {watchPet.resting
+                ? `Ngủ ${formatCountdownSeconds(restCountdown)}`
+                : `${watchedMinutes}/${Math.round(watchPet.faintThresholdSeconds / 60)} phút`}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {showOverlay && (
         <div
@@ -238,9 +244,9 @@ export function WatchPetWidget({
           aria-modal="false"
           aria-labelledby="watch-pet-dialog-title"
           data-testid="watch-pet-overlay"
-          className="absolute inset-0 z-30 flex items-center justify-center bg-ink/85 p-4 sm:p-6"
+          className="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-ink/85 p-3 sm:p-6"
         >
-          <div className="w-full max-w-md rounded-2xl border-2 border-ink bg-paper-white p-5 text-center shadow-brand-lg sm:p-6">
+          <div className="my-auto w-full max-w-md rounded-2xl border-2 border-ink bg-paper-white p-5 text-center shadow-brand-lg sm:p-6">
             <div className="mx-auto mb-2 flex justify-center">
               <WatchPetArt stage={watchPet.resting ? 'RESTING' : 'FAINTED'} size={76} />
             </div>
@@ -248,10 +254,10 @@ export function WatchPetWidget({
             {watchPet.resting ? (
               <div className="space-y-3">
                 <h3 id="watch-pet-dialog-title" className="font-display text-lg font-bold text-ink sm:text-xl">
-                  Thú ảo đang ngủ nghỉ mắt rồi
+                  Dieppie đang ngủ nghỉ mắt rồi
                 </h3>
                 <p className="text-xs leading-relaxed text-muted sm:text-sm">
-                  Bé nhìn ra xa, chớp mắt và uống một ngụm nước trong lúc chờ thú tỉnh dậy nhé!
+                  Bé nhìn ra xa, chớp mắt và uống một ngụm nước trong lúc chờ Dieppie tỉnh dậy nhé!
                 </p>
                 <div
                   data-testid="watch-pet-rest-countdown"
@@ -263,11 +269,11 @@ export function WatchPetWidget({
             ) : medicineChallenge ? (
               <form onSubmit={handleMedicineSubmit} className="space-y-3 text-left">
                 <h3 id="watch-pet-dialog-title" className="text-center font-display text-lg font-bold text-ink">
-                  Giải toán mua thuốc hồi máu
+                  Giải toán mua thuốc hồi sức cho Dieppie
                 </h3>
                 <div className="rounded-xl border-2 border-ink bg-mint/45 px-4 py-3 text-center">
                   <p className="text-[11px] font-semibold text-muted">
-                    Giải đúng để thú ảo khỏe lại ngay nhé
+                    Giải đúng để Dieppie khỏe lại ngay nhé
                   </p>
                   <p
                     data-testid="watch-pet-medicine-question"
@@ -285,7 +291,10 @@ export function WatchPetWidget({
                     data-testid="watch-pet-medicine-input"
                     type="text"
                     inputMode="numeric"
+                    pattern="[0-9]*"
+                    enterKeyHint="done"
                     autoComplete="off"
+                    autoFocus
                     required
                     disabled={busy}
                     value={answerInput}
@@ -294,7 +303,7 @@ export function WatchPetWidget({
                       if (feedback?.kind === 'error') setFeedback(null);
                     }}
                     placeholder="Ví dụ: 8"
-                    className="w-full rounded-lg border-2 border-ink/40 bg-surface-muted px-3 py-2.5 text-center text-lg font-bold text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+                    className="min-h-[48px] w-full rounded-lg border-2 border-ink/40 bg-surface-muted px-3 py-2.5 text-center text-xl font-bold text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
                   />
                 </div>
                 {feedback && (
@@ -313,7 +322,7 @@ export function WatchPetWidget({
                     disabled={busy || !answerInput.trim()}
                     className="btn-primary min-h-[44px] flex-1 justify-center text-xs font-bold disabled:opacity-50"
                   >
-                    {busy ? 'Đang kiểm tra…' : 'Uống thuốc hồi máu'}
+                    {busy ? 'Đang kiểm tra…' : 'Cho Dieppie uống thuốc hồi sức'}
                   </button>
                   <button
                     type="button"
@@ -331,10 +340,10 @@ export function WatchPetWidget({
             ) : (
               <div className="space-y-3">
                 <h3 id="watch-pet-dialog-title" className="font-display text-lg font-bold text-ink sm:text-xl">
-                  Thú ảo mỏi mắt quá, ngất xỉu rồi!
+                  Dieppie mỏi mắt lắm rồi!
                 </h3>
                 <p className="text-xs leading-relaxed text-muted sm:text-sm">
-                  Bé đã xem liên tục khá lâu rồi. Chọn một cách bên dưới để thú ảo khỏe lại nhé:
+                  Bé xem lâu rồi đó. Chọn một cách bên dưới để Dieppie khỏe lại nhé!
                 </p>
                 {feedback && (
                   <div
@@ -353,7 +362,7 @@ export function WatchPetWidget({
                     onClick={() => void handleRestClick()}
                     className="btn-primary min-h-[44px] w-full justify-center text-xs font-bold sm:text-sm"
                   >
-                    Cho thú ngủ {watchPet.restMinutes} phút
+                    Cho Dieppie ngủ {watchPet.restMinutes} phút
                   </button>
                   <button
                     type="button"
@@ -362,7 +371,7 @@ export function WatchPetWidget({
                     onClick={() => void handleLoadMedicine()}
                     className="btn-secondary min-h-[44px] w-full justify-center text-xs font-bold sm:text-sm"
                   >
-                    Mua thuốc hồi máu (giải 1 câu toán)
+                    Mua thuốc hồi sức cho Dieppie (giải 1 câu toán)
                   </button>
                 </div>
               </div>

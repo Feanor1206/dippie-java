@@ -48,7 +48,7 @@ class PlayTokenCodecTest {
                     assertThat(decoded.expiresAt()).isEqualTo(Instant.parse("2026-11-26T10:00:13Z"));
                 });
 
-        // token loại rương báu không thể giải mã sang loại thuốc thú ảo hay ôn tập
+        // token loại rương báu không thể giải mã sang loại thuốc Dieppie hay ôn tập
         assertThat(codec.decode(issued.token(), PlayTokenCodec.KIND_MEDICINE_MATH)).isEmpty();
         assertThat(codec.decode(issued.token(), PlayTokenCodec.KIND_RECAP_QUIZ)).isEmpty();
 

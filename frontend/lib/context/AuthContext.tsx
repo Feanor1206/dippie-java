@@ -8,7 +8,13 @@ import React, {
   ReactNode,
 } from 'react';
 
-import { observeSessionResponses, PERMISSION_MESSAGE, SESSION_EXPIRED_MESSAGE, withRequestTimeout } from '@/lib/services/apiRequest';
+import {
+  formatRateLimitMessage,
+  observeSessionResponses,
+  PERMISSION_MESSAGE,
+  SESSION_EXPIRED_MESSAGE,
+  withRequestTimeout,
+} from '@/lib/services/apiRequest';
 import {
   decodeJwtProfileId,
   exitChildProfile,
@@ -420,6 +426,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await loadProfilesSilently(validated.token, requestGeneration, true);
         return { success: true };
       } else {
+        const retryHeader = res.headers?.get?.('Retry-After');
+        const retryAfter = retryHeader && /^\d+$/.test(retryHeader) ? parseInt(retryHeader, 10) : undefined;
         const serverMessage =
           (typeof json?.detail === 'string' && json.detail.trim()) ||
           (typeof json?.message === 'string' && json.message.trim()) ||
@@ -427,7 +435,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const errorText = res.status === 401
           ? 'Tên đăng nhập hoặc mật khẩu chưa đúng.'
           : res.status === 429
-          ? serverMessage || 'Bạn vừa thử đăng nhập quá nhiều lần. Chờ vài phút rồi thử lại nhé.'
+          ? formatRateLimitMessage(
+              serverMessage,
+              'Bạn vừa thử đăng nhập quá nhiều lần. Chờ vài phút rồi thử lại nhé.',
+              retryAfter
+            )
           : serverMessage || 'Chưa đăng nhập được. Bạn thử lại nhé.';
         return { success: false, message: errorText };
       }
@@ -542,13 +554,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         closeAuthModal();
         return { success: true };
       } else {
+        const retryHeader = res.headers?.get?.('Retry-After');
+        const retryAfter = retryHeader && /^\d+$/.test(retryHeader) ? parseInt(retryHeader, 10) : undefined;
         const serverMessage =
           (typeof json?.detail === 'string' && json.detail.trim()) ||
           (typeof json?.message === 'string' && json.message.trim()) ||
           '';
         const errorText =
           res.status === 429
-            ? serverMessage || 'Bạn vừa gửi quá nhiều yêu cầu đăng ký. Chờ vài phút rồi thử lại nhé.'
+            ? formatRateLimitMessage(
+                serverMessage,
+                'Bạn vừa gửi quá nhiều yêu cầu đăng ký. Chờ vài phút rồi thử lại nhé.',
+                retryAfter
+              )
             : serverMessage || 'Chưa tạo được tài khoản. Bạn thử lại nhé.';
         return { success: false, message: errorText };
       }

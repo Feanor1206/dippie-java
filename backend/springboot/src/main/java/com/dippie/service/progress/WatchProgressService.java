@@ -133,13 +133,13 @@ public class WatchProgressService {
         // check file trên đĩa ngoài transaction rồi chặn mốc xem vượt quá thời lượng thật của video
         PlaybackContext context = contextResolver.verifyPlayable(pending)
                 .orElseThrow(() -> notPlayable(episodeId));
-        // kiểm tra khóa theo thứ tự: hạn mức ngày, tập VIP, thú ảo nghỉ mắt rồi ôn tập qua tập
+        // kiểm tra khóa theo thứ tự: hạn mức ngày, Dieppie nghỉ mắt, ôn tập qua tập rồi tập VIP
         screenTimeService.requireBudgetUnlockedForPlayback(viewer);
-        vipTitleService.requireEpisodeUnlocked(viewer, context.series().getId(), episodeId);
         if (viewer.isChildProfile()) {
             playPlaybackGuard.requireWatchPetUnlocked(viewer.userId(), viewer.profileId());
             playPlaybackGuard.requireEpisodesUnlocked(viewer, List.of(episodeId));
         }
+        vipTitleService.requireEpisodeUnlocked(viewer, context.series().getId(), episodeId);
         if (context.duration().isExceededBy(command.positionMs())) {
             throw new InvalidRequestException("Thời điểm xem không thể vượt quá thời lượng video.");
         }

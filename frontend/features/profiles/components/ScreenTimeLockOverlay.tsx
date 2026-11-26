@@ -105,9 +105,9 @@ export function ScreenTimeLockOverlay({
       aria-modal="false"
       aria-labelledby="screen-time-lock-title"
       data-testid="screen-time-lock-overlay"
-      className="absolute inset-0 z-30 flex items-center justify-center bg-ink/90 p-4 sm:p-6"
+      className="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-ink/90 p-3 sm:p-6"
     >
-      <div className="w-full max-w-md rounded-2xl border-2 border-ink bg-paper-white p-5 text-center shadow-brand-lg sm:p-6">
+      <div className="my-auto w-full max-w-md rounded-2xl border-2 border-ink bg-paper-white p-5 text-center shadow-brand-lg sm:p-6">
         <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full border-2 border-ink bg-[#f2d18c] text-ink">
           {step === 'solved' ? (
             <CheckCircle2 size={24} aria-hidden="true" />
@@ -184,7 +184,10 @@ export function ScreenTimeLockOverlay({
                 data-testid="math-answer-input"
                 type="text"
                 inputMode="numeric"
+                pattern="[0-9]*"
+                enterKeyHint="done"
                 autoComplete="off"
+                autoFocus
                 required
                 disabled={submitting}
                 value={answerInput}
@@ -193,7 +196,7 @@ export function ScreenTimeLockOverlay({
                   if (feedback?.kind === 'error') setFeedback(null);
                 }}
                 placeholder="Ví dụ: 12"
-                className="w-full rounded-lg border-2 border-ink/40 bg-surface-muted px-3 py-2.5 text-center text-lg font-bold text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+                className="min-h-[48px] w-full rounded-lg border-2 border-ink/40 bg-surface-muted px-3 py-2.5 text-center text-xl font-bold text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
             </div>
 

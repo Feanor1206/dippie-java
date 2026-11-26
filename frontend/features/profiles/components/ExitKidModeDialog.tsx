@@ -67,7 +67,10 @@ export function ExitKidModeDialog({
               data-testid="exit-kid-pin-input"
               type="password"
               inputMode="numeric"
+              pattern="[0-9]*"
+              enterKeyHint="done"
               autoComplete="off"
+              autoFocus
               maxLength={6}
               required
               disabled={busy}

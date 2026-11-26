@@ -26,7 +26,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
-// mã hóa AES-CTR kèm chữ ký HMAC-SHA256 tách riêng theo loại token (thuốc thú ảo, rương báu, ôn tập) và chống dùng lại
+// mã hóa AES-CTR kèm chữ ký HMAC-SHA256 tách riêng theo loại token (thuốc Dieppie, rương báu, ôn tập) và chống dùng lại
 @Component
 public class PlayTokenCodec {
 

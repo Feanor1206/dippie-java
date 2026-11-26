@@ -9,6 +9,10 @@ import { WeekendVaultBanner } from '@/features/profiles/components/WeekendVaultB
 import { fetchWeekendVaultStatus, type WeekendVaultStatus } from '@/lib/services/weekendVaultService';
 import { WatchPetWidget } from '@/features/profiles/components/WatchPetWidget';
 import { LootDropOverlay } from '@/features/profiles/components/LootDropOverlay';
+import {
+  isFullScreenPlayerOverlay,
+  resolveActivePlayerOverlay,
+} from '@/features/profiles/overlayPriority';
 import { YouTubeLink } from '@/components/ui/YouTubeLink';
 import { safeImageUrl, resolveStreamUrl } from '@/lib/safeUrl';
 import React, { useEffect, useRef, useState } from 'react';
@@ -320,6 +324,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
           void playFeatures.refreshStatus();
         } else if (grantResult.status === 423) {
           screenTime?.markLockedFromServer();
+          openVideoUrl(kind, safeUrl);
         } else {
           openVideoUrl(kind, safeUrl);
         }
@@ -428,6 +433,13 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
   };
 
   handlePlayerKey.current = (e: KeyboardEvent) => {
+    if (
+      typeof document !== 'undefined' &&
+      typeof document.querySelector === 'function' &&
+      document.querySelector('dialog[open]')
+    ) {
+      return;
+    }
     if (e.key === 'Escape') {
       e.preventDefault();
       closePlayer();
@@ -476,9 +488,23 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
     seriesId: null,
     isPlaying: isPlaying && playerState === 'playing',
     isScreenTimeLocked,
+    isBlockedByHigherOverlay: holdSolvedOverlay,
     onScreenTimeUpdated: (next) => screenTime?.applyScreenTimeStatus(next),
   });
-  const isMoviePlaybackBlocked = isScreenTimeLocked || Boolean(kidMode && playFeatures.isPetLocked);
+  const movieActiveOverlay = resolveActivePlayerOverlay({
+    hasTimeUpLock: Boolean(kidMode && (isScreenTimeLocked || holdSolvedOverlay) && screenTime?.screenTime && token),
+    hasWatchPetLock: Boolean(kidMode && token && playFeatures.isPetLocked),
+    hasRecapGate: false,
+    hasVipLock: false,
+    hasLootOverlay: Boolean(
+      kidMode && token && (playFeatures.activeDrop || playFeatures.activeLootQuiz || playFeatures.lootFeedback)
+    ),
+  });
+  const isMoviePlaybackBlocked =
+    isScreenTimeLocked || holdSolvedOverlay || Boolean(kidMode && playFeatures.isPetLocked);
+  const needsMovieOverlayHeight =
+    isFullScreenPlayerOverlay(movieActiveOverlay) ||
+    Boolean(movieActiveOverlay === 'loot' && playFeatures.activeLootQuiz);
 
   useScreenTimeHeartbeat({
     enabled: Boolean(kidMode && !isMoviePlaybackBlocked && screenTime),
@@ -611,17 +637,17 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4"
         >
           <div className="relative w-full max-w-5xl overflow-hidden rounded-lg border border-surface-border bg-surface flex flex-col">
-            <div className="flex items-center justify-between border-b border-surface-border bg-surface-muted px-4 py-3">
-              <div className="flex items-center gap-2 truncate">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border bg-surface-muted px-3 py-2.5 sm:px-4 sm:py-3">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-brand shrink-0" />
                 <h3 id="video-player-title" className="text-sm font-bold text-ink truncate">
                   {displayTitle}
                 </h3>
-                <span className="text-xs text-muted shrink-0">
+                <span className="hidden text-xs text-muted shrink-0 sm:inline">
                   • {activeMediaKind === 'feature' ? 'Phim chính' : 'Đoạn giới thiệu'}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 {kidMode && screenTime?.isLimited && (
                   <ScreenTimeChip
                     data-testid="movie-player-screen-time-chip"
@@ -638,7 +664,12 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
               </div>
             </div>
 
-            <div className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden">
+            <div
+              data-active-overlay={movieActiveOverlay || 'none'}
+              className={`relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden ${
+                needsMovieOverlayHeight ? 'min-h-[380px] sm:min-h-[420px]' : ''
+              }`}
+            >
               <video
                 ref={videoRef}
                 src={activeMediaUrl}
@@ -708,7 +739,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                 </div>
               )}
 
-              {kidMode && (isScreenTimeLocked || holdSolvedOverlay) && screenTime?.screenTime && token && (
+              {movieActiveOverlay === 'time-up' && screenTime?.screenTime && token && (
                 <ScreenTimeLockOverlay
                   status={screenTime.screenTime}
                   token={token}
@@ -718,11 +749,35 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                     }
                     screenTime.applyScreenTimeStatus(next);
                   }}
-                  onContinueWatching={() => setHoldSolvedOverlay(false)}
+                  onContinueWatching={() => {
+                    setHoldSolvedOverlay(false);
+                    if (
+                      activeMediaKind === 'feature' &&
+                      descriptor?.feature?.assetId &&
+                      typeof requestPlaybackGrantResult === 'function'
+                    ) {
+                      void requestPlaybackGrantResult(descriptor.feature.assetId).then((grantResult) => {
+                        if (grantResult.ok && grantResult.grant?.streamUrl) {
+                          setActiveMediaUrl(grantResult.grant.streamUrl);
+                        }
+                      });
+                    }
+                  }}
                 />
               )}
 
-              {kidMode && token && !isScreenTimeLocked && !holdSolvedOverlay && (
+              {movieActiveOverlay === 'watch-pet' && token && (
+                <WatchPetWidget
+                  watchPet={playFeatures.watchPet}
+                  token={token}
+                  restCountdown={playFeatures.restCountdown}
+                  onStartRest={playFeatures.handleStartRest}
+                  onWatchPetUpdated={playFeatures.applyWatchPetStatus}
+                  hideCorner
+                />
+              )}
+
+              {kidMode && token && !isFullScreenPlayerOverlay(movieActiveOverlay) && (
                 <>
                   <WatchPetWidget
                     watchPet={playFeatures.watchPet}
@@ -731,7 +786,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                     onStartRest={playFeatures.handleStartRest}
                     onWatchPetUpdated={playFeatures.applyWatchPetStatus}
                   />
-                  {!playFeatures.isPetLocked && (
+                  {movieActiveOverlay === 'loot' && (
                     <LootDropOverlay
                       activeDrop={playFeatures.activeDrop}
                       dropSecondsLeft={playFeatures.dropSecondsLeft}

@@ -18,11 +18,19 @@ type VaultDialog =
 export function ParentWeekendVaultSection({
   token,
   childProfiles,
+  sessionPin = '',
+  onPinVerified,
+  onPinRejected,
 }: {
   token: string;
   childProfiles: ChildProfile[];
+  sessionPin?: string;
+  onPinVerified?: (pin: string) => void;
+  onPinRejected?: () => void;
 }) {
   const [items, setItems] = useState<ChildProfileWeekendVault[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [dialog, setDialog] = useState<VaultDialog>(null);
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
@@ -31,10 +39,16 @@ export function ParentWeekendVaultSection({
 
   const loadVaults = useCallback(async () => {
     if (!token) return;
+    setLoading(true);
+    setLoadError('');
     try {
       const data = await fetchParentWeekendVaultOverview(token);
       setItems(data);
-    } catch {}
+    } catch (err: unknown) {
+      setLoadError(err instanceof Error ? err.message : 'Chưa tải được trạng thái két sắt phim cuối tuần.');
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
 
   useEffect(() => {
@@ -67,6 +81,7 @@ export function ParentWeekendVaultSection({
         dialog.kind === 'unlock'
           ? await unlockWeekendVaultManually(token, dialog.item.profileId, pin)
           : await restoreWeekendVaultLock(token, dialog.item.profileId, pin);
+      onPinVerified?.(pin);
       setItems((prev) => prev.map((entry) => (entry.profileId === updated.profileId ? updated : entry)));
       const childName = dialog.item.name;
       const actionKind = dialog.kind;
@@ -79,6 +94,7 @@ export function ParentWeekendVaultSection({
             : `Đã khóa lại két sắt phim cuối tuần cho ${childName}.`,
       });
     } catch (err: unknown) {
+      onPinRejected?.();
       setPin('');
       setDialogError(err instanceof Error ? err.message : 'Chưa cập nhật được két sắt phim cuối tuần.');
     } finally {
@@ -88,9 +104,10 @@ export function ParentWeekendVaultSection({
 
   return (
     <section
+      id="parent-weekend-vault-section"
       aria-labelledby="parent-vault-heading"
       data-testid="parent-weekend-vault-section"
-      className="mt-6 rounded-xl border border-surface-border bg-paper-white p-5 sm:p-6"
+      className="mt-6 scroll-mt-20 rounded-xl border border-surface-border bg-paper-white p-5 sm:p-6"
     >
       <div className="border-b border-surface-border pb-4">
         <h3 id="parent-vault-heading" className="text-base font-bold text-ink">
@@ -115,7 +132,26 @@ export function ParentWeekendVaultSection({
         </div>
       )}
 
-      {items.length > 0 && (
+      {loadError ? (
+        <div
+          role="alert"
+          data-testid="parent-vault-load-error"
+          className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-800/35 bg-red-50 px-3.5 py-3 text-xs text-red-900"
+        >
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => void loadVaults()}
+            className="btn-secondary min-h-[44px] px-3 text-xs font-bold"
+          >
+            Thử lại
+          </button>
+        </div>
+      ) : loading && items.length === 0 ? (
+        <p role="status" className="mt-4 rounded-xl border border-surface-border bg-surface-muted p-4 text-center text-xs text-muted">
+          Đang tải tiến độ Vé xem phim…
+        </p>
+      ) : items.length > 0 && (
         <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {items.map((item) => {
             const { status } = item;
@@ -194,7 +230,7 @@ export function ParentWeekendVaultSection({
                       onClick={() => {
                         setFeedback(null);
                         setDialogError('');
-                        setPin('');
+                        setPin(sessionPin);
                         setDialog({ kind: 'lock', item });
                       }}
                       className="btn-secondary min-h-[44px] w-full justify-center text-xs"
@@ -208,7 +244,7 @@ export function ParentWeekendVaultSection({
                       onClick={() => {
                         setFeedback(null);
                         setDialogError('');
-                        setPin('');
+                        setPin(sessionPin);
                         setDialog({ kind: 'unlock', item });
                       }}
                       className="btn-primary min-h-[44px] w-full justify-center text-xs font-bold"
@@ -248,7 +284,10 @@ export function ParentWeekendVaultSection({
                 data-testid="vault-pin-input"
                 type="password"
                 inputMode="numeric"
+                pattern="[0-9]*"
+                enterKeyHint="done"
                 autoComplete="off"
+                autoFocus
                 maxLength={6}
                 required
                 disabled={busy}
@@ -257,6 +296,21 @@ export function ParentWeekendVaultSection({
                 placeholder="••••"
                 className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
+              {sessionPin && pin === sessionPin && (
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-brand-dark">
+                  <span>Đã tự điền mã PIN vừa xác nhận trong phiên này.</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onPinRejected?.();
+                      setPin('');
+                    }}
+                    className="font-bold underline cursor-pointer"
+                  >
+                    Nhập lại
+                  </button>
+                </div>
+              )}
             </div>
             {dialogError && (
               <div role="alert" className="rounded-lg border border-red-800/35 bg-red-50 px-3.5 py-2.5 text-xs text-red-900">

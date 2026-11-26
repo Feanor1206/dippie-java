@@ -445,6 +445,8 @@ h1, h2, h3, h4 { font-family: var(--font-display); }
 @media (max-width: 580px) {
   .film-grid, .series-catalog-grid { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
   .film-tile h2, .film-tile h3 { min-height: 0; }
+  .catalog-cover { grid-template-columns: minmax(0, 1fr); }
+  .catalog-cover-art { min-height: 76px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

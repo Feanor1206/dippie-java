@@ -1,5 +1,6 @@
 export const PERMISSION_MESSAGE = 'Tài khoản của bạn không có quyền thực hiện việc này.';
 export const SESSION_EXPIRED_MESSAGE = 'Phiên đăng nhập đã hết hạn. Bạn đăng nhập lại nhé.';
+export const NETWORK_ERROR_MESSAGE = 'Không kết nối được với Dippie. Bạn kiểm tra lại mạng rồi thử lại nhé.';
 
 type SessionListener = (status: 401 | 403, token: string) => void;
 let sessionListener: SessionListener | undefined;
@@ -53,6 +54,45 @@ export async function withRequestTimeout<T>(
     signal?.removeEventListener('abort', abort);
     controller.signal.removeEventListener('abort', rejectAbort);
   }
+}
+
+export function formatRetryAfterDuration(seconds: number): string {
+  const safe = Math.max(1, Math.ceil(seconds));
+  if (safe < 60) {
+    return `${safe} giây`;
+  }
+  const minutes = Math.floor(safe / 60);
+  const remainSeconds = safe % 60;
+  return remainSeconds > 0 ? `${minutes} phút ${remainSeconds} giây` : `${minutes} phút`;
+}
+
+export function formatRateLimitMessage(
+  serverMessage: string,
+  fallback: string,
+  retryAfterSeconds?: number
+): string {
+  const base = (serverMessage || '').trim() || fallback;
+  if (!retryAfterSeconds || !Number.isFinite(retryAfterSeconds) || retryAfterSeconds <= 0) {
+    return base;
+  }
+  const waitLabel = formatRetryAfterDuration(retryAfterSeconds);
+  if (/sau ít phút\.?$/i.test(base)) {
+    return base.replace(/sau ít phút\.?$/i, `sau ${waitLabel}.`);
+  }
+  if (/\d+\s*(giây|phút)/i.test(base)) {
+    return base;
+  }
+  return `${base.replace(/\.+$/, '')}. Thử lại sau ${waitLabel}.`;
+}
+
+export function isLikelyNetworkError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { name?: unknown; message?: unknown };
+  const name = typeof candidate.name === 'string' ? candidate.name : '';
+  if (name === 'AbortError' || name === 'TimeoutError') return false;
+  if (error instanceof TypeError || name === 'TypeError') return true;
+  const message = typeof candidate.message === 'string' ? candidate.message : '';
+  return /failed to fetch|networkerror|load failed|fetch failed/i.test(message);
 }
 
 export async function readApiMessage(response: Response, fallback: string): Promise<string> {

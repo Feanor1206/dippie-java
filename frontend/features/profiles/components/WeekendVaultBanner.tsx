@@ -87,9 +87,9 @@ export function WeekendVaultBanner({
             <p className="mt-1 text-xs text-muted">
               {status.locked
                 ? status.weekend
-                  ? 'Bé cần tích đủ 100% Vé xem phim từ thứ Hai đến thứ Sáu (hoặc nhờ ba mẹ mở khóa) để xem phim lẻ cuối tuần nhé!'
-                  : 'Dừng xem trước khi hết giờ (+20%/ngày) và giải đủ 3 câu toán (+20%/ngày) từ thứ Hai đến thứ Sáu để mở phim lẻ vào thứ Bảy & Chủ Nhật!'
-                : 'Chúc mừng bé! Két sắt phim lẻ đã mở, bé có thể chọn phim lẻ yêu thích để xem rồi.'}
+                  ? 'Nạp đủ 100% Vé xem phim hoặc nhờ ba mẹ mở khóa để xem phim lẻ cuối tuần nhé!'
+                  : 'Nghỉ đúng giờ và giải toán mỗi ngày để nạp đầy 100% Vé xem phim cuối tuần nhé!'
+                : 'Vé xem phim đã mở rồi! Bé chọn phim lẻ mình thích nhé.'}
             </p>
           </div>
         </div>
@@ -171,14 +171,17 @@ export function WeekendVaultBanner({
                 data-testid="kid-vault-pin-input"
                 type="password"
                 inputMode="numeric"
+                pattern="[0-9]*"
+                enterKeyHint="done"
                 autoComplete="off"
+                autoFocus
                 maxLength={6}
                 required
                 disabled={busy}
                 value={pin}
                 onChange={(event) => setPin(event.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
                 placeholder="••••"
-                className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+                className="min-h-[44px] w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-base sm:text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
             </div>
             {error && (

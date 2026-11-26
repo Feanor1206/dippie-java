@@ -6,7 +6,7 @@ import org.springframework.http.HttpStatus;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// khóa phát video từ tính năng trẻ em (thú ảo nghỉ mắt hoặc chưa làm ôn tập), trả 423 kèm header lý do
+// khóa phát video từ tính năng trẻ em (Dieppie nghỉ mắt hoặc chưa làm ôn tập), trả 423 kèm header lý do
 public class PlayFeatureLockedException extends DomainException {
 
     public PlayFeatureLockedException(String reason, String message) {

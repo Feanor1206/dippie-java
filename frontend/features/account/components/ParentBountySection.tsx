@@ -30,14 +30,22 @@ type BountyDialog =
 export function ParentBountySection({
   token,
   childProfiles,
+  sessionPin = '',
+  onPinVerified,
+  onPinRejected,
   onScreenTimeUpdated,
 }: {
   token: string;
   childProfiles: ChildProfile[];
+  sessionPin?: string;
+  onPinVerified?: (pin: string) => void;
+  onPinRejected?: () => void;
   onScreenTimeUpdated?: () => void;
 }) {
   const [tasks, setTasks] = useState<BountyTask[]>([]);
   const [submissions, setSubmissions] = useState<BountySubmission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [dialog, setDialog] = useState<BountyDialog>(null);
   const [title, setTitle] = useState('');
   const [rewardMinutes, setRewardMinutes] = useState('15');
@@ -53,11 +61,17 @@ export function ParentBountySection({
 
   const loadBoard = useCallback(async () => {
     if (!token) return;
+    setLoading(true);
+    setLoadError('');
     try {
       const board = await fetchParentBountyBoard(token);
       setTasks(board.tasks);
       setSubmissions(board.submissions);
-    } catch {}
+    } catch (err: unknown) {
+      setLoadError(err instanceof Error ? err.message : 'Chưa tải được bảng nhiệm vụ đời thực.');
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
 
   useEffect(() => {
@@ -79,7 +93,7 @@ export function ParentBountySection({
   const openDialog = (next: BountyDialog) => {
     setFeedback(null);
     setDialogError('');
-    setPin('');
+    setPin(next && next.kind !== 'delete' ? sessionPin : '');
     setNote('');
     if (next?.kind === 'create') {
       setTitle('');
@@ -145,11 +159,13 @@ export function ParentBountySection({
         } else {
           await updateBountyTask(token, dialog.task.id, payload);
         }
+        onPinVerified?.(pin);
         await loadBoard();
         const msg = dialog.kind === 'create' ? 'Đã tạo nhiệm vụ mới cho bé.' : 'Đã cập nhật nhiệm vụ.';
         resetDialog();
         setFeedback({ type: 'success', text: msg });
       } catch (err: unknown) {
+        onPinRejected?.();
         setPin('');
         setDialogError(err instanceof Error ? err.message : 'Chưa lưu được nhiệm vụ.');
       } finally {
@@ -167,6 +183,7 @@ export function ParentBountySection({
         resetDialog();
         setFeedback({ type: 'success', text: `Đã xóa nhiệm vụ "${removedTitle}".` });
       } catch (err: unknown) {
+        onPinRejected?.();
         setPin('');
         setDialogError(err instanceof Error ? err.message : 'Chưa xóa được nhiệm vụ.');
       } finally {
@@ -182,6 +199,7 @@ export function ParentBountySection({
           dialog.kind === 'approve'
             ? await approveBountySubmission(token, dialog.submission.id, pin, note.trim() || undefined)
             : await rejectBountySubmission(token, dialog.submission.id, pin, note.trim() || undefined);
+        onPinVerified?.(pin);
         await loadBoard();
         if (dialog.kind === 'approve') {
           broadcastScreenTimeUpdated(dialog.submission.profileId);
@@ -197,6 +215,7 @@ export function ParentBountySection({
               : `Đã từ chối lượt nộp của ${dialog.submission.profileName}.`),
         });
       } catch (err: unknown) {
+        onPinRejected?.();
         setPin('');
         setDialogError(err instanceof Error ? err.message : 'Chưa xử lý được lượt nộp nhiệm vụ.');
       } finally {
@@ -210,9 +229,10 @@ export function ParentBountySection({
 
   return (
     <section
+      id="parent-bounty-section"
       aria-labelledby="parent-bounty-heading"
       data-testid="parent-bounty-section"
-      className="mt-6 rounded-xl border border-surface-border bg-paper-white p-5 sm:p-6"
+      className="mt-6 scroll-mt-20 rounded-xl border border-surface-border bg-paper-white p-5 sm:p-6"
     >
       <div className="flex flex-col gap-3 border-b border-surface-border pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -307,7 +327,26 @@ export function ParentBountySection({
       )}
 
       <div className="mt-4">
-        {tasks.length === 0 ? (
+        {loadError ? (
+          <div
+            role="alert"
+            data-testid="parent-bounty-load-error"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-800/35 bg-red-50 px-3.5 py-3 text-xs text-red-900"
+          >
+            <span>{loadError}</span>
+            <button
+              type="button"
+              onClick={() => void loadBoard()}
+              className="btn-secondary min-h-[44px] px-3 text-xs font-bold"
+            >
+              Thử lại
+            </button>
+          </div>
+        ) : loading && tasks.length === 0 ? (
+          <p role="status" className="rounded-xl border border-surface-border bg-surface-muted p-4 text-center text-xs text-muted">
+            Đang tải bảng nhiệm vụ…
+          </p>
+        ) : tasks.length === 0 ? (
           <p className="rounded-xl border border-dashed border-surface-border bg-surface-muted p-4 text-center text-xs text-muted">
             Chưa có nhiệm vụ nào. Nhấn &ldquo;Thêm nhiệm vụ&rdquo; để tạo bảng nhiệm vụ cho bé nhé.
           </p>
@@ -404,6 +443,7 @@ export function ParentBountySection({
                     data-testid="bounty-title-input"
                     type="text"
                     maxLength={100}
+                    autoFocus
                     required
                     disabled={busy}
                     value={title}
@@ -424,7 +464,7 @@ export function ParentBountySection({
                         type="button"
                         disabled={busy}
                         onClick={() => setRewardMinutes(String(preset))}
-                        className={`min-h-[38px] rounded-lg border px-2.5 text-xs font-bold cursor-pointer ${
+                        className={`min-h-[44px] rounded-lg border px-3 text-xs font-bold cursor-pointer ${
                           Number(rewardMinutes) === preset
                             ? 'border-ink bg-mint text-ink'
                             : 'border-surface-border bg-paper-white text-muted'
@@ -472,7 +512,7 @@ export function ParentBountySection({
                 </fieldset>
 
                 <div className="flex flex-col gap-2">
-                  <label className="inline-flex min-h-[36px] items-center gap-2 text-xs font-semibold text-ink cursor-pointer">
+                  <label className="inline-flex min-h-[44px] items-center gap-2 text-xs font-semibold text-ink cursor-pointer">
                     <input
                       type="checkbox"
                       data-testid="bounty-repeatable-checkbox"
@@ -483,7 +523,7 @@ export function ParentBountySection({
                     />
                     Lặp lại mỗi ngày (bỏ chọn nếu chỉ làm một lần)
                   </label>
-                  <label className="inline-flex min-h-[36px] items-center gap-2 text-xs font-semibold text-ink cursor-pointer">
+                  <label className="inline-flex min-h-[44px] items-center gap-2 text-xs font-semibold text-ink cursor-pointer">
                     <input
                       type="checkbox"
                       data-testid="bounty-active-checkbox"
@@ -577,7 +617,10 @@ export function ParentBountySection({
                 data-testid="bounty-pin-input"
                 type="password"
                 inputMode="numeric"
+                pattern="[0-9]*"
+                enterKeyHint="done"
                 autoComplete="off"
+                autoFocus={dialog.kind !== 'create' && dialog.kind !== 'edit'}
                 maxLength={6}
                 required
                 disabled={busy}
@@ -586,6 +629,21 @@ export function ParentBountySection({
                 placeholder="••••"
                 className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
+              {dialog.kind !== 'delete' && sessionPin && pin === sessionPin && (
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-brand-dark">
+                  <span>Đã tự điền mã PIN vừa xác nhận trong phiên này.</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onPinRejected?.();
+                      setPin('');
+                    }}
+                    className="font-bold underline cursor-pointer"
+                  >
+                    Nhập lại
+                  </button>
+                </div>
+              )}
             </div>
 
             {dialogError && (

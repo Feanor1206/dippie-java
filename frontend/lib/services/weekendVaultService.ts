@@ -1,4 +1,10 @@
-import { apiFetch, withRequestTimeout } from '@/lib/services/apiRequest';
+import {
+  NETWORK_ERROR_MESSAGE,
+  apiFetch,
+  formatRateLimitMessage,
+  isLikelyNetworkError,
+  withRequestTimeout,
+} from '@/lib/services/apiRequest';
 
 const API = '/api';
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -68,6 +74,23 @@ function authHeaders(token: string, withBody = false): Record<string, string> {
   return headers;
 }
 
+async function runWeekendVaultRequest<T>(
+  action: (signal: AbortSignal) => Promise<T>,
+  options: WeekendVaultRequestOptions = {}
+): Promise<T> {
+  try {
+    return await withRequestTimeout(action, {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (isLikelyNetworkError(error)) {
+      throw new WeekendVaultApiError(NETWORK_ERROR_MESSAGE, 0);
+    }
+    throw error;
+  }
+}
+
 async function parseEnvelope(response: Response, fallbackMessage: string): Promise<{ data: any; message: string }> {
   const retryHeader = response.headers?.get?.('Retry-After');
   const retryAfter = retryHeader && /^\d+$/.test(retryHeader) ? parseInt(retryHeader, 10) : undefined;
@@ -75,11 +98,19 @@ async function parseEnvelope(response: Response, fallbackMessage: string): Promi
   try {
     json = await response.json();
   } catch {
-    throw new WeekendVaultApiError(fallbackMessage, response.status, retryAfter);
+    const message =
+      response.status === 429
+        ? formatRateLimitMessage('', fallbackMessage, retryAfter)
+        : fallbackMessage;
+    throw new WeekendVaultApiError(message, response.status, retryAfter);
   }
   const serverMessage = typeof json?.message === 'string' && json.message.trim() ? json.message.trim() : '';
   if (!response.ok || json?.success !== true) {
-    throw new WeekendVaultApiError(serverMessage || fallbackMessage, response.status, retryAfter);
+    const message =
+      response.status === 429
+        ? formatRateLimitMessage(serverMessage, fallbackMessage, retryAfter)
+        : serverMessage || fallbackMessage;
+    throw new WeekendVaultApiError(message, response.status, retryAfter);
   }
   return { data: json.data, message: serverMessage };
 }
@@ -135,13 +166,13 @@ export async function fetchWeekendVaultStatus(
   options: WeekendVaultRequestOptions = {}
 ): Promise<WeekendVaultStatus> {
   const url = `${options.baseUrl || API}/users/weekend-vault`;
-  return withRequestTimeout(
+  return runWeekendVaultRequest(
     async (signal) => {
       const response = await apiFetch(url, { method: 'GET', headers: authHeaders(token), signal });
       const { data } = await parseEnvelope(response, 'Chưa tải được trạng thái Vé xem phim.');
       return normalizeStatus(data);
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -150,7 +181,7 @@ export async function fetchParentWeekendVaultOverview(
   options: WeekendVaultRequestOptions = {}
 ): Promise<ChildProfileWeekendVault[]> {
   const url = `${options.baseUrl || API}/users/profiles/weekend-vault`;
-  return withRequestTimeout(
+  return runWeekendVaultRequest(
     async (signal) => {
       const response = await apiFetch(url, { method: 'GET', headers: authHeaders(token), signal });
       const { data } = await parseEnvelope(response, 'Chưa tải được trạng thái két sắt phim cuối tuần.');
@@ -159,7 +190,7 @@ export async function fetchParentWeekendVaultOverview(
         .map(normalizeChildOverview)
         .filter((item: ChildProfileWeekendVault | null): item is ChildProfileWeekendVault => item !== null);
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -170,7 +201,7 @@ export async function unlockWeekendVaultManually(
   options: WeekendVaultRequestOptions = {}
 ): Promise<ChildProfileWeekendVault> {
   const url = `${options.baseUrl || API}/users/profiles/${encodeURIComponent(String(profileId))}/weekend-vault/unlock`;
-  return withRequestTimeout(
+  return runWeekendVaultRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -183,7 +214,7 @@ export async function unlockWeekendVaultManually(
       if (!normalized) throw new WeekendVaultApiError('Dữ liệu két sắt không hợp lệ.', 502);
       return normalized;
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -194,7 +225,7 @@ export async function restoreWeekendVaultLock(
   options: WeekendVaultRequestOptions = {}
 ): Promise<ChildProfileWeekendVault> {
   const url = `${options.baseUrl || API}/users/profiles/${encodeURIComponent(String(profileId))}/weekend-vault/lock`;
-  return withRequestTimeout(
+  return runWeekendVaultRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -207,6 +238,6 @@ export async function restoreWeekendVaultLock(
       if (!normalized) throw new WeekendVaultApiError('Dữ liệu két sắt không hợp lệ.', 502);
       return normalized;
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }

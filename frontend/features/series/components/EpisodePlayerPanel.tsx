@@ -9,6 +9,10 @@ import { VipUnlockDialog } from '@/features/profiles/components/VipUnlockDialog'
 import { WatchPetWidget } from '@/features/profiles/components/WatchPetWidget';
 import { LootDropOverlay } from '@/features/profiles/components/LootDropOverlay';
 import { RecapQuizOverlay } from '@/features/profiles/components/RecapQuizOverlay';
+import {
+  isFullScreenPlayerOverlay,
+  resolveActivePlayerOverlay,
+} from '@/features/profiles/overlayPriority';
 import type { LootFeedbackBanner } from '@/features/profiles/hooks/usePlayFeatures';
 import type {
   LootDropAnswerResult,
@@ -140,17 +144,50 @@ export function EpisodePlayerPanel({
   const screenTime = typeof useOptionalScreenTime === 'function' ? useOptionalScreenTime() : null;
   const isKidMode = Boolean(auth?.isKidMode);
   const isScreenTimeLocked = Boolean(isKidMode && screenTime?.isLocked);
-  const isKidPlayBlocked = Boolean(
-    isKidMode && (kidPlayOverlay?.isPetLocked || kidPlayOverlay?.activeRecapEpisodeId)
-  );
-  const showVipLock = Boolean(isKidMode && isVipLocked && selectedEpisode && auth?.token && !isScreenTimeLocked);
-  const isPlaybackPaused = isScreenTimeLocked || showVipLock || isKidPlayBlocked;
   const [holdSolvedOverlay, setHoldSolvedOverlay] = useState(false);
   const [vipDialogOpen, setVipDialogOpen] = useState(false);
+
+  const hasTimeUpLock = Boolean(
+    isKidMode && (isScreenTimeLocked || holdSolvedOverlay) && screenTime?.screenTime && auth?.token
+  );
+  const hasWatchPetLock = Boolean(isKidMode && auth?.token && kidPlayOverlay?.isPetLocked);
+  const hasRecapGate = Boolean(isKidMode && auth?.token && kidPlayOverlay?.activeRecapEpisodeId);
+  const hasVipLock = Boolean(isKidMode && isVipLocked && selectedEpisode && auth?.token);
+  const hasLootOverlay = Boolean(
+    isKidMode &&
+      auth?.token &&
+      kidPlayOverlay &&
+      (kidPlayOverlay.activeDrop || kidPlayOverlay.activeLootQuiz || kidPlayOverlay.lootFeedback)
+  );
+  const activeOverlay = resolveActivePlayerOverlay({
+    hasTimeUpLock,
+    hasWatchPetLock,
+    hasRecapGate,
+    hasVipLock,
+    hasLootOverlay,
+  });
+  const showLockOverlay = activeOverlay === 'time-up';
+  const showWatchPetOverlay = activeOverlay === 'watch-pet';
+  const showRecapOverlay = activeOverlay === 'recap';
+  const showVipLock = activeOverlay === 'vip';
+  const showCornerPet = Boolean(
+    isKidMode && auth?.token && kidPlayOverlay && !isFullScreenPlayerOverlay(activeOverlay)
+  );
+  const showLootOverlay = activeOverlay === 'loot' && Boolean(kidPlayOverlay);
+  const needsOverlayHeight =
+    isFullScreenPlayerOverlay(activeOverlay) ||
+    Boolean(showLootOverlay && kidPlayOverlay?.activeLootQuiz);
+  const isPlaybackPaused = isScreenTimeLocked || isFullScreenPlayerOverlay(activeOverlay);
 
   useEffect(() => {
     setVipDialogOpen(false);
   }, [selectedEpisode?.id]);
+
+  useEffect(() => {
+    if (activeOverlay !== 'vip') {
+      setVipDialogOpen(false);
+    }
+  }, [activeOverlay]);
 
   useEffect(() => {
     if (!isPlaybackPaused) return;
@@ -159,9 +196,6 @@ export function EpisodePlayerPanel({
     } catch {}
   }, [isPlaybackPaused, videoRef]);
 
-  const showLockOverlay = Boolean(
-    isKidMode && (isScreenTimeLocked || holdSolvedOverlay) && screenTime?.screenTime && auth?.token
-  );
   const youtubeEmbed = playbackSource.kind === 'youtube';
   const youtubeUrl =
     playbackSource.kind === 'youtube'
@@ -169,6 +203,11 @@ export function EpisodePlayerPanel({
       : playbackSource.kind === 'unavailable'
       ? playbackSource.youtubeWatchUrl
       : null;
+  const requiresGuestLogin = Boolean(
+    !auth?.isAuthenticated &&
+      playbackSource.kind === 'unavailable' &&
+      playbackSource.reason === 'forbidden'
+  );
 
   return (
     <>
@@ -228,23 +267,24 @@ export function EpisodePlayerPanel({
       )}
 
       <div
+        data-active-overlay={activeOverlay || 'none'}
         className={`relative overflow-hidden rounded-xl border border-surface-border shadow-2xl aspect-video flex items-center justify-center ${
           !isLoadingEpisode && !isResolvingStream && !episodeError && playbackSource.kind === 'unavailable'
             ? 'bg-surface'
             : 'bg-black'
-        } ${youtubeEmbed ? 'min-h-[200px]' : ''}`}
+        } ${needsOverlayHeight ? 'min-h-[380px] sm:min-h-[420px]' : youtubeEmbed ? 'min-h-[200px]' : ''}`}
       >
         {showVipLock && selectedEpisode ? (
           <div
             data-testid="vip-episode-lock-overlay"
-            className="flex h-full w-full flex-col items-center justify-center bg-ink/95 p-6 text-center text-paper-white"
+            className="flex h-full w-full flex-col items-center justify-center overflow-y-auto bg-ink/95 p-6 text-center text-paper-white"
           >
             <VipBadge data-testid="player-vip-badge" />
             <h3 className="mt-3 font-display text-lg font-bold text-paper-white sm:text-xl">
               Tập phim VIP đang khóa
             </h3>
             <p className="mt-2 max-w-md text-xs leading-relaxed text-zinc-200 sm:text-sm">
-              Bé hãy giải đúng 1 bài toán mức {vipMathLevel} để mở khóa tập này trong hôm nay nhé!
+              Bé giải đúng 1 phép tính mức {vipMathLevel} để mở tập này hôm nay nhé!
             </p>
             <button
               type="button"
@@ -290,7 +330,7 @@ export function EpisodePlayerPanel({
             {...videoHandlers}
             className="h-full w-full object-contain"
           />
-        ) : showLockOverlay || isKidPlayBlocked ? (
+        ) : showLockOverlay || showWatchPetOverlay || showRecapOverlay ? (
           <div className="h-full w-full bg-ink" />
         ) : (
           <div
@@ -312,16 +352,28 @@ export function EpisodePlayerPanel({
             </p>
             <h3 className="mt-1 text-base font-bold text-ink sm:text-lg">Chưa phát được tập này</h3>
             <p className="mt-2 max-w-md text-xs leading-relaxed text-muted">
-              {isKidMode &&
-              playbackSource.kind === 'unavailable' &&
-              (playbackSource.reason === 'youtube_embed_disabled' ||
-                playbackSource.reason === 'file_unreachable_youtube_external')
+              {requiresGuestLogin
+                ? 'Bạn đăng nhập tài khoản Dippie để xem bản video này nhé.'
+                : isKidMode &&
+                  playbackSource.kind === 'unavailable' &&
+                  (playbackSource.reason === 'youtube_embed_disabled' ||
+                    playbackSource.reason === 'file_unreachable_youtube_external')
                 ? 'Tập này tạm chưa xem được trong hồ sơ trẻ em.'
                 : getUnavailableReasonMessage(
                     playbackSource.kind === 'unavailable' ? playbackSource.reason : 'file_unreachable'
                   )}
             </p>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+              {requiresGuestLogin && auth?.openAuthModal && (
+                <button
+                  type="button"
+                  data-testid="player-login-button"
+                  onClick={() => auth.openAuthModal('login')}
+                  className="btn-primary inline-flex min-h-[44px] items-center justify-center px-4 py-2 text-xs font-semibold"
+                >
+                  Đăng nhập để xem
+                </button>
+              )}
               {!isKidMode && playbackSource.kind === 'unavailable' && playbackSource.youtubeWatchUrl && (
                 <YouTubeLink
                   url={playbackSource.youtubeWatchUrl}
@@ -358,38 +410,46 @@ export function EpisodePlayerPanel({
             onContinueWatching={() => setHoldSolvedOverlay(false)}
           />
         )}
-        {isKidMode && auth?.token && kidPlayOverlay && !showLockOverlay && !showVipLock && (
-          <>
-            <WatchPetWidget
-              watchPet={kidPlayOverlay.watchPet}
-              token={auth.token}
-              restCountdown={kidPlayOverlay.restCountdown}
-              onStartRest={kidPlayOverlay.onStartRest}
-              onWatchPetUpdated={kidPlayOverlay.onWatchPetUpdated}
-            />
-            {!kidPlayOverlay.isPetLocked && !kidPlayOverlay.activeRecapEpisodeId && (
-              <LootDropOverlay
-                activeDrop={kidPlayOverlay.activeDrop}
-                dropSecondsLeft={kidPlayOverlay.dropSecondsLeft}
-                activeQuiz={kidPlayOverlay.activeLootQuiz}
-                quizSecondsLeft={kidPlayOverlay.lootQuizSecondsLeft}
-                feedback={kidPlayOverlay.lootFeedback}
-                opening={kidPlayOverlay.lootOpening}
-                submitting={kidPlayOverlay.lootSubmitting}
-                onOpenChest={kidPlayOverlay.onOpenLootChest}
-                onSubmitAnswer={kidPlayOverlay.onSubmitLootAnswer}
-              />
-            )}
-            {!kidPlayOverlay.isPetLocked && kidPlayOverlay.activeRecapEpisodeId && (
-              <RecapQuizOverlay
-                token={auth.token}
-                episodeId={kidPlayOverlay.activeRecapEpisodeId}
-                nextEpisodeLabel={nextEpisodeLabel}
-                onUnlocked={kidPlayOverlay.onRecapUnlocked}
-                onRewatchEpisode={kidPlayOverlay.onRecapRewatch}
-              />
-            )}
-          </>
+        {showWatchPetOverlay && auth?.token && kidPlayOverlay && (
+          <WatchPetWidget
+            watchPet={kidPlayOverlay.watchPet}
+            token={auth.token}
+            restCountdown={kidPlayOverlay.restCountdown}
+            onStartRest={kidPlayOverlay.onStartRest}
+            onWatchPetUpdated={kidPlayOverlay.onWatchPetUpdated}
+            hideCorner
+          />
+        )}
+        {showRecapOverlay && auth?.token && kidPlayOverlay?.activeRecapEpisodeId && (
+          <RecapQuizOverlay
+            token={auth.token}
+            episodeId={kidPlayOverlay.activeRecapEpisodeId}
+            nextEpisodeLabel={nextEpisodeLabel}
+            onUnlocked={kidPlayOverlay.onRecapUnlocked}
+            onRewatchEpisode={kidPlayOverlay.onRecapRewatch}
+          />
+        )}
+        {showCornerPet && auth?.token && kidPlayOverlay && (
+          <WatchPetWidget
+            watchPet={kidPlayOverlay.watchPet}
+            token={auth.token}
+            restCountdown={kidPlayOverlay.restCountdown}
+            onStartRest={kidPlayOverlay.onStartRest}
+            onWatchPetUpdated={kidPlayOverlay.onWatchPetUpdated}
+          />
+        )}
+        {showLootOverlay && kidPlayOverlay && (
+          <LootDropOverlay
+            activeDrop={kidPlayOverlay.activeDrop}
+            dropSecondsLeft={kidPlayOverlay.dropSecondsLeft}
+            activeQuiz={kidPlayOverlay.activeLootQuiz}
+            quizSecondsLeft={kidPlayOverlay.lootQuizSecondsLeft}
+            feedback={kidPlayOverlay.lootFeedback}
+            opening={kidPlayOverlay.lootOpening}
+            submitting={kidPlayOverlay.lootSubmitting}
+            onOpenChest={kidPlayOverlay.onOpenLootChest}
+            onSubmitAnswer={kidPlayOverlay.onSubmitLootAnswer}
+          />
         )}
       </div>
 
@@ -473,7 +533,7 @@ export function EpisodePlayerPanel({
         </p>
       )}
 
-      {vipDialogOpen && selectedEpisode && auth?.token && (
+      {vipDialogOpen && showVipLock && selectedEpisode && auth?.token && (
         <VipUnlockDialog
           episodeId={selectedEpisode.id}
           episodeTitle={cleanMediaTitle(selectedEpisode.title)}

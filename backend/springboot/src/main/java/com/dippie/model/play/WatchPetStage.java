@@ -1,6 +1,6 @@
 package com.dippie.model.play;
 
-// các trạng thái của thú ảo canh giờ nghỉ mắt theo thời lượng xem liên tục của bé
+// các trạng thái của Dieppie canh giờ nghỉ mắt theo thời lượng xem liên tục của bé
 public enum WatchPetStage {
     HAPPY,
     SWEATY,
@@ -22,7 +22,7 @@ public enum WatchPetStage {
         return faintMinutes * 60;
     }
 
-    // tính trạng thái thú ảo từ cờ nghỉ, cờ ngất và số giây xem liên tục hiện tại
+    // tính trạng thái Dieppie từ cờ nghỉ, cờ ngất và số giây xem liên tục hiện tại
     public static WatchPetStage resolve(
             boolean resting,
             boolean fainted,

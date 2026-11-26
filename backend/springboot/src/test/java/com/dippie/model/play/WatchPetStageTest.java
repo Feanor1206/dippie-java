@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// test quy tắc đổi trạng thái thú ảo, nghỉ 2 phút reset bộ đếm và giới hạn cài đặt phụ huynh
+// test quy tắc đổi trạng thái Dieppie, nghỉ 2 phút reset bộ đếm và giới hạn cài đặt phụ huynh
 class WatchPetStageTest {
 
     @Test
@@ -68,12 +68,16 @@ class WatchPetStageTest {
     void validatesParentSettingsBounds() {
         assertThat(ChildPlaySettings.validateFaintMinutes(10)).isEqualTo(10);
         assertThat(ChildPlaySettings.validateFaintMinutes(60)).isEqualTo(60);
-        assertThatThrownBy(() -> ChildPlaySettings.validateFaintMinutes(9)).isInstanceOf(InvalidRequestException.class);
+        assertThatThrownBy(() -> ChildPlaySettings.validateFaintMinutes(9))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessage("Ngưỡng Dieppie mệt xỉu cần từ 10 đến 60 phút.");
         assertThatThrownBy(() -> ChildPlaySettings.validateFaintMinutes(61)).isInstanceOf(InvalidRequestException.class);
 
         assertThat(ChildPlaySettings.validateRestMinutes(3)).isEqualTo(3);
         assertThat(ChildPlaySettings.validateRestMinutes(15)).isEqualTo(15);
-        assertThatThrownBy(() -> ChildPlaySettings.validateRestMinutes(2)).isInstanceOf(InvalidRequestException.class);
+        assertThatThrownBy(() -> ChildPlaySettings.validateRestMinutes(2))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessage("Thời gian cho Dieppie nghỉ mắt cần từ 3 đến 15 phút.");
         assertThatThrownBy(() -> ChildPlaySettings.validateRestMinutes(16)).isInstanceOf(InvalidRequestException.class);
     }
 }

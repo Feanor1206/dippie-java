@@ -235,7 +235,7 @@ function throwHttpError(res: Response, label: string): never {
       throw new WatchProgressError(
         lockReason === 'RECAP_REQUIRED'
           ? 'Bé trả lời nhanh câu hỏi ôn tập để mở khóa tập này nhé.'
-          : 'Thú ảo đang cần nghỉ mắt rồi.',
+          : 'Dieppie đang cần nghỉ mắt rồi.',
         423,
         { lockReason }
       );

@@ -64,7 +64,7 @@ function TimelineListCard({
                   item.onSelect();
                 }
               }}
-              className={`flex items-start justify-between gap-4 p-3 rounded-lg transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-brand ${
+              className={`flex min-h-[44px] items-start justify-between gap-4 p-3 rounded-lg transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-brand ${
                 isActive
                   ? 'bg-brand/15 border border-brand/30'
                   : 'hover:bg-surface-hover/60 border border-transparent'

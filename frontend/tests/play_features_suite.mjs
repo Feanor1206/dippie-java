@@ -383,7 +383,7 @@ test('WatchPetWidget draws SVG without images, supports rest countdown and medic
         }),
         submitWatchPetMedicineAnswer: async (_tok, _ctok, answer) => ({
           correct: answer === 7,
-          message: answer === 7 ? 'Thú ảo đã khỏe lại rồi!' : 'Chưa đúng rồi!',
+          message: answer === 7 ? 'Dieppie đã khỏe lại rồi!' : 'Chưa đúng rồi!',
           watchPet: answer === 7 ? { ...SAMPLE_WATCH_PET, stage: 'HAPPY', continuousWatchSeconds: 0 } : { ...SAMPLE_WATCH_PET, stage: 'FAINTED', fainted: true },
         }),
       },
@@ -413,12 +413,13 @@ test('WatchPetWidget draws SVG without images, supports rest countdown and medic
 
   const restBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'watch-pet-rest-button')[0];
   assert.ok(restBtn);
-  assert.match(collectText(restBtn).replace(/\s+/g, ' '), /Cho thú ngủ 5 phút/);
+  assert.match(collectText(restBtn).replace(/\s+/g, ' '), /Cho Dieppie ngủ 5 phút/);
   restBtn.props.onClick();
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(restCalled, 1);
 
   const medBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'watch-pet-medicine-button')[0];
+  assert.match(collectText(medBtn).replace(/\s+/g, ' '), /Mua thuốc hồi sức cho Dieppie/);
   medBtn.props.onClick();
   await new Promise((r) => setTimeout(r, 0));
   tree = harness.render({
@@ -613,8 +614,8 @@ test('PlayFeaturesSettings validates bounds and saves parent settings with PIN',
       },
       '@/lib/services/playFeaturesService': {
         validatePlaySettings: (input) => {
-          if (input.watchPetFaintMinutes < 10 || input.watchPetFaintMinutes > 60) return 'Ngưỡng thú ảo mệt xỉu cần từ 10 đến 60 phút.';
-          if (input.watchPetRestMinutes < 3 || input.watchPetRestMinutes > 15) return 'Thời gian cho thú nghỉ mắt cần từ 3 đến 15 phút.';
+          if (input.watchPetFaintMinutes < 10 || input.watchPetFaintMinutes > 60) return 'Ngưỡng Dieppie mệt xỉu cần từ 10 đến 60 phút.';
+          if (input.watchPetRestMinutes < 3 || input.watchPetRestMinutes > 15) return 'Thời gian cho Dieppie nghỉ mắt cần từ 3 đến 15 phút.';
           return null;
         },
         fetchParentPlaySettings: async () => [

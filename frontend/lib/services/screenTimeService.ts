@@ -1,4 +1,10 @@
-import { apiFetch, withRequestTimeout } from '@/lib/services/apiRequest';
+import {
+  NETWORK_ERROR_MESSAGE,
+  apiFetch,
+  formatRateLimitMessage,
+  isLikelyNetworkError,
+  withRequestTimeout,
+} from '@/lib/services/apiRequest';
 
 const API = '/api';
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -283,6 +289,23 @@ function normalizeChildOverview(raw: any): ChildProfileScreenTime | null {
   };
 }
 
+async function runScreenTimeRequest<T>(
+  action: (signal: AbortSignal) => Promise<T>,
+  options: ScreenTimeRequestOptions = {}
+): Promise<T> {
+  try {
+    return await withRequestTimeout(action, {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (isLikelyNetworkError(error)) {
+      throw new ScreenTimeApiError(NETWORK_ERROR_MESSAGE, 0);
+    }
+    throw error;
+  }
+}
+
 async function parseEnvelope(response: Response, fallbackMessage: string): Promise<{ data: any; message: string }> {
   const retryHeader = response.headers?.get?.('Retry-After');
   const retryAfter = retryHeader && /^\d+$/.test(retryHeader) ? parseInt(retryHeader, 10) : undefined;
@@ -290,11 +313,19 @@ async function parseEnvelope(response: Response, fallbackMessage: string): Promi
   try {
     json = await response.json();
   } catch {
-    throw new ScreenTimeApiError(fallbackMessage, response.status, retryAfter);
+    const message =
+      response.status === 429
+        ? formatRateLimitMessage('', fallbackMessage, retryAfter)
+        : fallbackMessage;
+    throw new ScreenTimeApiError(message, response.status, retryAfter);
   }
   const serverMessage = typeof json?.message === 'string' && json.message.trim() ? json.message.trim() : '';
   if (!response.ok || json?.success !== true) {
-    throw new ScreenTimeApiError(serverMessage || fallbackMessage, response.status, retryAfter);
+    const message =
+      response.status === 429
+        ? formatRateLimitMessage(serverMessage, fallbackMessage, retryAfter)
+        : serverMessage || fallbackMessage;
+    throw new ScreenTimeApiError(message, response.status, retryAfter);
   }
   return { data: json.data, message: serverMessage };
 }
@@ -304,7 +335,7 @@ export async function fetchScreenTimeStatus(
   options: ScreenTimeRequestOptions = {}
 ): Promise<ScreenTimeStatus> {
   const url = `${options.baseUrl || API}/users/screen-time`;
-  return withRequestTimeout(
+  return runScreenTimeRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'GET',
@@ -314,7 +345,7 @@ export async function fetchScreenTimeStatus(
       const { data } = await parseEnvelope(response, 'Chưa tải được thời gian xem hôm nay.');
       return normalizeStatus(data);
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -325,7 +356,7 @@ export async function sendScreenTimeHeartbeat(
 ): Promise<ScreenTimeHeartbeatResult> {
   const url = `${options.baseUrl || API}/users/screen-time/heartbeat`;
   const cleanSeconds = Math.max(0, Math.round(seconds));
-  return withRequestTimeout(
+  return runScreenTimeRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -344,7 +375,7 @@ export async function sendScreenTimeHeartbeat(
         status,
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -353,7 +384,7 @@ export async function fetchMathChallenge(
   options: ScreenTimeRequestOptions = {}
 ): Promise<MathChallenge> {
   const url = `${options.baseUrl || API}/users/screen-time/challenge`;
-  return withRequestTimeout(
+  return runScreenTimeRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'GET',
@@ -376,7 +407,7 @@ export async function fetchMathChallenge(
         bonusRemainingSeconds: toNonNegativeNumber(data?.bonusRemainingSeconds, 0),
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -387,7 +418,7 @@ export async function submitMathChallengeAnswer(
   options: ScreenTimeRequestOptions = {}
 ): Promise<MathChallengeAnswerResult> {
   const url = `${options.baseUrl || API}/users/screen-time/challenge/answer`;
-  return withRequestTimeout(
+  return runScreenTimeRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -406,7 +437,7 @@ export async function submitMathChallengeAnswer(
         status,
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -415,7 +446,7 @@ export async function fetchParentScreenTimeOverview(
   options: ScreenTimeRequestOptions = {}
 ): Promise<ChildProfileScreenTime[]> {
   const url = `${options.baseUrl || API}/users/profiles/screen-time`;
-  return withRequestTimeout(
+  return runScreenTimeRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'GET',
@@ -428,7 +459,7 @@ export async function fetchParentScreenTimeOverview(
         .map(normalizeChildOverview)
         .filter((item: ChildProfileScreenTime | null): item is ChildProfileScreenTime => item !== null);
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -439,7 +470,7 @@ export async function updateChildScreenTimeSettings(
   options: ScreenTimeRequestOptions = {}
 ): Promise<ChildProfileScreenTime> {
   const url = `${options.baseUrl || API}/users/profiles/${encodeURIComponent(String(profileId))}/screen-time`;
-  return withRequestTimeout(
+  return runScreenTimeRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'PUT',
@@ -454,7 +485,7 @@ export async function updateChildScreenTimeSettings(
       }
       return normalized;
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -466,7 +497,7 @@ export async function grantChildExtraMinutes(
   options: ScreenTimeRequestOptions = {}
 ): Promise<ChildProfileScreenTime> {
   const url = `${options.baseUrl || API}/users/profiles/${encodeURIComponent(String(profileId))}/screen-time/grant`;
-  return withRequestTimeout(
+  return runScreenTimeRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -481,6 +512,6 @@ export async function grantChildExtraMinutes(
       }
       return normalized;
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }

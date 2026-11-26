@@ -1,4 +1,10 @@
-import { apiFetch, withRequestTimeout } from '@/lib/services/apiRequest';
+import {
+  NETWORK_ERROR_MESSAGE,
+  apiFetch,
+  formatRateLimitMessage,
+  isLikelyNetworkError,
+  withRequestTimeout,
+} from '@/lib/services/apiRequest';
 import type { ScreenTimeStatus } from '@/lib/services/screenTimeService';
 
 const API = '/api';
@@ -143,6 +149,23 @@ function authHeaders(token: string, withBody = false): Record<string, string> {
   return headers;
 }
 
+async function runBountyRequest<T>(
+  action: (signal: AbortSignal) => Promise<T>,
+  options: BountyRequestOptions = {}
+): Promise<T> {
+  try {
+    return await withRequestTimeout(action, {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (isLikelyNetworkError(error)) {
+      throw new BountyApiError(NETWORK_ERROR_MESSAGE, 0);
+    }
+    throw error;
+  }
+}
+
 async function parseEnvelope(response: Response, fallbackMessage: string): Promise<{ data: any; message: string }> {
   const retryHeader = response.headers?.get?.('Retry-After');
   const retryAfter = retryHeader && /^\d+$/.test(retryHeader) ? parseInt(retryHeader, 10) : undefined;
@@ -150,11 +173,19 @@ async function parseEnvelope(response: Response, fallbackMessage: string): Promi
   try {
     json = await response.json();
   } catch {
-    throw new BountyApiError(fallbackMessage, response.status, retryAfter);
+    const message =
+      response.status === 429
+        ? formatRateLimitMessage('', fallbackMessage, retryAfter)
+        : fallbackMessage;
+    throw new BountyApiError(message, response.status, retryAfter);
   }
   const serverMessage = typeof json?.message === 'string' && json.message.trim() ? json.message.trim() : '';
   if (!response.ok || json?.success !== true) {
-    throw new BountyApiError(serverMessage || fallbackMessage, response.status, retryAfter);
+    const message =
+      response.status === 429
+        ? formatRateLimitMessage(serverMessage, fallbackMessage, retryAfter)
+        : serverMessage || fallbackMessage;
+    throw new BountyApiError(message, response.status, retryAfter);
   }
   return { data: json.data, message: serverMessage };
 }
@@ -230,7 +261,7 @@ export async function fetchParentBountyBoard(
   options: BountyRequestOptions = {}
 ): Promise<ParentBountyBoard> {
   const url = `${options.baseUrl || API}/users/bounties`;
-  return withRequestTimeout(
+  return runBountyRequest(
     async (signal) => {
       const response = await apiFetch(url, { method: 'GET', headers: authHeaders(token), signal });
       const { data } = await parseEnvelope(response, 'Chưa tải được bảng nhiệm vụ đời thực.');
@@ -245,7 +276,7 @@ export async function fetchParentBountyBoard(
           : [],
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -255,7 +286,7 @@ export async function createBountyTask(
   options: BountyRequestOptions = {}
 ): Promise<BountyTask> {
   const url = `${options.baseUrl || API}/users/bounties/tasks`;
-  return withRequestTimeout(
+  return runBountyRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -268,7 +299,7 @@ export async function createBountyTask(
       if (!normalized) throw new BountyApiError('Dữ liệu nhiệm vụ không hợp lệ.', 502);
       return normalized;
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -279,7 +310,7 @@ export async function updateBountyTask(
   options: BountyRequestOptions = {}
 ): Promise<BountyTask> {
   const url = `${options.baseUrl || API}/users/bounties/tasks/${encodeURIComponent(String(taskId))}`;
-  return withRequestTimeout(
+  return runBountyRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'PUT',
@@ -292,7 +323,7 @@ export async function updateBountyTask(
       if (!normalized) throw new BountyApiError('Dữ liệu nhiệm vụ không hợp lệ.', 502);
       return normalized;
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -303,7 +334,7 @@ export async function deleteBountyTask(
   options: BountyRequestOptions = {}
 ): Promise<void> {
   const url = `${options.baseUrl || API}/users/bounties/tasks/${encodeURIComponent(String(taskId))}`;
-  return withRequestTimeout(
+  return runBountyRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'DELETE',
@@ -314,7 +345,7 @@ export async function deleteBountyTask(
       if (response.status === 204) return;
       await parseEnvelope(response, 'Chưa xóa được nhiệm vụ.');
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -323,7 +354,7 @@ export async function fetchKidBountyBoard(
   options: BountyRequestOptions = {}
 ): Promise<KidBountyBoard> {
   const url = `${options.baseUrl || API}/users/bounties/kid`;
-  return withRequestTimeout(
+  return runBountyRequest(
     async (signal) => {
       const response = await apiFetch(url, { method: 'GET', headers: authHeaders(token), signal });
       const { data } = await parseEnvelope(response, 'Chưa tải được bảng nhiệm vụ của bé.');
@@ -340,7 +371,7 @@ export async function fetchKidBountyBoard(
           : [],
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -350,7 +381,7 @@ export async function submitKidBountyTask(
   options: BountyRequestOptions = {}
 ): Promise<BountySubmission> {
   const url = `${options.baseUrl || API}/users/bounties/tasks/${encodeURIComponent(String(taskId))}/submit`;
-  return withRequestTimeout(
+  return runBountyRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -362,7 +393,7 @@ export async function submitKidBountyTask(
       if (!normalized) throw new BountyApiError('Dữ liệu lượt nộp không hợp lệ.', 502);
       return normalized;
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -374,7 +405,7 @@ export async function approveBountySubmission(
   options: BountyRequestOptions = {}
 ): Promise<BountyDecisionResult> {
   const url = `${options.baseUrl || API}/users/bounties/submissions/${encodeURIComponent(String(submissionId))}/approve`;
-  return withRequestTimeout(
+  return runBountyRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -391,7 +422,7 @@ export async function approveBountySubmission(
         message,
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -403,7 +434,7 @@ export async function rejectBountySubmission(
   options: BountyRequestOptions = {}
 ): Promise<BountyDecisionResult> {
   const url = `${options.baseUrl || API}/users/bounties/submissions/${encodeURIComponent(String(submissionId))}/reject`;
-  return withRequestTimeout(
+  return runBountyRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -420,6 +451,6 @@ export async function rejectBountySubmission(
         message,
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }

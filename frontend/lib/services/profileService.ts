@@ -1,4 +1,10 @@
-import { apiFetch, withRequestTimeout } from '@/lib/services/apiRequest';
+import {
+  NETWORK_ERROR_MESSAGE,
+  apiFetch,
+  formatRateLimitMessage,
+  isLikelyNetworkError,
+  withRequestTimeout,
+} from '@/lib/services/apiRequest';
 import type { AuthUser } from '@/lib/context/AuthContext';
 
 const API = '/api';
@@ -169,6 +175,23 @@ function normalizeAuthUser(raw: any): AuthUser {
   };
 }
 
+async function runProfileRequest<T>(
+  action: (signal: AbortSignal) => Promise<T>,
+  options: ProfileRequestOptions = {}
+): Promise<T> {
+  try {
+    return await withRequestTimeout(action, {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (isLikelyNetworkError(error)) {
+      throw new ProfileApiError(NETWORK_ERROR_MESSAGE, 0);
+    }
+    throw error;
+  }
+}
+
 async function parseEnvelope(response: Response, fallbackMessage: string): Promise<{ data: any; message: string }> {
   const retryHeader = response.headers?.get?.('Retry-After');
   const retryAfter = retryHeader && /^\d+$/.test(retryHeader) ? parseInt(retryHeader, 10) : undefined;
@@ -176,11 +199,19 @@ async function parseEnvelope(response: Response, fallbackMessage: string): Promi
   try {
     json = await response.json();
   } catch {
-    throw new ProfileApiError(fallbackMessage, response.status, retryAfter);
+    const message =
+      response.status === 429
+        ? formatRateLimitMessage('', fallbackMessage, retryAfter)
+        : fallbackMessage;
+    throw new ProfileApiError(message, response.status, retryAfter);
   }
   const serverMessage = typeof json?.message === 'string' && json.message.trim() ? json.message.trim() : '';
   if (!response.ok || json?.success !== true) {
-    throw new ProfileApiError(serverMessage || fallbackMessage, response.status, retryAfter);
+    const message =
+      response.status === 429
+        ? formatRateLimitMessage(serverMessage, fallbackMessage, retryAfter)
+        : serverMessage || fallbackMessage;
+    throw new ProfileApiError(message, response.status, retryAfter);
   }
   return { data: json.data, message: serverMessage };
 }
@@ -190,7 +221,7 @@ export async function fetchProfilesState(
   options: ProfileRequestOptions = {}
 ): Promise<ProfilesState> {
   const url = `${options.baseUrl || API}/users/profiles`;
-  return withRequestTimeout(
+  return runProfileRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'GET',
@@ -213,7 +244,7 @@ export async function fetchProfilesState(
         availableAvatars,
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -223,7 +254,7 @@ export async function enableParentMode(
   options: ProfileRequestOptions = {}
 ): Promise<ParentModeState> {
   const url = `${options.baseUrl || API}/users/parent-mode/enable`;
-  return withRequestTimeout(
+  return runProfileRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -237,7 +268,7 @@ export async function enableParentMode(
         profileCount: typeof data?.profileCount === 'number' ? data.profileCount : 0,
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -248,7 +279,7 @@ export async function changeParentPin(
   options: ProfileRequestOptions = {}
 ): Promise<ParentModeState> {
   const url = `${options.baseUrl || API}/users/parent-mode/pin`;
-  return withRequestTimeout(
+  return runProfileRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'PUT',
@@ -262,7 +293,7 @@ export async function changeParentPin(
         profileCount: typeof data?.profileCount === 'number' ? data.profileCount : 0,
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -272,7 +303,7 @@ export async function disableParentMode(
   options: ProfileRequestOptions = {}
 ): Promise<ParentModeState> {
   const url = `${options.baseUrl || API}/users/parent-mode/disable`;
-  return withRequestTimeout(
+  return runProfileRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -286,7 +317,7 @@ export async function disableParentMode(
         profileCount: typeof data?.profileCount === 'number' ? data.profileCount : 0,
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -296,7 +327,7 @@ export async function createChildProfile(
   options: ProfileRequestOptions = {}
 ): Promise<ChildProfile> {
   const url = `${options.baseUrl || API}/users/profiles`;
-  return withRequestTimeout(
+  return runProfileRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -309,7 +340,7 @@ export async function createChildProfile(
       if (!normalized) throw new ProfileApiError('Dữ liệu hồ sơ trẻ em chưa đúng định dạng.', 502);
       return normalized;
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -320,7 +351,7 @@ export async function updateChildProfile(
   options: ProfileRequestOptions = {}
 ): Promise<ChildProfile> {
   const url = `${options.baseUrl || API}/users/profiles/${encodeURIComponent(String(profileId))}`;
-  return withRequestTimeout(
+  return runProfileRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'PUT',
@@ -333,7 +364,7 @@ export async function updateChildProfile(
       if (!normalized) throw new ProfileApiError('Dữ liệu hồ sơ trẻ em chưa đúng định dạng.', 502);
       return normalized;
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -344,7 +375,7 @@ export async function deleteChildProfile(
   options: ProfileRequestOptions = {}
 ): Promise<void> {
   const url = `${options.baseUrl || API}/users/profiles/${encodeURIComponent(String(profileId))}`;
-  return withRequestTimeout(
+  return runProfileRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'DELETE',
@@ -355,7 +386,7 @@ export async function deleteChildProfile(
       if (response.status === 204) return;
       await parseEnvelope(response, 'Chưa xóa được hồ sơ trẻ em.');
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -365,7 +396,7 @@ export async function switchToChildProfile(
   options: ProfileRequestOptions = {}
 ): Promise<ProfileSwitchResult> {
   const url = `${options.baseUrl || API}/users/profiles/${encodeURIComponent(String(profileId))}/switch`;
-  return withRequestTimeout(
+  return runProfileRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -384,7 +415,7 @@ export async function switchToChildProfile(
         message: message || 'Đã chuyển sang hồ sơ trẻ em.',
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }
 
@@ -394,7 +425,7 @@ export async function exitChildProfile(
   options: ProfileRequestOptions = {}
 ): Promise<ProfileSwitchResult> {
   const url = `${options.baseUrl || API}/users/profiles/exit`;
-  return withRequestTimeout(
+  return runProfileRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
@@ -413,6 +444,6 @@ export async function exitChildProfile(
         message: message || 'Đã quay lại tài khoản chính.',
       };
     },
-    { signal: options.signal, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS }
+    options
   );
 }

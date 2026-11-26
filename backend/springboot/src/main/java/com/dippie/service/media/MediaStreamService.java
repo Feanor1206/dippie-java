@@ -104,7 +104,7 @@ public class MediaStreamService {
             boolean hasPublishedParent = linkedEpisodes.stream()
                     .anyMatch(CatalogEpisodeRepository.EpisodeWithParents::isPublished);
             MediaAsset allowed = playbackAccess.authorizeForStream(assetId, asset, catalogAsset, hasPublishedParent, viewer, grantPrincipal);
-            // hồ sơ trẻ em bị khóa hạn mức, két sắt cuối tuần, tập VIP, thú ảo hay ôn tập thì cắt luồng kể cả khi cầm vé cũ
+            // hồ sơ trẻ em bị khóa hạn mức, két sắt cuối tuần, Dieppie, ôn tập hay tập VIP thì cắt luồng kể cả khi cầm vé cũ
             Long childUserId = null;
             Long childProfileId = null;
             if (viewer != null && viewer.isChildProfile()) {
@@ -121,9 +121,9 @@ public class MediaStreamService {
                         .toList();
                 screenTimeService.requireBudgetUnlockedForProfile(childUserId, childProfileId);
                 weekendVaultService.requireFilmUnlockedForAsset(childUserId, childProfileId, allowed, linkedEpisodes);
-                vipTitleService.requireAssetUnlockedForProfile(childUserId, childProfileId, linkedEpisodes);
                 playPlaybackGuard.requireWatchPetUnlocked(childUserId, childProfileId);
                 playPlaybackGuard.requireEpisodesUnlocked(childUserId, childProfileId, publishedEpisodeIds);
+                vipTitleService.requireAssetUnlockedForProfile(childUserId, childProfileId, linkedEpisodes);
             }
             return allowed;
         });

@@ -186,8 +186,8 @@ export function RecapQuizOverlay({
           <form onSubmit={handleSubmit} className="mt-3 space-y-3">
             {quiz.quizType === 'ORDER_SCENES' ? (
               <div className="space-y-3">
-                <p className="text-[11px] text-muted">
-                  Chạm từng thẻ theo thứ tự từ đầu đến cuối tập (hoặc kéo thả / bấm mũi tên để đổi chỗ).
+                <p className="text-xs text-muted">
+                  Chạm từng cảnh theo đúng thứ tự nhé!
                 </p>
 
                 {orderedIds.length > 0 && (
@@ -211,7 +211,7 @@ export function RecapQuizOverlay({
                           <button
                             type="button"
                             onClick={() => toggleOrderItem(id)}
-                            className="min-h-[36px] flex-1 text-left font-semibold text-ink cursor-pointer"
+                            className="min-h-[44px] flex-1 text-left font-semibold text-ink cursor-pointer"
                           >
                             {item.text}
                           </button>
@@ -221,7 +221,7 @@ export function RecapQuizOverlay({
                               aria-label={`Đưa cảnh ${index + 1} lên trên`}
                               disabled={index === 0}
                               onClick={() => moveOrderedItem(index, -1)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded border border-ink bg-paper-white text-xs font-bold disabled:opacity-40 cursor-pointer"
+                              className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-ink bg-paper-white text-sm font-bold disabled:opacity-40 cursor-pointer"
                             >
                               ↑
                             </button>
@@ -230,7 +230,7 @@ export function RecapQuizOverlay({
                               aria-label={`Đưa cảnh ${index + 1} xuống dưới`}
                               disabled={index === orderedIds.length - 1}
                               onClick={() => moveOrderedItem(index, 1)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded border border-ink bg-paper-white text-xs font-bold disabled:opacity-40 cursor-pointer"
+                              className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-ink bg-paper-white text-sm font-bold disabled:opacity-40 cursor-pointer"
                             >
                               ↓
                             </button>
@@ -270,7 +270,7 @@ export function RecapQuizOverlay({
                       setOrderedIds([]);
                       setFeedback(null);
                     }}
-                    className="text-xs font-semibold text-muted underline hover:text-ink cursor-pointer"
+                    className="inline-flex min-h-[44px] items-center px-2 text-xs font-semibold text-muted underline hover:text-ink cursor-pointer"
                   >
                     Xếp lại từ đầu
                   </button>

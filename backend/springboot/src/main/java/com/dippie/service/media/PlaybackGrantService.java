@@ -79,17 +79,17 @@ public class PlaybackGrantService {
             boolean hasPublishedParent = linkedEpisodes.stream()
                     .anyMatch(CatalogEpisodeRepository.EpisodeWithParents::isPublished);
             MediaAsset allowed = playbackAccess.authorizeForGrant(assetId, asset, catalogAsset, hasPublishedParent, viewer);
-            // kiểm tra khóa theo thứ tự: hạn mức ngày, két sắt cuối tuần, tập VIP, thú ảo nghỉ mắt rồi ôn tập qua tập
+            // kiểm tra khóa theo thứ tự: hạn mức ngày, két sắt cuối tuần, Dieppie nghỉ mắt, ôn tập qua tập rồi tập VIP
             screenTimeService.requireBudgetUnlockedForPlayback(viewer);
             if (viewer != null && viewer.isChildProfile()) {
                 weekendVaultService.requireFilmUnlockedForAsset(viewer.userId(), viewer.profileId(), allowed, linkedEpisodes);
-                vipTitleService.requireAssetUnlockedForProfile(viewer.userId(), viewer.profileId(), linkedEpisodes);
                 playPlaybackGuard.requireWatchPetUnlocked(viewer.userId(), viewer.profileId());
                 List<String> episodeIds = linkedEpisodes.stream()
                         .filter(CatalogEpisodeRepository.EpisodeWithParents::isPublished)
                         .map(row -> row.episode().getId())
                         .toList();
                 playPlaybackGuard.requireEpisodesUnlocked(viewer, episodeIds);
+                vipTitleService.requireAssetUnlockedForProfile(viewer.userId(), viewer.profileId(), linkedEpisodes);
             }
             long tokenVersion = viewer == null
                     ? 0L

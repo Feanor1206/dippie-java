@@ -165,9 +165,10 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
         </div>
         {onClose && (
           <button
+            type="button"
             aria-label="Đóng"
             onClick={onClose}
-            className="rounded-lg p-2 text-muted hover:bg-surface-hover hover:text-ink"
+            className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-hover hover:text-ink cursor-pointer"
           >
             ✕
           </button>
@@ -324,7 +325,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
             {validationResult.errors && validationResult.errors.length > 0 && (
               <div className="mt-4">
                 <h4 className="mb-2 text-xs font-semibold text-red-900">Chi tiết lỗi:</h4>
-                <div className="max-h-56 overflow-y-auto rounded-lg border border-red-500/20 bg-surface-elevated text-xs">
+                <div className="max-h-56 overflow-x-auto overflow-y-auto rounded-lg border border-red-500/20 bg-surface-elevated text-xs">
                   <table className="w-full text-left">
                     <thead className="border-b border-surface-border bg-surface text-muted">
                       <tr>
@@ -375,7 +376,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
                 ))}
             </div>
 
-            <div className="mt-3 flex items-center justify-between border-t border-emerald-500/20 pt-2 text-[11px] text-muted">
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-emerald-500/20 pt-2 text-[11px] text-muted">
               <span>Mã lần nhập: <code className="text-emerald-900">{importResult.importId}</code></span>
               <span>Trạng thái tìm kiếm: {indexStatusLabels[importResult.indexStatus || ''] || importResult.indexStatus || 'Chưa rõ'}</span>
             </div>
