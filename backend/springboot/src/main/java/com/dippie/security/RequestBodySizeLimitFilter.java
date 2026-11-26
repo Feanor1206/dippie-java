@@ -158,7 +158,6 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         }
 
         @Override
-        @SuppressWarnings("resource") // stream gốc là của servlet container, Tomcat tự đóng sau request
         public ServletInputStream getInputStream() throws IOException {
             if (boundedStream == null) {
                 boundedStream = new BoundedServletInputStream(super.getInputStream(), maxBytes);

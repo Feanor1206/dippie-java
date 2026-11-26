@@ -118,7 +118,6 @@ class MovieControllerTest {
     }
 
     @Test
-    @SuppressWarnings("resource") // SessionFactory là của Spring, đóng là sập context test
     void browseFiltersLinkedAndLegacyGenresWithBoundedSqlAsTheCatalogGrows() throws Exception {
         movieRepository.saveAll(List.of(
                 movie("linked", "100% Film", 2024, 9.0, "Comedy", null),

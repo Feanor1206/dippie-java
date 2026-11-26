@@ -112,7 +112,7 @@ public record DiscoverRequest(String query, int limit, SearchConstraints constra
         }
 
         private void rejectExtras(JsonNode node, List<Object> path, Set<String> allowedFields) {
-            node.fields().forEachRemaining(entry -> {
+            node.properties().forEach(entry -> {
                 if (!allowedFields.contains(entry.getKey())) {
                     error("extra_forbidden", field(path, entry.getKey()), "Trường này không được hỗ trợ.", entry.getValue());
                 }

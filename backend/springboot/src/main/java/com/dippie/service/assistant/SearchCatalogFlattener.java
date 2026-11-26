@@ -442,7 +442,7 @@ public final class SearchCatalogFlattener {
     private static Object immutableValue(JsonNode value) {
         if (value.isObject()) {
             Map<String, Object> fields = new LinkedHashMap<>();
-            value.fields().forEachRemaining(field -> fields.put(field.getKey(), immutableValue(field.getValue())));
+            value.properties().forEach(field -> fields.put(field.getKey(), immutableValue(field.getValue())));
             return Collections.unmodifiableMap(fields);
         }
         if (value.isArray()) {

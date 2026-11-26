@@ -73,7 +73,6 @@ class RecommendationHttpTest {
     }
 
     @Test
-    @SuppressWarnings("resource") // SessionFactory là của Spring, đóng là sập context test
     void recommendsImportedEpisodesAnonymouslyAndPersonalizesForFavorites() throws Exception {
         assertThat(indexPublisher).isInstanceOf(LocalIndexPublisher.class);
         String admin = token("recommend-admin", Role.ROLE_ADMIN);

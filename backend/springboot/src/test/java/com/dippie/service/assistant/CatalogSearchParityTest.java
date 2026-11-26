@@ -115,7 +115,7 @@ class CatalogSearchParityTest {
             var actual = mapper.readTree(body).path("results");
             assertThat(actual.size()).as(query).isEqualTo(expected.size());
             for (int i = 0; i < expected.size(); i++) {
-                for (var fields = expected.get(i).fields(); fields.hasNext();) {
+                for (var fields = expected.get(i).properties().iterator(); fields.hasNext();) {
                     var field = fields.next();
                     assertThat(actual.get(i).path(field.getKey())).as("%s hit %s %s", query, i, field.getKey())
                             .isEqualTo(field.getValue());

@@ -330,7 +330,6 @@ class CatalogHttpTest {
     }
 
     @Test
-    @SuppressWarnings("resource") // SessionFactory là của Spring, đóng là sập context test
     void catalogVisibilityCascadesAndSearchPreservesHitOrder() throws Exception {
         String admin = token("catalog-visibility", Role.ROLE_ADMIN);
         String member = token("catalog-playback", Role.ROLE_USER);
@@ -682,7 +681,6 @@ class CatalogHttpTest {
         verifyProgressThumbnails();
     }
 
-    @SuppressWarnings("resource") // SessionFactory là của Spring, đóng là sập context test
     private void verifySeriesCards(String admin) throws Exception {
         var request = get(CATALOG + "series/cards");
         Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
