@@ -6,7 +6,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
-// Chạy một lần lúc ứng dụng khởi động để rà soát các snapshot danh mục còn treo, thay cho việc sửa trạng thái trong HTTP GET.
+// chạy 1 lần lúc app khởi động để rà mấy snapshot danh mục đang treo, thay vì sửa trạng thái trong HTTP GET
 @Component
 public class CatalogSnapshotStartupReconciler implements ApplicationRunner {
 
@@ -18,7 +18,7 @@ public class CatalogSnapshotStartupReconciler implements ApplicationRunner {
         this.catalogImportService = catalogImportService;
     }
 
-    // Nếu bộ tìm kiếm lúc khởi động chưa sẵn sàng thì ghi log cảnh báo rồi bỏ qua, không để lỗi này chặn app khởi chạy.
+    // lúc khởi động mà bộ tìm kiếm chưa sẵn sàng thì log cảnh báo rồi bỏ qua, đừng để lỗi này chặn app chạy lên
     @Override
     public void run(ApplicationArguments args) {
         try {

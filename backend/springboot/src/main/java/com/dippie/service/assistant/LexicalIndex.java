@@ -29,19 +29,13 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-// Chỉ mục tìm kiếm toàn văn trong bộ nhớ chạy BM25 kèm sửa lỗi chính tả 1 đến 2 ký tự cho tên phim, nhân vật và chủ đề.
-// Khi truy vấn tới, lớp này tách riêng vế phủ định ("không phải", "bỏ qua", "trừ"), chấm điểm BM25 kết hợp RRF và xoay vòng đa dạng theo bộ phim ở chế độ khám phá.
+// chỉ mục full-text trong RAM chạy BM25 kèm sửa lỗi gõ 1 đến 2 ký tự cho tên phim, nhân vật với chủ đề
+// lúc tìm thì tách riêng vế phủ định ("không phải", "bỏ qua", "trừ"), chấm BM25 ghép RRF rồi chia vòng các bộ ở chế độ khám phá
 public final class LexicalIndex {
 
-    private static final int CANDIDATE_LIMIT = 30;
-    private static final int MAX_EVIDENCE_LENGTH = 1200;
-    private static final int RRF_K = 61;
-    private static final double DEFAULT_RATING = 8.0;
     private static final String TYPE_SERIES = "series";
     private static final String TYPE_EPISODE = "episode";
     private static final String TYPE_SEGMENT = "segment";
-    private static final String TIMELINE_FILE = "file";
-    private static final String TIMELINE_EPISODE = "episode";
     private static final String WORD = "[\\p{L}\\p{N}_]";
     private static final String SPACE = UnicodeText.SPACE;
     private static final String NUMBER_PREFIX = SPACE + "*(?:#" + SPACE + "*)?";
@@ -84,9 +78,9 @@ public final class LexicalIndex {
     private final Map<String, SeriesTags> seriesTags;
     private final Map<String, List<SearchDocument>> segmentsByEpisode;
 
-    // Dựng sẵn toàn bộ chỉ mục ngược BM25, bảng tên/chủ đề gom theo độ dài từ và thống kê mùa/tập để lúc tìm không phải quét lại.
+    // dựng sẵn hết chỉ mục ngược BM25, bảng tên với chủ đề gom theo độ dài từ và số mùa/tập để lúc tìm khỏi quét lại
     public LexicalIndex(List<SearchDocument> documents) {
-        // Gom bộ phim, sắp phân đoạn theo thứ tự trong từng tập và đếm sẵn số tập, số mùa mỗi bộ.
+        // gom danh sách bộ phim, sắp phân đoạn theo thứ tự trong từng tập rồi đếm sẵn số tập, số mùa mỗi bộ
         this.documents = List.copyOf(documents);
         seriesDocuments = this.documents.stream().filter(item -> item.itemType().equals(TYPE_SERIES)).toList();
         cachedSeriesTitles = seriesDocuments.stream().map(item -> item.text().title())
@@ -119,7 +113,7 @@ public final class LexicalIndex {
             documentsById.put(document.id(), document);
             ordinalsById.put(document.id(), i);
         }
-        // Tính trước vị trí tài liệu tập gốc, điểm êm dịu và cờ tập tổng hợp hoặc kịch tính cho bước lọc giờ đi ngủ và thời lượng ngắn.
+        // tính trước vị trí tập gốc, điểm êm dịu với cờ tập tổng hợp hay kịch tính để lọc giờ ngủ và phim ngắn cho nhanh
         baseOrdinals = new int[this.documents.size()];
         calmScores = new int[this.documents.size()];
         compilationDocuments = new BitSet(this.documents.size());
@@ -141,7 +135,7 @@ public final class LexicalIndex {
                 }
             }
         }
-        // Tách từ, nhân trọng số trường cao và bigram (ưu tiên khớp cụm gấp 1.35 lần), lưu cả dạng có dấu lẫn không dấu rồi tính IDF cho BM25.
+        // tách từ, nhân trọng số trường cao với bigram (khớp cụm gấp 1.35 lần), giữ cả có dấu lẫn không dấu rồi tính IDF cho BM25
         genres = new ArrayList<>(this.documents.size());
         seriesNames = new HashMap<>();
         seriesDocuments.forEach(item -> seriesNames.put(item.id(), seriesNames(item)));
@@ -252,9 +246,9 @@ public final class LexicalIndex {
         return search(query, limit, constraints, id -> true);
     }
 
-    // Luồng tìm kiếm chính: tách vế phủ định, lọc ứng viên hợp lệ, xếp hạng BM25 + sửa chính tả, tính RRF rồi gom mỗi tập tối đa một kết quả.
+    // luồng tìm chính, tách vế phủ định, lọc ứng viên, chấm BM25 kèm sửa lỗi gõ, quy điểm RRF rồi gom mỗi tập tối đa 1 kết quả
     public List<Match> search(String query, int limit, SearchConstraints constraints, Predicate<String> discoverable) {
-        // Cắt câu thành vế chọn và vế loại trừ (nếu có) trước khi nhận diện số mùa/tập và tên bộ phim.
+        // tách câu ra vế lấy với vế loại trừ trước khi bắt số mùa/tập và tên bộ phim
         if (query == null || UnicodeText.strip(query).isEmpty()) {
             return List.of();
         }
@@ -269,12 +263,12 @@ public final class LexicalIndex {
             return List.of();
         }
 
-        // Chấm hạng ứng viên, quy đổi điểm RRF theo thứ bậc và gom trùng để mỗi tập hoặc bộ chỉ xuất hiện một lần.
+        // chấm hạng ứng viên, đổi thứ bậc sang điểm RRF rồi khử trùng để mỗi tập hay bộ chỉ lên đúng 1 lần
         LexicalQuery words = LexicalQuery.from(positive);
         List<Integer> candidates = ranked(allowed, words, constraints, requested, bedtime, !includedSeries.isEmpty());
         Map<Integer, Double> fused = new LinkedHashMap<>();
         for (int rank = 0; rank < candidates.size(); rank++) {
-            fused.put(candidates.get(rank), 1.0 / (RRF_K + rank));
+            fused.put(candidates.get(rank), 1.0 / (61 + rank));
         }
         List<Integer> distinctItems = new ArrayList<>();
         Set<String> used = new HashSet<>();
@@ -290,7 +284,7 @@ public final class LexicalIndex {
                 }
             }
         }
-        // Ở chế độ khám phá, xoay vòng từng bộ phim để danh sách gợi ý không bị dồn toàn tập của một series.
+        // chế độ khám phá thì xoay vòng từng bộ kẻo danh sách gợi ý dồn toàn tập của 1 series
         var selected = constraints.discovery()
                 ? DiverseSelection.roundRobin(distinctItems, index -> seriesKey(documents.get(index)), resultLimit)
                 : distinctItems;
@@ -307,11 +301,11 @@ public final class LexicalIndex {
         return parent == null || parent.isBlank() ? item.id() : parent;
     }
 
-    // Xếp hạng ứng viên: ưu tiên khớp chính xác rồi mới tới khớp mờ, cộng thêm ưu tiên êm dịu hoặc ngắn gọn nếu truy vấn yêu cầu.
+    // xếp hạng ứng viên, ưu tiên khớp chuẩn trước khớp mờ, cộng thêm ưu tiên êm dịu hay ngắn gọn nếu câu hỏi đòi
     private List<Integer> ranked(BitSet allowed, LexicalQuery query, SearchConstraints constraints, Numbers requested,
             boolean bedtime, boolean namedSeries) {
-        // Trường hợp câu hỏi chỉ có số mùa/tập hoặc đang ở chế độ khám phá nên không còn từ khóa chữ.
-        int candidateLimit = constraints.discovery() ? documents.size() : CANDIDATE_LIMIT;
+        // ca câu hỏi chỉ có số mùa/tập hoặc đang ở chế độ khám phá nên không còn từ khóa chữ
+        int candidateLimit = constraints.discovery() ? documents.size() : 30;
         var shortOrder = Comparator.<Integer>comparingInt(index -> bedtime ? -calmScores[baseOrdinals[index]] : 0)
                 .thenComparing(index -> constraints.preferShort()
                         && !EpisodeRuntime.atMost(documents.get(baseOrdinals[index]).durationMs(), EpisodeRuntime.SHORT_MAX_MS));
@@ -324,7 +318,7 @@ public final class LexicalIndex {
                             || documents.get(index).itemType().equals(TYPE_SERIES))
                     .sorted(shortOrder.thenComparingInt(index -> index)).limit(candidateLimit).toList();
         }
-        // Tính điểm BM25 cùng điểm cộng sửa chính tả, luôn xếp tài liệu khớp chính xác lên trước tài liệu khớp mờ.
+        // tính điểm BM25 kèm điểm cộng sửa chính tả, luôn đẩy kết quả khớp chuẩn lên trước khớp mờ
         Relevance scores = scores(query, allowed);
         NameMatches corrections = nameMatches(query, allowed);
         BitSet exact = new BitSet(documents.size());
@@ -350,7 +344,7 @@ public final class LexicalIndex {
         return scores.scores()[index] + (exact.get(index) ? 0 : corrections.bonuses()[index]);
     }
 
-    // Dò từ gõ sai 1 đến 2 ký tự trong các nhóm độ dài lân cận để không phải tính khoảng cách chỉnh sửa trên cả từ điển.
+    // dò từ gõ sai 1 đến 2 ký tự trong mấy nhóm độ dài sát nhau thôi cho khỏi tính khoảng cách chỉnh sửa trên cả từ điển
     private NameMatches nameMatches(LexicalQuery query, BitSet allowed) {
         int[] counts = new int[documents.size()];
         float[] bonuses = new float[documents.size()];
@@ -380,7 +374,7 @@ public final class LexicalIndex {
                     }
                 });
             }
-            // Nếu từ truy vấn không có trong từ điển chính xác, mở rộng tìm mờ sang tiêu đề/chủ đề rồi trừ bớt tài liệu đã khớp đúng.
+            // từ không có trong từ điển chuẩn thì tìm mờ thêm sang tiêu đề với chủ đề rồi trừ bớt chỗ đã khớp đúng
             if (hasLongQueryWord && !terms.containsKey(word)) {
                 addTopicWordMatches(query.words(), word, length, allowShortFuzzy, allowed, near, farther);
             }
@@ -480,10 +474,10 @@ public final class LexicalIndex {
         }
     }
 
-    // Dựng tập bit các tài liệu vượt qua hết điều kiện lọc (bộ/mùa/tập, phủ định, thể loại, năm, thời lượng và quyền phát).
+    // lập BitSet mấy tài liệu qua hết bộ lọc (bộ/mùa/tập, phủ định, thể loại, năm, thời lượng với quyền phát)
     private BitSet allowed(String negative, Set<String> includedSeries, Numbers requested, SearchConstraints constraints,
             boolean bedtime, Predicate<String> discoverable) {
-        // Nếu người dùng hỏi đúng tên bộ kèm số mùa/tập và cờ allowExternalLookup bật, cho phép giữ cả tập chỉ xem ngoài để chat báo rõ.
+        // hỏi đích danh tên bộ kèm số mùa/tập mà bật allowExternalLookup thì giữ cả tập chỉ xem ngoài để chat báo rõ
         Set<String> excludedSeries = seriesIn(negative);
         Numbers excluded = Numbers.parse(negative);
         Set<String> includedGenres = normalized(constraints.includeGenres());
@@ -564,7 +558,7 @@ public final class LexicalIndex {
         return new Relevance(scores, matched, phrases);
     }
 
-    // Tra cứu thẳng bộ phim hoặc tập phim theo mã, gắn cờ externalOnly nếu tập không có tệp phát trực tiếp.
+    // tra thẳng bộ hay tập theo mã, không có file phát trực tiếp thì bật cờ externalOnly
     public Optional<SearchHit> item(String id, Predicate<String> discoverable) {
         return Optional.ofNullable(documentsById.get(id))
                 .filter(item -> item.itemType().equals("series") || item.itemType().equals("episode"))
@@ -574,7 +568,7 @@ public final class LexicalIndex {
                 });
     }
 
-    // Dò phân đoạn kế tiếp trong cùng tập theo vị trí segmentId; nếu tài liệu trước là cảnh/lời thoại thì lùi về so mốc episodeStart.
+    // tìm phân đoạn kế tiếp trong cùng tập theo segmentId, còn trước đó là cảnh hay lời thoại thì lùi về so mốc episodeStart
     public Optional<SearchHit> nextSegment(String documentId, Predicate<String> discoverable) {
         SearchDocument previous = documentsById.get(documentId);
         if (previous == null || episodeId(previous) == null) {
@@ -610,7 +604,7 @@ public final class LexicalIndex {
         return cachedSeriesTitles;
     }
 
-    // Gợi ý các bộ phim khác gần nhất với bộ phim trong câu hỏi, ưu tiên trùng chủ đề (trọng số 2) hơn trùng thể loại (trọng số 1).
+    // gợi ý bộ phim gần nhất với bộ người xem nhắc, trùng chủ đề ăn 2 điểm còn trùng thể loại 1 điểm
     public List<SearchHit> similarSeries(String query, int limit) {
         var reference = seriesIn(query);
         if (reference.isEmpty()) {
@@ -626,7 +620,7 @@ public final class LexicalIndex {
                 .limit(limit).map(item -> match(item.item(), item.item(), null, item.score(), false).hit()).toList();
     }
 
-    // Khi người dùng hỏi mốc phút/giây, đẩy các cảnh hoặc lời thoại khớp cụm từ lên đầu trong cùng một tập để trả đúng timecode.
+    // lúc hỏi mốc phút/giây thì đẩy cảnh hay lời thoại khớp cụm từ lên đầu trong cùng tập để trả đúng timecode
     private List<Integer> preferTimecodes(List<Integer> candidates, String query) {
         var request = TIMECODE.matcher(normalize(query));
         if (!request.find()) {
@@ -682,13 +676,13 @@ public final class LexicalIndex {
         var placement = base.placement();
         var text = base.text();
         String evidence = source.text().evidenceText();
-        int length = Math.min(MAX_EVIDENCE_LENGTH, evidence.codePointCount(0, evidence.length()));
-        String timeline = source.mediaAssetId() != null && position.sourceStart() != null ? TIMELINE_FILE
-                : TYPE_SEGMENT.equals(source.itemType()) && position.episodeStart() != null ? TIMELINE_EPISODE : null;
+        int length = Math.min(1200, evidence.codePointCount(0, evidence.length()));
+        String timeline = source.mediaAssetId() != null && position.sourceStart() != null ? "file"
+                : TYPE_SEGMENT.equals(source.itemType()) && position.episodeStart() != null ? "episode" : null;
         var excerpt = new SearchEvidence(source.id(), evidence.substring(0, evidence.offsetByCodePoints(0, length)),
                 position.episodeStart(), position.episodeEnd(), source.itemType(), timeline, source.mediaAssetId(),
                 position.sourceStart(), position.sourceEnd());
-        var hit = new SearchHit(base.id(), text.title(), placement.year(), DEFAULT_RATING,
+        var hit = new SearchHit(base.id(), text.title(), placement.year(), 8.0,
                 base.runtime(), placement.genres(), text.description(), null, null, null, null, base.itemType(),
                 placement.seriesId(), placement.seasonId(), placement.episodeId(), placement.segmentId(),
                 placement.episodeNumber(), placement.airDate(), base.durationMs(), position.sourceStart(),
@@ -717,13 +711,13 @@ public final class LexicalIndex {
         return values == null ? Set.of() : values.stream().map(LexicalIndex::normalize).collect(Collectors.toUnmodifiableSet());
     }
 
-    // Chuyển chữ thường theo chuẩn Unicode rồi bỏ dấu tiếng Việt (đổi riêng chữ đ sang d vì NFD không tách được đ).
+    // hạ chữ thường chuẩn Unicode rồi bỏ dấu tiếng Việt, nhớ đổi riêng chữ đ sang d vì NFD không tách được đ nha
     public static String normalize(String text) {
         String decomposed = Normalizer.normalize(UnicodeText.caseFold(text).replace('đ', 'd'), Normalizer.Form.NFD);
         return MARK.matcher(decomposed).replaceAll("");
     }
 
-    // Đưa về NFC trước khi cắt token chữ và số để giữ khớp với quy tắc tách từ cũ của bản Python.
+    // đưa về NFC trước khi cắt token chữ số cho khớp quy tắc tách từ cũ của bản Python
     public static List<String> tokenize(String text) {
         String folded = Normalizer.normalize(UnicodeText.caseFold(text), Normalizer.Form.NFC);
         return TOKEN.matcher(folded).results().map(match -> match.group()).toList();
@@ -762,7 +756,7 @@ public final class LexicalIndex {
         return number;
     }
 
-    // Số mùa và số tập rút ra từ câu hỏi (dạng S01E02 hoặc "mùa X tập Y") hay ghi đè từ bộ lọc.
+    // số mùa với số tập bắt từ câu hỏi (kiểu S01E02 hay "mùa X tập Y") hoặc lấy từ bộ lọc đè lên
     private record Numbers(Long season, Long episode) {
 
         static Numbers parse(String query) {
@@ -798,23 +792,23 @@ public final class LexicalIndex {
         }
     }
 
-    // Mục từ trong chỉ mục ngược kèm hệ số IDF đã nhân sẵn trọng số.
+    // mục từ trong chỉ mục ngược kèm hệ số IDF đã nhân sẵn trọng số
     private record Term(float factor, List<Posting> postings) {
     }
 
-    // Số lần xuất hiện của một từ tại vị trí tài liệu tương ứng.
+    // số lần một từ xuất hiện ở tài liệu tại vị trí index
     private record Posting(int index, int count) {
     }
 
-    // Mảng điểm BM25, số từ khớp và bit cờ khớp cụm từ cho toàn bộ tài liệu trong một lần truy vấn.
+    // mảng điểm BM25, số từ khớp với bit cờ khớp cụm cho toàn bộ tài liệu trong 1 lượt tìm
     private record Relevance(float[] scores, int[] matches, BitSet phrases) {
     }
 
-    // Số từ khớp mờ và điểm cộng thêm của từng tài liệu khi người dùng gõ sai chính tả.
+    // số từ khớp mờ với điểm cộng thêm của từng tài liệu khi người tìm gõ sai chính tả
     private record NameMatches(int[] counts, float[] bonuses) {
     }
 
-    // Tập thể loại và chủ đề đã bỏ dấu để tính điểm gần nhau giữa hai bộ phim.
+    // tập thể loại với chủ đề đã bỏ dấu để tính độ gần nhau giữa 2 bộ phim
     private record SeriesTags(Set<String> genres, Set<String> themes) {
 
         int similarity(SeriesTags other) {
@@ -827,11 +821,11 @@ public final class LexicalIndex {
         }
     }
 
-    // Cặp bộ phim và điểm tương đồng dùng để sắp xếp danh sách gợi ý.
+    // cặp bộ phim với điểm tương đồng để sort danh sách gợi ý
     private record Similarity(SearchDocument item, int score) {
     }
 
-    // Kết quả khớp hoàn chỉnh mang thêm mã tệp bằng chứng và nhãn thể loại tiếng Việt cho DiscoverResponse.
+    // kết quả khớp đầy đủ kèm mã file bằng chứng với nhãn thể loại tiếng Việt cho DiscoverResponse
     public record Match(SearchHit hit, String evidenceMediaAssetId, List<String> genreLabels) {
     }
 }

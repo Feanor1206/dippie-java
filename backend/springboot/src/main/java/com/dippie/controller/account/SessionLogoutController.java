@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// Nhận lệnh POST /api/auth/logout để đăng xuất tài khoản khỏi mọi thiết bị và trả 204.
+// POST /api/auth/logout để đăng xuất hết mọi thiết bị rồi trả 204
 @RestController
 @RequestMapping("/api/auth")
 public class SessionLogoutController {

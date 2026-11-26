@@ -17,8 +17,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-// Service lấy tập tiếp theo cho một bộ phim bằng cách ghép snapshot danh mục trong cache với tiến độ còn quyền mở và NextEpisodePolicy.
-// Tách bước đọc DB khỏi verifyPlayable ngoài giao dịch giống WatchProgressService để không giữ connection lúc kiểm tra file trên đĩa.
+// lấy tập tiếp theo cho 1 bộ phim bằng cách ghép snapshot danh mục trong cache với tiến độ hợp lệ qua NextEpisodePolicy
+// tách bước đọc DB khỏi verifyPlayable ngoài transaction giống WatchProgressService để khỏi ngâm connection lúc check file trên đĩa
 @Service
 public class NextEpisodeService {
 
@@ -39,14 +39,14 @@ public class NextEpisodeService {
         this.readTransaction.setReadOnly(true);
     }
 
-    // Kiểm tra bộ phim còn hiển thị công khai, lọc tập và tiến độ theo đúng quyền người xem rồi giao cho NextEpisodePolicy chọn tập phù hợp nhất.
+    // check bộ phim còn đang mở, lọc tập với tiến độ theo quyền user rồi đẩy cho NextEpisodePolicy chọn tập hợp nhất
     public Optional<NextEpisodeView> find(String seriesId) {
         var viewer = currentViewer.require();
         var catalog = cache.current();
         if (!catalog.visibleSeriesIds().contains(seriesId)) {
             throw new NotFoundException("Không tìm thấy bộ phim với mã: " + seriesId);
         }
-        // Chỉ giữ tập thực sự phát được với vai trò hiện tại (admin được mở thêm tập chỉ có file private/draft)
+        // chỉ giữ tập thật sự mở được theo role hiện tại (admin được mở thêm mấy tập chỉ có file private/draft)
         var episodes = catalog.seriesEpisodes(seriesId).stream()
                 .filter(episode -> viewer.isAdmin() ? episode.adminAccessible() : episode.memberAccessible())
                 .map(episode -> new NextEpisodePolicy.Episode(episode.id(), episode.title(), episode.seasonNumber(),
@@ -81,6 +81,6 @@ public class NextEpisodeService {
                         choice.reason(), choice.assetId()));
     }
 
-    // Gói bản ghi tiến độ lấy từ DB cùng ngữ cảnh đang chờ xác minh file trên đĩa.
+    // gói tiến độ lấy từ DB kèm ngữ cảnh chờ check file trên đĩa
     private record LoadedProgress(WatchProgress progress, PendingPlayback pending) {}
 }

@@ -37,7 +37,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-// Tiện ích nằm ở thư mục test để chụp 5 ảnh màn hình chính từ H2 trong bộ nhớ (hoặc DB thật truyền qua tham số).
+// tool nằm trong thư mục test để chụp 5 ảnh màn hình chính từ H2 in-memory (hoặc DB thật truyền qua tham số)
 public final class ScreenshotGenerator {
     private static final int WIDTH = 1280;
     private static final int HEIGHT = 800;
@@ -45,12 +45,12 @@ public final class ScreenshotGenerator {
     private ScreenshotGenerator() {
     }
 
-    // Nạp schema và dữ liệu mẫu vào H2, bật JavaFX rồi chụp lần lượt 5 ảnh PNG vào thư mục đích.
+    // nạp schema với dữ liệu mẫu vào H2, bật JavaFX rồi chụp lần lượt 5 ảnh PNG vào thư mục đích
     public static void main(String[] args) throws Exception {
         Path outputDir = args.length > 0 ? Path.of(args[0]) : Path.of("target", "screenshots");
         Files.createDirectories(outputDir);
 
-        // Nếu có tham số thứ hai là URL JDBC thì chụp trên DB thật (như bản demo đang chạy), không thì dùng dữ liệu mẫu.
+        // có tham số thứ 2 là URL JDBC thì chụp trên DB thật (như bản demo đang chạy), không thì dùng dữ liệu mẫu
         boolean useLiveDatabase = args.length > 1;
         String url = useLiveDatabase ? args[1] : "jdbc:h2:mem:" + UUID.randomUUID()
                 + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE";
@@ -61,7 +61,7 @@ public final class ScreenshotGenerator {
                 loadScript(keepAliveConnection, "/fixtures.sql");
             }
 
-            // Bật JavaFX rồi chụp lần lượt từng màn hình ở kích thước 1280x800.
+            // bật JavaFX rồi chụp lần lượt từng màn hình cỡ 1280x800
             CompletableFuture<Void> ready = new CompletableFuture<>();
             try {
                 Platform.startup(() -> ready.complete(null));
@@ -79,7 +79,8 @@ public final class ScreenshotGenerator {
         }
     }
 
-    // Dựng cửa sổ giống ứng dụng thật rồi chụp lần lượt màn hình đăng nhập và 4 tab quản trị.
+    // dựng cửa sổ y như app thật rồi chụp lần lượt màn đăng nhập với 4 tab quản trị
+    @SuppressWarnings("resource") // UiTasks phải sống tới khi chụp xong, tool chạy 1 lần rồi tắt JVM
     private static void captureAll(AdminServices services, Path outputDir, CompletableFuture<Void> done) {
         UiTasks tasks = new UiTasks(null);
         HeaderBar header = new HeaderBar(tasks, () -> {
@@ -92,7 +93,7 @@ public final class ScreenshotGenerator {
         Scene scene = new Scene(shell, WIDTH, HEIGHT);
         scene.getStylesheets().add(ScreenshotGenerator.class.getResource("/desktop.css").toExternalForm());
 
-        // Chụp màn hình đăng nhập trước khi vào không gian quản trị.
+        // chụp màn hình đăng nhập trước khi vào khung quản trị
         shell.setCenter(new LoginPane(new LoginController(services, tasks), tasks, session -> {
         }));
         afterLayout(scene, () -> {
@@ -104,7 +105,7 @@ public final class ScreenshotGenerator {
                 return;
             }
 
-            // Mở sẵn các tab bằng tài khoản admin mẫu trong fixtures.sql.
+            // mở sẵn các tab bằng tài khoản admin mẫu trong fixtures.sql
             AdminSession session = new AdminSession(1L, 0L);
             AdminController controller = new AdminController(services, tasks, session);
             header.showLoadingSession();
@@ -113,12 +114,12 @@ public final class ScreenshotGenerator {
             shell.setCenter(workspace);
             controller.currentAdmin(header::showSignedIn);
 
-            // Chờ tất cả lượt đọc DB ban đầu chạy xong rồi mới chụp từng tab.
+            // chờ mấy lượt đọc DB ban đầu chạy xong hết rồi mới chụp từng tab
             waitUntilIdle(tasks, () -> captureWorkspaceTabs(scene, workspace, outputDir, tasks, done));
         });
     }
 
-    // Chuyển lần lượt qua từng tab, chọn sẵn dòng mẫu để hình chụp có đủ chi tiết rồi xuất PNG.
+    // chuyển lần lượt qua từng tab, chọn sẵn dòng mẫu để ảnh chụp có đủ chi tiết rồi xuất PNG
     private static void captureWorkspaceTabs(Scene scene, WorkspacePane workspace, Path outputDir,
                                              UiTasks tasks, CompletableFuture<Void> done) {
         captureTab(scene, workspace, 0, () -> {
@@ -150,7 +151,7 @@ public final class ScreenshotGenerator {
         });
     }
 
-    // Mở nhánh đầu tiên trên cây danh mục rồi chọn tập đầu tiên để khung chi tiết bên phải có đủ dữ liệu.
+    // bung nhánh đầu tiên trên cây danh mục rồi chọn tập đầu để khung chi tiết bên phải có đủ dữ liệu
     @SuppressWarnings("unchecked")
     private static void selectFirstEpisode(WorkspacePane workspace) {
         Node node = workspace.lookup(".tree-view");
@@ -177,7 +178,7 @@ public final class ScreenshotGenerator {
         tree.getSelectionModel().select(series);
     }
 
-    // Chọn sẵn một dòng trong bảng đang hiện để ảnh chụp thấy rõ nút thao tác đang bật.
+    // chọn sẵn 1 dòng trong bảng đang hiện để ảnh chụp thấy rõ mấy nút thao tác đang bật
     private static void selectTableRow(WorkspacePane workspace, int rowIndex) {
         for (Node node : workspace.lookupAll(".table-view")) {
             if (node instanceof TableView<?> table && table.isVisible() && table.getItems().size() > rowIndex) {
@@ -187,7 +188,7 @@ public final class ScreenshotGenerator {
         }
     }
 
-    // Đợi hàng đợi nền của UiTasks chạy hết các truy vấn H2 rồi mới gọi onIdle.
+    // chờ hàng đợi nền của UiTasks chạy hết mấy truy vấn H2 rồi mới gọi onIdle
     private static void waitUntilIdle(UiTasks tasks, Runnable onIdle) {
         if (!tasks.busyProperty().get()) {
             Platform.runLater(onIdle);
@@ -198,7 +199,7 @@ public final class ScreenshotGenerator {
         poll.play();
     }
 
-    // Ép chạy applyCss và layout hai nhịp cách nhau 120ms để bảng, cây và biểu đồ kịp vẽ xong trước khi chụp.
+    // ép chạy applyCss và layout 2 nhịp cách nhau 120ms để bảng, cây với biểu đồ kịp vẽ xong trước khi chụp
     private static void afterLayout(Scene scene, Runnable action) {
         scene.getRoot().applyCss();
         scene.getRoot().layout();
@@ -211,7 +212,7 @@ public final class ScreenshotGenerator {
         settle.play();
     }
 
-    // Chụp Scene bằng Scene.snapshot rồi tự chuyển sang BufferedImage để ghi PNG mà không cần thêm javafx-swing.
+    // chụp Scene bằng Scene.snapshot rồi tự đổi sang BufferedImage để ghi PNG cho khỏi thêm javafx-swing
     private static void saveSnapshot(Scene scene, Path target) throws IOException {
         WritableImage image = scene.snapshot(null);
         int width = (int) Math.round(image.getWidth());
@@ -224,9 +225,9 @@ public final class ScreenshotGenerator {
     }
 
     private static void loadScript(Connection keepAliveConnection, String resource) throws Exception {
-        try (var reader = new InputStreamReader(ScreenshotGenerator.class.getResourceAsStream(resource),
-                StandardCharsets.UTF_8)) {
-            RunScript.execute(keepAliveConnection, reader);
+        try (var input = ScreenshotGenerator.class.getResourceAsStream(resource);
+                var reader = new InputStreamReader(input, StandardCharsets.UTF_8);
+                var result = RunScript.execute(keepAliveConnection, reader)) {
         }
     }
 }

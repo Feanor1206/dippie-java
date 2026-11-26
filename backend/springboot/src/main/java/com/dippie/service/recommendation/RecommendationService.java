@@ -10,7 +10,7 @@ import com.dippie.security.Viewer;
 
 import org.springframework.stereotype.Service;
 
-// Facade của phần gợi ý phim: nạp ngữ cảnh người xem, chọn Strategy phù hợp rồi ghép thêm điểm đánh giá vào kết quả.
+// kiểu Facade cho phần gợi ý phim, gom ngữ cảnh người xem, chọn Strategy hợp rồi gắn thêm điểm đánh giá
 @Service
 public class RecommendationService {
 
@@ -31,7 +31,7 @@ public class RecommendationService {
         this.ratings = ratings;
     }
 
-    // Request có mood hoặc moodPreset thì chạy MoodRecommendationStrategy, còn lại chạy AffinityRecommendationStrategy.
+    // có mood hay moodPreset thì chạy MoodRecommendationStrategy, không thì chạy AffinityRecommendationStrategy
     public RecommendationResult recommend(RecommendationRequest request) {
         Long userId = currentViewer.find().map(Viewer::userId).orElse(null);
         var context = new RecommendationContext(request, catalog.load(), signals.load(userId, request.likedMovieIds()));

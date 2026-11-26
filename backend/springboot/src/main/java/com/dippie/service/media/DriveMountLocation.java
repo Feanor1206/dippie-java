@@ -10,12 +10,10 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Optional;
 
-// Strategy tìm video trên ổ Drive gắn kết (như X: trên Windows).
-// Một số máy gắn thẳng vào thư mục con nên nếu tìm nguyên đường dẫn không thấy thì thử bỏ tiền tố VideoDieppie/.
+// nhánh Strategy tìm video trên ổ Drive mount sẵn (kiểu ổ X: trên Windows)
+// mấy máy mount thẳng vào thư mục con thì thử bỏ tiền tố VideoDieppie/ nếu tìm đường dẫn gốc không thấy
 @Component
 public class DriveMountLocation implements MediaLocationStrategy {
-
-    private static final String DRIVE_PREFIX = "VideoDieppie/";
 
     private final Path driveRoot;
 
@@ -33,22 +31,22 @@ public class DriveMountLocation implements MediaLocationStrategy {
         if (validated.isEmpty()) {
             return Optional.empty();
         }
-        // Trên Windows phải kiểm tra ổ đĩa đã thực sự gắn chưa trước khi đọc tệp bên trong.
+        // trên Windows phải check ổ đã mount thật chưa trước khi đụng file bên trong
         if (File.separatorChar == '\\' && driveRoot.equals(driveRoot.getRoot())
                 && driveRoot.toString().charAt(1) == ':'
                 && !Arrays.asList(File.listRoots()).contains(driveRoot.toFile())) {
             return Optional.empty();
         }
-        // Tìm nguyên đường dẫn trước, không thấy mới thử cắt tiền tố thư mục gốc trên Drive.
+        // tìm nguyên đường dẫn trước, không thấy mới cắt tiền tố thư mục gốc trên Drive
         Optional<Path> direct = MediaPathPolicy.resolveRegularFile(driveRoot, validated.get());
         if (direct.isPresent()) {
             return direct;
         }
-        return validated.get().stripPrefix(DRIVE_PREFIX)
+        return validated.get().stripPrefix("VideoDieppie/")
                 .flatMap(stripped -> MediaPathPolicy.resolveRegularFile(driveRoot, stripped));
     }
 
-    // Thêm dấu / sau tên ổ kiểu "X:" để Java hiểu là gốc ổ đĩa chứ không phải thư mục hiện hành của ổ đó.
+    // gắn thêm "/" sau kiểu "X:" để Java hiểu là gốc ổ đĩa chứ không phải thư mục hiện tại của ổ đó
     private static Path normalizeMountRoot(String configured) {
         if (configured == null || configured.isBlank()) {
             return null;

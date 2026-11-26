@@ -14,7 +14,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.io.Serializable;
 
-// Bảng nối cho biết nhân vật nào xuất hiện trong tập phim nào, khóa ngoại tự cascade khi bản ghi gốc bị xóa.
+// bảng nối nhân vật xuất hiện trong tập nào, xóa bản ghi gốc là DB tự cascade
 @Entity
 @Table(name = "catalog_episode_characters",
         indexes = {
@@ -49,7 +49,7 @@ public class CatalogEpisodeCharacter {
         this.characterId = characterId;
     }
 
-    // Khóa ghép (episodeId, characterId) của dòng liên kết.
+    // khóa ghép (episodeId, characterId) cho @IdClass
     public record Key(String episodeId, String characterId) implements Serializable {
     }
 }

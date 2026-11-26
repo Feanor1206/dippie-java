@@ -46,10 +46,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-// Unit test cho các Strategy gửi mail (.eml và SMTP), Factory trong MailConfiguration và đúng mốc hết hạn 30 phút của token đặt lại mật khẩu.
+// test các Strategy gửi mail (.eml và SMTP), Factory trong MailConfiguration với mốc hết hạn đúng 30 phút của token reset
 class MailDeliveryStrategyTest {
 
-    // Xác nhận Factory luôn chọn hộp thư .eml ở profile demo hoặc test và khi thiếu spring.mail.host; chỉ dùng SMTP ở prod khi có host.
+    // kiểu Factory, demo hay test hoặc thiếu spring.mail.host thì chọn .eml, lên prod có host mới chạy SMTP
     @Test
     void selectsFileOutboxOrSmtpStrategyAccordingToProfileAndMailHost(@TempDir Path tempDir) {
         MailConfiguration mailConfiguration = new MailConfiguration();
@@ -79,7 +79,7 @@ class MailDeliveryStrategyTest {
                 .isInstanceOf(SmtpMailDeliveryStrategy.class);
     }
 
-    // Kiểm tra tệp .eml giữ nguyên tiếng Việt UTF-8 và tự thêm hậu tố khi hai email tạo trùng mili giây.
+    // file .eml phải giữ nguyên tiếng Việt UTF-8, trùng mili giây thì tự thêm đuôi kẻo ghi đè
     @Test
     void writesUtf8EmlFilesWithTimestampAndRecipientAndHandlesSameMillisecondCollision(@TempDir Path tempDir)
             throws Exception {
@@ -115,7 +115,7 @@ class MailDeliveryStrategyTest {
         assertThat(content).contains("https://dippie.vn/dat-lai-mat-khau?token=abc123");
     }
 
-    // Kiểm tra nhánh SMTP dựng MimeMessage UTF-8 rồi gọi JavaMailSender.send.
+    // nhánh SMTP dựng MimeMessage UTF-8 xong đẩy qua JavaMailSender.send
     @Test
     void deliversMessageThroughJavaMailSenderWhenUsingSmtpStrategy() {
         JavaMailSender mailSender = mock(JavaMailSender.class);
@@ -134,7 +134,7 @@ class MailDeliveryStrategyTest {
         verify(mailSender).send(mimeMessage);
     }
 
-    // Chạy đồng hồ giả tới đúng phút thứ 30 để chắc chắn token bị từ chối ngay tại ranh giới hết hạn.
+    // tua đồng hồ giả tới đúng phút 30 để chắc token tạch ngay ở mép hết hạn
     @Test
     void rejectsTokenAtExactThirtyMinuteExpiryBoundary() {
         MutableClock clock = new MutableClock(Instant.parse("2026-11-26T00:00:00Z"));
@@ -161,7 +161,7 @@ class MailDeliveryStrategyTest {
                 clock
         );
 
-        // Tua đồng hồ đúng 30 phút để kiểm tra mốc biên hết hạn.
+        // tua đúng 30 phút để check mốc biên hết hạn
         clock.advance(Duration.ofMinutes(30));
 
         assertThatThrownBy(() -> service.confirmReset(new PasswordResetConfirmRequest(rawToken, "newpass123")))
@@ -169,7 +169,7 @@ class MailDeliveryStrategyTest {
                 .hasMessage(PasswordResetService.INVALID_OR_EXPIRED_TOKEN_MESSAGE);
     }
 
-    // Ở mốc 29 phút 59 giây token vẫn còn hợp lệ và đổi mật khẩu xong phải tăng token_version.
+    // ở mốc 29 phút 59 giây token vẫn dùng ngon, đổi mật khẩu xong nhớ tăng token_version
     @Test
     void acceptsTokenJustBeforeThirtyMinuteExpiryBoundary() {
         MutableClock clock = new MutableClock(Instant.parse("2026-11-26T00:00:00Z"));
@@ -231,7 +231,7 @@ class MailDeliveryStrategyTest {
         };
     }
 
-    // Đồng hồ giả cho phép tua thời gian trong test để kiểm tra đúng ranh giới hết hạn token.
+    // đồng hồ giả để tua giờ trong test cho nhanh, canh chuẩn mép hết hạn token
     private static final class MutableClock extends Clock {
 
         private Instant current;

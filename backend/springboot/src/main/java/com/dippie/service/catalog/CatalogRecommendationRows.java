@@ -21,7 +21,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-// Nạp dữ liệu theo lô (batch JPQL) để dựng danh sách EpisodeProfile cho bộ gợi ý, tránh query lặp N+1 từng tập một.
+// kéo dữ liệu theo lô bằng batch JPQL để dựng EpisodeProfile cho bộ gợi ý, khỏi bị N+1 query từng tập một
 public final class CatalogRecommendationRows {
 
     private final EntityManager entities;
@@ -32,18 +32,18 @@ public final class CatalogRecommendationRows {
         this.moviePresentations = moviePresentations;
     }
 
-    // Nạp sẵn trình chiếu, thể loại và nhân vật theo từng lô rồi ghép thành hồ sơ gợi ý cho các tập đủ điều kiện.
+    // nạp sẵn thông tin trình chiếu, thể loại với nhân vật theo lô rồi ghép thành hồ sơ gợi ý cho mấy tập đủ điều kiện
     public List<EpisodeProfile> load(List<CatalogEpisode> episodes, Map<String, CatalogSeries> series,
             Map<String, CatalogSeason> seasons, Predicate<CatalogEpisode> isEligible,
             Function<String, SeriesArtwork> artworkById, Set<String> episodesWithSegments) {
-        // Lọc trước danh sách tập hợp lệ rồi tải một lượt điểm đánh giá và ảnh từ bảng trình chiếu.
+        // lọc trước mấy tập đạt chuẩn rồi kéo 1 lượt rating với ảnh từ bảng trình chiếu
         var eligible = episodes.stream().filter(isEligible).toList();
         if (eligible.isEmpty()) {
             return List.of();
         }
         Map<String, MoviePresentationLookup.Presentation> movies = moviePresentations.findForReadyEpisodes();
 
-        // Tải gom thể loại của tập, bộ phim và nhân vật của từng tập bằng 3 câu JPQL duy nhất.
+        // gom thể loại của tập, bộ phim với nhân vật từng tập trong đúng 3 câu JPQL thôi
         var episodeGenres = genres("""
                 select link.episodeId, genre from CatalogEpisodeGenre link
                 join CatalogGenre genre on genre.id = link.genreId order by link.genreId
@@ -67,7 +67,7 @@ public final class CatalogRecommendationRows {
                 .toList();
     }
 
-    // Chấm điểm summaryQuality (0 đến 2) dựa vào việc tập có tóm tắt và phân đoạn hay chưa; năm phát hành ưu tiên tập, mùa rồi mới đến bộ.
+    // chấm summaryQuality (0 tới 2) tùy tập đã có tóm tắt với phân đoạn chưa, năm phát hành thì ưu tiên tập, mùa rồi mới tới bộ
     private static EpisodeProfile toProfile(CatalogEpisode episode, CatalogSeries series, CatalogSeason season,
             MoviePresentationLookup.Presentation presentation, GenreTags genres,
             Set<String> characters, SeriesArtwork fallback, boolean hasSegments) {
@@ -114,7 +114,7 @@ public final class CatalogRecommendationRows {
         return values;
     }
 
-    // Nhóm mã thể loại cùng toàn bộ từ khóa tìm kiếm mở rộng của một tập hoặc bộ phim.
+    // gom mã thể loại kèm hết từ khóa tìm kiếm mở rộng của 1 tập hay bộ phim
     private record GenreTags(Set<String> ids, Set<String> searchTerms) {
 
         private static final GenreTags EMPTY = new GenreTags(Set.of(), Set.of());

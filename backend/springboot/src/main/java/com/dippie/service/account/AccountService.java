@@ -25,14 +25,11 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// Facade gom luồng tự sửa hồ sơ và tự đổi mật khẩu, có giới hạn tần suất theo IP + userId và ghi audit cho admin.
+// kiểu Facade gom luồng tự sửa hồ sơ với đổi mật khẩu, có rate limit theo IP + userId và ghi audit cho admin
 @Service
 public class AccountService {
 
     public static final String ACTION_ADMIN_PASSWORD_CHANGED = "ADMIN_PASSWORD_CHANGED";
-    private static final String TARGET_TYPE_USER = "USER";
-    private static final String RATE_LIMIT_MESSAGE =
-            "Bạn vừa thao tác quá nhiều lần. Hãy thử lại sau vài phút.";
 
     private final AuthService authService;
     private final UserRepository userRepository;
@@ -60,8 +57,8 @@ public class AccountService {
         this.clock = clock;
     }
 
-    // Cập nhật họ tên và email của chính người đang đăng nhập.
-    // Mình vẫn bắt DataIntegrityViolationException sau saveAndFlush phòng trường hợp hai request đổi trùng email cùng lúc.
+    // sửa họ tên với email cho user đang đăng nhập
+    // vẫn bắt DataIntegrityViolationException sau saveAndFlush phòng 2 request đổi trùng email cùng lúc
     @Transactional
     public UserProfileResponse updateProfile(UpdateProfileRequest request, String clientIp) {
         User user = authService.requireCurrentUser();
@@ -84,7 +81,7 @@ public class AccountService {
         }
     }
 
-    // Xác minh mật khẩu cũ, áp chính sách mật khẩu mới, tăng tokenVersion để cắt hết phiên cũ rồi cấp JWT mới.
+    // check mật khẩu cũ, áp luật mật khẩu mới, tăng tokenVersion để đá hết phiên cũ rồi cấp JWT mới
     @Transactional
     public AuthResponse changePassword(ChangePasswordRequest request, String clientIp) {
         User user = authService.requireCurrentUser();
@@ -94,13 +91,13 @@ public class AccountService {
         String currentPassword = payload.rawCurrentPassword();
         String newPassword = payload.rawNewPassword();
 
-        // Chặn mật khẩu vượt quá giới hạn byte của BCrypt trước khi gọi matches để tránh BCrypt cắt bớt chuỗi.
+        // chặn mật khẩu vượt giới hạn byte của BCrypt trước khi matches kẻo nó tự cắt bớt chuỗi
         if (currentPassword.isEmpty()
                 || PasswordPolicy.DEFAULT.exceedsMaxBytes(currentPassword)
                 || !passwordEncoder.matches(currentPassword, user.getPassword())) {
             throw new InvalidRequestException("Mật khẩu hiện tại chưa đúng.");
         }
-        // Việt giữ tách hai nhánh này nhé, tài khoản admin luôn phải đạt chuẩn mạnh hơn người dùng thường.
+        // Việt giữ tách 2 nhánh này nhé, mật khẩu admin luôn phải mạnh hơn user thường
         if (user.isAdmin()) {
             PasswordPolicy.DEFAULT.validateAdminPassword(newPassword);
         } else {
@@ -110,11 +107,11 @@ public class AccountService {
             throw new InvalidRequestException("Mật khẩu mới cần khác mật khẩu hiện tại.");
         }
 
-        // user.changePassword tự tăng tokenVersion bên trong entity nên mọi token cũ sẽ mất hiệu lực sau khi flush.
+        // user.changePassword tự tăng tokenVersion bên trong rồi nên flush xong là mấy token cũ hết xài luôn
         user.changePassword(passwordEncoder.encode(newPassword), LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS));
         User saved = userRepository.saveAndFlush(user);
 
-        // Chỉ tài khoản admin tự đổi mật khẩu mới cần ghi vết vào bảng audit.
+        // chỉ admin tự đổi mật khẩu mới cần ghi vào bảng audit
         if (saved.isAdmin()) {
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("username", saved.getUsername());
@@ -123,7 +120,7 @@ public class AccountService {
                     saved.getId(),
                     saved.getUsername(),
                     ACTION_ADMIN_PASSWORD_CHANGED,
-                    TARGET_TYPE_USER,
+                    "USER",
                     String.valueOf(saved.getId()),
                     details
             );
@@ -136,7 +133,7 @@ public class AccountService {
     private void enforceRateLimit(String clientIp, String scopeKey) {
         long retryAfter = loginRateLimiter.retryAfterSeconds(clientIp, scopeKey);
         if (retryAfter > 0) {
-            throw new TooManyRequestsException(RATE_LIMIT_MESSAGE, retryAfter);
+            throw new TooManyRequestsException("Bạn vừa thao tác quá nhiều lần. Hãy thử lại sau vài phút.", retryAfter);
         }
     }
 }

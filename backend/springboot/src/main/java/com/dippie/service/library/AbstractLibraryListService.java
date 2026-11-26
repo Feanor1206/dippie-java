@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-// Lớp dịch vụ gốc dùng Template Method và Factory Method qua newEntry() để FavoriteService với WatchlistService dùng chung luồng xem, thêm và xóa.
+// lớp cha dùng Template Method với Factory Method qua newEntry() cho FavoriteService và WatchlistService xài chung luồng xem, thêm, xóa
 public abstract class AbstractLibraryListService<E extends LibraryEntry> {
 
     private final LibraryEntryRepository<E> repository;
@@ -54,13 +54,13 @@ public abstract class AbstractLibraryListService<E extends LibraryEntry> {
         this.clock = clock;
     }
 
-    // Lấy danh sách phim của user theo thứ tự mới thêm nhất, ẩn các phim chưa xuất bản và lấy poster từ SeriesCard nếu bảng movies để trống.
+    // lấy list phim mới thêm nhất, bỏ phim đang ẩn và bù poster từ SeriesCard nếu bảng movies để trống
     public List<LibraryItemView> list() {
         Viewer viewer = currentViewer.require();
         CatalogReadModel model = catalogReadModelCache.current();
         Set<String> hiddenIds = model.hiddenMovieIds();
         List<LibraryItemView> rawItems = readTransaction.execute(status -> repository.findViewsByUserIdOrderByAddedAtDesc(viewer.userId()));
-        // Lọc phim bị ẩn theo snapshot danh mục rồi bù poster từ SeriesCard cho mấy mục bị thiếu ảnh
+        // lọc phim ẩn theo snapshot danh mục rồi bù poster từ SeriesCard cho mấy mục thiếu ảnh
         return rawItems.stream()
                 .filter(item -> !hiddenIds.contains(item.movieId()))
                 .map(item -> enrichArtwork(item, model))
@@ -78,15 +78,15 @@ public abstract class AbstractLibraryListService<E extends LibraryEntry> {
         return new LibraryItemView(item.id(), item.userId(), item.movieId(), item.movieTitle(), card.posterUrl(), item.addedAt());
     }
 
-    // Thêm phim theo kiểu gọi lại nhiều lần vẫn ra đúng một bản ghi.
-    // Việt nhớ giữ REQUIRES_NEW cho nhánh lưu nhé: hai request bấm thêm cùng lúc mà đụng unique key thì chỉ giao dịch con rollback, mình bắt DataIntegrityViolationException rồi đọc lại bản ghi vừa thắng.
+    // thêm phim kiểu idempotent, bấm nhiều lần vẫn ra đúng 1 bản ghi
+    // Việt giữ REQUIRES_NEW nhánh lưu nha, đụng unique key thì chỉ transaction con rollback rồi bắt lỗi đọc lại dòng thắng
     public LibraryItemView add(String rawMovieId) {
         Viewer viewer = currentViewer.require();
         String movieId = rawMovieId == null ? "" : rawMovieId.strip();
         if (movieId.isEmpty()) {
             throw new InvalidRequestException("Bạn chưa chọn phim.");
         }
-        // Kiểm tra phim có đang mở công khai không và xem user đã lưu sẵn chưa trong cùng một giao dịch đọc
+        // check phim có đang mở không và user đã lưu sẵn chưa trong cùng 1 transaction đọc
         LookupResult<E> lookup = readTransaction.execute(status -> {
             Movie movie = movieVisibility.findVisibleById(movieId)
                     .orElseThrow(() -> new InvalidRequestException("Không tìm thấy phim: " + movieId));
@@ -97,7 +97,7 @@ public abstract class AbstractLibraryListService<E extends LibraryEntry> {
             return LibraryItemView.of(lookup.existing().get(), movie);
         }
 
-        // Chèn bản ghi mới trong giao dịch riêng; nếu request song song đã chèn trước thì đọc lại dòng đó để trả về bình thường
+        // chèn dòng mới trong transaction riêng, lỡ request song song chèn trước rồi thì đọc lại dòng đó trả về bình thường
         E entry;
         try {
             entry = requiresNewTransaction.execute(status -> repository.saveAndFlush(
@@ -115,10 +115,10 @@ public abstract class AbstractLibraryListService<E extends LibraryEntry> {
         requiresNewTransaction.executeWithoutResult(status -> repository.deleteByUserIdAndMovieId(viewer.userId(), movieId));
     }
 
-    // Factory Method để lớp con trả về đúng entity FavoriteItem hoặc WatchlistItem.
+    // chỗ Factory Method để lớp con trả đúng FavoriteItem hay WatchlistItem
     protected abstract E newEntry(Long userId, String movieId, LocalDateTime addedAt);
 
-    // Gói phim tìm thấy và mục đã lưu (nếu có) để trả ra từ cùng một giao dịch đọc.
+    // gói phim tìm được với mục đã lưu để trả ra từ cùng 1 transaction đọc
     private record LookupResult<E extends LibraryEntry>(Movie movie, Optional<E> existing) {
     }
 }

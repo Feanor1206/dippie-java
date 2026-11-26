@@ -19,12 +19,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Set;
 
-// Filter chặn request body vượt ngưỡng theo từng route trước khi Jackson đọc vào bộ nhớ, tránh bị đẩy payload khổng lồ gây OOM.
+// filter chặn body vượt trần theo từng route trước khi Jackson đọc vào RAM kẻo payload khổng lồ gây OOM
 @Component
 public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
 
@@ -42,7 +43,7 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         this.objectMapper = objectMapper;
     }
 
-    // Chặn sớm nếu header Content-Length đã vượt ngưỡng, đồng thời bọc InputStream để đếm byte thật với cả request gửi kiểu chunked.
+    // chặn sớm nếu Content-Length đã lố trần, đồng thời bọc InputStream để đếm byte thật cả với request chunked
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -52,14 +53,14 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         String path = normalizePath(request);
         long limit = resolveLimit(path);
 
-        // Kiểm tra Content-Length trước để cắt sớm mà không cần đọc thân request.
+        // check Content-Length trước để cắt sớm khỏi mất công đọc body
         long contentLength = Math.max(request.getContentLengthLong(), parseContentLengthHeader(request));
         if (contentLength > limit) {
             writeTooLargeResponse(path, response);
             return;
         }
 
-        // Bọc request bằng stream có đếm byte để chặn cả trường hợp Transfer-Encoding: chunked không khai báo độ dài.
+        // bọc request bằng stream đếm byte để chặn cả Transfer-Encoding: chunked không báo độ dài
         BoundedBodyRequestWrapper wrapped = new BoundedBodyRequestWrapper(request, limit);
         try {
             filterChain.doFilter(wrapped, response);
@@ -91,7 +92,7 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         return properties.defaultMaxBytes();
     }
 
-    // Trả JSON 413 theo đúng format của từng nhóm route (/v1 dùng trường detail, còn lại dùng ApiResponse).
+    // trả 413 JSON đúng format từng nhóm route, /v1 dùng field detail còn lại dùng ApiResponse
     private void writeTooLargeResponse(String path, HttpServletResponse response) throws IOException {
         response.resetBuffer();
         response.setStatus(HttpStatus.PAYLOAD_TOO_LARGE.value());
@@ -100,7 +101,9 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         Object body = DETAIL_ERROR_PATHS.contains(path)
                 ? Map.of("detail", RequestBodyTooLargeException.DEFAULT_MESSAGE)
                 : ApiResponse.failure(RequestBodyTooLargeException.DEFAULT_MESSAGE);
-        objectMapper.writeValue(response.getWriter(), body);
+        try (PrintWriter writer = response.getWriter()) {
+            objectMapper.writeValue(writer, body);
+        }
         response.flushBuffer();
     }
 
@@ -128,7 +131,7 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         }
     }
 
-    // Dò ngược chuỗi cause vì Spring MVC hay bọc RequestBodyTooLargeException bên trong HttpMessageNotReadableException.
+    // dò ngược chuỗi cause vì Spring MVC hay bọc RequestBodyTooLargeException trong HttpMessageNotReadableException
     public static boolean containsTooLargeException(Throwable throwable) {
         Throwable cursor = throwable;
         int depth = 0;
@@ -142,7 +145,7 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         return false;
     }
 
-    // Wrapper giữ lại cùng một luồng đọc có đếm byte cho cả getInputStream và getReader.
+    // wrapper giữ chung 1 luồng đọc có đếm byte cho cả getInputStream và getReader
     private static final class BoundedBodyRequestWrapper extends HttpServletRequestWrapper {
 
         private final long maxBytes;
@@ -155,6 +158,7 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         }
 
         @Override
+        @SuppressWarnings("resource") // stream gốc là của servlet container, Tomcat tự đóng sau request
         public ServletInputStream getInputStream() throws IOException {
             if (boundedStream == null) {
                 boundedStream = new BoundedServletInputStream(super.getInputStream(), maxBytes);
@@ -173,7 +177,7 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         }
     }
 
-    // Luồng đọc đếm số byte thực tế đi qua và ném RequestBodyTooLargeException ngay khi vượt giới hạn.
+    // stream đếm số byte thật đi qua, vượt giới hạn là ném RequestBodyTooLargeException liền
     private static final class BoundedServletInputStream extends ServletInputStream {
 
         private final ServletInputStream delegate;

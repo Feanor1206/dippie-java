@@ -25,8 +25,8 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 
-// Entity ánh xạ bảng watch_progress, giữ vị trí xem từng tập cùng cột optLockVersion cho optimistic locking.
-// Khi client gửi expectedVersion lệch với optLockVersion đang lưu, lệnh cập nhật sẽ bị từ chối với lỗi 409 để hai tab không ghi đè lẫn nhau.
+// bảng watch_progress lưu mốc xem từng tập kèm optLockVersion cho optimistic locking
+// client gửi expectedVersion lệch với optLockVersion đang lưu thì trả 409 luôn kẻo hai tab đè nhau
 @Entity
 @Table(
         name = "watch_progress",
@@ -100,18 +100,18 @@ public class WatchProgress {
         this.updatedAt = updatedAt;
     }
 
-    // Tạo bản ghi mới ở version 0 với thời điểm hiện tại đã cắt xuống từng giây cho khớp cột TIMESTAMP.
+    // tạo bản ghi mới ở version 0, cắt giờ hiện tại xuống giây cho khớp TIMESTAMP
     public static WatchProgress start(Long userId, String episodeId, String assetId, long positionMs, Clock clock) {
         return startAt(userId, episodeId, assetId, positionMs, nowFrom(clock));
     }
 
-    // Bản nạp chồng nhận sẵn mốc updatedAt, hay dùng trong test và phần seed dữ liệu.
+    // bản overload truyền sẵn updatedAt, hay dùng cho test với seed dữ liệu
     public static WatchProgress startAt(Long userId, String episodeId, String assetId, long positionMs,
             LocalDateTime updatedAt) {
         return new WatchProgress(userId, episodeId, assetId, positionMs, 0L, updatedAt);
     }
 
-    // Chỉ cập nhật khi expectedVersion khớp với optLockVersion đang giữ, rồi tăng version thêm 1.
+    // chỉ cho lưu khi expectedVersion khớp optLockVersion hiện tại, xong tăng version lên 1
     public void advance(long expectedVersion, String newAssetId, long newPositionMs, Clock clock) {
         if (this.optLockVersion != expectedVersion) {
             throw new ConflictException(CONFLICT_MESSAGE);

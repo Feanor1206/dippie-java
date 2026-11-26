@@ -19,8 +19,8 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
-// Bảng admin_audit_events lưu dấu vết các thao tác quản trị như đổi quyền, khóa tài khoản hay nhập danh mục.
-// Khóa ngoại tới User đặt SET_NULL để khi tài khoản người thực hiện bị xóa thì dòng lịch sử vẫn còn nguyên.
+// bảng admin_audit_events lưu vết mấy thao tác admin như đổi quyền, khóa user hay nhập catalog
+// khóa ngoại tới User đặt SET_NULL để xóa tài khoản rồi dòng log vẫn còn nguyên
 @Entity
 @Table(
         name = "admin_audit_events",

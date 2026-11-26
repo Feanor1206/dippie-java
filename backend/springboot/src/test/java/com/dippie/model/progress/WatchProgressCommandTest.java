@@ -11,7 +11,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Test đơn vị cho WatchProgressCommand, chặn mấy kiểu JSON hay bị Jackson âm thầm ép kiểu như boolean, số thập phân hay chuỗi số.
+// test WatchProgressCommand, chặn mấy kiểu JSON hay bị Jackson lén ép như boolean, số lẻ hay chuỗi số nha
 class WatchProgressCommandTest {
 
     private final ObjectMapper mapper = new ObjectMapper();

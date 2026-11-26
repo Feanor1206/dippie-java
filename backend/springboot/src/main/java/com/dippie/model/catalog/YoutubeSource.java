@@ -6,17 +6,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.regex.Pattern;
 
-// Mã video YouTube của tập phim kèm cờ cho phép nhúng trình phát.
-// Khi đọc mảng external_ids, lớp ưu tiên theo thứ tự youtube_playback (nhúng được), youtube_watch (chỉ mở ngoài) rồi mới tới youtube_video_id.
+// mã video YouTube của tập kèm cờ có nhúng player được không
+// đọc external_ids ưu tiên youtube_playback (nhúng được), tới youtube_watch (chỉ mở ngoài) rồi mới tới youtube_video_id
 public record YoutubeSource(String videoId, boolean canEmbed) {
 
     public static final String PROGRESS_PREFIX = "youtube:";
     private static final Pattern VIDEO_ID = Pattern.compile("[A-Za-z0-9_-]{11}");
-    private static final String PLAYBACK_NAMESPACE = "youtube_playback";
-    private static final String WATCH_NAMESPACE = "youtube_watch";
-    private static final String THUMBNAIL_ONLY_NAMESPACE = "youtube_video_id";
 
-    // Đọc một lượt ảnh bìa, trạng thái khóa nhúng và tên gốc từ rawJson của tập phim để dùng khi dựng CatalogReadModel.
+    // bóc một lượt ảnh bìa, cờ khóa nhúng với tên gốc từ rawJson để dựng CatalogReadModel
     public static EpisodeMetadata parseEpisodeMetadata(String episodeJson) {
         JsonNode root = JsonText.parse(episodeJson).orElse(null);
         if (root == null) {
@@ -32,7 +29,7 @@ public record YoutubeSource(String videoId, boolean canEmbed) {
         return new EpisodeMetadata(artwork, embeddingDisabled, originalTitle, hasPrimaryMediaAsset);
     }
 
-    // Tách nguồn chính và nguồn dự phòng: chỉ trả fallback từ youtube_video_id khi tập không có cả playback lẫn watch.
+    // tách nguồn chính với dự phòng, chỉ lấy fallback từ youtube_video_id khi thiếu cả playback lẫn watch
     public static Detail resolveDetail(String episodeJson) {
         JsonNode root = JsonText.parse(episodeJson).orElse(null);
         if (root == null) {
@@ -54,13 +51,13 @@ public record YoutubeSource(String videoId, boolean canEmbed) {
         return resolveDetail(episodeJson).primary();
     }
 
-    // Kiểm tra mã asset lưu tiến độ xem (dạng "youtube:<videoId>") có khớp đúng nguồn nhúng được của tập không.
+    // check mã asset lưu tiến độ ("youtube:<videoId>") có khớp đúng nguồn nhúng được của tập không
     public static boolean matchesProgressAsset(String episodeJson, String assetId) {
         YoutubeSource source = embeddableFrom(episodeJson);
         return source != null && assetId.equals(PROGRESS_PREFIX + source.videoId());
     }
 
-    // Việt đừng sửa nhánh này thành fallback khi primary có canEmbed = false: tập đã gắn youtube_watch nghĩa là bị khóa nhúng, nên cố tình trả null.
+    // Việt đừng sửa nhánh này rơi sang fallback khi primary có canEmbed = false nha, có youtube_watch là bị khóa nhúng nên cố tình trả null đó
     public static YoutubeSource embeddableFrom(String episodeJson) {
         Detail detail = resolveDetail(episodeJson);
         if (detail.primary() == null) {
@@ -87,11 +84,11 @@ public record YoutubeSource(String videoId, boolean canEmbed) {
                 continue;
             }
             String namespace = item.path("namespace").textValue();
-            if (playbackId == null && PLAYBACK_NAMESPACE.equals(namespace)) {
+            if (playbackId == null && "youtube_playback".equals(namespace)) {
                 playbackId = id;
-            } else if (watchId == null && WATCH_NAMESPACE.equals(namespace)) {
+            } else if (watchId == null && "youtube_watch".equals(namespace)) {
                 watchId = id;
-            } else if (thumbnailId == null && THUMBNAIL_ONLY_NAMESPACE.equals(namespace)) {
+            } else if (thumbnailId == null && "youtube_video_id".equals(namespace)) {
                 thumbnailId = id;
             }
         }
@@ -108,18 +105,18 @@ public record YoutubeSource(String videoId, boolean canEmbed) {
         return new SeriesArtwork(base + "hqdefault.jpg", base + "maxresdefault.jpg");
     }
 
-    // Ba mã video YouTube đầu tiên hợp lệ tìm thấy cho từng namespace trong external_ids.
+    // ba mã YouTube hợp lệ đầu tiên bắt được cho từng namespace trong external_ids
     private record ParsedIds(String playbackId, String watchId, String thumbnailId) {
         private static final ParsedIds EMPTY = new ParsedIds(null, null, null);
     }
 
-    // Phần siêu dữ liệu YouTube bóc sẵn từ JSON của tập phim cho CatalogReadModelLoader.
+    // metadata YouTube bóc sẵn từ JSON của tập cho CatalogReadModelLoader
     public record EpisodeMetadata(SeriesArtwork artwork, boolean embeddingDisabled, String originalTitle,
             boolean hasPrimaryMediaAsset) {
         public static final EpisodeMetadata EMPTY = new EpisodeMetadata(SeriesArtwork.EMPTY, false, null, false);
     }
 
-    // Cặp nguồn YouTube chính và dự phòng gửi ra ở API chi tiết tập phim.
+    // cặp nguồn YouTube chính với dự phòng trả ra ở API chi tiết tập
     public record Detail(YoutubeSource primary, YoutubeSource fallback) {
     }
 }

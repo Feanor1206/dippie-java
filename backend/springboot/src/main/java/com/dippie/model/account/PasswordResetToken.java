@@ -20,8 +20,8 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
-// Bảng password_reset_tokens lưu mã băm SHA-256 và hạn dùng của token đặt lại mật khẩu để DB không bao giờ chứa token gốc.
-// Khóa ngoại tới User đặt CASCADE để khi xóa tài khoản thì token cũng được dọn sạch theo.
+// bảng password_reset_tokens chỉ lưu hash SHA-256 với hạn dùng, DB không bao giờ giữ token gốc
+// khóa ngoại sang User đặt CASCADE để xóa tài khoản là dọn sạch token theo luôn
 @Entity
 @Table(
         name = "password_reset_tokens",
@@ -103,12 +103,12 @@ public class PasswordResetToken {
         return usedAt != null;
     }
 
-    // Coi như hết hạn ngay khi chạm mốc expiresAt (không cho dùng ở đúng phút thứ 30).
+    // vừa chạm mốc expiresAt là tính hết hạn luôn, không cho xài ở đúng phút thứ 30
     public boolean isExpiredAt(LocalDateTime now) {
         return !now.isBefore(expiresAt);
     }
 
-    // Ghi nhận thời điểm tiêu thụ để token không dùng lại được lần hai.
+    // chốt giờ đã dùng để token không xài lại được lần hai
     public void markUsed(LocalDateTime usedAt) {
         this.usedAt = usedAt;
     }

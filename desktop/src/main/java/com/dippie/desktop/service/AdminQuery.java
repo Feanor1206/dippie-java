@@ -7,7 +7,7 @@ import com.dippie.desktop.model.UserAccount;
 
 import java.util.function.Supplier;
 
-// Protection Proxy chặn trước mọi lượt đọc của quản trị viên để xác minh phiên còn hiệu lực rồi mới gọi service thật.
+// protection proxy đứng chặn trước mọi lượt đọc của admin, check phiên còn hiệu lực rồi mới gọi service thật
 final class AdminQuery<T> implements Supplier<T> {
     private final UserDao userDao;
     private final AdminSession session;
@@ -19,14 +19,14 @@ final class AdminQuery<T> implements Supplier<T> {
         this.delegate = delegate;
     }
 
-    // Đọc lại tài khoản từ DB mỗi lần để nếu bên web vừa khóa hay hạ quyền thì lệnh đọc bị chặn ngay.
+    // đọc lại tài khoản từ DB mỗi lần để hễ bên web vừa khóa hay hạ quyền là chặn đọc liền
     @Override
     public T get() {
         requireCurrent(session, userDao.findById(session.userId()).orElse(null));
         return delegate.get();
     }
 
-    // Mình chuyển chỗ ném Conflict về tầng service nha Việt, để AdminSession bên model không phải nhập DataAccessException từ db.
+    // chuyển chỗ ném Conflict về service nha Việt, để AdminSession bên model khỏi phải import DataAccessException từ db
     static UserAccount requireCurrent(AdminSession session, UserAccount account) {
         if (!session.matches(account)) {
             throw new DataAccessException.Conflict("Phiên đăng nhập đã hết hiệu lực. Bạn cần đăng nhập lại.");

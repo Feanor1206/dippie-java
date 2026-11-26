@@ -27,8 +27,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-// Facade điều phối việc đọc, lưu và xóa tiến độ xem kèm optimistic locking.
-// Giao dịch đọc và ghi (REQUIRES_NEW) được tách riêng, còn bước kiểm tra tệp trên đĩa chạy bên ngoài giao dịch để tránh giữ connection DB lâu.
+// kiểu Facade lo đọc, lưu với xóa tiến độ xem có optimistic locking
+// tách riêng transaction đọc với ghi (REQUIRES_NEW), còn bước check file trên đĩa đẩy ra ngoài kẻo ngâm connection DB
 @Service
 public class WatchProgressService {
 
@@ -57,7 +57,7 @@ public class WatchProgressService {
         this.clock = clock;
     }
 
-    // Trả tối đa 30 tập xem gần đây còn phát được; đọc theo từng lô 90 dòng để lỡ tài khoản có nhiều tập bị ẩn vẫn kéo bù đủ 30 mục hợp lệ.
+    // trả tối đa 30 tập xem gần đây còn mở được, kéo từng lô 90 dòng để lỡ dính nhiều tập bị ẩn vẫn bù đủ 30 mục
     public List<WatchProgressView> listRecent() {
         Viewer viewer = currentViewer.require();
         CatalogReadModel model = catalog.current();
@@ -74,7 +74,7 @@ public class WatchProgressService {
                 }
                 return new PageBatch(candidates, rows.size() == RECENT_FETCH_LIMIT);
             });
-            // Đẩy bước kiểm tra tệp trên ổ đĩa ra ngoài giao dịch rồi gom đủ tối đa RECENT_LIMIT mục
+            // đẩy bước check file trên đĩa ra ngoài transaction rồi gom đủ tối đa RECENT_LIMIT mục
             for (LoadedProgress item : batch.candidates()) {
                 if (result.size() >= RECENT_LIMIT) {
                     break;
@@ -90,7 +90,7 @@ public class WatchProgressService {
         return List.copyOf(result);
     }
 
-    // Đọc tiến độ của một tập và báo 404 nếu chưa có lịch sử hoặc tập đã bị ẩn, không còn phát được.
+    // lấy tiến độ của 1 tập, chưa xem bao giờ hay tập đã bị ẩn, không phát được nữa thì 404
     public WatchProgressView getForEpisode(String episodeId) {
         Viewer viewer = currentViewer.require();
         CatalogReadModel model = catalog.current();
@@ -107,16 +107,16 @@ public class WatchProgressService {
                 model.episodeThumbnail(episodeId, context.series().getId()));
     }
 
-    // Lưu tiến độ mới (expectedVersion = -1) hoặc cập nhật bản ghi cũ sau khi kiểm tra tập phát được và thời điểm không vượt thời lượng video.
+    // tạo mới (expectedVersion = -1) hoặc cập nhật tiến độ sau khi check tập mở được và mốc xem không quá thời lượng video
     public WatchProgressView save(String episodeId, JsonNode body) {
         Viewer viewer = currentViewer.require();
         WatchProgressCommand command = WatchProgressCommand.from(body);
-        // Nạp ngữ cảnh phát; vẫn nhận tiến độ YouTube dự phòng kể cả khi tập cũng có file nội bộ
+        // nạp ngữ cảnh phát, vẫn nhận tiến độ YouTube dự phòng kể cả lúc tập có sẵn file nội bộ
         PendingPlayback pending = readTransaction.execute(status ->
                 contextResolver.loadCandidate(episodeId, command.assetId(), viewer)
                         .orElseThrow(() -> notPlayable(episodeId))
         );
-        // Kiểm tra tệp trên đĩa ngoài giao dịch rồi chặn thời điểm xem vượt quá độ dài hiệu dụng của video
+        // check file trên đĩa ngoài transaction rồi chặn mốc xem vượt quá thời lượng thật của video
         PlaybackContext context = contextResolver.verifyPlayable(pending)
                 .orElseThrow(() -> notPlayable(episodeId));
         if (context.duration().isExceededBy(command.positionMs())) {
@@ -137,7 +137,7 @@ public class WatchProgressService {
         );
     }
 
-    // Việt đừng bỏ đoạn bắt DataIntegrityViolationException ở đây nhé: hai request cùng tạo version -1 sẽ đụng unique key, mình kiểm tra lại trong DB để trả đúng 409 Conflict thay vì 500.
+    // Việt đừng bỏ catch DataIntegrityViolationException nha, 2 request tạo version -1 đụng khóa thì check DB trả 409 chứ không 500
     private WatchProgress createProgress(Long userId, String episodeId, String assetId, long positionMs) {
         Optional<WatchProgress> existing = readTransaction.execute(status ->
                 repository.findByUserIdAndEpisodeId(userId, episodeId)
@@ -159,7 +159,7 @@ public class WatchProgressService {
         }
     }
 
-    // Cập nhật nguyên tử theo expectedVersion; nếu số dòng cập nhật khác 1 nghĩa là có request khác đã nhảy version trước.
+    // cập nhật nguyên tử theo expectedVersion, số dòng sửa khác 1 là biết có request khác nhảy version trước rồi
     private WatchProgress updateProgress(Long userId, String episodeId, String assetId, WatchProgressCommand command) {
         WatchProgress current = readTransaction.execute(status ->
                 repository.findByUserIdAndEpisodeId(userId, episodeId).orElse(null));
@@ -180,9 +180,9 @@ public class WatchProgressService {
         return new NotFoundException("Không tìm thấy tập phim để phát: " + episodeId);
     }
 
-    // Gói bản ghi tiến độ lấy từ DB cùng ngữ cảnh đang chờ kiểm tra tệp trên đĩa.
+    // gói tiến độ lấy từ DB kèm ngữ cảnh chờ check file trên đĩa
     private record LoadedProgress(WatchProgress progress, PendingPlayback pending) {}
 
-    // Kết quả một lô đọc lịch sử kèm cờ báo DB còn bản ghi ở trang sau hay đã hết.
+    // kết quả 1 lô đọc lịch sử kèm cờ báo dưới DB còn trang sau không
     private record PageBatch(List<LoadedProgress> candidates, boolean hasMore) {}
 }

@@ -48,7 +48,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Bộ test hồi quy cho phân quyền fail-closed, lọc nội dung nháp khỏi thư viện và thống kê, ghi audit và cấu hình đóng gói H2.
+// test hồi quy phân quyền fail-closed, lọc phim nháp khỏi thư viện với thống kê, ghi audit và đóng gói H2
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -131,7 +131,7 @@ class MediumLowSecurityFixesTest {
         readModelCache.invalidate();
     }
 
-    // Kiểm tra đăng nhập email không phân biệt hoa thường, route API lạ mặc định yêu cầu đăng nhập và ẩn cấu hình LLM nội bộ với user thường.
+    // check login email không phân biệt hoa thường, route API lạ đòi đăng nhập và giấu thông tin LLM với user thường
     @Test
     void enforcesFailClosedRoutesEmailNormalizationAndAssistantStatusPrivacy() throws Exception {
         User viewer = userRepository.saveAndFlush(new User(
@@ -145,7 +145,7 @@ class MediumLowSecurityFixesTest {
         String userBearer = "Bearer " + jwtService.issueLoginToken(viewer.getUsername(), viewer.getTokenVersion());
         String adminBearer = "Bearer " + jwtService.issueLoginToken(admin.getUsername(), admin.getTokenVersion());
 
-        // Email viết hoa lúc đăng nhập phải được chuẩn hóa về chữ thường.
+        // gõ email viết hoa lúc đăng nhập vẫn phải hạ về chữ thường
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -155,7 +155,7 @@ class MediumLowSecurityFixesTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.username").value("alice_sec"));
 
-        // Route API không khai báo permitAll trả 401 khi chưa đăng nhập, còn /api/admin/** trả 403.
+        // route API không permitAll thì chưa login ăn 401, đụng /api/admin/** ăn 403
         mockMvc.perform(get("/api/unmapped-endpoint"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
@@ -166,7 +166,7 @@ class MediumLowSecurityFixesTest {
         mockMvc.perform(get("/api/admin/users").header(HttpHeaders.AUTHORIZATION, userBearer))
                 .andExpect(status().isForbidden());
 
-        // /api/assistant/status giấu llmProvider và documents với user thường, chỉ trả đủ cho admin.
+        // /api/assistant/status giấu llmProvider với documents khỏi user thường, mỗi admin xem đủ
         mockMvc.perform(get("/api/assistant/status").header(HttpHeaders.AUTHORIZATION, userBearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.searchReady").value(true))
@@ -177,7 +177,7 @@ class MediumLowSecurityFixesTest {
                 .andExpect(jsonPath("$.data.llmProvider").value("template"));
     }
 
-    // Phim và bộ phim đang ở trạng thái nháp phải bị lọc khỏi watchlist, yêu thích, đánh giá và thống kê admin.
+    // phim còn nháp phải biến khỏi watchlist, yêu thích, chấm điểm lẫn thống kê admin
     @Test
     void hidesUnpublishedSeriesFromUserLibraryAndAdminStats() throws Exception {
         LocalDateTime now = LocalDateTime.of(2026, 3, 1, 10, 0);
@@ -229,7 +229,7 @@ class MediumLowSecurityFixesTest {
         watchProgressRepository.saveAndFlush(WatchProgress.startAt(viewer.getId(), "ep_in_draft_series", "ast_3", 10_000L, now));
         readModelCache.invalidate();
 
-        // Thư viện cá nhân chỉ trả ser_pub, bỏ qua ser_draft.
+        // thư viện chỉ trả ser_pub thôi, bỏ ser_draft ra
         mockMvc.perform(get("/api/users/watchlist").header(HttpHeaders.AUTHORIZATION, userBearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
@@ -243,7 +243,7 @@ class MediumLowSecurityFixesTest {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].movieId").value("ser_pub"));
 
-        // Thống kê admin chỉ tính tập đã xuất bản đủ cả bộ, mùa và tập.
+        // thống kê admin chỉ đếm tập nào mà cả bộ, mùa lẫn tập đều đã xuất bản
         mockMvc.perform(get("/api/admin/stats").header(HttpHeaders.AUTHORIZATION, adminBearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.publishedEpisodes").value(1))
@@ -253,7 +253,7 @@ class MediumLowSecurityFixesTest {
                 .andExpect(jsonPath("$.data.topRatedMovies[0].movieId").value("ser_pub"));
     }
 
-    // Bỏ qua ghi audit khi vai trò hoặc trạng thái không đổi; retry snapshot và export danh mục có ghi audit; GET snapshots chỉ đọc.
+    // vai trò hay trạng thái không đổi thì khỏi ghi audit, còn retry snapshot với export phải ghi, GET snapshots chỉ đọc thôi
     @Test
     void skipsNoOpUserAuditsAndAuditsCatalogRetryAndExportWithoutMutatingOnGetSnapshots() throws Exception {
         LocalDateTime now = LocalDateTime.of(2026, 3, 1, 10, 0);
@@ -268,7 +268,7 @@ class MediumLowSecurityFixesTest {
         String adminBearer = "Bearer " + jwtService.issueLoginToken(admin.getUsername(), admin.getTokenVersion());
         long originalVersion = viewer.getTokenVersion();
 
-        // Gửi lại đúng vai trò và trạng thái hiện tại không được tăng tokenVersion hay sinh thêm dòng audit.
+        // gửi y chang quyền với trạng thái cũ thì đừng tăng tokenVersion hay đẻ thêm audit
         mockMvc.perform(patch("/api/admin/users/" + viewer.getId() + "/role")
                         .header(HttpHeaders.AUTHORIZATION, adminBearer)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -283,14 +283,14 @@ class MediumLowSecurityFixesTest {
         assertThat(userRepository.findById(viewer.getId()).orElseThrow().getTokenVersion()).isEqualTo(originalVersion);
         assertThat(auditEventRepository.count()).isZero();
 
-        // GET /api/admin/catalog/snapshots chỉ đọc, không tự đổi trạng thái snapshot đang BUILDING.
+        // GET /api/admin/catalog/snapshots chỉ đọc thôi, đừng tự đổi trạng thái snapshot đang BUILDING
         snapshotRepository.saveAndFlush(new CatalogSnapshot("snap_ro_1", 1L, "hash1", 1, "BUILDING", 0, null, null));
         mockMvc.perform(get("/api/admin/catalog/snapshots").header(HttpHeaders.AUTHORIZATION, adminBearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].status").value("BUILDING"));
         assertThat(snapshotRepository.findById("snap_ro_1").orElseThrow().getStatus()).isEqualTo("BUILDING");
 
-        // Retry snapshot và export danh mục đều phải ghi lại bản ghi audit.
+        // retry snapshot với export catalog đều phải ghi audit nha
         mockMvc.perform(post("/api/admin/catalog/snapshots/snap_ro_1/retry")
                         .header(HttpHeaders.AUTHORIZATION, adminBearer))
                 .andExpect(status().isOk());
@@ -301,7 +301,7 @@ class MediumLowSecurityFixesTest {
         assertThat(actions).contains("CATALOG_SNAPSHOT_RETRIED", "CATALOG_EXPORTED");
     }
 
-    // Kiểm tra triggers.sql đã bỏ FOR SHARE gây kẹt lock, H2 giữ ở scope test trong pom.xml và script khởi chạy dùng profile demo.
+    // check triggers.sql bỏ FOR SHARE kẻo kẹt lock, H2 giữ scope test trong pom.xml còn script chạy thì bật demo
     @Test
     void verifiesTriggerLockFixAndH2TestScopeInPomAndStartScript() throws Exception {
         String triggers = Files.readString(Path.of("../../database/objects/triggers.sql"));

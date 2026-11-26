@@ -13,7 +13,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-// Test lắp cây danh mục Composite, lọc theo từ khóa và đọc số liệu tổng quan trực tiếp từ H2.
+// test lắp cây danh mục Composite, lọc theo từ khóa và đọc số liệu tổng quan trực tiếp từ H2
 class ReadServiceTest extends TestDatabase {
     @Test
     void dashboardCountsAndRanksLiveRows() {

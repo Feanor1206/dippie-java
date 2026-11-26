@@ -12,8 +12,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-// Bản chụp bất biến của toàn bộ danh mục trong bộ nhớ, tách riêng khỏi các bảng ghi JPA để request đọc của người dùng chạy nhanh không cần join lại CSDL.
-// Mọi collection bên trong đều được sao chép bất biến lúc dựng nên nhiều luồng đọc đồng thời không cần khóa.
+// bản chụp bất biến của cả danh mục nằm sẵn trong RAM, tách hẳn bảng ghi JPA cho request đọc chạy nhanh khỏi join DB lại
+// mấy collection bên trong copy bất biến hết lúc dựng nên nhiều luồng đọc cùng lúc không cần khóa
 public final class CatalogReadModel {
 
     private final List<CatalogSeriesView> series;
@@ -51,7 +51,7 @@ public final class CatalogReadModel {
         this.genres = List.copyOf(genres);
     }
 
-    // Quản trị viên thấy cả bộ phim nháp/ẩn, còn người xem thường chỉ nhận các bộ phim đã xuất bản.
+    // admin thấy cả bộ nháp hay ẩn, còn người xem thường chỉ nhận mấy bộ đã xuất bản
     public List<CatalogSeriesView> series(boolean admin) {
         return admin ? series : series.stream().filter(row -> visibleSeriesIds.contains(row.id())).toList();
     }
@@ -72,7 +72,7 @@ public final class CatalogReadModel {
         return searchIndex;
     }
 
-    // Gom mức khớp cao nhất cho từng mã bộ phim hoặc tập phim khi lọc danh sách phim theo từ khóa.
+    // gom mức khớp cao nhất cho từng mã bộ hay tập lúc lọc danh sách phim theo từ khóa
     public Map<String, SearchRank> movieSearchRanks(String query) {
         return searchIndex.ranked(query, false, false)
                 .filter(row -> row.hit().titleLevel())
@@ -80,7 +80,7 @@ public final class CatalogReadModel {
                         (first, second) -> first.compareTo(second) <= 0 ? first : second));
     }
 
-    // Thứ tự khai báo enum cũng là thứ tự ưu tiên sắp xếp (từ khớp chính xác tên bộ phim giảm dần tới khớp mờ).
+    // thứ tự khai báo enum chính là thứ tự ưu tiên sort luôn (từ khớp chuẩn tên bộ phim xuống dần tới khớp mờ)
     public enum SearchRank {
         SERIES_EXACT, SERIES_PARTIAL, EXACT, SERIES_FUZZY, FUZZY;
 
@@ -97,8 +97,8 @@ public final class CatalogReadModel {
         return genres;
     }
 
-    // Bảng externalEpisodeAssetIds chỉ lưu mấy tập bị khóa nhúng YouTube, nên Việt đừng tưởng nó chứa hết mọi tập nhé.
-    // Tập bình thường không có trong map sẽ qua luôn, còn tập bị khóa nhúng phải có ít nhất một tệp video công khai trên ổ đĩa mới được lên khám phá và gợi ý.
+    // bảng externalEpisodeAssetIds chỉ lưu mấy tập bị khóa nhúng YouTube thôi, Việt đừng tưởng nó chứa hết mọi tập nha
+    // tập thường không trong map thì qua luôn, tập khóa nhúng cần ít nhất 1 file video public ngoài đĩa mới lên khám phá với gợi ý
     public Predicate<String> playableFilter(MediaFileAvailability files) {
         if (externalEpisodeAssetIds.isEmpty()) {
             return id -> true;
@@ -125,7 +125,7 @@ public final class CatalogReadModel {
         return episodesById.get(episodeId);
     }
 
-    // Lấy ảnh đại diện riêng của tập, nếu tập chưa có thì lùi về dùng poster của bộ phim cha.
+    // lấy ảnh riêng của tập, thiếu thì lùi về poster của bộ phim cha
     public String episodeThumbnail(String episodeId, String seriesId) {
         SeriesEpisode episode = episode(episodeId);
         SeriesCard series = seriesCard(seriesId);
@@ -134,7 +134,7 @@ public final class CatalogReadModel {
     }
 
 
-    // Hồ sơ tổng hợp của một tập phim để nạp thẳng vào bộ tính điểm gợi ý.
+    // hồ sơ tổng hợp của 1 tập phim để đẩy thẳng vào bộ chấm điểm gợi ý
     public record EpisodeProfile(
             String id, String title, String seriesId, String seasonId, Integer episodeNumber, Integer year,
             double rating, String runtime, String poster, String backdrop, String description,
@@ -143,7 +143,7 @@ public final class CatalogReadModel {
     ) {
     }
 
-    // Cặp mã thể loại kèm tên hiển thị tiếng Việt và tiếng Anh.
+    // mã thể loại kèm nhãn hiển thị tiếng Việt với tiếng Anh
     public record GenreEntry(String id, String viLabel, String enLabel) {
     }
 }

@@ -4,7 +4,7 @@ import com.dippie.model.catalog.CatalogPackage;
 
 import java.time.LocalDateTime;
 
-// Dữ liệu hiển thị một gói catalog đã import trên trang quản trị, dựng từ entity qua from.
+// view gói catalog đã import cho trang admin, dựng từ entity qua from
 public record CatalogPackageView(
         String id, String version, int revision, String defaultLanguage, String importMode, String referenceScope,
         String description, String contentHash, String status, String errorMessage, Long optLockVersion,

@@ -8,7 +8,7 @@ import java.sql.DriverManager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Test script watch-progress-h2.sql chạy lặp lại hai lần trên H2 cũ để gỡ khóa ngoại sang catalog_media_assets (cho phép lưu mã youtube:...) mà không mất dữ liệu cũ.
+// chạy watch-progress-h2.sql 2 lần trên H2 cũ để gỡ khóa ngoại sang catalog_media_assets cho lưu mã youtube:, khỏi mất dữ liệu cũ
 class WatchProgressH2MigrationTest {
 
     @Test

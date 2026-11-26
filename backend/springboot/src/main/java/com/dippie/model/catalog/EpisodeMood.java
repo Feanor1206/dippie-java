@@ -5,13 +5,10 @@ import com.dippie.common.text.TextFolding;
 import java.util.List;
 import java.util.regex.Pattern;
 
-// Bộ quy tắc nhận diện nhu cầu tìm kiếm (đi ngủ, cho bé, tập ngắn) và chấm độ êm dịu của tập phim bằng regex sau khi bỏ dấu.
+// nhận diện nhu cầu xem (đi ngủ, cho bé, tập ngắn) với chấm độ êm dịu của tập bằng regex không dấu
 public final class EpisodeMood {
 
-    private static final String SERIES_PEPPA_PIG = "ser_peppa_pig";
-    private static final String SERIES_JADOO = "ser_jadoo";
-    private static final String SERIES_ORI = "ser_ori";
-    // Các nhóm từ khóa đều viết không dấu để đối khớp trên chuỗi đã qua TextFolding.fold.
+    // từ khóa viết không dấu hết để khớp trên chuỗi đã qua TextFolding.fold
     private static final Pattern COMPILATION = phrase(
             "tap hop|tong hop|tuyen tap|bo suu tap|compilations?|\\d+\\s*(?:hours?|hrs?|gio)");
     private static final Pattern BEDTIME = phrase("truoc khi ngu|truoc gio ngu|gio di ngu|ru ngu|bedtime");
@@ -40,12 +37,12 @@ public final class EpisodeMood {
         return SHORT.matcher(normalized(query)).find();
     }
 
-    // Ghép tiêu đề, mô tả, từ khóa và chủ đề rồi bỏ dấu sẵn một lần để bên gọi tái dùng cho các hàm *Folded.
+    // ghép tiêu đề, mô tả, từ khóa với chủ đề rồi bỏ dấu sẵn một lượt cho mấy hàm *Folded xài lại
     public static String normalizeDetails(String title, String description, List<String> keywords, List<String> themes) {
         return foldDetails(title, description, keywords, themes);
     }
 
-    // Phát hiện video dạng tuyển tập dài nhiều giờ thay vì một tập phim lẻ.
+    // bắt mấy video kiểu tuyển tập dài nhiều tiếng chứ không phải tập lẻ
     public static boolean compilation(String title, List<String> keywords, List<String> themes) {
         return compilationFolded(foldDetails(title, null, keywords, themes));
     }
@@ -54,7 +51,7 @@ public final class EpisodeMood {
         return COMPILATION.matcher(foldedDetails).find();
     }
 
-    // Lọc ra những tập có yếu tố đáng sợ, giông bão hay ác mộng để né khi gợi ý phim xem thư giãn.
+    // lọc mấy tập có yếu tố rùng rợn, giông bão hay ác mộng để né lúc gợi ý phim nhẹ nhàng
     public static boolean intense(String title, String description, List<String> keywords, List<String> themes) {
         return intenseFolded(foldDetails(title, description, keywords, themes));
     }
@@ -68,11 +65,11 @@ public final class EpisodeMood {
         return calmScoreFolded(seriesId, foldDetails(title, description, keywords, themes));
     }
 
-    // Cộng điểm nền cho mấy series vốn nhẹ nhàng (Peppa Pig +6, Jadoo hoặc Ori +4) rồi cộng thêm 4 nếu nội dung có từ khóa êm dịu.
+    // cộng điểm nền cho mấy bộ vốn êm dịu (Peppa Pig +6, Jadoo hay Ori +4), có thêm từ khóa nhẹ nhàng thì +4 nữa
     public static int calmScoreFolded(String seriesId, String foldedDetails) {
         int seriesScore = switch (seriesId == null ? "" : seriesId) {
-            case SERIES_PEPPA_PIG -> 6;
-            case SERIES_JADOO, SERIES_ORI -> 4;
+            case "ser_peppa_pig" -> 6;
+            case "ser_jadoo", "ser_ori" -> 4;
             default -> 0;
         };
         return seriesScore + (CALM.matcher(foldedDetails).find() ? 4 : 0);
@@ -83,7 +80,7 @@ public final class EpisodeMood {
                 keywords == null ? "" : String.join(" ", keywords), themes == null ? "" : String.join(" ", themes)));
     }
 
-    // Đổi dấu gạch dưới và gạch nối thành khoảng trắng sau khi bỏ dấu để biên từ \b trong regex bắt đúng từ.
+    // bỏ dấu xong đổi '_' với '-' sang khoảng trắng để biên từ \b trong regex bắt đúng
     private static String normalized(String text) {
         return TextFolding.collapseWhitespace(TextFolding.fold(text).replace('_', ' ').replace('-', ' '));
     }

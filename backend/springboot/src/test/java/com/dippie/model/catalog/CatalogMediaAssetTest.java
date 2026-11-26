@@ -7,7 +7,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Kiểm tra quyền mở media asset theo trạng thái enabled, xuất bản, AccessPolicy và phạm vi phủ nguyên tập trong coverageJson.
+// test quyền mở asset theo cờ enabled, trạng thái xuất bản, AccessPolicy với coverageJson phủ nguyên tập
 class CatalogMediaAssetTest {
 
     @ParameterizedTest
@@ -46,7 +46,7 @@ class CatalogMediaAssetTest {
         assertThat(asset.coversFullEpisode(null)).isFalse();
     }
 
-    // Loại hết JSON hỏng, sai tên trường, khoảng trắng thừa hoặc scope chỉ phủ một đoạn.
+    // gạt sạch mấy ca JSON lỗi, sai key, dư dấu cách hay scope chỉ phủ 1 đoạn
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {"{", "null", "{\"episode_id\":\"ep-1\",\"scope\":\"full_episode\"}",

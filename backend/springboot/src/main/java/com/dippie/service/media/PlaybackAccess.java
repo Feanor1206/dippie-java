@@ -9,14 +9,12 @@ import com.dippie.security.Viewer;
 
 import org.springframework.stereotype.Component;
 
-// Protection Proxy chặn ngay trước khi cấp vé phát hoặc mở tệp video.
-// Mọi trường hợp không có quyền, tệp riêng tư hoặc chưa xuất bản mình đều trả 404 (Việt đừng đổi sang 403 kẻo lộ mã tài nguyên đang tồn tại).
+// kiểu Protection Proxy đứng chặn trước khi cấp vé phát hay mở file video
+// không quyền, file riêng tư hay chưa xuất bản đều trả 404 hết, Việt đừng đổi sang 403 kẻo lộ mã file đang tồn tại
 @Component
 public class PlaybackAccess {
 
-    private static final String MEDIA_NOT_FOUND_PREFIX = "Không tìm thấy video: ";
-
-    // Kiểm tra quyền xem theo phiên đăng nhập hiện tại trước khi cấp vé phát.
+    // check quyền theo phiên đang đăng nhập trước khi cấp vé phát
     public MediaAsset authorizeForGrant(
             String assetId,
             MediaAsset asset,
@@ -27,7 +25,7 @@ public class PlaybackAccess {
         return authorize(assetId, asset, catalogAsset, hasPublishedParent, viewer, null);
     }
 
-    // Kiểm tra quyền lúc phát thật, xét cả phiên đăng nhập lẫn vé phát kèm trong query.
+    // check quyền lúc phát thật, xét cả phiên đăng nhập lẫn vé phát trong query
     public MediaAsset authorizeForStream(
             String assetId,
             MediaAsset asset,
@@ -47,7 +45,7 @@ public class PlaybackAccess {
             Viewer viewer,
             PlaybackPrincipal grantPrincipal
     ) {
-        // Thiếu bản ghi, tắt khả dụng hoặc nằm ngoài catalog_media_assets thì chặn hết kể cả admin (fail-closed).
+        // thiếu bản ghi, tắt khả dụng hay ngoài catalog_media_assets thì chặn hết kể cả admin kiểu fail-closed
         if (asset == null || !asset.isAvailable() || catalogAsset == null) {
             throw mediaNotFound(assetId);
         }
@@ -55,7 +53,7 @@ public class PlaybackAccess {
         boolean authenticated = role != null;
         boolean admin = role == Role.ROLE_ADMIN;
 
-        // Khách và user thường chỉ xem được khi cả tệp lẫn chuỗi bộ, mùa, tập đều đã xuất bản; admin được xem trước bản nháp.
+        // khách với user thường chỉ xem được khi file lẫn bộ, mùa, tập đều đã xuất bản, riêng admin được xem trước bản nháp
         if (!catalogAsset.isAccessibleBy(authenticated, admin)) {
             throw mediaNotFound(assetId);
         }
@@ -68,7 +66,7 @@ public class PlaybackAccess {
         return asset;
     }
 
-    // Nếu request có sẵn phiên đăng nhập thì lấy quyền của phiên đó, không cho mượn vé phát của admin để vượt quyền.
+    // có phiên đăng nhập sẵn thì lấy quyền phiên đó, không cho mượn vé của admin để leo quyền
     private static Role effectiveRole(Viewer viewer, PlaybackPrincipal grantPrincipal) {
         if (viewer != null) {
             return viewer.role();
@@ -81,6 +79,6 @@ public class PlaybackAccess {
     }
 
     private static NotFoundException mediaNotFound(String assetId) {
-        return new NotFoundException(MEDIA_NOT_FOUND_PREFIX + assetId);
+        return new NotFoundException("Không tìm thấy video: " + assetId);
     }
 }

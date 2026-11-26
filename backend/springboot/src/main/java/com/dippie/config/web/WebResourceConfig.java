@@ -11,14 +11,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import java.nio.file.Path;
 import java.time.Duration;
 
-// Cấu hình phục vụ file tĩnh của frontend và thay thread pool bất đồng bộ mặc định bằng pool có giới hạn cho luồng SSE.
+// cấu hình phục vụ file tĩnh của frontend và thay async thread pool mặc định bằng pool có trần cho luồng SSE
 @Configuration
 public class WebResourceConfig implements WebMvcConfigurer {
-
-    private static final int ASYNC_CORE_POOL_SIZE = 8;
-    private static final int ASYNC_MAX_POOL_SIZE = 32;
-    private static final int ASYNC_QUEUE_CAPACITY = 64;
-    private static final int ASYNC_AWAIT_TERMINATION_SECONDS = 15;
 
     private final WebProperties webProperties;
 
@@ -26,16 +21,16 @@ public class WebResourceConfig implements WebMvcConfigurer {
         this.webProperties = webProperties;
     }
 
-    // Spring mặc định dùng SimpleAsyncTaskExecutor tạo thread vô hạn; mình đặt pool có trần để mở nhiều luồng /api/chat không làm cạn thread.
+    // Spring mặc định dùng SimpleAsyncTaskExecutor tạo thread vô hạn nên đặt pool có trần kẻo mở nhiều luồng /api/chat là cạn thread
     @Bean(name = "mvcAsyncTaskExecutor")
     public ThreadPoolTaskExecutor mvcAsyncTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(ASYNC_CORE_POOL_SIZE);
-        executor.setMaxPoolSize(ASYNC_MAX_POOL_SIZE);
-        executor.setQueueCapacity(ASYNC_QUEUE_CAPACITY);
+        executor.setCorePoolSize(8);
+        executor.setMaxPoolSize(32);
+        executor.setQueueCapacity(64);
         executor.setThreadNamePrefix("dippie-async-");
         executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(ASYNC_AWAIT_TERMINATION_SECONDS);
+        executor.setAwaitTerminationSeconds(15);
         executor.initialize();
         return executor;
     }
@@ -45,7 +40,7 @@ public class WebResourceConfig implements WebMvcConfigurer {
         configurer.setTaskExecutor(mvcAsyncTaskExecutor());
     }
 
-    // File trong /assets đã có hash tên nên cache bất biến 1 năm, còn /illustrations giữ cache 1 ngày.
+    // file trong /assets đã có hash tên nên cache bất biến 1 năm, còn /illustrations cache 1 ngày
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         registry.addResourceHandler("/assets/**")

@@ -1,5 +1,5 @@
 package com.dippie.dto.admin;
 
-// Dữ liệu đầu vào mang cờ enabled khi admin bật hoặc khóa tài khoản người dùng.
+// body gửi cờ enabled lúc admin mở hoặc khóa tài khoản
 public record UpdateUserStatusRequest(Boolean enabled) {
 }

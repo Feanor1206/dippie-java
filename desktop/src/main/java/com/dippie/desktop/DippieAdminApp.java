@@ -24,7 +24,7 @@ import javafx.stage.Stage;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-// Điểm vào JavaFX của bản quản trị, dựng khung cửa sổ rồi đổi giữa màn hình đăng nhập và màn hình chính.
+// điểm vào JavaFX của bản quản trị, dựng khung cửa sổ rồi đổi qua lại giữa màn đăng nhập và màn chính
 public final class DippieAdminApp extends Application {
     private final BorderPane shell = new BorderPane();
     private UiTasks tasks;
@@ -33,7 +33,7 @@ public final class DippieAdminApp extends Application {
     private AdminServices services;
     private WorkspacePane workspace;
 
-    // Mở cửa sổ trước rồi mới đọc cấu hình DB, lỡ lỗi cấu hình thì vẫn có khung báo cho người dùng thấy.
+    // mở cửa sổ trước rồi mới đọc cấu hình DB để lỡ cấu hình lỗi vẫn có khung hiện cho người dùng thấy
     @Override
     public void start(Stage stage) {
         tasks = new UiTasks(stage);
@@ -59,8 +59,8 @@ public final class DippieAdminApp extends Application {
         }
     }
 
-    // Việt nhớ chỗ này: phải gọi workspace.stop() để tắt timer 30 giây ở tab Tổng quan,
-    // không là nó vẫn âm thầm gọi DB sau khi đăng xuất.
+    // Việt để ý chỗ này nha, nhớ gọi workspace.stop() để tắt timer 30 giây bên tab Tổng quan
+    // không là đăng xuất rồi nó vẫn âm thầm gọi DB
     private void showLogin() {
         if (workspace != null) {
             workspace.stop();
@@ -71,7 +71,7 @@ public final class DippieAdminApp extends Application {
         shell.setCenter(new LoginPane(new LoginController(services, tasks), tasks, this::openWorkspace));
     }
 
-    // Tạo controller cho phiên vừa đăng nhập, mở các tab rồi tải tên quản trị viên lên thanh trên cùng.
+    // tạo controller cho phiên vừa đăng nhập, mở mấy tab rồi tải tên admin lên thanh trên cùng
     private void openWorkspace(AdminSession session) {
         var controller = new AdminController(services, tasks, session);
         header.showLoadingSession();
@@ -81,7 +81,7 @@ public final class DippieAdminApp extends Application {
         controller.currentAdmin(header::showSignedIn);
     }
 
-    // Màn hình thay thế khi khởi động mà đọc cấu hình kết nối bị lỗi.
+    // màn hình thay thế khi mở app mà đọc cấu hình DB bị lỗi
     private static StackPane configurationErrorPane() {
         Label title = new Label("Chưa kết nối được cơ sở dữ liệu");
         title.getStyleClass().add("section-title");
@@ -98,7 +98,7 @@ public final class DippieAdminApp extends Application {
         return wrapper;
     }
 
-    // Ưu tiên đường dẫn Maven truyền vào; nếu chạy trực tiếp từ IDE thì tự nhận đang đứng ở thư mục gốc hay trong desktop/.
+    // ưu tiên đường dẫn Maven truyền vào, chạy thẳng từ IDE thì tự nhận đang đứng ở thư mục gốc hay trong desktop/
     private static Path moduleDirectory() {
         String configured = System.getProperty("dippie.desktop.module");
         if (configured != null) {

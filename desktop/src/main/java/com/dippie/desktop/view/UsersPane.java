@@ -22,7 +22,7 @@ import javafx.scene.control.Tooltip;
 
 import java.util.List;
 
-// Tab Người dùng (kế thừa DataPane), lọc trực tiếp trên FilteredList và đổi vai trò, khóa hoặc hoàn tác qua Command.
+// tab Người dùng (kế thừa DataPane), lọc thẳng trên FilteredList rồi đổi quyền, khóa hay hoàn tác qua Command
 public final class UsersPane extends DataPane {
     private final AdminController controller;
     private final ObservableList<UserAccount> accounts = FXCollections.observableArrayList();
@@ -39,7 +39,7 @@ public final class UsersPane extends DataPane {
                 "Danh sách thành viên sẽ hiện ở đây sau khi tải xong.");
         sorted.comparatorProperty().bind(users.comparatorProperty());
 
-        // Dựng bảng tài khoản kèm nhãn màu cho vai trò và trạng thái hoạt động.
+        // dựng bảng tài khoản kèm nhãn màu cho vai trò và trạng thái hoạt động
         users.getColumns().add(numericColumn("Mã", 64, UserAccount::id));
         users.getColumns().add(column("Tên đăng nhập", 145, UserAccount::username));
         users.getColumns().add(column("Họ và tên", 170,
@@ -78,7 +78,7 @@ public final class UsersPane extends DataPane {
         });
         users.getColumns().add(statusColumn);
 
-        // Ô tìm tức thời theo tên đăng nhập, họ tên hoặc email (hỗ trợ cả không dấu).
+        // ô tìm tức thời theo username, họ tên hoặc email (hỗ trợ không dấu)
         search.setPromptText("Tìm tên đăng nhập, họ tên, email... (Ctrl+F)");
         search.getStyleClass().add("search-field");
         search.setTooltip(new Tooltip("Tìm theo tên đăng nhập, họ tên hoặc email (Ctrl+F)"));
@@ -120,7 +120,7 @@ public final class UsersPane extends DataPane {
         search.selectAll();
     }
 
-    // Dùng chung cho cả nút Hoàn tác lẫn phím tắt Ctrl+Z, luôn hỏi xác nhận trước khi chạy.
+    // dùng chung cho cả nút Hoàn tác lẫn Ctrl+Z, luôn hỏi xác nhận trước khi chạy
     public void triggerUndo() {
         if (tasks.busyProperty().get() || !controller.undoAvailableProperty().get()) {
             return;
@@ -130,7 +130,7 @@ public final class UsersPane extends DataPane {
         }
     }
 
-    // Tải lại danh sách từ DB và chọn lại đúng tài khoản cũ theo id nếu nó vẫn còn trong bảng.
+    // tải lại danh sách từ DB rồi chọn lại đúng tài khoản cũ theo id nếu còn trong bảng
     @Override
     public void refresh() {
         setLoading(true);
@@ -145,7 +145,7 @@ public final class UsersPane extends DataPane {
         }, () -> setLoading(false));
     }
 
-    // Cập nhật bộ lọc từ khóa, bộ đếm kết quả và thông báo khi bảng trống.
+    // cập nhật bộ lọc từ khóa, bộ đếm kết quả và thông báo khi bảng trống
     private void applyFilter() {
         String term = SearchText.normalize(search.getText());
         filtered.setPredicate(row -> SearchText.contains(row.username(), term)
@@ -158,7 +158,7 @@ public final class UsersPane extends DataPane {
                 : emptyPlaceholder("Không thấy tài khoản nào khớp", "Thử từ khóa khác hoặc bấm Xóa lọc để xem tất cả."));
     }
 
-    // Tự đổi chữ và màu giữa Khóa tài khoản (đỏ) và Mở khóa (xanh) tùy theo dòng đang chọn.
+    // tự đổi chữ và màu giữa Khóa tài khoản (đỏ) với Mở khóa (xanh) theo dòng đang chọn
     private Button statusButton() {
         var selection = users.getSelectionModel().selectedItemProperty();
         var button = new Button();
@@ -189,7 +189,7 @@ public final class UsersPane extends DataPane {
         return button;
     }
 
-    // Mở hộp chọn vai trò, chỉ gửi lệnh khi người dùng chọn vai trò khác hiện tại.
+    // mở hộp chọn vai trò, chỉ gửi lệnh khi chọn vai trò khác hiện tại
     private Button roleButton() {
         var button = new Button("Đổi vai trò");
         button.getStyleClass().add("secondary-button");
@@ -213,7 +213,7 @@ public final class UsersPane extends DataPane {
         return button;
     }
 
-    // Tắt nút thao tác khi chưa chọn dòng nào, đang chạy nền, hoặc dòng đang chọn là chính tài khoản đang đăng nhập.
+    // khóa nút thao tác khi chưa chọn dòng, đang chạy nền, hoặc dòng đang chọn là chính tài khoản đang đăng nhập
     private void bindAction(Button button) {
         var selection = users.getSelectionModel().selectedItemProperty();
         var unavailable = Bindings.createBooleanBinding(

@@ -10,10 +10,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Kiểm tra cấu hình Flyway theo từng profile và xác nhận đủ các file migration từ V1 đến V5.
+// check cấu hình Flyway theo từng profile với đủ file migration từ V1 tới V5
 class FlywayConfigurationTest {
 
-    // Flyway tắt ở cấu hình gốc (demo/test) và bật kèm baselineOnMigrate ở mysql và prod.
+    // demo với test tắt Flyway, còn mysql với prod bật kèm baselineOnMigrate
     @Test
     void enablesFlywayWithBaselineOnMigrateForMysqlAndProdWhileKeepingDemoOff() throws Exception {
         YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
@@ -40,7 +40,7 @@ class FlywayConfigurationTest {
         assertThat(prodDoc.getProperty("spring.flyway.locations")).isEqualTo("classpath:db/migration");
     }
 
-    // Xác nhận đủ năm file migration V1 đến V5 trên classpath đều chứa đúng các bảng, cột và index chính.
+    // chắc chắn 5 file V1 tới V5 trên classpath có đủ bảng, cột với index chính
     @Test
     void includesVersionedFlywayMigrationsOnClasspath() throws Exception {
         String v1 = readClasspath("db/migration/V1__baseline_schema.sql");

@@ -15,9 +15,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-// Yêu cầu tìm kiếm khám phá sau khi tự kiểm tra từ JsonNode.
-// Mình tách bước kiểm tra thủ công ở đây thay vì dùng Bean Validation để giữ nguyên cấu trúc lỗi (type, loc, msg, input),
-// chặn các trường lạ và tách riêng lỗi cấu trúc 422 với lỗi câu tìm kiếm toàn khoảng trắng 400.
+// request tìm khám phá tự validate từ JsonNode thay vì Bean Validation để giữ format lỗi (type, loc, msg, input)
+// chặn luôn trường lạ, tách riêng lỗi cấu trúc 422 với lỗi query toàn khoảng trắng 400
 public record DiscoverRequest(String query, int limit, SearchConstraints constraints) {
 
     private static final Set<String> REQUEST_FIELDS = Set.of("query", "sessionId", "userId", "limit", "constraints");
@@ -26,7 +25,7 @@ public record DiscoverRequest(String query, int limit, SearchConstraints constra
     private static final Pattern SESSION_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+$");
     private static final Pattern INTEGER_STRING_PATTERN = Pattern.compile("[+-]?[0-9]++(?:_[0-9]++)*+(?:\\.0++)?");
 
-    // Đọc và kiểm tra toàn bộ payload JSON, gom đủ lỗi từng trường trước khi trả 422 hoặc 400.
+    // đọc rồi kiểm tra hết JSON, gom đủ lỗi từng trường mới ném 422 hoặc 400
     public static DiscoverRequest parse(JsonNode body) {
         Validation validation = new Validation();
         List<Object> path = List.of("body");
@@ -38,7 +37,7 @@ public record DiscoverRequest(String query, int limit, SearchConstraints constra
             validation.expectedObject(path, body);
             throw validation.rejection();
         }
-        // Kiểm tra từng trường hợp lệ và chặn trường dư để client dễ phát hiện gõ sai tên khóa.
+        // kiểm từng trường hợp lệ rồi chặn trường dư để client biết ngay nếu gõ sai key
         String query = null;
         if (!body.has("query")) {
             validation.error("missing", field(path, "query"), "Bạn chưa nhập nội dung tìm kiếm.", body);
@@ -76,7 +75,7 @@ public record DiscoverRequest(String query, int limit, SearchConstraints constra
         return List.copyOf(nested);
     }
 
-    // Ngoại lệ mang sẵn mã HTTP và chi tiết lỗi (chuỗi đơn cho 400/503 hoặc danh sách lỗi trường cho 422).
+    // exception mang sẵn mã HTTP với detail (chuỗi đơn cho 400/503, list lỗi từng trường cho 422)
     public static final class Rejection extends DomainException {
 
         private final transient Object detail;
@@ -91,7 +90,7 @@ public record DiscoverRequest(String query, int limit, SearchConstraints constra
         }
     }
 
-    // Bộ gom lỗi kiểm tra từng trường JSON theo cùng định dạng mà client khám phá đang đọc.
+    // bộ gom lỗi từng trường JSON cho khớp đúng format client đang đọc
     private static final class Validation {
 
         private final List<Map<String, Object>> errors = new ArrayList<>();
@@ -140,7 +139,7 @@ public record DiscoverRequest(String query, int limit, SearchConstraints constra
             return value;
         }
 
-        // Trường limit cho phép ép kiểu mềm từ chuỗi số hoặc boolean (giống hành vi Pydantic cũ), còn các số trong constraints phải đúng kiểu số nguyên.
+        // limit cho ép mềm từ chuỗi số hay boolean giống Pydantic cũ, còn mấy số trong constraints phải đúng int
         private Integer integer(JsonNode node, List<Object> path, int min, int max, boolean strict) {
             BigDecimal value;
             if (!strict && node.isFloatingPointNumber() && !Double.isFinite(node.doubleValue())) {

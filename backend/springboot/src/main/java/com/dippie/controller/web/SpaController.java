@@ -8,7 +8,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 
-// Chuyển tiếp các đường dẫn giao diện SPA về file index.html để React Router tự xử lý.
+// forward mấy route giao diện SPA về index.html cho React Router tự lo
 @Controller
 public class SpaController {
 

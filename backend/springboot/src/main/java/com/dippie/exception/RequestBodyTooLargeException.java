@@ -2,7 +2,7 @@ package com.dippie.exception;
 
 import org.springframework.http.HttpStatus;
 
-// Lỗi khi body request vượt quá giới hạn dung lượng cho phép của route, trả HTTP 413.
+// body request vượt trần dung lượng của route, trả 413
 public class RequestBodyTooLargeException extends DomainException {
 
     public static final String DEFAULT_MESSAGE = "Dữ liệu gửi lên quá lớn.";

@@ -11,7 +11,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-// Bắt các câu hỏi nối tiếp như "cảnh sau đó", "tập thứ hai" hay "tập khác" để tra ngược từ lịch sử hội thoại.
+// bắt mấy câu hỏi nối tiếp kiểu "cảnh sau đó", "tập thứ hai" hay "tập khác" để tra lại lịch sử chat
 public record ChatFollowUp(boolean nextScene, int itemIndex) {
 
     private static final Pattern NEXT_SCENE = Pattern.compile(
@@ -27,7 +27,7 @@ public record ChatFollowUp(boolean nextScene, int itemIndex) {
             Map.entry("nam", 5), Map.entry("sau", 6), Map.entry("bay", 7), Map.entry("tam", 8),
             Map.entry("chin", 9), Map.entry("muoi", 10));
 
-    // Nhận diện yêu cầu xem cảnh tiếp theo hoặc tham chiếu mục phim theo số thứ tự (chuyển về chỉ số từ 0).
+    // nhận diện hỏi cảnh sau hoặc gọi theo số thứ tự, nhớ đổi về index từ 0 nha
     public static Optional<ChatFollowUp> parse(String query) {
         String folded = TextFolding.foldNormalized(query);
         if (NEXT_SCENE.matcher(folded).find()) {
@@ -51,14 +51,14 @@ public record ChatFollowUp(boolean nextScene, int itemIndex) {
                 .filter(message -> message != null && "assistant".equals(message.role())).findFirst();
     }
 
-    // Gom hết itemIds CineBot từng trả trong phiên để tránh lặp lại khi người dùng xin tập khác.
+    // gom hết itemIds CineBot từng trả trong phiên để lát xin tập khác khỏi lặp lại
     public static Set<String> shownItems(List<ChatHistoryMessage> history) {
         return history == null ? Set.of() : history.stream()
                 .filter(message -> message != null && "assistant".equals(message.role()))
                 .flatMap(message -> message.itemIds().stream()).collect(Collectors.toUnmodifiableSet());
     }
 
-    // Với "cảnh sau đó" thì lần theo documentId cuối cùng, còn hỏi theo thứ tự thì lấy thẳng từ itemIds lượt trả lời gần nhất.
+    // hỏi "cảnh sau đó" thì lần theo documentId cuối, còn gọi theo thứ tự thì lấy từ itemIds lượt trước
     public List<SearchHit> resolve(List<ChatHistoryMessage> history, CatalogSearch search) {
         return lastAssistant(history).flatMap(message -> resolve(message, search)).stream().toList();
     }

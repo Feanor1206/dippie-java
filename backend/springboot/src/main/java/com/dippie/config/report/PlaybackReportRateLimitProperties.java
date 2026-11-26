@@ -4,7 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
 
-// Cấu hình giới hạn số lần gửi báo lỗi theo IP, mặc định 10 lần trong 10 phút và giữ tối đa 4096 IP.
+// cấu hình rate limit gửi báo lỗi theo IP, mặc định 10 lần trong 10 phút và giữ tối đa 4096 IP
 @ConfigurationProperties("dippie.report.rate-limit")
 public record PlaybackReportRateLimitProperties(int maxAttempts, Duration window, int maxClients) {
 

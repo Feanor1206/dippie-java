@@ -22,7 +22,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Set;
 
-// Xử lý nghiệp vụ xem, chấm, sửa và xóa điểm đánh giá phim cho tài khoản hiện tại.
+// lo xem, chấm, sửa với xóa điểm đánh giá phim cho user đang đăng nhập
 @Service
 public class MovieRatingService {
 
@@ -53,7 +53,7 @@ public class MovieRatingService {
         this.clock = clock;
     }
 
-    // Trả danh sách đánh giá mới cập nhật nhất trước, bỏ qua các phim đang ẩn hoặc chưa xuất bản.
+    // trả list điểm mới sửa nhất lên đầu, bỏ qua mấy phim đang ẩn hoặc chưa xuất bản
     public List<MovieRatingView> list() {
         Viewer viewer = currentViewer.require();
         Set<String> hiddenIds = catalogReadModelCache.current().hiddenMovieIds();
@@ -64,10 +64,10 @@ public class MovieRatingService {
                 .toList());
     }
 
-    // Chấm mới hoặc cập nhật điểm cho phim đang hiển thị; tách REQUIRES_NEW để bắt lỗi trùng khóa khi gửi hai request cùng lúc.
+    // chấm mới hay sửa điểm phim đang mở, tách REQUIRES_NEW để bắt lỗi đụng khóa lúc 2 request gửi cùng lúc
     public MovieRatingView rate(String rawMovieId, Integer rating) {
         Viewer viewer = currentViewer.require();
-        // Kiểm tra đầu vào và chắc chắn phim còn hiển thị công khai trước khi mở giao dịch ghi
+        // check đầu vào với phim còn đang mở trước khi mở transaction ghi
         String movieId = rawMovieId == null ? "" : rawMovieId.strip();
         if (movieId.isEmpty()) {
             throw new InvalidRequestException(MovieRating.INVALID_RATING_MESSAGE);
@@ -76,7 +76,7 @@ public class MovieRatingService {
         Movie movie = movieVisibility.findVisibleById(movieId)
                 .orElseThrow(() -> new InvalidRequestException("Không tìm thấy phim: " + movieId));
 
-        // Chạy giao dịch riêng để nếu đụng unique key do race condition thì phiên cũ rollback gọn, sau đó mở giao dịch khác cập nhật bản ghi vừa chèn
+        // chạy transaction riêng để lỡ race condition đụng unique key thì rollback gọn, rồi mở transaction khác cập nhật dòng vừa chèn
         MovieRating saved;
         try {
             saved = requiresNewTransaction.execute(status -> upsertRating(viewer.userId(), movie.getId(), rating));
@@ -91,7 +91,7 @@ public class MovieRatingService {
         requiresNewTransaction.executeWithoutResult(status -> ratingRepository.deleteByUserIdAndMovieId(viewer.userId(), movieId));
     }
 
-    // Tìm xem user đã chấm phim này chưa để cập nhật, chưa có thì tạo bản ghi mới và flush ngay trong giao dịch.
+    // có điểm rồi thì sửa, chưa có thì tạo mới rồi flush ngay trong transaction
     private MovieRating upsertRating(Long userId, String movieId, int rating) {
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
         return ratingRepository.findByUserIdAndMovieId(userId, movieId)
@@ -102,7 +102,7 @@ public class MovieRatingService {
                 .orElseGet(() -> ratingRepository.saveAndFlush(new MovieRating(userId, movieId, rating, now)));
     }
 
-    // Nhánh dự phòng khi hai request cùng tạo mới một cặp (userId, movieId): đọc lại bản ghi vừa thắng rồi cập nhật điểm mới nhất.
+    // nhánh dự phòng lúc 2 request cùng tạo trùng (userId, movieId), đọc lại dòng vừa thắng rồi cập nhật điểm mới nhất
     private MovieRating updateExistingRating(
             Long userId,
             String movieId,

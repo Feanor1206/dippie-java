@@ -23,8 +23,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
-// Chạy mọi tác vụ đụng DB và ghi tệp trên một luồng nền rồi báo kết quả về luồng JavaFX.
-// Việt đừng đổi worker sang thread pool nhiều luồng nha, xếp hàng tuần tự thế này để lệnh sửa tài khoản với hoàn tác không bị chạy lệch thứ tự.
+// chạy mọi việc đụng DB và ghi file trên 1 luồng nền rồi đẩy kết quả về luồng JavaFX
+// Việt đừng đổi worker sang pool nhiều luồng nha, xếp tuần tự vậy kẻo sửa tài khoản với hoàn tác bị lệch thứ tự
 public final class UiTasks implements AutoCloseable {
     private static final String STYLESHEET = stylesheetUrl();
     private final Window owner;
@@ -60,7 +60,7 @@ public final class UiTasks implements AutoCloseable {
         });
     }
 
-    // Nhận thêm onComplete để tắt vòng quay tải kể cả khi truy vấn bị lỗi.
+    // nhận thêm onComplete để tắt vòng quay tải kể cả lúc truy vấn lỗi
     public <T> void database(Callable<T> action, Consumer<T> onSuccess, Runnable onComplete) {
         connection.set(connection.get().onRequest());
         submit(action, onSuccess, onComplete, true);
@@ -71,7 +71,7 @@ public final class UiTasks implements AutoCloseable {
         }, false);
     }
 
-    // Đẩy việc vào hàng đợi nền bằng lớp ẩn danh kế thừa Task để tự chuyển kết quả về luồng JavaFX.
+    // đẩy việc vào hàng đợi nền qua lớp ẩn danh kế thừa Task để tự chuyển kết quả về luồng JavaFX
     private <T> void submit(Callable<T> action, Consumer<T> onSuccess, Runnable onComplete, boolean isDatabase) {
         if (closed) {
             onComplete.run();
@@ -95,7 +95,7 @@ public final class UiTasks implements AutoCloseable {
         worker.execute(task);
     }
 
-    // Giữ trạng thái bận tới khi cả onSuccess lẫn onComplete chạy xong, tránh mở khóa nút sớm khi tab đang tự tải lại.
+    // giữ trạng thái bận tới khi cả onSuccess lẫn onComplete xong hết kẻo mở khóa nút sớm lúc tab đang tải lại
     private void finish(Runnable action, Runnable onComplete) {
         if (closed) {
             return;
@@ -112,7 +112,7 @@ public final class UiTasks implements AutoCloseable {
         }
     }
 
-    // Chỉ hiện thông báo tiếng Việt đã chuẩn bị sẵn, không làm lộ chi tiết JDBC hay chuỗi kết nối ra hộp thoại.
+    // chỉ hiện câu tiếng Việt chuẩn bị sẵn, không để lộ chi tiết JDBC hay chuỗi kết nối lên hộp thoại
     private void showFailure(Throwable failure, boolean isDatabase) {
         if (isDatabase) {
             connection.set(isDisconnected(failure) ? ConnectionState.DISCONNECTED : ConnectionState.CONNECTED);
@@ -130,7 +130,7 @@ public final class UiTasks implements AutoCloseable {
         showFailure(failure, true);
     }
 
-    // Phân biệt mất kết nối thật (mã SQLState đầu 08 hoặc lỗi Connection) với lỗi truy vấn bình thường để chấm tròn không báo đỏ nhầm.
+    // tách mất kết nối thật (SQLState đầu 08 hoặc lỗi Connection) khỏi lỗi truy vấn thường kẻo chấm tròn báo đỏ nhầm
     private static boolean isDisconnected(Throwable failure) {
         if (failure instanceof DataAccessException.Connection) {
             return true;
@@ -139,7 +139,7 @@ public final class UiTasks implements AutoCloseable {
                 && sql.getSQLState().startsWith("08");
     }
 
-    // Hộp thoại xác nhận thường với nút chính màu xanh.
+    // hộp thoại xác nhận thường với nút chính màu xanh
     public boolean confirm(String title, String content) {
         var confirm = new ButtonType("Xác nhận", ButtonBar.ButtonData.OK_DONE);
         var cancel = new ButtonType("Hủy", ButtonBar.ButtonData.CANCEL_CLOSE);
@@ -147,7 +147,7 @@ public final class UiTasks implements AutoCloseable {
                 .showAndWait().orElse(cancel) == confirm;
     }
 
-    // Hộp thoại xác nhận nút đỏ cho thao tác khó rút lại như khóa tài khoản hoặc xóa đánh giá.
+    // hộp thoại xác nhận nút đỏ cho mấy thao tác khó rút lại như khóa tài khoản hay xóa đánh giá
     public boolean confirmDanger(String title, String content, String confirmLabel) {
         var confirm = new ButtonType(confirmLabel, ButtonBar.ButtonData.OK_DONE);
         var cancel = new ButtonType("Hủy", ButtonBar.ButtonData.CANCEL_CLOSE);
@@ -160,7 +160,7 @@ public final class UiTasks implements AutoCloseable {
         alert(type, title, content, type == Alert.AlertType.ERROR, close).showAndWait();
     }
 
-    // Gắn chung CSS và kiểu nút cho mọi hộp thoại trong ứng dụng.
+    // gắn chung CSS và kiểu nút cho mọi hộp thoại trong app
     public void styleDialog(Dialog<?> dialog, boolean destructive) {
         DialogPane pane = dialog.getDialogPane();
         if (STYLESHEET != null && !pane.getStylesheets().contains(STYLESHEET)) {

@@ -1,7 +1,7 @@
 package com.dippie.exception;
 
 
-// Ngoại lệ con của InvalidRequestException cho lỗi dữ liệu gói danh mục, mang kèm đường dẫn trường JSON bị sai.
+// lớp con của InvalidRequestException cho lỗi dữ liệu gói danh mục, mang kèm path trường JSON bị sai
 public class CatalogInputException extends InvalidRequestException {
 
     private final String path;

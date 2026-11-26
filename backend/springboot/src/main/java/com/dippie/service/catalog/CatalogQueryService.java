@@ -33,12 +33,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-// Facade gom các repo JPA, bộ đệm đọc và điểm đánh giá lại một chỗ để controller không phải gọi rời rạc nhiều tầng.
+// kiểu Facade gom hết repo JPA, cache đọc với điểm đánh giá về 1 chỗ cho controller khỏi gọi lắt nhắt nhiều tầng
 @Service
 public class CatalogQueryService {
-
-    private static final int DEFAULT_SERIES_EPISODE_LIMIT = 500;
-    private static final int MAX_SERIES_EPISODE_LIMIT = 500;
 
     private final CatalogSeriesRepository series;
     private final CatalogSeasonRepository seasons;
@@ -82,7 +79,7 @@ public class CatalogQueryService {
         return seriesDetail(id, admin, null, null);
     }
 
-    // Tải chi tiết bộ phim cùng các mùa và một lát cắt tập phim; mình chặn tối đa 500 tập mỗi lần để mấy bộ dài hàng nghìn tập không kéo sập bộ nhớ hay treo phản hồi.
+    // tải chi tiết bộ phim kèm mùa và một lát cắt tập, chặn tối đa 500 tập mỗi lần kẻo mấy bộ vài nghìn tập kéo sập RAM hay treo response
     @Transactional(readOnly = true)
     public CatalogSeriesDetail seriesDetail(String id, boolean admin, Integer episodeOffset, Integer episodeLimit) {
         CatalogSeries foundSeries = series.findById(id).filter(candidate -> admin || candidate.isPublished())
@@ -95,8 +92,8 @@ public class CatalogQueryService {
                 : episodes.findBySeriesIdAndPublicationStatusOrderByNumberAsc(id, PublicationStatus.READY_VALUE);
         int offset = episodeOffset == null || episodeOffset < 0 ? 0 : episodeOffset;
         int limit = (episodeLimit == null || episodeLimit <= 0)
-                ? DEFAULT_SERIES_EPISODE_LIMIT
-                : Math.min(episodeLimit, MAX_SERIES_EPISODE_LIMIT);
+                ? 500
+                : Math.min(episodeLimit, 500);
         List<CatalogEpisode> visibleEpisodes = candidates.stream()
                 .filter(episode -> admin || CatalogVisibility.followsPublishedParents(episode.getSeriesId(),
                         episode.getSeasonId(), foundSeries.getId()::equals, seasonParents::get))
@@ -108,7 +105,7 @@ public class CatalogQueryService {
                 ratings.withSummaries(visibleEpisodes, CatalogEpisode::getId, CatalogEpisodeView::from));
     }
 
-    // Tải chi tiết tập phim sau khi kiểm tra chuỗi cha đã xuất bản, đối chiếu tệp media thực tế trên đĩa và phân giải nguồn YouTube.
+    // tải chi tiết tập phim sau khi check chuỗi cha đã xuất bản, dò file media thật ngoài đĩa rồi giải nguồn YouTube
     @Transactional(readOnly = true)
     public CatalogEpisodeDetail episodeDetail(String id, boolean authenticated, boolean admin) {
         CatalogEpisode episode = episodes.findById(id).filter(candidate -> admin || visibility.isEpisodeVisible(candidate))

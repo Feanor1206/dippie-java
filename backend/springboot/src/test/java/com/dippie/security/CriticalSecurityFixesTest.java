@@ -39,7 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Bộ test hồi quy cho mấy lỗi bảo mật nặng: không bật profile demo mặc định, giới hạn tần suất và luồng SSE ở /api/chat, và chặn body JSON quá cỡ.
+// test hồi quy lỗi bảo mật nặng: tắt demo mặc định, siết rate limit với SSE ở /api/chat, chặn JSON quá cỡ
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -78,7 +78,7 @@ class CriticalSecurityFixesTest {
         userRepository.deleteAll();
     }
 
-    // Kiểm tra application.yml không tự bật demo hay seed dữ liệu mẫu, đồng thời vẫn chặn mật khẩu admin yếu khi chạy prod.
+    // check application.yml không tự bật demo hay seed mẫu, lên prod vẫn chặn mật khẩu admin yếu
     @Test
     void disablesDefaultDemoProfileAndChecksWeakAdminPasswordsEvenIfSeedFlagSetInProd() throws Exception {
         YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
@@ -87,7 +87,7 @@ class CriticalSecurityFixesTest {
         assertThat(base.getProperty("spring.profiles.default")).isNull();
         assertThat(base.getProperty("dippie.seed-demo-data")).isEqualTo(false);
 
-        // Không được sinh khóa JWT tạm khi vừa bật demo vừa bật prod hoặc mysql.
+        // cấm tự sinh khóa JWT tạm nếu bật kèm demo với prod hoặc mysql nha
         MockEnvironment mixedProdEnv = new MockEnvironment().withProperty("spring.profiles.active", "demo,prod");
         mixedProdEnv.setActiveProfiles("demo", "prod");
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> new JwtService(
@@ -96,7 +96,7 @@ class CriticalSecurityFixesTest {
                 clock
         )).isInstanceOf(IllegalStateException.class);
 
-        // Tài khoản admin còn dùng mật khẩu yếu "password" phải bị AdminBootstrap chặn lúc khởi động ở prod.
+        // admin còn xài mật khẩu "password" là AdminBootstrap phải chặn lúc khởi động prod ngay
         userRepository.saveAndFlush(new User(
                 "alex", "alex@dippie.com", passwordEncoder.encode("password"), "Alex",
                 Role.ROLE_ADMIN, LocalDateTime.now(clock)
@@ -116,13 +116,14 @@ class CriticalSecurityFixesTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
-    // Kiểm tra pool async có giới hạn, giới hạn số request mỗi phút và số luồng SSE đồng thời trên /api/chat.
+    // check pool async có trần, siết số request mỗi phút với số luồng SSE song song trên /api/chat
     @Test
+    @SuppressWarnings("resource") // permit gom vào held rồi trả hết trong finally
     void enforcesChatRateLimitConcurrencyCapAndBoundedAsyncExecutor() throws Exception {
         assertThat(mvcAsyncTaskExecutor.getMaxPoolSize()).isGreaterThan(0).isLessThanOrEqualTo(64);
         assertThat(mvcAsyncTaskExecutor.getQueueCapacity()).isGreaterThan(0);
 
-        // Gửi quá 20 lần trong một phút từ cùng IP phải nhận 429 kèm detail tiếng Việt trước khi mở stream.
+        // cùng IP bắn quá 20 phát mỗi phút là ăn 429 kèm thông báo tiếng Việt trước khi mở stream luôn
         for (int i = 0; i < 20; i++) {
             MvcResult started = mockMvc.perform(post("/api/chat")
                             .with(request -> {
@@ -147,7 +148,7 @@ class CriticalSecurityFixesTest {
                 .andExpect(header().exists(HttpHeaders.RETRY_AFTER))
                 .andExpect(jsonPath("$.detail").value(ChatStreamGuard.RATE_LIMIT_MESSAGE));
 
-        // Chiếm hết slot đồng thời của ChatStreamGuard để chắc chắn request kế tiếp nhận 429 ngay.
+        // chiếm sạch slot của ChatStreamGuard để chắc phát kế tiếp ăn 429 liền
         chatStreamGuard.resetRateLimit();
         List<ChatStreamGuard.Permit> held = new java.util.ArrayList<>();
         try {
@@ -172,7 +173,7 @@ class CriticalSecurityFixesTest {
         assertThat(chatStreamGuard.availablePermits()).isEqualTo(chatStreamGuard.maxConcurrentStreams());
     }
 
-    // Kiểm tra chặn body JSON quá giới hạn (413) trên /v1/search, /v1/discover, /api/auth/login và /api/admin/catalog/import, gồm cả request chunked.
+    // test chặn 413 khi JSON quá cỡ trên /v1/search, /v1/discover, /api/auth/login, import, tính cả chunked
     @Test
     void rejectsOversizedJsonBodiesWith413AndVietnameseMessage() throws Exception {
         byte[] oversizedJson = ("{\"query\":\"" + "a".repeat(70_000) + "\"}").getBytes(StandardCharsets.UTF_8);
@@ -189,7 +190,7 @@ class CriticalSecurityFixesTest {
                 .andExpect(status().isPayloadTooLarge())
                 .andExpect(jsonPath("$.detail").value("Dữ liệu gửi lên quá lớn."));
 
-        // Request gửi kiểu chunked không có Content-Length nhưng vượt 64 KB vẫn phải bị stream đếm byte chặn 413.
+        // gửi chunked không có Content-Length mà lố 64 KB thì stream đếm byte vẫn phải chặn 413
         mockMvc.perform(post("/v1/discover")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(oversizedJson)
@@ -200,13 +201,13 @@ class CriticalSecurityFixesTest {
                 .andExpect(status().isPayloadTooLarge())
                 .andExpect(jsonPath("$.detail").value("Dữ liệu gửi lên quá lớn."));
 
-        // userId vượt quá 128 ký tự trên /v1/discover phải bị từ chối với mã 422.
+        // userId dài quá 128 ký tự ở /v1/discover là ăn 422
         mockMvc.perform(post("/v1/discover")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"query\":\"doraemon\",\"userId\":\"" + "u".repeat(129) + "\"}"))
                 .andExpect(status().isUnprocessableEntity());
 
-        // Body vượt ngưỡng ở /api/auth/login trả 413 theo khung ApiResponse.
+        // body quá cỡ ở /api/auth/login trả 413 đúng khung ApiResponse
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(oversizedJson))
@@ -214,7 +215,7 @@ class CriticalSecurityFixesTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("Dữ liệu gửi lên quá lớn."));
 
-        // Admin gửi Content-Length lớn hơn 25 MB tới /api/admin/catalog/import phải bị cắt ngay với mã 413.
+        // admin đẩy Content-Length hơn 25 MB vào import là cắt thẳng tay với 413
         userRepository.saveAndFlush(new User(
                 "boss", "boss@dippie.com", passwordEncoder.encode("A-strong-private-password-123"), "Boss",
                 Role.ROLE_ADMIN, LocalDateTime.now(clock)

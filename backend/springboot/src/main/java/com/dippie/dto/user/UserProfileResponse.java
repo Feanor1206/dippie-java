@@ -2,7 +2,7 @@ package com.dippie.dto.user;
 
 import com.dippie.model.user.User;
 
-// Hồ sơ công khai trả về cho client, tách riêng khỏi entity User để không bao giờ lộ mật khẩu hay tokenVersion.
+// hồ sơ công khai trả client, tách khỏi entity User kẻo lỡ lộ mật khẩu hay tokenVersion
 public record UserProfileResponse(
         Long id,
         String username,

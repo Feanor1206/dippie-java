@@ -23,8 +23,8 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
-// Entity ánh xạ bảng movie_ratings, lưu điểm chấm từ 1 đến 10 của từng user cho mỗi phim.
-// Mình đặt luôn validateRating trong entity và thêm @Check ở SQL để không ai lọt điểm ngoài khoảng hợp lệ.
+// bảng movie_ratings lưu điểm chấm 1 đến 10 của từng user theo phim
+// chặn hai lớp luôn: validateRating ngay trong entity kèm @Check dưới SQL cho khỏi lọt điểm bậy
 @Entity
 @Table(
         name = "movie_ratings",
@@ -120,14 +120,14 @@ public class MovieRating {
         return updatedAt;
     }
 
-    // Kiểm tra điểm trước khi ghi đè để không bao giờ lưu giá trị ngoài khoảng 1 đến 10.
+    // check điểm trước lúc ghi đè kẻo lọt số ngoài 1 đến 10
     public void updateRating(int newRating, LocalDateTime timestamp) {
         validateRating(newRating);
         this.rating = newRating;
         this.updatedAt = timestamp;
     }
 
-    // Chặn điểm null hoặc nằm ngoài khoảng 1 đến 10 trước khi chạm xuống DB.
+    // chặn null hay điểm ngoài 1 đến 10 trước khi đụng xuống DB
     public static void validateRating(Integer rating) {
         if (rating == null || rating < MIN_RATING || rating > MAX_RATING) {
             throw new InvalidRequestException(INVALID_RATING_MESSAGE);

@@ -7,7 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
-// Danh sách các kệ tâm trạng có sẵn trên giao diện, mỗi mục mang sẵn thể loại, từ khóa không dấu và trần thời lượng riêng.
+// mấy kệ tâm trạng sẵn trên giao diện, mỗi kệ có thể loại, từ khóa không dấu với trần thời lượng riêng
 public enum MoodPreset {
     FUNNY("funny", Set.of("comedy"), List.of("vui nhon", "hai huoc", "tro dua", "bat cuoi"), 60),
     FAMILY("family", Set.of("family"), List.of("gia dinh", "cha me", "anh chi em", "yeu thuong"), 60),
@@ -16,7 +16,6 @@ public enum MoodPreset {
     FRIENDSHIP("friendship", Set.of("school", "slice_of_life"), List.of("tinh ban", "ban than", "ket ban", "giup do"), 60),
     SHORT("short", Set.of(), List.of(), 10);
 
-    private static final double KEYWORD_HIT_WEIGHT = 2.0;
 
     private final String id;
     private final Set<String> genres;
@@ -35,20 +34,20 @@ public enum MoodPreset {
                 .orElseThrow(() -> new InvalidRequestException("Tâm trạng bạn chọn không có trong danh sách."));
     }
 
-    // Kệ bedtime và short chặn tối đa 10 phút; riêng bedtime còn loại luôn các tập có cảnh kịch tính.
+    // kệ bedtime với short chặn trần 10 phút, riêng bedtime loại thêm mấy tập kịch tính
     public boolean withinRuntime(RecommendationCandidate item) {
         return suitableForMood(item)
                 && (maxDurationMs == EpisodeRuntime.HOUR_MS || EpisodeRuntime.atMost(item.durationMs(), maxDurationMs))
                 && (this != BEDTIME || !item.features().intense());
     }
 
-    // Mọi kệ tâm trạng đều bỏ tập tổng hợp dài và tập vượt quá 1 tiếng để giữ đúng nhịp xem ngắn gọn.
+    // kệ tâm trạng nào cũng bỏ tập tổng hợp dài với tập quá 1 tiếng để giữ nhịp xem gọn
     public static boolean suitableForMood(RecommendationCandidate item) {
         Long duration = item.features().knownDurationMs();
         return (duration == null || duration <= EpisodeRuntime.HOUR_MS) && !item.features().compilation();
     }
 
-    // Kệ short không xếp theo từ khóa nên trả điểm 1 cố định; kệ bedtime bắt buộc phải có calmScore > 0 mới được tính.
+    // kệ short không chấm từ khóa nên trả điểm 1 cứng, còn bedtime phải có calmScore > 0 mới tính
     public double score(RecommendationCandidate item) {
         if (this == SHORT) {
             return 1;
@@ -60,6 +59,6 @@ public enum MoodPreset {
         String details = item.features().foldedMoodText();
         long keywordHits = keywords.stream().filter(details::contains).count();
         long genreHits = item.genres().stream().filter(genres::contains).count();
-        return calm + keywordHits * KEYWORD_HIT_WEIGHT + genreHits;
+        return calm + keywordHits * 2.0 + genreHits;
     }
 }

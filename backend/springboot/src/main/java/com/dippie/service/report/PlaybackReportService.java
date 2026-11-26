@@ -37,16 +37,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-// Xử lý nhận báo lỗi phát video cho các tập đã đăng và cung cấp danh sách kèm thao tác xử lý cho admin.
+// nhận báo lỗi phát video cho mấy tập đã đăng rồi cho admin xem list và cập nhật xử lý
 @Service
 public class PlaybackReportService {
 
     public static final String ACTION_PLAYBACK_REPORT_UPDATED = "PLAYBACK_REPORT_UPDATED";
     public static final String EPISODE_NOT_PUBLISHED_MESSAGE = "Không tìm thấy tập phim này hoặc tập phim chưa được đăng.";
 
-    private static final int MAX_ADMIN_LIST_SIZE = 200;
-    private static final String TARGET_TYPE_PLAYBACK_REPORT = "PLAYBACK_REPORT";
-    private static final String REPORT_NOT_FOUND_MESSAGE = "Không tìm thấy báo cáo lỗi này.";
 
     private final PlaybackReportRepository reportRepository;
     private final CatalogEpisodeRepository episodeRepository;
@@ -80,7 +77,7 @@ public class PlaybackReportService {
         this.clock = clock;
     }
 
-    // Kiểm tra giới hạn theo IP, xác thực dữ liệu đầu vào và chắc chắn tập phim đang xuất bản rồi mới lưu báo cáo.
+    // check rate limit theo IP, kiểm tra đầu vào với tập đang xuất bản rồi mới lưu báo lỗi
     @Transactional
     public PlaybackReportCreatedResponse submit(CreatePlaybackReportRequest request, String clientIp) {
         rateLimiter.enforce(clientIp);
@@ -93,10 +90,10 @@ public class PlaybackReportService {
         PlaybackReportReason reason = PlaybackReportReason.parse(payload.reason());
         String note = payload.resolvedNote();
 
-        // Xác minh cả tập phim, mùa cha lẫn bộ phim đều đang ở trạng thái đã đăng.
+        // check đủ cả tập, mùa cha lẫn bộ đều đã đăng
         requirePublishedEpisode(episodeId);
 
-        // Có phiên đăng nhập thì gắn reporterUserId, khách vãng lai thì để null.
+        // đang đăng nhập thì gắn reporterUserId, khách vãng lai thì để null
         Long reporterUserId = currentViewer.find().map(Viewer::userId).orElse(null);
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
 
@@ -105,19 +102,19 @@ public class PlaybackReportService {
         return new PlaybackReportCreatedResponse(saved.getId());
     }
 
-    // Lấy tối đa 200 báo cáo mới nhất theo bộ lọc trạng thái rồi nạp thêm tên bộ và tên tập.
+    // lấy tối đa 200 báo lỗi mới nhất theo bộ lọc trạng thái rồi gắn thêm tên bộ với tên tập
     @Transactional(readOnly = true)
     public List<PlaybackReportView> listForAdmin(String rawStatus) {
         currentViewer.requireAdmin();
         Optional<PlaybackReportStatus> filter = PlaybackReportStatus.parseFilter(rawStatus);
-        PageRequest limit = PageRequest.of(0, MAX_ADMIN_LIST_SIZE);
+        PageRequest limit = PageRequest.of(0, 200);
         List<PlaybackReport> reports = filter
                 .map(status -> reportRepository.findByStatusOrderByCreatedAtDescIdDesc(status.code(), limit))
                 .orElseGet(() -> reportRepository.findAllByOrderByCreatedAtDescIdDesc(limit));
         return enrichViews(reports);
     }
 
-    // Đổi trạng thái báo cáo sang resolved hoặc dismissed và ghi dòng nhật ký trong cùng giao dịch.
+    // chuyển báo lỗi sang resolved hoặc dismissed rồi ghi audit chung trong 1 transaction
     @Transactional
     public PlaybackReportView updateStatus(Long reportId, UpdatePlaybackReportStatusRequest request) {
         Viewer actor = currentViewer.requireAdmin();
@@ -125,14 +122,14 @@ public class PlaybackReportService {
                 request == null ? null : request.status()
         );
         PlaybackReport report = reportRepository.findById(reportId)
-                .orElseThrow(() -> new NotFoundException(REPORT_NOT_FOUND_MESSAGE));
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy báo cáo lỗi này."));
 
         String previousStatus = report.getStatus();
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
         report.updateResolution(nextStatus, actor.userId(), now);
         PlaybackReport saved = reportRepository.saveAndFlush(report);
 
-        // Ghi lại trạng thái cũ và mới vào nhật ký quản trị.
+        // lưu trạng thái cũ với mới vào audit
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("episodeId", saved.getEpisodeId());
         details.put("reason", saved.getReason());
@@ -141,7 +138,7 @@ public class PlaybackReportService {
         auditTrailWriter.record(
                 actor,
                 ACTION_PLAYBACK_REPORT_UPDATED,
-                TARGET_TYPE_PLAYBACK_REPORT,
+                "PLAYBACK_REPORT",
                 String.valueOf(saved.getId()),
                 details
         );
@@ -149,7 +146,7 @@ public class PlaybackReportService {
         return enrichViews(List.of(saved)).getFirst();
     }
 
-    // Chặn báo lỗi nhắm vào tập nháp, tập ẩn hoặc tập gắn sai bộ phim.
+    // chặn báo lỗi vào tập nháp, tập ẩn hay tập gắn nhầm bộ
     private void requirePublishedEpisode(String episodeId) {
         CatalogEpisode episode = episodeRepository.findById(episodeId)
                 .filter(CatalogEpisode::isPublished)
@@ -167,7 +164,7 @@ public class PlaybackReportService {
         }
     }
 
-    // Việt giữ cách nạp theo lô ở đây nhé; gọi findById từng dòng trong vòng lặp sẽ dính N+1 query ngay khi danh sách nhiều lên.
+    // Việt giữ kiểu kéo theo lô chỗ này nhé, gọi findById trong vòng lặp là dính N+1 query ngay lúc list dày lên
     private List<PlaybackReportView> enrichViews(List<PlaybackReport> reports) {
         if (reports.isEmpty()) {
             return List.of();
@@ -177,7 +174,7 @@ public class PlaybackReportService {
             episodeIds.add(report.getEpisodeId());
         }
 
-        // Nạp hàng loạt bản ghi tập phim từ danh mục chuẩn.
+        // kéo 1 lượt các tập phim từ danh mục chuẩn
         Map<String, CatalogEpisode> episodesById = new HashMap<>();
         Set<String> seriesIds = new HashSet<>();
         for (CatalogEpisode episode : episodeRepository.findAllById(episodeIds)) {
@@ -187,7 +184,7 @@ public class PlaybackReportService {
             }
         }
 
-        // Gom các seriesId tìm được để lấy tên bộ phim trong một câu query.
+        // gom đống seriesId vừa tìm được để lấy tên bộ trong 1 query
         Map<String, String> seriesTitleById = new HashMap<>();
         if (!seriesIds.isEmpty()) {
             for (CatalogSeries series : seriesRepository.findAllById(seriesIds)) {
@@ -195,7 +192,7 @@ public class PlaybackReportService {
             }
         }
 
-        // Những mã không thấy trong catalog_episodes thì tra dự phòng bên bảng movies.
+        // mã nào không thấy bên catalog_episodes thì tra dự phòng qua bảng movies
         Set<String> missingIds = new HashSet<>(episodeIds);
         missingIds.removeAll(episodesById.keySet());
         Map<String, String> movieTitleById = new HashMap<>();

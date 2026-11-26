@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Test đơn vị cho ngưỡng xem xong (5% cuối, tối đa 60 giây, tối thiểu 1 ms) và cách WatchDuration chọn thời lượng dương nhỏ hơn.
+// test ngưỡng xem xong (5% cuối, tối đa 60s, tối thiểu 1 ms) với WatchDuration chọn thời lượng dương nhỏ hơn
 class CompletionPolicyTest {
 
     @Test

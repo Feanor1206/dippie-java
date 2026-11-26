@@ -46,7 +46,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Test tích hợp cho MovieController: lọc thể loại bảng nối lẫn cột CSV cũ, ẩn phim nháp, tìm tiếng Việt và kiểm tra số câu SQL không phình theo dữ liệu.
+// test MovieController lọc thể loại cả bảng nối lẫn cột CSV cũ, giấu phim nháp, tìm tiếng Việt với soi số câu SQL
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -118,6 +118,7 @@ class MovieControllerTest {
     }
 
     @Test
+    @SuppressWarnings("resource") // SessionFactory là của Spring, đóng là sập context test
     void browseFiltersLinkedAndLegacyGenresWithBoundedSqlAsTheCatalogGrows() throws Exception {
         movieRepository.saveAll(List.of(
                 movie("linked", "100% Film", 2024, 9.0, "Comedy", null),
@@ -132,7 +133,7 @@ class MovieControllerTest {
                     new MovieGenre("mismatch", "Comedy")).forEach(entityManager::merge);
         });
 
-        // Đo số câu SQL trước và sau khi bơm thêm 160 phim để chắc chắn bộ lọc không dính lỗi N+1
+        // đếm SQL trước và sau khi bơm 160 phim để chắc bộ lọc không dính N+1
         Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
         boolean previouslyEnabled = statistics.isStatisticsEnabled();
         statistics.setStatisticsEnabled(true);

@@ -11,7 +11,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.shape.Circle;
 
-// Thanh trạng thái dưới cùng, nghe Observer từ UiTasks để cập nhật chấm kết nối, vòng quay bận và gợi ý phím tắt.
+// thanh trạng thái dưới cùng, nghe Observer từ UiTasks để cập nhật chấm kết nối, vòng quay bận và gợi ý phím tắt
 public final class StatusBar extends HBox {
     private final Circle dot = new Circle(4.5);
     private final Label label = new Label();
@@ -22,13 +22,13 @@ public final class StatusBar extends HBox {
         setAlignment(Pos.CENTER_LEFT);
         getStyleClass().add("status-bar");
 
-        // Chấm màu và chữ báo trạng thái kết nối DB.
+        // chấm màu và chữ báo trạng thái kết nối DB
         label.getStyleClass().add("status-label");
         label.setTooltip(new Tooltip("Trạng thái kết nối cơ sở dữ liệu"));
         HBox connectionBox = new HBox(8, dot, label);
         connectionBox.setAlignment(Pos.CENTER_LEFT);
 
-        // Vòng quay nhỏ chỉ hiện khi luồng nền đang chạy.
+        // vòng quay nhỏ chỉ hiện khi luồng nền đang chạy
         ProgressIndicator spinner = new ProgressIndicator();
         spinner.setPrefSize(15, 15);
         spinner.setMaxSize(15, 15);
@@ -51,12 +51,12 @@ public final class StatusBar extends HBox {
         tasks.connectionProperty().addListener((property, before, after) -> display(after));
     }
 
-    // Ẩn dòng phím tắt khi đang ở màn hình đăng nhập.
+    // ẩn dòng phím tắt lúc đang ở màn hình đăng nhập
     public void setShortcutsVisible(boolean visible) {
         shortcuts.setVisible(visible);
     }
 
-    // Đổi đồng thời cả chữ lẫn màu chấm tròn để nhìn là biết ngay trạng thái kết nối.
+    // đổi cùng lúc cả chữ lẫn màu chấm tròn để nhìn cái biết ngay trạng thái kết nối
     private void display(ConnectionState state) {
         label.setText(state.label());
         dot.getStyleClass().setAll(state.style());

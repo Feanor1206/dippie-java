@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
-// Gom mọi lỗi phát sinh từ tầng controller về một chỗ để trả ApiResponse đồng bộ; nhờ kế thừa DomainException nên toàn bộ lỗi nghiệp vụ đi chung qua một nhánh xử lý.
+// gom mọi lỗi từ controller về 1 chỗ trả ApiResponse đồng bộ, nhờ kế thừa DomainException nên lỗi nghiệp vụ đi chung 1 nhánh
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -34,7 +34,7 @@ public class GlobalExceptionHandler {
         this.spaIndex = spaIndex;
     }
 
-    // Tận dụng đa hình: mỗi lớp con của DomainException tự mang sẵn HTTP status và header riêng (như Retry-After), ở đây chỉ việc đọc ra trả về.
+    // kiểu đa hình, mỗi lớp con DomainException tự mang sẵn HTTP status và header (như Retry-After) nên chỉ việc đọc ra trả
     @ExceptionHandler(DomainException.class)
     public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception) {
         HttpHeaders headers = new HttpHeaders();
@@ -44,7 +44,7 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.failure(exception.getMessage()));
     }
 
-    // Bắt lỗi body JSON thiếu hoặc sai cú pháp; nếu bên trong bị bọc RequestBodyTooLargeException thì trả đúng 413 thay vì 400.
+    // bắt lỗi body JSON thiếu hoặc sai cú pháp, lỡ bên trong bọc RequestBodyTooLargeException thì trả đúng 413 thay vì 400
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleUnreadable(HttpMessageNotReadableException exception) {
         if (RequestBodySizeLimitFilter.containsTooLargeException(exception)) {
@@ -53,7 +53,7 @@ public class GlobalExceptionHandler {
         return failure(HttpStatus.BAD_REQUEST, "Dữ liệu gửi lên không đúng định dạng.");
     }
 
-    // Lấy thông báo lỗi đầu tiên từ @Valid để trả ngắn gọn cho frontend.
+    // lấy lỗi đầu tiên từ @Valid để trả ngắn gọn về frontend
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleInvalid(MethodArgumentNotValidException exception) {
         String message = exception.getBindingResult().getAllErrors().stream()
@@ -63,7 +63,7 @@ public class GlobalExceptionHandler {
         return failure(HttpStatus.BAD_REQUEST, message);
     }
 
-    // Thiếu query param bắt buộc hoặc truyền sai kiểu dữ liệu.
+    // thiếu query param bắt buộc hoặc truyền sai kiểu dữ liệu
     @ExceptionHandler({MethodArgumentTypeMismatchException.class, MissingServletRequestParameterException.class})
     public ResponseEntity<ApiResponse<Void>> handleBadParameter() {
         return failure(HttpStatus.BAD_REQUEST, "Tham số gửi lên chưa đúng.");
@@ -74,7 +74,7 @@ public class GlobalExceptionHandler {
         return failure(HttpStatus.METHOD_NOT_ALLOWED, "Phương thức này không được hỗ trợ.");
     }
 
-    // Trình duyệt xin HTML ở route lạ thì trả trang SPA kèm mã 404, còn API hoặc client xin JSON thì trả 404 dạng JSON.
+    // trình duyệt xin HTML ở route lạ thì trả trang SPA kèm 404, còn gọi API hay xin JSON thì trả 404 JSON
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<?> handleNoResource(HttpServletRequest request) {
         return spaIndex.fallback(request)
@@ -85,8 +85,8 @@ public class GlobalExceptionHandler {
                         .body(ApiResponse.failure("Không tìm thấy nội dung này.")));
     }
 
-    // Việt nhớ không log exception.getMessage() ở mức error vì thông điệp SQL/Hibernate dễ dính dữ liệu người dùng;
-    // mình chỉ ghi tên lớp lỗi, khi cần soi stack trace thì bật mức debug.
+    // Việt nhớ đừng log exception.getMessage() ở mức error nha, message của SQL/Hibernate dễ dính dữ liệu user
+    // chỉ ghi tên lớp lỗi thôi, cần soi stack trace thì bật mức debug
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception exception) {
         log.error("Lỗi chưa xử lý khi nhận yêu cầu: {}", exception.getClass().getSimpleName());

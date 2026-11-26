@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.Comparator;
 
-// Tiện ích đọc nút JSON và so sánh chuỗi theo Unicode code point cho đồng nhất với Python.
+// tiện ích đọc node JSON và so chuỗi theo Unicode code point cho khớp bên Python
 public final class CatalogJson {
 
-    // String.compareTo của Java so theo UTF-16 code unit nên lệch thứ tự với Python ở các ký tự ngoài BMP như emoji.
+    // String.compareTo của Java so theo UTF-16 code unit nên lệch thứ tự với Python ở ký tự ngoài BMP như emoji
     public static final Comparator<String> CODE_POINT_ORDER = (left, right) -> {
         int leftIndex = 0;
         int rightIndex = 0;
@@ -32,7 +32,7 @@ public final class CatalogJson {
         return node.isNull() || node.isMissingNode();
     }
 
-    // Ưu tiên node đầu nếu truthy theo kiểu Python, ngược lại lấy node thay thế.
+    // lấy node đầu nếu truthy kiểu Python, không thì lấy node thay thế
     public static JsonNode or(JsonNode node, JsonNode alternative) {
         return JsonText.isTruthy(node) ? node : alternative;
     }

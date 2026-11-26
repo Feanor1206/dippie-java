@@ -14,8 +14,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 
-// Entity ánh xạ bảng movies, lưu cả phim lẻ lẫn bản ghi đại diện của bộ phim và từng tập trong danh mục.
-// Dấu thời gian createdAt và updatedAt tự cập nhật theo giờ UTC qua @PrePersist và @PreUpdate.
+// bảng movies lưu cả phim lẻ lẫn bản ghi đại diện của phim bộ và từng tập trong catalog
+// createdAt với updatedAt tự điền giờ UTC qua @PrePersist và @PreUpdate
 @Entity
 @Table(name = "movies",
         indexes = {
@@ -122,7 +122,7 @@ public class Movie {
         return videoUrl;
     }
 
-    // Đồng bộ lại thông tin phim khi import danh mục mới, ép mô tả null về chuỗi rỗng để frontend không bị lỗi hiển thị.
+    // import catalog mới thì cập nhật lại thông tin phim, mô tả null ép về chuỗi rỗng kẻo frontend lỗi hiển thị
     public void updateCatalogMetadata(String title, Integer releaseYear, String runtime, String synopsis,
             String genres) {
         this.title = title;

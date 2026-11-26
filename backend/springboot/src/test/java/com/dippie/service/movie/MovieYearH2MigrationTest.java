@@ -8,7 +8,7 @@ import java.sql.DriverManager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Test script migration catalog-year-h2.sql chạy lặp lại hai lần trên DB H2 demo cũ vẫn an toàn và cho phép release_year bằng null.
+// chạy catalog-year-h2.sql 2 lần trên DB H2 demo cũ vẫn êm và cho phép release_year bằng null
 class MovieYearH2MigrationTest {
 
     @Test

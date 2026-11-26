@@ -12,7 +12,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import java.time.Clock;
 import java.time.LocalDateTime;
 
-// Service quản lý danh sách phim yêu thích, chỉ cần cài newEntry() để tạo FavoriteItem cho luồng chung ở lớp cha.
+// danh sách yêu thích, chỉ cần cài newEntry() trả FavoriteItem còn luồng chung ăn sẵn ở lớp cha
 @Service
 public class FavoriteService extends AbstractLibraryListService<FavoriteItem> {
 

@@ -38,11 +38,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Kiểm tra HTTP API gợi ý phim cho khách chưa đăng nhập, người dùng đã thích phim và điều kiện lọc tập có tệp phát công khai.
+// test API gợi ý phim cho khách, user đã bấm thích với lọc đúng tập có file phát công khai
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-// Lớp này cần CSDL và chỉ mục tìm kiếm trống lúc bắt đầu, nên dùng context riêng để không dính dữ liệu của test chạy trước.
+// tách context riêng cho DB với chỉ mục trống lúc mở màn, khỏi dính dữ liệu test khác
 @TestPropertySource(properties = "dippie.test.context=RecommendationHttpTest")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
@@ -73,6 +73,7 @@ class RecommendationHttpTest {
     }
 
     @Test
+    @SuppressWarnings("resource") // SessionFactory là của Spring, đóng là sập context test
     void recommendsImportedEpisodesAnonymouslyAndPersonalizesForFavorites() throws Exception {
         assertThat(indexPublisher).isInstanceOf(LocalIndexPublisher.class);
         String admin = token("recommend-admin", Role.ROLE_ADMIN);

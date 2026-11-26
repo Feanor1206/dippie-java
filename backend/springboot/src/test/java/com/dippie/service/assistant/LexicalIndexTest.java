@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Bộ test đơn vị cho LexicalIndex: đối chiếu ưu tiên khớp chính xác so với gõ nhầm, chuẩn hóa Unicode và cách tách mốc thời gian từ bằng chứng công khai.
+// test LexicalIndex ưu tiên khớp chuẩn hơn gõ nhầm, chuẩn hóa Unicode với tách mốc thời gian từ dữ liệu công khai
 class LexicalIndexTest {
 
     @Test

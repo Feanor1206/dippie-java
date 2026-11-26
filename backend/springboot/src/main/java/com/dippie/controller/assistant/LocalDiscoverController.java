@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Map;
 
-// Controller REST mở chung hai đường dẫn /v1/search và /v1/discover chạy trên chỉ mục tìm kiếm cục bộ.
+// controller mở chung 2 route /v1/search và /v1/discover chạy trên chỉ mục tìm kiếm local
 @RestController
 public class LocalDiscoverController {
 
@@ -30,7 +30,7 @@ public class LocalDiscoverController {
         this.discoverService = discoverService;
     }
 
-    // Controller chỉ giải mã yêu cầu rồi giao cho DiscoverService, kết quả trả thẳng về giao diện.
+    // chỉ parse request rồi đẩy xuống DiscoverService, kết quả trả thẳng ra giao diện
     @PostMapping({"/v1/search", "/v1/discover"})
     public DiscoverResponse search(@RequestBody(required = false) JsonNode body) {
         return discoverService.discover(DiscoverRequest.parse(body));
@@ -46,8 +46,8 @@ public class LocalDiscoverController {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(new DiscoverErrorBody(exception.getMessage()));
     }
 
-    // Với request chunked vượt dung lượng, luồng đếm byte ném lỗi ngay khi Jackson đang đọc nên Spring bọc nó trong HttpMessageNotReadableException.
-    // Phải tách kiểm tra 413 ở đây trước, nếu không client lại nhận nhầm 422 JSON lỗi.
+    // request chunked vượt dung lượng sẽ văng lỗi lúc Jackson đang đọc nên Spring bọc trong HttpMessageNotReadableException
+    // chỗ này phải tách check 413 trước kẻo client nhận nhầm 422 JSON lỗi
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<DiscoverErrorBody> unreadable(HttpMessageNotReadableException exception) {
         if (RequestBodySizeLimitFilter.containsTooLargeException(exception)) {

@@ -31,11 +31,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Chạy thử DemoHistorySeeder sau khi import danh mục phim và kiểm tra cơ chế không ghi đè dữ liệu người xem đã sửa.
+// test DemoHistorySeeder tự chạy kiểu Observer sau khi import catalog và không đè dữ liệu người xem đã sửa
 @SpringBootTest(properties = "dippie.seed-demo-data=true")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-// Lớp này cần CSDL và chỉ mục tìm kiếm trống lúc bắt đầu, nên dùng context riêng để không dính dữ liệu của test chạy trước.
+// tách context riêng để DB với chỉ mục trống lúc đầu, khỏi vướng dữ liệu test khác
 @TestPropertySource(properties = "dippie.test.context=DemoHistorySeederTest")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
@@ -61,7 +61,7 @@ class DemoHistorySeederTest {
         this.applicationContext = applicationContext;
     }
 
-    // Import dần từng bộ phim để kích hoạt sự kiện nạp mẫu, sau đó chỉnh sửa tiến độ/điểm rồi chạy lại seeder để chắc chắn không bị ghi đè.
+    // import từng bộ phim cho bắn event nạp mẫu, sửa thử tiến độ với điểm rồi chạy lại seeder xem có giữ nguyên không
     @Test
     void seedsAfterCatalogImportsAndKeepsExistingViewerChangesOnRerun() throws Exception {
         String userBearer = "Bearer " + jwtService.issueLoginToken("user");
@@ -108,7 +108,7 @@ class DemoHistorySeederTest {
         assertThat(library(userBearer, "favorites")).hasSize(2);
     }
 
-    // Kể cả khi bật dippie.seed-demo-data=true, hễ có profile mysql thì cả hai seeder demo không được tạo bean.
+    // dù bật dippie.seed-demo-data=true mà dính profile mysql thì hai seeder demo cấm tạo bean nha
     @Test
     void mysqlProfileDisallowsSeedingEvenWhenItIsEnabled() {
         new ApplicationContextRunner().withUserConfiguration(DemoAccountSeeder.class, DemoHistorySeeder.class)
@@ -118,7 +118,7 @@ class DemoHistorySeederTest {
                         .doesNotHaveBean(DemoHistorySeeder.class));
     }
 
-    // Chạy profile test mặc định mà không bật cờ dippie.seed-demo-data thì seeder phải tắt.
+    // profile test mặc định mà không bật cờ dippie.seed-demo-data thì seeder phải nằm im
     @Test
     void testProfileRequiresExplicitOptInForSeeding() {
         new ApplicationContextRunner().withUserConfiguration(DemoAccountSeeder.class, DemoHistorySeeder.class)

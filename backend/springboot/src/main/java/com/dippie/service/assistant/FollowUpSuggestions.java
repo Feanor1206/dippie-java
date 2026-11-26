@@ -6,8 +6,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-// Sinh các nút gợi ý câu hỏi tiếp theo sau một lượt tìm kiếm.
-// Việt nhớ đừng tự đổi câu chữ trong đây nếu chưa đối chiếu IntentParser, vì một số nút bấm được parser nhận diện trực tiếp.
+// tạo mấy nút gợi ý câu hỏi tiếp theo sau mỗi lượt tìm
+// Việt đừng tự đổi câu chữ ở đây khi chưa dò lại IntentParser nha, có mấy nút parser bắt trực tiếp đó
 public final class FollowUpSuggestions {
 
     private FollowUpSuggestions() {
@@ -17,7 +17,7 @@ public final class FollowUpSuggestions {
         return build(results, results != null && results.size() > 1);
     }
 
-    // Giữ thứ tự cố định (nhân vật, đổi tập khác, cảnh sau đó) bằng LinkedHashSet để không bị lặp gợi ý.
+    // giữ đúng thứ tự (nhân vật, tập khác, cảnh sau đó) bằng LinkedHashSet cho khỏi lặp gợi ý
     public static List<String> build(List<SearchHit> results, boolean hasAlternatives) {
         if (results == null || results.isEmpty()) {
             return List.of("Gợi ý tập phim nổi bật", "Tìm phim hài gia đình");

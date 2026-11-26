@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Optional;
 
-// Bộ hàm đọc chuỗi JSON thô bằng Jackson. Mình bật FAIL_ON_TRAILING_TOKENS để chuỗi hỏng kiểu {"a":1} rác bị loại ngay thay vì bỏ qua.
+// hàm đọc chuỗi JSON thô bằng Jackson, bật FAIL_ON_TRAILING_TOKENS để chuỗi hỏng kiểu {"a":1} rác bị loại ngay
 public final class JsonText {
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
@@ -17,7 +17,7 @@ public final class JsonText {
     private JsonText() {
     }
 
-    // Trả rỗng nếu chuỗi trống hoặc sai cú pháp JSON.
+    // chuỗi trống hoặc sai cú pháp JSON thì trả rỗng
     public static Optional<JsonNode> parse(String text) {
         if (text == null || text.isBlank()) {
             return Optional.empty();
@@ -29,7 +29,7 @@ public final class JsonText {
         }
     }
 
-    // Lấy các phần tử dạng chuỗi trong một mảng JSON, bỏ qua phần tử khác kiểu.
+    // rút mấy phần tử dạng chuỗi trong mảng JSON, bỏ qua mấy kiểu khác
     public static List<String> stringList(String text) {
         return parse(text)
                 .filter(JsonNode::isArray)
@@ -40,7 +40,7 @@ public final class JsonText {
                 .orElseGet(List::of);
     }
 
-    // Đánh giá đúng/sai của một JsonNode theo thói quen truthy bên JavaScript (rỗng, null, 0 hay mảng trống đều là false).
+    // check đúng/sai của JsonNode theo kiểu truthy bên JavaScript (rỗng, null, 0 hay mảng trống đều là false)
     public static boolean isTruthy(JsonNode node) {
         if (node == null || node.isNull() || node.isMissingNode()) {
             return false;

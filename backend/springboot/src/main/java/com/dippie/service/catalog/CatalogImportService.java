@@ -27,8 +27,8 @@ import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
-// Facade điều phối trọn luồng nhập danh mục từ kiểm tra, ghi CSDL, đồng bộ chỉ mục tới phát CatalogImportedEvent cho các listener.
-// Mình để Propagation.NOT_SUPPORTED và khóa bằng ReentrantLock để transaction DB commit xong hẳn rồi mới đồng bộ chỉ mục và bắn sự kiện.
+// kiểu Facade ôm trọn luồng nhập danh mục từ kiểm tra, ghi DB, đồng bộ chỉ mục tới bắn CatalogImportedEvent cho mấy listener
+// để Propagation.NOT_SUPPORTED kèm khóa ReentrantLock cho transaction DB commit xong hẳn rồi mới đồng bộ chỉ mục với bắn event
 @Service
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class CatalogImportService {
@@ -54,7 +54,7 @@ public class CatalogImportService {
         this.events = events;
     }
 
-    // Kiểm tra gói JSON và ước lượng số thay đổi ở chế độ chỉ đọc.
+    // kiểm tra gói JSON rồi ước lượng số thay đổi ở chế độ chỉ đọc
     @Transactional(readOnly = true)
     public CatalogValidation validate(CatalogDocument input) {
         JsonNode document = input.readOnlyJson();
@@ -63,7 +63,7 @@ public class CatalogImportService {
         return CatalogValidation.valid(identity, hash, diff.calculate(document, identity, hash, false).counts());
     }
 
-    // Xếp hàng các lần nhập qua catalogLock; chỉ đẩy chỉ mục và phát CatalogImportedEvent sau khi DB đã commit có thay đổi.
+    // xếp hàng từng đợt nhập qua catalogLock, chỉ đẩy chỉ mục với bắn CatalogImportedEvent sau khi DB commit xong và có thay đổi
     public CatalogImportResult importPackage(CatalogDocument input) {
         String username = currentViewer.find().filter(Viewer::isAdmin).map(Viewer::username).orElse(null);
         return withLock(() -> {
@@ -77,18 +77,18 @@ public class CatalogImportService {
         });
     }
 
-    // Lấy lịch sử các gói đã nhập, mới nhất lên đầu.
+    // lấy lịch sử mấy gói đã nhập, mới nhất xếp lên đầu
     @Transactional(readOnly = true)
     public List<CatalogPackageView> history() {
         return packages.findAllByOrderByImportedAtDesc().stream().map(CatalogPackageView::from).toList();
     }
 
-    // Đọc danh sách snapshot dưới khóa chung để không đọc trúng lúc một đợt nhập đang ghi dở.
+    // đọc danh sách snapshot dưới khóa chung kẻo đọc dính lúc một đợt nhập đang ghi dở
     public List<CatalogSnapshotView> snapshots() {
         return withLock(snapshots::list);
     }
 
-    // Rà soát các snapshot còn dang dở dưới khóa chung để tránh chạy chồng với luồng nhập.
+    // rà mấy snapshot còn dang dở dưới khóa chung kẻo chạy đè lên luồng nhập
     public void reconcilePending() {
         withLock(() -> {
             snapshots.reconcilePending();
@@ -96,7 +96,7 @@ public class CatalogImportService {
         });
     }
 
-    // Đồng bộ lại snapshot mới nhất dưới khóa chung.
+    // đồng bộ lại snapshot mới nhất dưới khóa chung
     public CatalogSnapshotView retrySnapshot(String id) {
         return withLock(() -> snapshots.retry(id));
     }
@@ -126,7 +126,7 @@ public class CatalogImportService {
         }
     }
 
-    // Phân loại mã lỗi SQL về deadlock, trùng khóa duy nhất hoặc sai kiểu dữ liệu để trả lỗi HTTP đúng ngữ cảnh.
+    // tách mã lỗi SQL về deadlock, trùng khóa unique hay sai kiểu dữ liệu để trả mã HTTP đúng bệnh
     private static DomainException translateIntegrityFailure(DataIntegrityViolationException exception) {
         if (exception.getMostSpecificCause() instanceof SQLException sql) {
             int code = sql.getErrorCode();

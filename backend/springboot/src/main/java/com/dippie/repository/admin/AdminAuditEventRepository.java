@@ -6,9 +6,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-// Repository thao tác với bảng admin_audit_events.
+// repo cho bảng admin_audit_events
 public interface AdminAuditEventRepository extends JpaRepository<AdminAuditEvent, Long> {
 
-    // Sắp xếp theo thời gian tạo giảm dần kèm id giảm dần để các bản ghi trùng giây không bị nhảy thứ tự khi chuyển trang.
+    // sort theo createdAt giảm dần kèm id giảm dần kẻo mấy dòng trùng giây bị nhảy thứ tự lúc lật trang
     Page<AdminAuditEvent> findAllByOrderByCreatedAtDescIdDesc(Pageable pageable);
 }

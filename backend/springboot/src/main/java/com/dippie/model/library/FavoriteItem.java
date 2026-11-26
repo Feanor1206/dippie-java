@@ -16,7 +16,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
-// Entity ánh xạ bảng favorite_items, kế thừa LibraryEntry để dùng lại các cột chung và khai báo riêng khóa ngoại, unique key.
+// bảng favorite_items, kế thừa LibraryEntry lấy mấy cột chung rồi khai báo riêng khóa ngoại với unique key
 @Entity
 @Table(
         name = "favorite_items",

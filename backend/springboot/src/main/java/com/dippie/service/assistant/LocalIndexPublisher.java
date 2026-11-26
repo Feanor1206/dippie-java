@@ -6,7 +6,7 @@ import com.dippie.service.catalog.CatalogIndexPublisher;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
 
-// Lớp Adapter nối CatalogIndexPublisher từ gói import sang LocalCatalogSearch để luồng nhập dữ liệu không dính chặt vào chi tiết tìm kiếm.
+// kiểu Adapter nối CatalogIndexPublisher bên gói import sang LocalCatalogSearch để luồng nhập khỏi dính chặt vào tầng tìm kiếm
 @Component
 public class LocalIndexPublisher implements CatalogIndexPublisher {
 

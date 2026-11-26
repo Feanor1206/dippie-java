@@ -3,7 +3,7 @@ package com.dippie.desktop.dao;
 import com.dippie.desktop.db.JdbcDatabase;
 import com.dippie.desktop.model.catalog.CatalogRows.Season;
 
-// DAO chỉ đọc bảng catalog_seasons, giữ cột number dạng Integer vì có mùa không đánh số.
+// DAO đọc catalog_seasons, giữ cột number kiểu Integer vì có mùa không đánh số
 public final class SeasonDao extends AbstractJdbcDao<Season, String> {
     public SeasonDao(JdbcDatabase db) {
         super(db, "catalog_seasons", "id, series_id, number, title, synopsis",

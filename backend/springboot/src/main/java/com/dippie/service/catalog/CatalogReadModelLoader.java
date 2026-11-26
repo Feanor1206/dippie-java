@@ -46,8 +46,8 @@ import java.util.stream.Collectors;
 
 import static com.dippie.service.catalog.CatalogSearchService.firstText;
 
-// Gom toàn bộ dữ liệu danh mục một lần từ CSDL trong giao dịch chỉ đọc REPEATABLE_READ + REQUIRES_NEW để dựng CatalogReadModel.
-// Chạy tách hẳn giao dịch mới ở đây giúp bản chụp luôn thấy cùng một mốc dữ liệu khi import đang diễn ra và tránh đổ tải join nặng vào từng request người dùng.
+// kéo toàn bộ danh mục 1 lượt từ DB trong transaction chỉ đọc REPEATABLE_READ + REQUIRES_NEW để dựng CatalogReadModel
+// tách hẳn transaction mới để bản chụp luôn thấy cùng 1 mốc data dù đang import, đỡ đổ tải join nặng lên từng request user
 @Component
 public class CatalogReadModelLoader {
 
@@ -78,10 +78,10 @@ public class CatalogReadModelLoader {
         this.entities = entities;
     }
 
-    // Tải các bảng danh mục, tính quyền hiển thị theo chuỗi cha rồi dựng đủ dữ liệu cho tìm kiếm, thẻ phim và gợi ý.
+    // kéo mấy bảng danh mục lên, tính quyền hiển thị theo chuỗi cha rồi dựng đủ data cho tìm kiếm, thẻ phim với gợi ý
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public CatalogReadModel load() {
-        // Đọc một lượt các bảng chính và lập map tra cứu theo mã.
+        // đọc một lượt mấy bảng chính rồi lập map tra theo mã
         List<CatalogSeries> seriesRows = series.findAll();
         Map<String, CatalogSeries> seriesById = byId(seriesRows);
         List<CatalogSeason> seasonRows = seasons.findAll();
@@ -104,7 +104,7 @@ public class CatalogReadModelLoader {
         Map<String, List<String>> externalEpisodeAssetIds = new HashMap<>();
         Map<String, YoutubeSource.EpisodeMetadata> episodeMetadata = new HashMap<>(episodeRows.size());
 
-        // Tách bộ phim công khai với bộ phim ẩn và đẩy vào danh sách tìm kiếm.
+        // tách bộ công khai với bộ ẩn rồi đẩy vào danh sách tìm kiếm
         for (CatalogSeries row : seriesRows) {
             boolean visible = row.isPublished();
             (visible ? visibleSeries : hiddenMovies).add(row.getId());
@@ -115,7 +115,7 @@ public class CatalogReadModelLoader {
                     names.characters(row.getCharacterIdsJson()), List.of(), row.getSynopsis(), row.getKeywordsJson()));
         }
 
-        // Lọc quyền xem từng tập dựa trên trạng thái ready và chuỗi bộ/mùa cha, đồng thời tách riêng các tập bị khóa nhúng YouTube.
+        // lọc quyền xem từng tập theo trạng thái ready với chuỗi bộ/mùa cha, tiện tách riêng mấy tập bị khóa nhúng YouTube
         for (CatalogEpisode row : episodeRows) {
             String id = row.getId();
             boolean visibleParents = CatalogVisibility.followsPublishedParents(row.getSeriesId(), row.getSeasonId(),
@@ -125,8 +125,8 @@ public class CatalogReadModelLoader {
             boolean ready = PublicationStatus.READY_VALUE.equals(row.getPublicationStatus());
             if (ready && visibleParents) {
                 visibleEpisodes.add(id);
-                // Việt để ý chỗ này nhé: tập chỉ phát được khi có nguồn YouTube nhúng được hoặc có ít nhất một file video hợp lệ cho vai trò tương ứng,
-                // chứ không tự mặc định true nữa kẻo next-episode gợi ý nhầm mấy tập youtube_watch hay file bị tắt.
+                // Việt để ý chỗ này nha, tập chỉ phát được khi có YouTube nhúng được hoặc ít nhất 1 file video hợp lệ theo đúng vai trò
+                // đừng tự mặc định true kẻo next-episode gợi ý nhầm mấy tập youtube_watch hay file đã tắt
                 boolean embeddableYoutube = YoutubeSource.embeddableFrom(row.getRawJson()) != null;
                 Boolean fileMemberAccessible = coverage.playable().get(id);
                 boolean memberAccessible = embeddableYoutube || Boolean.TRUE.equals(fileMemberAccessible);
@@ -160,13 +160,13 @@ public class CatalogReadModelLoader {
             }
         }
 
-        // Nạp tiếp các phân đoạn và phân cảnh con gắn với tập phim hợp lệ.
+        // kéo tiếp mấy phân đoạn với phân cảnh con thuộc các tập hợp lệ
         var segmentRows = segments.findAll();
         addChildSearchRows(search, seriesById, episodesById, searchableEpisodes, coverage, segmentRows);
         Set<String> episodesWithSegments = segmentRows.stream().filter(CatalogRecord::isPublished)
                 .map(CatalogSegment::getEpisodeId).collect(Collectors.toSet());
 
-        // Ghép hồ sơ gợi ý, danh sách thể loại và thẻ tóm tắt cho từng bộ phim công khai.
+        // ghép hồ sơ gợi ý, danh sách thể loại với thẻ tóm tắt cho từng bộ công khai
         var profiles = new CatalogRecommendationRows(entities, moviePresentations).load(episodeRows, seriesById,
                 seasonsById, row -> visibleEpisodes.contains(row.getId())
                         && coverage.recommends(row, episodeMetadata.getOrDefault(row.getId(), YoutubeSource.EpisodeMetadata.EMPTY)),
@@ -188,7 +188,7 @@ public class CatalogReadModelLoader {
     private void addChildSearchRows(List<SearchRow> search, Map<String, CatalogSeries> seriesById,
             Map<String, CatalogEpisode> episodesById, Set<String> searchableEpisodes, AssetCoverage coverage,
             List<CatalogSegment> segmentRows) {
-        // Đưa phân đoạn đã xuất bản vào danh sách tìm kiếm.
+        // đẩy mấy phân đoạn đã xuất bản vào danh sách tìm kiếm
         for (var segment : segmentRows) {
             CatalogEpisode episode = episodesById.get(segment.getEpisodeId());
             if (episode != null && seriesById.containsKey(episode.getSeriesId())) {
@@ -200,7 +200,7 @@ public class CatalogReadModelLoader {
                         segment.getPlotFactsJson(), segment.getKeywordsJson()));
             }
         }
-        // Với phân cảnh, quyền xem còn phụ thuộc tệp media gắn với cảnh có mở cho khách hoặc thành viên hay không.
+        // riêng phân cảnh thì quyền xem còn tùy file media đi kèm có mở cho khách hay thành viên không
         for (var scene : scenes.findAll()) {
             CatalogEpisode episode = episodesById.get(scene.getEpisodeId());
             if (episode != null && seriesById.containsKey(episode.getSeriesId())) {
@@ -216,7 +216,7 @@ public class CatalogReadModelLoader {
     }
 
     private AssetCoverage assetCoverage() {
-        // Đối chiếu danh sách media_assets trong DB với tệp video thực sự tồn tại trên ổ đĩa.
+        // đối chiếu media_assets trong DB với file video đang thật sự có ngoài ổ đĩa
         List<CatalogMediaAsset> assetRows = assets.findAll();
         Map<String, Boolean> availableVideoPublic = assetRows.isEmpty()
                 ? Map.of() : mediaAvailability.availableVideoAssets();
@@ -227,7 +227,7 @@ public class CatalogReadModelLoader {
         Map<String, Boolean> playable = new HashMap<>();
         Map<String, List<String>> publicFileIds = new HashMap<>();
 
-        // Chia nhóm quyền công khai/thành viên và gom những tập có tệp phủ trọn tập (full_episode).
+        // chia nhóm quyền public hay thành viên rồi gom mấy tập có file phủ trọn tập (full_episode)
         for (CatalogMediaAsset asset : assetRows) {
             String id = asset.getId();
             boolean enabled = asset.isEnabled();
@@ -282,11 +282,11 @@ public class CatalogReadModelLoader {
         return rows.stream().collect(Collectors.toMap(CatalogRecord::getId, Function.identity()));
     }
 
-    // Tổng hợp quyền truy cập media và danh sách tệp video công khai theo từng tập.
+    // gom quyền truy cập media với danh sách file video public theo từng tập
     private record AssetCoverage(Set<String> publicAssets, Set<String> memberAssets, Set<String> declaredEpisodes,
             Set<String> recommendedEpisodes, Map<String, Boolean> playable, Map<String, List<String>> publicFileIds) {
 
-        // Tập được đưa vào gợi ý khi có tệp video công khai đủ tập, hoặc là tập không khai báo media nội bộ nào (ví dụ chỉ phát qua YouTube).
+        // tập được lên gợi ý khi có file video public đủ tập, hoặc tập không khai báo media nội bộ nào (kiểu chỉ xem qua YouTube)
         boolean recommends(CatalogEpisode episode, YoutubeSource.EpisodeMetadata metadata) {
             return recommendedEpisodes.contains(episode.getId())
                     || (!declaredEpisodes.contains(episode.getId()) && !metadata.hasPrimaryMediaAsset());

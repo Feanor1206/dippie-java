@@ -8,10 +8,10 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
-// Kho truy vấn tài nguyên media trong bảng catalog_media_assets.
+// repo cho bảng catalog_media_assets
 public interface CatalogMediaAssetRepository extends JpaRepository<CatalogMediaAsset, String> {
 
-    // Lấy toàn bộ media asset nối với một tập phim qua bảng catalog_episode_assets, sắp theo id.
+    // lấy hết media asset nối với một tập qua catalog_episode_assets, xếp theo id
     @Query("""
             select asset from CatalogMediaAsset asset
             where asset.id in (

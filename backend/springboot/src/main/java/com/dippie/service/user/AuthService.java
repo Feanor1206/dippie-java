@@ -28,15 +28,13 @@ import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.Optional;
 
-// Facade xử lý đăng nhập, đăng ký và tra cứu tài khoản hiện tại, có giới hạn tần suất và chống dò tài khoản.
+// kiểu Facade lo đăng nhập, đăng ký với lấy user hiện tại, có rate limit và chống dò tài khoản
 @Service
 public class AuthService {
 
     public static final String EMAIL_IN_USE_MESSAGE = "Email này đã có người dùng.";
     public static final String DUPLICATE_ACCOUNT_MESSAGE = "Tên đăng nhập hoặc email này đã có người dùng.";
-    private static final String RATE_LIMIT_MESSAGE = "Bạn đã thử quá nhiều lần. Hãy đợi một phút rồi thử lại.";
     private static final String INVALID_CREDENTIALS_MESSAGE = "Tên đăng nhập hoặc mật khẩu chưa đúng.";
-    private static final String ACCOUNT_DISABLED_MESSAGE = "Tài khoản này đang bị khóa. Hãy liên hệ quản trị viên để được hỗ trợ.";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -60,12 +58,12 @@ public class AuthService {
         this.loginRateLimiter = loginRateLimiter;
         this.currentViewer = currentViewer;
         this.clock = clock;
-        // Việt đừng xóa dòng này nhé: mình băm sẵn một chuỗi giả để khi login sai username vẫn chạy BCrypt,
-        // giữ thời gian trả lỗi tương đương lúc tìm thấy user để khó dò tài khoản tồn tại.
+        // Việt đừng xóa dòng này nhé, băm sẵn chuỗi giả để login sai username vẫn phải chạy BCrypt
+        // giữ thời gian trả lỗi ngang lúc thấy user cho khó dò xem tài khoản có tồn tại không
         this.dummyPasswordHash = passwordEncoder.encode("dippie-dummy-timing-guard-2026");
     }
 
-    // Xác thực đăng nhập bằng username hoặc email, kiểm tra trạng thái khóa sau khi khớp mật khẩu rồi phát hành JWT.
+    // check đăng nhập bằng username hay email, đúng mật khẩu rồi mới kiểm tra bị khóa không rồi cấp JWT
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request, String clientIp) {
         LoginRequest payload = request == null ? new LoginRequest(null, null, null) : request;
@@ -77,12 +75,12 @@ public class AuthService {
         if (identifier.isEmpty() || password.isEmpty()) {
             throw new InvalidRequestException("Hãy nhập đủ tên đăng nhập và mật khẩu.");
         }
-        // Chặn mật khẩu quá 72 byte UTF-8 sớm để tránh BCrypt tự cắt chuỗi.
+        // chặn pass quá 72 byte UTF-8 từ sớm kẻo BCrypt tự cắt chuỗi
         if (PasswordPolicy.DEFAULT.exceedsMaxBytes(password)) {
             throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
         }
 
-        // Chỉ hạ chữ thường khi chuỗi có ký tự @ (email); không tìm thấy user vẫn chạy BCrypt với dummyPasswordHash.
+        // chỉ hạ thường khi chuỗi có @ (email), không thấy user vẫn chạy BCrypt với dummyPasswordHash
         String emailLookup = identifier.contains("@") ? identifier.toLowerCase(Locale.ROOT) : identifier;
         Optional<User> candidate = userRepository.findByUsernameOrEmailOrderByIdAsc(identifier, emailLookup).stream()
                 .findFirst();
@@ -95,16 +93,16 @@ public class AuthService {
             throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
         }
 
-        // Chỉ báo tài khoản bị khóa sau khi đã đúng mật khẩu để tránh lộ trạng thái khóa cho người nhập bừa.
+        // đúng mật khẩu rồi mới báo tài khoản bị khóa kẻo lộ trạng thái khóa cho người nhập bừa
         if (!user.isEnabled()) {
-            throw new ForbiddenException(ACCOUNT_DISABLED_MESSAGE);
+            throw new ForbiddenException("Tài khoản này đang bị khóa. Hãy liên hệ quản trị viên để được hỗ trợ.");
         }
 
         String token = jwtService.issueLoginToken(user.getUsername(), user.getTokenVersion());
         return AuthResponse.of(user, token);
     }
 
-    // Tạo tài khoản ROLE_USER mới sau khi kiểm tra đồng ý điều khoản, dữ liệu hợp lệ và chống trùng tài khoản.
+    // tạo tài khoản ROLE_USER mới sau khi check đã đồng ý điều khoản, dữ liệu ổn và không trùng
     @Transactional
     public AuthResponse register(RegisterRequest request, String clientIp) {
         RegisterRequest payload = request == null ? new RegisterRequest(null, null, null, null, null) : request;
@@ -115,19 +113,19 @@ public class AuthService {
             throw new InvalidRequestException("Bạn cần đồng ý với Điều khoản sử dụng và Chính sách quyền riêng tư.");
         }
 
-        // Username bị cấm chứa @ trong User.validateUsername để không bao giờ đụng với luồng đăng nhập bằng email.
+        // User.validateUsername cấm dấu @ trong username để khỏi bao giờ đụng luồng login bằng email
         String username = User.validateUsername(rawUsername);
         String password = payload.rawPassword();
         String email = User.validateEmail(payload.rawEmail());
         String resolvedFullName = User.resolveFullName(payload.fullName(), username);
         PasswordPolicy.DEFAULT.validateUserPassword(password);
 
-        // Dùng chung một câu lỗi cho trùng username hoặc email để người ngoài không dò được trường nào đã tồn tại.
+        // trả chung 1 câu lỗi khi trùng username hay email để khỏi ai dò được trường nào đã có
         if (userRepository.existsByUsername(username) || userRepository.existsByEmail(email)) {
             throw new InvalidRequestException(DUPLICATE_ACCOUNT_MESSAGE);
         }
 
-        // Gọi saveAndFlush rồi bắt DataIntegrityViolationException để hai request đăng ký trùng chạy cùng lúc vẫn trả 400 sạch.
+        // dùng saveAndFlush rồi bắt DataIntegrityViolationException để 2 request đăng ký trùng cùng lúc vẫn trả 400 gọn
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
         User user = new User(
                 username,
@@ -154,7 +152,7 @@ public class AuthService {
         return UserProfileResponse.from(requireCurrentUser());
     }
 
-    // Nạp lại bản ghi User mới nhất từ DB theo userId trong SecurityContext.
+    // kéo lại bản ghi User mới nhất từ DB theo userId trong SecurityContext
     @Transactional(readOnly = true)
     public User requireCurrentUser() {
         Viewer viewer = currentViewer.require();
@@ -165,7 +163,7 @@ public class AuthService {
     private void enforceRateLimit(String clientIp, String identifier) {
         long retryAfter = loginRateLimiter.retryAfterSeconds(clientIp, identifier);
         if (retryAfter > 0) {
-            throw new TooManyRequestsException(RATE_LIMIT_MESSAGE, retryAfter);
+            throw new TooManyRequestsException("Bạn đã thử quá nhiều lần. Hãy đợi một phút rồi thử lại.", retryAfter);
         }
     }
 

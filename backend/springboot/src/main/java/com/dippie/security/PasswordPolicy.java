@@ -4,18 +4,18 @@ import com.dippie.exception.InvalidRequestException;
 
 import java.nio.charset.StandardCharsets;
 
-// Quy tắc kiểm tra mật khẩu: cấm bỏ trống hoặc toàn khoảng trắng, đủ độ dài tối thiểu và không vượt 72 byte UTF-8 vì BCrypt tự cắt phần thừa sau byte thứ 72.
+// quy tắc mật khẩu: cấm trống hoặc toàn dấu cách, đủ độ dài tối thiểu và không quá 72 byte UTF-8 vì BCrypt tự cắt sau byte 72
 public record PasswordPolicy(int minRegisterLength, int minAdminLength, int maxUtf8Bytes) {
 
     public static final PasswordPolicy DEFAULT = new PasswordPolicy(6, 16, 72);
     public static final String BLANK_PASSWORD_MESSAGE = "Mật khẩu không được để trống hay chỉ có khoảng trắng.";
 
-    // Đếm theo byte UTF-8 thay vì số ký tự vì chữ tiếng Việt có dấu tốn từ 2 đến 3 byte.
+    // đếm theo byte UTF-8 thay vì số ký tự vì chữ tiếng Việt có dấu tốn 2 đến 3 byte
     public boolean exceedsMaxBytes(String password) {
         return password != null && password.getBytes(StandardCharsets.UTF_8).length > maxUtf8Bytes;
     }
 
-    // Kiểm tra mật khẩu khi đăng ký hoặc user tự đổi mật khẩu.
+    // check mật khẩu lúc đăng ký hoặc user tự đổi mật khẩu
     public void validateUserPassword(String password) {
         if (password == null || password.isBlank()) {
             throw new InvalidRequestException(BLANK_PASSWORD_MESSAGE);
@@ -28,7 +28,7 @@ public record PasswordPolicy(int minRegisterLength, int minAdminLength, int maxU
         }
     }
 
-    // Giữ chuẩn tối thiểu 16 ký tự mỗi khi admin đổi hoặc đặt lại mật khẩu, tránh tự hạ xuống mức yếu.
+    // giữ tối thiểu 16 ký tự mỗi khi admin đổi hay đặt lại mật khẩu kẻo tự hạ xuống mức yếu
     public void validateAdminPassword(String password) {
         if (password == null || password.isBlank()) {
             throw new InvalidRequestException(BLANK_PASSWORD_MESSAGE);
@@ -39,7 +39,7 @@ public record PasswordPolicy(int minRegisterLength, int minAdminLength, int maxU
         }
     }
 
-    // Kiểm tra mật khẩu admin lúc khởi tạo ứng dụng; sai thì chặn boot luôn bằng IllegalStateException.
+    // check mật khẩu admin lúc khởi động app, sai thì chặn boot luôn bằng IllegalStateException
     public void validateBootstrapPassword(String password) {
         if (password == null || password.isBlank() || password.trim().length() < minAdminLength || exceedsMaxBytes(password)) {
             throw new IllegalStateException(

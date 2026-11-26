@@ -4,23 +4,21 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.nio.file.Path;
 
-// Bộ cấu hình mail nạp từ tiền tố dippie.mail, tự điền giá trị mặc định nếu người chạy bỏ trống.
+// cấu hình mail đọc từ prefix dippie.mail, tự điền mặc định nếu bỏ trống
 @ConfigurationProperties("dippie.mail")
 public record MailProperties(String from, String publicBaseUrl, String outboxDir) {
 
-    private static final String DEFAULT_FROM = "no-reply@dippie.local";
     private static final String DEFAULT_PUBLIC_BASE_URL = "http://localhost:3000";
-    private static final String DEFAULT_OUTBOX_DIR = "target/dippie-mail";
 
     public MailProperties {
-        from = (from == null || from.isBlank()) ? DEFAULT_FROM : from.trim();
+        from = (from == null || from.isBlank()) ? "no-reply@dippie.local" : from.trim();
         publicBaseUrl = (publicBaseUrl == null || publicBaseUrl.isBlank())
                 ? DEFAULT_PUBLIC_BASE_URL
                 : publicBaseUrl.trim();
-        outboxDir = (outboxDir == null || outboxDir.isBlank()) ? DEFAULT_OUTBOX_DIR : outboxDir.trim();
+        outboxDir = (outboxDir == null || outboxDir.isBlank()) ? "target/dippie-mail" : outboxDir.trim();
     }
 
-    // Cắt dấu gạch chéo ở cuối publicBaseUrl để lúc ghép đường dẫn đặt lại mật khẩu không bị thành hai dấu "//".
+    // cắt dấu / ở cuối publicBaseUrl kẻo lúc ghép link đặt lại mật khẩu bị dính hai dấu "//"
     public String normalizedBaseUrl() {
         String baseUrl = publicBaseUrl;
         while (baseUrl.endsWith("/")) {

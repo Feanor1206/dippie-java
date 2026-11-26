@@ -9,7 +9,7 @@ import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Test đơn vị cho LoginRateLimiter: giới hạn độc lập theo IP, theo tài khoản và không bị xóa bộ đếm khi spam key rác.
+// test LoginRateLimiter đếm riêng theo IP với theo nick, spam key rác cũng không xóa mất bộ đếm
 class LoginRateLimiterTest {
 
     @Test
@@ -29,7 +29,7 @@ class LoginRateLimiterTest {
         assertThat(limiter.retryAfterSeconds("127.0.0.1", "alice")).isZero();
     }
 
-    // Chặn kiểu dò mật khẩu dàn trải từ một IP sang nhiều tài khoản khác nhau.
+    // chặn kiểu 1 IP đi dò mật khẩu dàn trải qua nhiều nick
     @Test
     void blocksPasswordSprayingAcrossDifferentUsernamesFromSameIp() {
         MutableClock clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
@@ -41,11 +41,11 @@ class LoginRateLimiterTest {
         assertThat(limiter.retryAfterSeconds("10.0.0.1", "alice")).isZero();
         assertThat(limiter.retryAfterSeconds("10.0.0.1", "bob")).isZero();
         assertThat(limiter.retryAfterSeconds("10.0.0.1", "charlie")).isPositive();
-        // IP khác vẫn thử được tài khoản chưa bị khóa.
+        // IP khác vẫn vào thử nick chưa bị khóa bình thường
         assertThat(limiter.retryAfterSeconds("10.0.0.2", "charlie")).isZero();
     }
 
-    // Chặn kiểu dò mật khẩu phân tán vào cùng một tài khoản từ nhiều IP khác nhau.
+    // chặn kiểu nhiều IP cùng xúm vào dò mật khẩu 1 nick
     @Test
     void blocksDistributedBruteForceAgainstSingleAccountAcrossDifferentIps() {
         MutableClock clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
@@ -59,7 +59,7 @@ class LoginRateLimiterTest {
         assertThat(limiter.retryAfterSeconds("198.51.100.3", "victim")).isPositive();
     }
 
-    // Kẻ tấn công đẩy hàng loạt tài khoản rác vào đầy bảng vẫn không thể đá mục tiêu đang bị khóa ra khỏi bộ nhớ.
+    // Việt để ý chỗ này, spam nick rác cho đầy bảng vẫn không đá được mục tiêu đang bị khóa ra khỏi RAM nha
     @Test
     void preventsLruEvictionBypassOfBlockedTargets() {
         MutableClock clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
@@ -68,17 +68,17 @@ class LoginRateLimiterTest {
                 clock
         );
 
-        // Cho tài khoản "victim" chạm trần 2 lần thử.
+        // cho nick "victim" chạm trần 2 lần thử trước
         assertThat(limiter.retryAfterSeconds("198.51.100.1", "victim")).isZero();
         assertThat(limiter.retryAfterSeconds("198.51.100.2", "victim")).isZero();
         assertThat(limiter.retryAfterSeconds("198.51.100.3", "victim")).isPositive();
 
-        // Spam nhiều tài khoản giả vượt sức chứa maxClients = 3 để thử đẩy "victim" ra.
+        // bơm đống nick rác vượt maxClients = 3 để thử đẩy "victim" ra
         for (int i = 0; i < 20; i++) {
             limiter.retryAfterSeconds("198.51.100." + (10 + i), "dummy-" + i);
         }
 
-        // "victim" vẫn phải tiếp tục bị chặn thay vì được reset bộ đếm.
+        // "victim" vẫn phải nằm sổ đen, đừng để bị reset bộ đếm là toang
         assertThat(limiter.retryAfterSeconds("198.51.100.99", "victim")).isPositive();
         assertThat(limiter.trackedAccountCount()).isLessThanOrEqualTo(3);
     }

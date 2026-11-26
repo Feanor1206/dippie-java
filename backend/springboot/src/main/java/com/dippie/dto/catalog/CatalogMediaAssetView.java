@@ -4,7 +4,7 @@ import com.dippie.model.catalog.CatalogMediaAsset;
 
 import java.time.LocalDateTime;
 
-// Bản ghi trả về cho một media asset, gắn thêm cờ available báo file vật lý ngoài đĩa đã sẵn sàng phát chưa.
+// view của một media asset, gắn thêm cờ available xem file ngoài đĩa có sẵn để phát chưa
 public record CatalogMediaAssetView(
         String id, String contentType, String role, String editionLabel, String spokenLanguagesJson,
         String embeddedSubtitleLanguagesJson, String storageProvider, String storageKey, String relativePath,

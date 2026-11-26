@@ -12,7 +12,7 @@ import com.dippie.desktop.model.DashboardSnapshot;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// Service cho tab Tổng quan, gom số liệu, bảng xếp hạng và phân bố điểm trong một lượt đọc DB.
+// service cho tab Tổng quan, gom số liệu, bảng xếp hạng với phân bố điểm trong 1 lượt đọc DB
 public final class DashboardService {
     private final JdbcDatabase db;
     private final SeriesDao seriesDao;
@@ -31,7 +31,7 @@ public final class DashboardService {
         this.watchProgressDao = watchProgressDao;
     }
 
-    // Điền sẵn đủ 10 mức điểm từ 1 đến 10 bằng 0 trước khi đổ số thật vào để biểu đồ cột không bị khuyết cột.
+    // điền sẵn đủ 10 mức điểm từ 1 đến 10 bằng 0 trước khi đổ số thật vào kẻo biểu đồ bị khuyết cột
     public DashboardSnapshot load() {
         return db.read(connection -> {
             var counts = new DashboardCounts(seriesDao.count(connection), episodeDao.count(connection), userDao.count(connection),

@@ -6,7 +6,7 @@ import com.dippie.model.assistant.SearchHit;
 
 import java.util.List;
 
-// Khối thông tin đầu lượt chat gửi trong sự kiện SSE "metadata" trước khi bắt đầu phát từng đoạn chữ.
+// dữ liệu mở màn gửi trong SSE "metadata" trước lúc stream từng chữ
 public record ChatMetadata(
         List<SearchHit> recommendedMovies,
         List<String> followUps,

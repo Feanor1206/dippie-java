@@ -23,17 +23,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-// Làm phẳng cây JSON bản xuất danh mục (bộ, mùa, tập, phân đoạn, cảnh và phụ đề) thành danh sách SearchDocument cho LexicalIndex.
-// Ngay từ bước đọc này mình đã lọc bỏ bản ghi chưa xuất bản và tệp media không công khai (hoặc bị tắt) để không bao giờ lộ phim ẩn qua tìm kiếm.
+// trải phẳng cây JSON danh mục (bộ, mùa, tập, phân đoạn, cảnh với phụ đề) thành danh sách SearchDocument cho LexicalIndex
+// lọc sẵn bản ghi chưa xuất bản với file media không công khai hay bị tắt ngay lúc đọc kẻo lộ phim ẩn qua tìm kiếm
 public final class SearchCatalogFlattener {
 
     private static final long DIALOGUE_STRIDE = 22_500;
-    private static final long DIALOGUE_WINDOW = 45_000;
-    private static final String TYPE_SERIES = "series";
-    private static final String TYPE_EPISODE = "episode";
     private static final String TYPE_SEGMENT = "segment";
     private static final String TYPE_SCENE = "scene";
-    private static final String TYPE_DIALOGUE = "dialogue";
 
     private final Map<String, JsonNode> series;
     private final Map<String, JsonNode> seasons;
@@ -108,13 +104,13 @@ public final class SearchCatalogFlattener {
         trackCues = List.copyOf(parsedTracks);
     }
 
-    // Chuyển toàn bộ cây JSON bản xuất thành danh sách tài liệu phẳng sẵn sàng đưa vào chỉ mục.
+    // trải hết cây JSON xuất ra thành danh sách SearchDocument phẳng để đẩy thẳng vào chỉ mục
     public static List<SearchDocument> flatten(JsonNode catalog) {
         return new SearchCatalogFlattener(catalog).documents(catalog);
     }
 
     private List<SearchDocument> documents(JsonNode catalog) {
-        // Đưa lần lượt bộ phim, tập, phân đoạn và cảnh thuộc các cha công khai vào danh sách tài liệu.
+        // gom lần lượt bộ, tập, phân đoạn với cảnh có cha công khai vào danh sách tài liệu
         List<SearchDocument> documents = new ArrayList<>();
         series.values().forEach(row -> documents.add(series(row)));
         Map<String, SearchDocument> episodeDocuments = new HashMap<>();
@@ -132,7 +128,7 @@ public final class SearchCatalogFlattener {
                 documents.add(scene(row));
             }
         }
-        // Cắt phụ đề của từng đường track theo đúng khoảng coverage của mỗi tập phim.
+        // cắt phụ đề từng track theo đúng đoạn coverage của mỗi tập
         for (TrackCues track : trackCues) {
             for (Coverage coverage : coverageByAsset.getOrDefault(track.assetId(), List.of())) {
                 addDialogue(documents, episodeDocuments.get(coverage.episodeId()), track, coverage);
@@ -149,7 +145,7 @@ public final class SearchCatalogFlattener {
                 distinct(ids), resolve(ids, genres), localizedGenres(ids));
         var names = new ArrayList<>(aliases(row));
         add(names, text(row, "original_title"));
-        return document(row, TYPE_SERIES, placement, title, distinct(names), null, null, null,
+        return document(row, "series", placement, title, distinct(names), null, null, null,
                 CatalogDisplayText.series(title), CatalogDisplayText.SERIES, null, null, null, Timecode.NONE);
     }
 
@@ -176,7 +172,7 @@ public final class SearchCatalogFlattener {
         var genreIds = inheritedGenreIds(row, parentSeries);
         var placement = new Placement(seriesId, text(parentSeries, "title", ""), seasonId, season, null, null, number,
                 null, airDate, year, distinct(genreIds), resolve(genreIds, genres), localizedGenres(genreIds));
-        return document(row, TYPE_EPISODE, placement, title, distinct(aliases), plotFacts(row), null, null,
+        return document(row, "episode", placement, title, distinct(aliases), plotFacts(row), null, null,
                 CatalogDisplayText.episode(number, title), EpisodeRuntime.label(duration), duration,
                 primaryAsset(id, row), null, Timecode.NONE);
     }
@@ -291,14 +287,14 @@ public final class SearchCatalogFlattener {
 
     private static void addDialogue(List<SearchDocument> documents, SearchDocument episode, TrackCues track,
             Coverage coverage) {
-        // Chỉ giữ các câu phụ đề nằm giao với khoảng thời gian của tập trên tệp media rồi sắp tăng dần.
+        // giữ mấy câu phụ đề giao với khoảng thời gian của tập trên file media rồi sắp tăng dần
         List<Cue> cues = track.cues().stream().filter(cue -> cue.start() >= 0 && cue.start() < cue.end()
                         && cue.end() > coverage.sourceIn() && (coverage.sourceOut() == null || cue.start() < coverage.sourceOut()))
                 .sorted(Comparator.comparingLong(Cue::start).thenComparingLong(Cue::end)).toList();
         if (cues.isEmpty()) {
             return;
         }
-        // Trượt cửa sổ 45 giây bước 22.5 giây để câu thoại vắt qua ranh giới vẫn ghép chung được, và dùng tập seen tránh nhân đôi cửa sổ y hệt nhau.
+        // trượt cửa sổ 45 giây bước 22.5 giây để câu thoại vắt qua mép vẫn gom chung được, thêm tập seen khỏi nhân đôi cửa sổ giống hệt
         long first = cues.getFirst().start() / DIALOGUE_STRIDE * DIALOGUE_STRIDE;
         long last = cues.stream().mapToLong(Cue::end).max().orElseThrow();
         Set<List<Cue>> seen = new HashSet<>();
@@ -311,7 +307,7 @@ public final class SearchCatalogFlattener {
             long next = last;
             for (int i = cursor; i < cues.size(); i++) {
                 Cue cue = cues.get(i);
-                if (cue.start() - start >= DIALOGUE_WINDOW) {
+                if (cue.start() - start >= 45_000) {
                     next = Math.min(next, cue.start() / DIALOGUE_STRIDE * DIALOGUE_STRIDE - DIALOGUE_STRIDE);
                     break;
                 }
@@ -346,7 +342,7 @@ public final class SearchCatalogFlattener {
         var window = new Text(text.title(), text.synopsis(), dialogue, text.aliases(), text.characters(), text.plotFacts(),
                 text.keywords(), text.themes(), null, dialogue, null, text.characterNames());
         String id = "dialogue:" + text(track, "id", asset) + ":" + episode.id() + ":" + start;
-        return new SearchDocument(id, TYPE_DIALOGUE, placement, window, episode.runtime(), episode.durationMs(),
+        return new SearchDocument(id, "dialogue", placement, window, episode.runtime(), episode.durationMs(),
                 episode.primaryMediaAssetId(), asset, coverage.timecode(sourceStart, sourceEnd),
                 episode.comparativeAttributes(), null);
     }
@@ -366,7 +362,7 @@ public final class SearchCatalogFlattener {
         return ids.stream().map(genreLabels::get).filter(label -> label != null).distinct().toList();
     }
 
-    // Chỉ lấy bản ghi đã ở trạng thái ready hoặc dữ liệu cũ chưa có record.status; các bản ghi draft, pending, hidden đều bị bỏ qua.
+    // chỉ lấy bản ghi status ready hoặc data cũ chưa có record.status, mấy bản draft, pending, hidden bỏ hết
     private static Map<String, JsonNode> records(JsonNode catalog, String field) {
         Map<String, JsonNode> records = new LinkedHashMap<>();
         for (JsonNode row : catalog.path(field)) {
@@ -555,7 +551,7 @@ public final class SearchCatalogFlattener {
         return node.isIntegralNumber() && node.canConvertToLong() ? node.longValue() : null;
     }
 
-    // Khoảng ánh xạ thời gian giữa tệp video nguồn và dòng thời gian của một tập phim.
+    // khoảng ánh xạ thời gian giữa file video nguồn với timeline của 1 tập phim
     private record Coverage(String episodeId, long sourceIn, Long sourceOut, Long episodeIn) {
 
         boolean contains(long start) {
@@ -571,11 +567,11 @@ public final class SearchCatalogFlattener {
         }
     }
 
-    // Gom một đường phụ đề cùng mã tài nguyên media và danh sách câu đã đọc xong.
+    // gom một đường phụ đề kèm mã media với danh sách câu đã đọc xong
     private record TrackCues(JsonNode track, String assetId, List<Cue> cues) {
     }
 
-    // Một câu phụ đề đơn lẻ với mốc bắt đầu, kết thúc và nội dung gốc chưa cắt khoảng trắng.
+    // một câu phụ đề lẻ gồm mốc đầu, mốc cuối và chữ gốc chưa cắt khoảng trắng
     private record Cue(long start, long end, String rawText) {
 
         String text() {

@@ -15,13 +15,11 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 
-// Tổng hợp các chỉ số thống kê trong một giao dịch chỉ đọc và tính tỷ lệ hoàn thành phiên xem.
+// gom số liệu thống kê trong 1 transaction chỉ đọc rồi tính tỷ lệ xem hết
 @Service
 public class AdminStatsService {
 
     private static final int TOP_LIMIT = 10;
-    private static final int NEW_USER_DAYS = 7;
-    private static final int RATE_SCALE = 4;
 
     private final CurrentViewer currentViewer;
     private final AdminStatsQuery adminStatsQuery;
@@ -33,11 +31,11 @@ public class AdminStatsService {
         this.clock = clock;
     }
 
-    // Kiểm tra quyền admin rồi đọc đồng bộ số liệu người dùng, phim, lượt xem và số đăng ký mới 7 ngày qua.
+    // check quyền admin rồi kéo 1 lượt số user, phim, lượt xem và đăng ký mới 7 ngày qua
     @Transactional(readOnly = true)
     public AdminStatsResponse collectStats() {
         currentViewer.requireAdmin();
-        AdminStatsQuery.UserCounts users = adminStatsQuery.countUsers(LocalDateTime.now(clock).minusDays(NEW_USER_DAYS));
+        AdminStatsQuery.UserCounts users = adminStatsQuery.countUsers(LocalDateTime.now(clock).minusDays(7));
         long totalMovies = adminStatsQuery.countTotalMovies();
         long publishedEpisodes = adminStatsQuery.countPublishedEpisodes();
         AdminStatsQuery.WatchSessionCounts watchSessions = adminStatsQuery.countWatchSessions();
@@ -50,13 +48,13 @@ public class AdminStatsService {
                 topRatedMovies, users.recent());
     }
 
-    // Trả 0.0 khi chưa có phiên xem nào để tránh chia cho 0, còn lại làm tròn 4 chữ số thập phân.
+    // chưa có phiên xem nào thì trả 0.0 kẻo chia 0, còn lại làm tròn 4 số lẻ
     private static double computeCompletionRate(long completed, long total) {
         if (total <= 0) {
             return 0.0;
         }
         return BigDecimal.valueOf(completed)
-                .divide(BigDecimal.valueOf(total), RATE_SCALE, RoundingMode.HALF_UP)
+                .divide(BigDecimal.valueOf(total), 4, RoundingMode.HALF_UP)
                 .doubleValue();
     }
 }

@@ -2,7 +2,7 @@ package com.dippie.exception;
 
 import org.springframework.http.HttpStatus;
 
-// Lỗi không đủ quyền thực hiện thao tác, trả HTTP 403.
+// không đủ quyền làm thao tác này, trả 403
 public class ForbiddenException extends DomainException {
 
     public ForbiddenException(String message) {

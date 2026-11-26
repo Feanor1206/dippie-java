@@ -10,7 +10,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-// Đồng bộ bảng từ vựng movie_genre_terms và bảng nối movie_genres cho các hàng trong bảng movies cũ.
+// đồng bộ bảng từ vựng movie_genre_terms với bảng nối movie_genres cho bảng movies cũ
 @Repository
 public class CatalogMovieGenres {
 
@@ -20,12 +20,12 @@ public class CatalogMovieGenres {
         this.entities = entities;
     }
 
-    // Chèn các tên thể loại còn thiếu trước rồi mới xóa liên kết thừa và bổ sung liên kết mới cho từng phim.
+    // chèn mấy tên thể loại còn thiếu trước rồi mới xóa liên kết thừa và thêm liên kết mới cho từng phim
     public void sync(Map<String, Set<String>> genresByMovie) {
         if (genresByMovie.isEmpty()) {
             return;
         }
-        // Phải flush MovieGenreTerm trước khi ghi MovieGenre để thỏa mãn khóa ngoại tên thể loại.
+        // nhớ flush MovieGenreTerm trước khi ghi MovieGenre nha, không là vướng khóa ngoại tên thể loại
         Set<String> terms = new HashSet<>();
         genresByMovie.values().forEach(terms::addAll);
         var existingTerms = entities.createQuery("select term.name from MovieGenreTerm term where term.name in :names",
@@ -34,7 +34,7 @@ public class CatalogMovieGenres {
         terms.forEach(term -> entities.persist(new MovieGenreTerm(term)));
         entities.flush();
 
-        // Gỡ bỏ các liên kết cũ không còn trong danh sách mới, rồi chèn thêm phần còn thiếu.
+        // gỡ mấy liên kết cũ không còn trong danh sách mới rồi chèn phần còn thiếu
         Set<MovieGenre.Key> existingLinks = new HashSet<>();
         var links = entities.createQuery("select link from MovieGenre link where link.movieId in :ids", MovieGenre.class)
                 .setParameter("ids", genresByMovie.keySet()).getResultList();

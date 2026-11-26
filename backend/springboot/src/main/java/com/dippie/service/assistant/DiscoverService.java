@@ -11,8 +11,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-// Service của API khám phá. Controller chỉ việc chuyển yêu cầu vào đây,
-// phần kiểm tra chỉ mục, chạy BM25 và đóng gói DiscoverResponse đều nằm ở tầng service này.
+// service cho API khám phá, controller chỉ đẩy request vào đây thôi
+// check chỉ mục, chạy BM25 rồi gói DiscoverResponse đều nằm hết ở tầng này
 @Service
 public class DiscoverService {
 
@@ -24,7 +24,7 @@ public class DiscoverService {
         this.mapper = mapper;
     }
 
-    // Chỉ mục chưa dựng xong thì báo 503 để client thử lại, còn lại thì tìm rồi trả kết quả.
+    // chỉ mục chưa dựng xong thì trả 503 cho client thử lại, xong rồi thì tìm và trả kết quả
     public DiscoverResponse discover(DiscoverRequest request) {
         var index = catalog.index();
         if (index == null) {
@@ -35,7 +35,7 @@ public class DiscoverService {
         return toResponse(request.query(), matches);
     }
 
-    // Đóng gói các Match của LexicalIndex thành DiscoverResponse, kèm gợi ý câu hỏi kế tiếp.
+    // gói các Match của LexicalIndex thành DiscoverResponse, kẹp thêm gợi ý câu hỏi tiếp theo
     public DiscoverResponse toResponse(String query, List<LexicalIndex.Match> matches) {
         List<SearchHit> hits = matches.stream().map(LexicalIndex.Match::hit).toList();
         return new DiscoverResponse(new DiscoverResponse.Intent("DISCOVERY", query),
@@ -44,7 +44,7 @@ public class DiscoverService {
                 FollowUpSuggestions.build(hits), new DiscoverResponse.PipelineStages("java-lexical", true));
     }
 
-    // Gắn nhãn thể loại tiếng Việt và bổ sung mốc thời gian tệp nguồn vào evidence đầu tiên cho đúng schema client đang đọc.
+    // gắn nhãn thể loại tiếng Việt rồi nhét mốc thời gian file nguồn vào evidence đầu cho khớp schema client
     private ObjectNode movieItem(LexicalIndex.Match match) {
         SearchHit hit = match.hit();
         ObjectNode result = mapper.valueToTree(hit);

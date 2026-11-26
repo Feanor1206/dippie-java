@@ -10,7 +10,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Kiểm tra các trường hợp tách header HTTP Range (đầy đủ, mở đuôi, hậu tố, kẹp số quá lớn và lỗi 416) của ByteRange.
+// test ByteRange tách header HTTP Range đủ kiểu từ đầy đủ, mở đuôi, hậu tố, kẹp số lớn tới lỗi 416
 class ByteRangeTest {
 
     @ParameterizedTest

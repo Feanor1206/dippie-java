@@ -15,7 +15,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Test đơn vị cho SecurityContextCurrentViewer khi chưa đăng nhập, đăng nhập user thường và đăng nhập admin.
+// test SecurityContextCurrentViewer đủ 3 trạng thái: khách, user thường với admin
 class SecurityContextCurrentViewerTest {
 
     private final CurrentViewer currentViewer = new SecurityContextCurrentViewer();

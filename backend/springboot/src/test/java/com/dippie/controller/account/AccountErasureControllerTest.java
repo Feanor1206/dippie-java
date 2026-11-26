@@ -55,7 +55,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Kiểm tra luồng tự xóa tài khoản qua MockMvc: xác nhận mật khẩu, dọn dữ liệu cá nhân, ghi audit và giữ lại admin cuối.
+// test tự xóa tài khoản qua MockMvc: check mật khẩu, dọn sạch bảng phụ, ghi audit rồi giữ admin cuối
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -141,7 +141,7 @@ class AccountErasureControllerTest {
         ));
     }
 
-    // Gọi xóa khi chưa đăng nhập, bỏ trống mật khẩu hoặc nhập sai mật khẩu đều phải bị chặn.
+    // chưa đăng nhập, để trống hay sai mật khẩu là chặn hết khỏi xóa
     @Test
     void rejectsAnonymousMissingPasswordAndWrongPassword() throws Exception {
         User viewer = saveUser("viewer", "viewer@example.com", Role.ROLE_USER);
@@ -170,7 +170,7 @@ class AccountErasureControllerTest {
         assertThat(userRepository.findById(viewer.getId())).isPresent();
     }
 
-    // Xóa sạch mọi bảng cá nhân của Alice, không đụng dữ liệu Bob, gỡ liên kết report và ghi dòng audit ACCOUNT_DELETED.
+    // xóa sạch dữ liệu của Alice nhưng giữ nguyên của Bob, gỡ link report rồi ghi audit ACCOUNT_DELETED
     @Test
     void deletesAllPersonalRowsWritesAuditAndPreservesOtherUsers() throws Exception {
         User alice = saveUser("alice", "alice@example.com", Role.ROLE_USER);
@@ -178,7 +178,7 @@ class AccountErasureControllerTest {
         String aliceBearer = bearerFor(alice);
         LocalDateTime now = LocalDateTime.of(2026, 2, 1, 12, 0);
 
-        // Tạo dữ liệu ở toàn bộ bảng phụ cho cả Alice và Bob để đối chiếu sau khi xóa.
+        // bơm dữ liệu đủ các bảng phụ cho cả Alice lẫn Bob để lát đối chiếu
         movieRatingRepository.saveAndFlush(new MovieRating(alice.getId(), "ep_erase_1", 9, now));
         movieRatingRepository.saveAndFlush(new MovieRating(bob.getId(), "ep_erase_1", 7, now));
         watchlistItemRepository.saveAndFlush(new WatchlistItem(alice.getId(), "ep_erase_1", now));
@@ -204,7 +204,7 @@ class AccountErasureControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of("password", "secret123"))))
                 .andExpect(status().isNoContent());
 
-        // Dữ liệu cá nhân của Alice biến mất hết; riêng report vẫn giữ lại nhưng reporterUserId về null.
+        // đồ cá nhân của Alice bay sạch, riêng report giữ lại nhưng reporterUserId về null
         assertThat(userRepository.findById(alice.getId())).isEmpty();
         assertThat(movieRatingRepository.findByUserIdOrderByUpdatedAtDesc(alice.getId())).isEmpty();
         assertThat(watchlistItemRepository.findByUserIdAndMovieId(alice.getId(), "ep_erase_1")).isEmpty();
@@ -213,18 +213,18 @@ class AccountErasureControllerTest {
         assertThat(passwordResetTokenRepository.findByUserId(alice.getId())).isEmpty();
         assertThat(playbackReportRepository.findById(aliceReport.getId()).orElseThrow().getReporterUserId()).isNull();
 
-        // Dữ liệu của Bob phải còn nguyên vẹn.
+        // đồ của Bob phải còn y nguyên nha
         assertThat(userRepository.findById(bob.getId())).isPresent();
         assertThat(movieRatingRepository.findByUserIdAndMovieId(bob.getId(), "ep_erase_1")).isPresent();
         assertThat(watchlistItemRepository.findByUserIdAndMovieId(bob.getId(), "ep_erase_1")).isPresent();
         assertThat(favoriteItemRepository.findByUserIdAndMovieId(bob.getId(), "ep_erase_1")).isPresent();
         assertThat(watchProgressRepository.findByUserIdAndEpisodeId(bob.getId(), "ep_erase_1")).isPresent();
 
-        // JWT cũ của Alice phải bị từ chối ngay sau khi tài khoản không còn.
+        // nick bay rồi thì JWT cũ của Alice phải tạch liền
         mockMvc.perform(get("/api/auth/me").header(HttpHeaders.AUTHORIZATION, aliceBearer))
                 .andExpect(status().isUnauthorized());
 
-        // Bảng audit vẫn giữ tên tài khoản đã xóa dù dòng user không còn trong DB.
+        // dòng user mất rồi nhưng bảng audit vẫn phải giữ tên nick để còn tra vết
         List<AdminAuditEvent> audits = auditEventRepository.findAll();
         assertThat(audits).hasSize(1);
         assertThat(audits.getFirst().getAction()).isEqualTo(AccountErasureService.ACTION_ACCOUNT_DELETED);
@@ -233,7 +233,7 @@ class AccountErasureControllerTest {
         assertThat(audits.getFirst().getTargetId()).isEqualTo(String.valueOf(alice.getId()));
     }
 
-    // Chặn admin hoạt động cuối cùng tự xóa (kể cả khi còn admin bị khóa), nhưng cho xóa khi có admin hoạt động thứ hai.
+    // admin đang mở cuối cùng thì cấm tự xóa kể cả còn admin bị khóa, phải có thêm admin thứ hai đang bật
     @Test
     void protectsLastEnabledAdminAndAllowsDeletingOneOfTwoAdmins() throws Exception {
         User admin1 = saveUser("admin1", "admin1@dippie.com", Role.ROLE_ADMIN);
@@ -241,7 +241,7 @@ class AccountErasureControllerTest {
         disabledAdmin.disable();
         userRepository.saveAndFlush(disabledAdmin);
 
-        // admin_off đã bị khóa nên không tính, admin1 là người duy nhất còn bật nên phải trả 409.
+        // admin_off bị khóa nên không tính, còn mỗi admin1 đang mở nên phải 409
         mockMvc.perform(delete("/api/users/me")
                         .header(HttpHeaders.AUTHORIZATION, bearerFor(admin1))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -251,7 +251,7 @@ class AccountErasureControllerTest {
 
         assertThat(userRepository.findById(admin1.getId())).isPresent();
 
-        // Có thêm admin2 đang hoạt động thì admin1 xóa được bình thường, kể cả khi đã có dòng audit và report gắn với mình.
+        // có thêm admin2 đang bật thì admin1 xóa bình thường, kể cả khi đang dính dòng audit với report cũ
         User admin2 = saveUser("admin2", "admin2@dippie.com", Role.ROLE_ADMIN);
         LocalDateTime now = LocalDateTime.of(2026, 2, 1, 12, 0);
         auditEventRepository.saveAndFlush(new AdminAuditEvent(
@@ -273,7 +273,7 @@ class AccountErasureControllerTest {
         assertThat(userRepository.findById(admin2.getId())).isPresent();
     }
 
-    // Hai admin bấm tự xóa đúng cùng một thời điểm: khóa ghi phải chặn được một người (409) để luôn còn 1 admin sống.
+    // hai admin bấm tự xóa cùng lúc, Việt để ý khóa ghi phải chặn một người 409 kẻo sạch bóng admin là toang
     @Test
     void concurrentSelfDeletionByTwoAdminsAlwaysLeavesOneEnabledAdmin() throws Exception {
         User admin1 = saveUser("race_admin1", "race1@dippie.com", Role.ROLE_ADMIN);

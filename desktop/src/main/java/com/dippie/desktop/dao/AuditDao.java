@@ -7,7 +7,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 
-// DAO ghi các thao tác quản trị vào bảng admin_audit_events dùng chung với bên web.
+// DAO ghi mấy thao tác quản trị vào bảng admin_audit_events dùng chung với bên web
 public final class AuditDao extends AbstractJdbcDao<AuditEvent, Long> {
     public AuditDao(JdbcDatabase db) {
         super(db, "admin_audit_events", """
@@ -18,7 +18,7 @@ public final class AuditDao extends AbstractJdbcDao<AuditEvent, Long> {
                 row.getObject("created_at", LocalDateTime.class)));
     }
 
-    // Phải dùng chung Connection với thao tác gốc để nếu ghi nhật ký bị lỗi thì cả giao dịch rollback theo.
+    // phải dùng chung Connection với thao tác gốc để lỡ ghi audit log lỗi là cả transaction rollback luôn
     public void insert(Connection connection, long actorId, String actorUsername,
                        String action, String targetType, String targetId, String detailsJson) throws SQLException {
         int inserted = update(connection, """

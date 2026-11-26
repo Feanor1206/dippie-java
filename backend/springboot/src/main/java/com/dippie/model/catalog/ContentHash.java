@@ -9,15 +9,15 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
-// Giá trị bất biến bọc mã băm SHA-256 của gói hoặc một mục danh mục sau khi chuẩn hóa JSON.
+// bọc bất biến mã SHA-256 của gói hay từng mục catalog sau khi chuẩn hóa JSON
 public record ContentHash(String value) {
 
-    // Chuẩn hóa cây JSON theo thứ tự khóa cố định khớp Python rồi tính mã băm SHA-256.
+    // sort key JSON cố định cho khớp bên Python rồi băm SHA-256
     public static ContentHash of(JsonNode document) {
         return ofText(CatalogJsonWriter.encode(document, true));
     }
 
-    // Băm chuỗi UTF-8 ra mã SHA-256 dạng hex chữ thường.
+    // băm chuỗi UTF-8 ra hex SHA-256 chữ thường
     public static ContentHash ofText(String text) {
         try {
             byte[] bytes = MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));

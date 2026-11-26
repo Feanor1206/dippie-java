@@ -10,11 +10,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-// Dựng các câu trả lời tiếng Việt theo mẫu cho CineBot từ kết quả tìm được trong kho phim.
+// mấy mẫu câu trả lời tiếng Việt cho CineBot từ kết quả tìm trong kho phim
 public final class CatalogReplies {
 
     public static final String NO_MORE_EPISODES = "Không còn tập phù hợp nào khác rồi.";
-    private static final int MAX_EVIDENCE_ITEMS = 3;
     private static final int MAX_EVIDENCE_LENGTH = 1200;
     private static final Pattern VIDEO_SUFFIX = Pattern.compile(
             "(?:\\s*\\[[A-Za-z0-9_-]{11}\\])?\\.(?:mp4|mkv|webm)$",
@@ -26,13 +25,13 @@ public final class CatalogReplies {
     private CatalogReplies() {
     }
 
-    // Lấy tối đa 3 trích đoạn bằng chứng không rỗng và cắt ở 1200 ký tự để không làm phình câu trả lời hay prompt.
+    // lấy tối đa 3 trích đoạn không rỗng, cắt ở 1200 ký tự kẻo phình câu trả lời hay prompt
     public static List<String> evidenceTexts(SearchHit item) {
         if (item == null || item.evidence() == null || item.evidence().isEmpty()) {
             return List.of();
         }
         List<String> quotes = new ArrayList<>();
-        int limit = Math.min(MAX_EVIDENCE_ITEMS, item.evidence().size());
+        int limit = Math.min(3, item.evidence().size());
         for (int i = 0; i < limit; i++) {
             SearchEvidence quote = item.evidence().get(i);
             if (quote == null || quote.text() == null || quote.text().isEmpty()) {
@@ -44,7 +43,7 @@ public final class CatalogReplies {
         return List.copyOf(quotes);
     }
 
-    // Dựng câu mở đầu kèm tên tập đã gọt đuôi file video và mốc phút:giây nếu có.
+    // ghép câu mở đầu, gọt đuôi file video rồi gắn mốc phút:giây nếu có
     public static String sourceIntro(String title, Long startMs, String mode) {
         String cleaned = cleanTitle(title);
         String intro = "recommend".equals(mode) ? "Bạn có thể xem" : "Có vẻ bạn đang tìm";
@@ -55,19 +54,19 @@ public final class CatalogReplies {
         return String.format("%s %s, khoảng %02d:%02d.", intro, cleaned, seconds / 60L, seconds % 60L);
     }
 
-    // Báo chưa có phim khớp và liệt kê các bộ đang có để người xem biết kho phim hỗ trợ gì.
+    // báo không khớp phim nào rồi liệt kê mấy bộ đang có cho người xem biết
     public static String noMatch(List<String> available) {
         String text = "Mình chưa tìm thấy phim phù hợp trong kho phim.";
         return available.isEmpty() ? text : text + " Hiện kho phim có: " + String.join(", ", available) + ".";
     }
 
-    // Ghép danh sách gợi ý khi tìm ra nhiều tập hoặc nhiều bộ phim cùng lúc.
+    // nối danh sách gợi ý khi tìm ra nhiều tập hay nhiều bộ cùng lúc
     public static String discovery(List<SearchHit> results) {
         List<String> suggestions = results.stream().map(CatalogReplies::namedItem).toList();
         return "Bạn có thể xem " + String.join(", ", suggestions) + ".";
     }
 
-    // Gắn thêm nhắc nhở nếu trong kết quả có tập không nhúng phát trực tiếp được mà phải mở trên YouTube.
+    // tập nào không nhúng phát thẳng được thì nhắc thêm là chỉ mở trên YouTube nha
     public static String withPlaybackNote(String answer, List<SearchHit> results) {
         var external = results.stream().filter(SearchHit::externalOnly).toList();
         if (external.isEmpty()) {
@@ -83,7 +82,7 @@ public final class CatalogReplies {
                 + String.join(", ", external.stream().map(CatalogReplies::namedItem).toList()) + ".";
     }
 
-    // Đáp lại các câu chào, cảm ơn hoặc tạm biệt ngắn.
+    // đáp mấy câu chào, cảm ơn hay tạm biệt ngắn
     public static String chitchat(String query) {
         String text = TextFolding.foldNormalized(query);
         if (text.startsWith("cam on") || text.startsWith("thank")) {
@@ -96,7 +95,7 @@ public final class CatalogReplies {
         return catalogReply(List.of(), "chitchat");
     }
 
-    // Trả lời câu hỏi nối tiếp về việc một tập thuộc bộ nào hoặc có những nhân vật nào.
+    // trả lời câu hỏi nối tiếp xem tập đó thuộc bộ nào hay có nhân vật gì
     public static String episodeDetails(SearchHit item, String query) {
         String folded = TextFolding.foldNormalized(query);
         List<String> sentences = new ArrayList<>();
@@ -111,7 +110,7 @@ public final class CatalogReplies {
         return String.join(" ", sentences);
     }
 
-    // Lấy tóm tắt của tập hoặc bộ phim, bỏ qua các chuỗi giữ chỗ chỉ lặp lại tên tập.
+    // lấy tóm tắt phim hay tập, bỏ mấy chuỗi giữ chỗ chỉ lặp lại tên tập đi
     public static String summary(SearchHit item) {
         String synopsis = resolveSynopsis(item, resolveTitle(item));
         if (synopsis == null || synopsis.isBlank() || isEpisodePlaceholder(item, synopsis)) {
@@ -131,7 +130,7 @@ public final class CatalogReplies {
         return stripTrailingDots(VIDEO_SUFFIX.matcher(safeTitle).replaceFirst(""));
     }
 
-    // Dựng câu trả lời chính từ kết quả đầu tiên và nối thêm đoạn trích đầu tiên nếu đó không phải mô tả giữ chỗ.
+    // ghép câu trả lời chính từ kết quả đầu, nối thêm đoạn trích nếu không phải câu giữ chỗ
     public static String catalogReply(List<SearchHit> results, String mode) {
         if ("chitchat".equals(mode)) {
             return "Mình là CineBot. Bạn cứ kể lại cảnh phim, nhân vật hoặc tập muốn tìm nhé.";
@@ -147,7 +146,7 @@ public final class CatalogReplies {
         if (quotes.isEmpty()) {
             return prefix;
         }
-        // Bỏ qua các đoạn trích tự sinh lặp tên tập để câu trả lời khỏi bị thừa chữ.
+        // bỏ đoạn trích tự sinh lặp tên tập cho câu trả lời khỏi thừa chữ
         String quote = quotes.getFirst();
         if (quote.startsWith("Tập phim " + title) && quote.contains("của bộ hoạt hình")) {
             return prefix;
@@ -162,7 +161,7 @@ public final class CatalogReplies {
         return text.equals(CatalogDisplayText.episode(item.episodeNumber(), resolveTitle(item)));
     }
 
-    // Trả lời câu hỏi tổng quan về một bộ phim (số tập, số mùa, nhân vật chính hoặc tóm tắt).
+    // trả lời nhanh thông tin chung của bộ phim như số tập, số mùa, nhân vật hay tóm tắt
     public static String seriesReply(List<SearchHit> results, String detail) {
         if (results == null || results.isEmpty()) {
             return "Mình chưa tìm thấy bộ phim này trong kho phim.";
@@ -187,7 +186,7 @@ public final class CatalogReplies {
         return "Kho phim chưa có thông tin này về " + title + ".";
     }
 
-    // Ưu tiên lấy title, thiếu thì rơi về episodeTitle rồi nhãn "Tập phim" mặc định.
+    // ưu tiên title trước, thiếu thì lùi về episodeTitle rồi nhãn "Tập phim"
     public static String resolveTitle(SearchHit hit) {
         if (hit.title() != null && !hit.title().isEmpty()) {
             return hit.title();
@@ -202,7 +201,7 @@ public final class CatalogReplies {
         return count == null ? 0 : count;
     }
 
-    // Đọc một trường văn bản phụ, ưu tiên diagnostics trước rồi mới tới comparativeAttributes.
+    // đọc trường chữ phụ, tìm trong diagnostics trước rồi mới sang comparativeAttributes
     public static String attributeText(SearchHit hit, String key) {
         String fromDiagnostics = readString(hit.diagnostics(), key);
         if (fromDiagnostics != null) {

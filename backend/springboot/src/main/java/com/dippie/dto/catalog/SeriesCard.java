@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-// Thẻ tóm tắt bất biến cho trang duyệt bộ phim, gom sẵn số mùa, số tập công khai, thể loại, ảnh bìa và điểm đánh giá.
+// thẻ phim bộ cho trang duyệt, gom sẵn số mùa, số tập công khai, thể loại, ảnh bìa với điểm
 public record SeriesCard(String id, String title, String originalTitle, String synopsis, Integer releaseYearStart,
         Integer releaseYearEnd, List<Genre> genres, int seasonCount, int episodeCount, String posterUrl,
         String backdropUrl, @JsonUnwrapped RatingSummary ratings) {
@@ -29,7 +29,7 @@ public record SeriesCard(String id, String title, String originalTitle, String s
             .thenComparing(SeriesEpisode::episodeNumber, NUMBER_ORDER)
             .thenComparing(SeriesEpisode::id);
 
-    // Dựng thẻ từ bộ phim và các tập đã xuất bản; nếu bộ phim chưa có ảnh riêng thì lấy tạm ảnh của tập sớm nhất theo thứ tự mùa/tập.
+    // dựng thẻ từ bộ phim với mấy tập đã đăng, thiếu ảnh bộ thì mượn tạm ảnh tập sớm nhất theo mùa/tập
     public static SeriesCard from(CatalogSeries series, List<SeriesEpisode> episodes, Map<String, Genre> genresById) {
         List<Genre> genres = JsonText.stringList(series.getGenreIdsJson()).stream()
                 .map(genresById::get).filter(Objects::nonNull).toList();
@@ -52,7 +52,7 @@ public record SeriesCard(String id, String title, String originalTitle, String s
                 seasonCount, episodeCount, posterUrl, backdropUrl, summary);
     }
 
-    // Mã thể loại đi kèm nhãn hiển thị rút gọn trên thẻ phim.
+    // mã thể loại kèm nhãn ngắn hiện trên thẻ phim
     public record Genre(String id, String label) {
         public static Genre from(CatalogGenre genre) {
             return new Genre(genre.getId(), genre.preferredLabel());

@@ -10,7 +10,7 @@ import org.hibernate.annotations.ColumnDefault;
 
 import java.time.LocalDateTime;
 
-// Phim bộ ở cấp cao nhất trong hệ catalog (kế thừa CatalogRecord), ràng buộc DB ép release_year_start <= release_year_end.
+// phim bộ cấp cao nhất trong catalog (kế thừa CatalogRecord), DB ép release_year_start <= release_year_end
 @Entity
 @Table(name = "catalog_series",
         indexes = {
@@ -86,7 +86,7 @@ public class CatalogSeries extends CatalogRecord {
     protected CatalogSeries() {
     }
 
-    // Cập nhật toàn bộ metadata phim bộ từ lần import mới, riêng creditsJson vẫn giữ lại.
+    // chép đè metadata phim bộ từ lần import mới, riêng creditsJson giữ nguyên
     public void applyImport(CatalogSeries imported) {
         replaceRecordFrom(imported);
         title = imported.title;
@@ -223,7 +223,7 @@ public class CatalogSeries extends CatalogRecord {
         return createdAt;
     }
 
-    // Mượn luôn mốc updatedAt vừa được CatalogRecord.updateTimestamp gán ở lớp cha để createdAt khớp y hệt lúc mới tạo.
+    // mượn luôn updatedAt lớp cha CatalogRecord.updateTimestamp vừa gán để createdAt khớp y hệt lúc tạo
     @PrePersist
     private void initCreatedAt() {
         createdAt = getUpdatedAt();

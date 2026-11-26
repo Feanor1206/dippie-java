@@ -7,7 +7,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 
-// DAO chỉ đọc bảng catalog_media_assets để tìm các tệp video đặt trên Google Drive.
+// DAO đọc catalog_media_assets để tìm mấy file video nằm trên Google Drive
 public final class MediaAssetDao extends AbstractJdbcDao<MediaAsset, String> {
     private static final String COLUMNS = "id, storage_provider, drive_file_id, enabled";
     private static final RowMapper<MediaAsset> MAPPER =
@@ -18,7 +18,7 @@ public final class MediaAssetDao extends AbstractJdbcDao<MediaAsset, String> {
         super(db, "catalog_media_assets", COLUMNS, MAPPER);
     }
 
-    // Chỉ lấy video chính đang bật và có drive_file_id thật, bỏ qua tệp bị tắt hoặc rỗng.
+    // chỉ lấy video chính đang bật và có drive_file_id thật, bỏ qua file bị tắt hay rỗng
     public List<MediaAsset> findDriveAssets(Connection connection) throws SQLException {
         return query(connection, "SELECT " + COLUMNS + """
                  FROM catalog_media_assets

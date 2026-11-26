@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// Nhận lệnh DELETE /api/users/me để người dùng tự xóa tài khoản và trả 204 khi xong.
+// nhận DELETE /api/users/me cho user tự xóa tài khoản, xong trả 204
 @RestController
 @RequestMapping("/api/users/me")
 public class AccountErasureController {

@@ -1,6 +1,6 @@
 package com.dippie.desktop.db;
 
-// Giữ 3 thông số JDBC để mở kết nối. Mình ghi đè toString() để che URL và mật khẩu phòng lúc lỡ in ra log.
+// giữ 3 thông số JDBC để mở kết nối, ghi đè toString() che URL với mật khẩu phòng lỡ in ra log
 public record DatabaseConfig(String url, String user, String password) {
     @Override
     public String toString() {

@@ -45,11 +45,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Bộ test tích hợp toàn bộ trải nghiệm tìm kiếm chịu lỗi chính tả, gợi ý phim, điểm đánh giá trực tiếp và hội thoại CineBot trên dữ liệu 6 bộ phim thật.
+// test trọn trải nghiệm tìm chịu lỗi gõ, gợi ý phim, rating trực tiếp với chat CineBot trên 6 bộ phim thật
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-// Lớp này cần CSDL và chỉ mục tìm kiếm trống lúc bắt đầu, nên dùng context riêng để không dính dữ liệu của test chạy trước.
+// tách context riêng để lúc đầu DB với chỉ mục sạch trơn, khỏi vướng dữ liệu test trước
 @TestPropertySource(properties = "dippie.test.context=CatalogUxHttpTest")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)

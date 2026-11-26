@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 
-// Lớp cha @MappedSuperclass gom các cột dùng chung (id, recordJson, rawJson, revision, optLockVersion, updatedAt) cho toàn bộ bảng thực thể catalog.
+// lớp cha @MappedSuperclass gom mấy cột dùng chung (id, recordJson, rawJson, revision, optLockVersion, updatedAt) cho cả cụm catalog
 @MappedSuperclass
 public abstract class CatalogRecord {
 
@@ -61,7 +61,7 @@ public abstract class CatalogRecord {
         return recordJson;
     }
 
-    // Kiểm tra nhanh bản ghi đã ở trạng thái READY trong recordJson hay chưa.
+    // xem nhanh bản ghi đã ở READY trong recordJson chưa
     public boolean isPublished() {
         return PublicationStatus.of(recordJson).isPublished();
     }
@@ -70,14 +70,14 @@ public abstract class CatalogRecord {
         this.recordJson = recordJson;
     }
 
-    // Các lớp con gọi trong applyImport để chép lại phần JSON và revision chung từ bản ghi mới.
+    // lớp con gọi trong applyImport để chép phần JSON với revision chung từ bản mới
     protected void replaceRecordFrom(CatalogRecord imported) {
         recordJson = imported.recordJson;
         rawJson = imported.rawJson;
         revision = imported.revision;
     }
 
-    // Gán mốc thời gian import tường minh; mình giữ thêm importTimestamp (@Transient) để callback @PrePersist/@PreUpdate không đè mất bằng giờ hệ thống.
+    // chốt giờ import rõ ràng, giữ thêm importTimestamp (@Transient) kẻo @PrePersist/@PreUpdate đè mất bằng giờ hệ thống
     public void recordImportTime(LocalDateTime time) {
         updatedAt = time;
         importTimestamp = time;
@@ -99,7 +99,7 @@ public abstract class CatalogRecord {
         return updatedAt;
     }
 
-    // Trước khi chèn hoặc sửa bản ghi: ưu tiên giữ importTimestamp nếu vừa gọi recordImportTime, còn lại lấy giờ UTC cắt tròn đến giây.
+    // lúc lưu ưu tiên giữ importTimestamp nếu vừa gọi recordImportTime, không thì lấy giờ UTC cắt xuống giây
     @PrePersist
     @PreUpdate
     protected void updateTimestamp() {

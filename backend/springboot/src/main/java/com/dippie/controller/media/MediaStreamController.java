@@ -22,8 +22,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.io.OutputStream;
 
-// Controller REST phục vụ phát video (HEAD và GET hỗ trợ HTTP Range) cùng API lấy mô tả media của phim.
+// controller phát video (HEAD với GET hỗ trợ HTTP Range) kèm API lấy mô tả media của phim
 @RestController
 public class MediaStreamController {
 
@@ -36,7 +37,7 @@ public class MediaStreamController {
         this.mediaStreamService = mediaStreamService;
     }
 
-    // Trình duyệt thường gọi HEAD trước để biết dung lượng tổng và xác nhận server hỗ trợ tua bằng byte range.
+    // trình duyệt hay gọi HEAD trước để biết tổng dung lượng và xem server có cho tua bằng byte range không
     @RequestMapping(value = "/api/media/stream/{assetId}", method = RequestMethod.HEAD)
     public ResponseEntity<Void> headMedia(
             @PathVariable String assetId,
@@ -51,7 +52,7 @@ public class MediaStreamController {
                 .build();
     }
 
-    // Ghi đồng bộ thẳng ra HttpServletResponse thay vì trả StreamingResponseBody để tránh bị Spring MVC cắt vì async timeout khi xem video dài.
+    // ghi đồng bộ thẳng ra HttpServletResponse thay vì trả StreamingResponseBody kẻo xem phim dài bị Spring MVC cắt vì async timeout
     @GetMapping("/api/media/stream/{assetId}")
     public void streamMedia(
             @PathVariable String assetId,
@@ -60,7 +61,7 @@ public class MediaStreamController {
             @RequestParam(required = false) String token,
             HttpServletResponse response
     ) throws IOException {
-        // Kiểm tra quyền và tách header Range trước khi gửi header, nếu Range sai thì trả 416 kèm Content-Range.
+        // check quyền và tách header Range trước khi gửi header, Range sai thì trả 416 kèm Content-Range
         ResolvedMediaStream stream = mediaStreamService.resolveStream(assetId, grant, token);
         ByteRange range;
         try {
@@ -71,7 +72,7 @@ public class MediaStreamController {
             return;
         }
 
-        // Gửi 200 cho toàn bộ tệp hoặc 206 cho đoạn byte được yêu cầu.
+        // trả 200 nếu lấy cả file, còn xin đoạn byte thì trả 206
         response.setContentType(stream.mediaType().toString());
         response.setHeader(HttpHeaders.ACCEPT_RANGES, BYTES_UNIT);
         long start;
@@ -89,9 +90,11 @@ public class MediaStreamController {
         response.setContentLengthLong(length);
 
         try {
-            stream.writeRange(start, length, response.getOutputStream());
+            try (OutputStream output = response.getOutputStream()) {
+                stream.writeRange(start, length, output);
+            }
         } catch (IOException ex) {
-            // Người xem tua video hoặc đóng tab giữa chừng sẽ ngắt socket sau khi response đã commit, bỏ qua để log khỏi nổ lỗi giả.
+            // người xem tua hoặc đóng tab giữa chừng là đứt socket sau khi response đã commit, bỏ qua kẻo log nổ lỗi giả
             if (response.isCommitted()) {
                 log.debug("Client ngắt luồng phát sớm cho video {}", assetId);
                 return;

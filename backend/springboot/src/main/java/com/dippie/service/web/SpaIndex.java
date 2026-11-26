@@ -18,7 +18,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
-// Đọc file index.html đã build của frontend và xử lý fallback cho các đường dẫn trình duyệt.
+// đọc file index.html đã build của frontend với lo fallback cho mấy route trình duyệt
 @Component
 public class SpaIndex {
 
@@ -31,13 +31,13 @@ public class SpaIndex {
         this.properties = properties;
     }
 
-    // Phục vụ index.html với mã 200; nếu chưa build frontend thì báo 503 kèm lệnh build.
+    // trả index.html mã 200, chưa build frontend thì báo 503 kèm lệnh build
     public ResponseEntity<Resource> index() {
         return serve(HttpStatus.OK).orElseThrow(() -> new ServiceUnavailableException(
                 "Chưa build giao diện. Chạy npm run build trong thư mục frontend."));
     }
 
-    // Route lạ mà trình duyệt gọi GET/HEAD kèm Accept: text/html thì vẫn trả index.html nhưng giữ mã 404, tránh chặn nhầm API hay file tĩnh.
+    // route lạ mà trình duyệt gọi GET/HEAD kèm Accept: text/html thì vẫn trả index.html mã 404, tránh chặn nhầm API hay file tĩnh
     public Optional<ResponseEntity<Resource>> fallback(HttpServletRequest request) {
         String method = request.getMethod();
         String path = pathWithinApplication(request);

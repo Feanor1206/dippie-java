@@ -4,19 +4,19 @@ import com.dippie.exception.InvalidRequestException;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-// Command gom dữ liệu và kiểm tra đầu vào cho lệnh lưu tiến độ xem.
-// Mình parse thẳng JsonNode thay vì map sang DTO thường để chặn trường hợp Jackson tự ép boolean, số thập phân hay chuỗi số thành long; quy ước CREATE_VERSION = -1 cho lần lưu đầu.
+// command kiểm tra đầu vào cho lệnh lưu tiến độ, quy ước CREATE_VERSION = -1 cho lần lưu đầu
+// parse thẳng JsonNode thay vì DTO thường để chặn Jackson tự ép boolean, số thực hay chuỗi số sang long
 public record WatchProgressCommand(String assetId, long expectedVersion, long positionMs) {
 
     public static final long CREATE_VERSION = -1L;
     public static final long MAX_POSITION_MS = 86_400_000L;
 
-    // Đọc và kiểm tra chặt assetId, expectedVersion (>= -1, kiểu nguyên) và positionMs (0 đến 24 giờ).
+    // đọc rồi check chặt assetId, expectedVersion (nguyên >= -1) với positionMs (0 tới 24 tiếng)
     public static WatchProgressCommand from(JsonNode body) {
         if (body == null || !body.isObject()) {
             throw new InvalidRequestException("Thông tin tiến độ xem chưa hợp lệ.");
         }
-        // Kiểm tra mã video và phiên bản khóa lạc quan gửi kèm
+        // check mã video với version khóa lạc quan
         String assetId = extractAssetId(body.get("assetId"));
         JsonNode versionNode = body.get("expectedVersion");
         if (assetId.isEmpty() || versionNode == null || versionNode.isNull() || versionNode.isBoolean()) {
@@ -30,7 +30,7 @@ public record WatchProgressCommand(String assetId, long expectedVersion, long po
             throw new InvalidRequestException("Phiên bản cần là -1 khi lưu lần đầu hoặc khớp phiên bản hiện tại khi cập nhật.");
         }
 
-        // Chặn số âm, kiểu không phải số nguyên và thời điểm vượt quá giới hạn 24 giờ
+        // chặn số âm, kiểu không phải số nguyên với mốc giờ quá 24 tiếng
         JsonNode positionNode = body.get("positionMs");
         if (positionNode == null
                 || positionNode.isNull()

@@ -10,7 +10,7 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 
-// DAO của bảng users: đọc danh sách tài khoản, tra mật khẩu băm lúc đăng nhập và cập nhật quyền hoặc khóa/mở khóa.
+// DAO bảng users, lo đọc danh sách user, tra mật khẩu băm lúc đăng nhập và đổi quyền hay khóa/mở khóa
 public final class UserDao extends AbstractJdbcDao<UserAccount, Long> {
     private static final String COLUMNS = "id, username, email, full_name, role, enabled, token_version";
 
@@ -18,7 +18,7 @@ public final class UserDao extends AbstractJdbcDao<UserAccount, Long> {
         super(db, "users", COLUMNS, UserDao::mapAccount);
     }
 
-    // Cho tìm theo cả username lẫn email giống bên web, và tách riêng mật khẩu băm khỏi UserAccount để không mang lên bảng giao diện.
+    // tìm được theo cả username lẫn email giống bên web, tách mật khẩu băm khỏi UserAccount kẻo mang lên bảng giao diện
     public Optional<Credentials> findCredentials(String identifier) {
         return db.read(connection -> first(query(connection, """
                 SELECT %s, password FROM users
@@ -32,14 +32,14 @@ public final class UserDao extends AbstractJdbcDao<UserAccount, Long> {
         return lockById(connection, id);
     }
 
-    // Khóa các quản trị viên đang hoạt động theo thứ tự id tăng dần khớp với bên web để tránh deadlock khi đổi quyền đồng thời.
+    // khóa mấy admin đang bật theo thứ tự id tăng dần khớp bên web kẻo deadlock lúc đổi quyền song song
     public List<UserAccount> lockEnabledAdmins(Connection connection) throws SQLException {
         return query(connection, "SELECT " + COLUMNS + """
                  FROM users WHERE role = ? AND enabled = TRUE ORDER BY id FOR UPDATE
                 """, UserDao::mapAccount, Role.ROLE_ADMIN.name());
     }
 
-    // Đừng bỏ token_version = token_version + 1 nha Việt, thiếu nó là token cũ bên web vẫn dùng được sau khi khóa tài khoản hay hạ quyền.
+    // Việt đừng bỏ token_version = token_version + 1 nha, thiếu là token cũ bên web vẫn xài được sau khi khóa hay hạ quyền
     public int updateAccess(Connection connection, long id, Role role, boolean enabled) throws SQLException {
         return update(connection, """
                 UPDATE users SET role = ?, enabled = ?, token_version = token_version + 1,
@@ -59,7 +59,7 @@ public final class UserDao extends AbstractJdbcDao<UserAccount, Long> {
         }
     }
 
-    // Chỉ dùng trong luồng đăng nhập để mang mật khẩu băm, ghi đè toString() để che mã băm.
+    // chỉ dùng lúc đăng nhập để mang mật khẩu băm, ghi đè toString() che mã băm đi
     public record Credentials(UserAccount account, String passwordHash) {
         @Override
         public String toString() {

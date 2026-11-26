@@ -16,17 +16,12 @@ import org.hibernate.annotations.ColumnDefault;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-// Entity JPA ánh xạ bảng users. Mình đóng gói hết các hàm đổi trạng thái vào bên trong User
-// để chỗ nào đổi mật khẩu, đổi quyền hay khóa tài khoản cũng tự tăng tokenVersion đồng bộ.
+// bảng users, gom hết mấy hàm đổi trạng thái vào trong User kiểu đóng gói
+// chỗ nào đổi mật khẩu, đổi quyền hay khóa tài khoản cũng tự tăng tokenVersion đồng bộ
 @Entity
 @Table(name = "users", indexes = @Index(name = "idx_users_role_enabled", columnList = "role, enabled"))
 public class User {
 
-    private static final int MIN_USERNAME_LENGTH = 3;
-    private static final int MAX_USERNAME_LENGTH = 50;
-    private static final int MAX_EMAIL_LENGTH = 100;
-    private static final int MAX_EMAIL_LOCAL_LENGTH = 64;
-    private static final int MAX_FULL_NAME_LENGTH = 100;
     private static final java.util.regex.Pattern USERNAME_PATTERN = java.util.regex.Pattern.compile("^[A-Za-z0-9_.-]{3,50}$");
     private static final java.util.regex.Pattern EMAIL_PATTERN = java.util.regex.Pattern.compile(
             "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
@@ -136,16 +131,16 @@ public class User {
         this.termsAcceptedAt = acceptedAt;
     }
 
-    // Tăng tokenVersion để cắt ngay mọi JWT đã cấp trước đó.
+    // tăng tokenVersion để cắt hết JWT đã cấp trước đó
     public void incrementTokenVersion(LocalDateTime updatedAt) {
         this.tokenVersion++;
         this.updatedAt = updatedAt;
     }
 
-    // Chuẩn hóa và kiểm tra username (3 đến 50 ký tự chữ, số, _, ., -); cấm @ để không đụng với tra cứu email khi đăng nhập.
+    // check username (3 đến 50 ký tự chữ, số, _, ., -), cấm @ kẻo đụng với tìm theo email lúc đăng nhập
     public static String validateUsername(String rawUsername) {
         String username = rawUsername == null ? "" : rawUsername.trim();
-        if (username.length() < MIN_USERNAME_LENGTH || username.length() > MAX_USERNAME_LENGTH) {
+        if (username.length() < 3 || username.length() > 50) {
             throw new InvalidRequestException("Tên đăng nhập cần dài từ 3 đến 50 ký tự.");
         }
         if (!USERNAME_PATTERN.matcher(username).matches()) {
@@ -154,10 +149,10 @@ public class User {
         return username;
     }
 
-    // Hạ chữ thường và kiểm tra email chặt thêm ở phần trước @ (không chấm ở đầu/cuối, không hai chấm liền) cùng phần TLD.
+    // hạ thường rồi check kỹ phần trước @ (không chấm đầu/cuối, không hai chấm liền) với phần TLD
     public static String validateEmail(String rawEmail) {
         String email = rawEmail == null ? "" : rawEmail.trim().toLowerCase(java.util.Locale.ROOT);
-        if (email.isEmpty() || email.length() > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.matcher(email).matches()) {
+        if (email.isEmpty() || email.length() > 100 || !EMAIL_PATTERN.matcher(email).matches()) {
             throw new InvalidRequestException("Địa chỉ email chưa đúng định dạng.");
         }
         int atIndex = email.indexOf('@');
@@ -165,7 +160,7 @@ public class User {
         String domainPart = email.substring(atIndex + 1);
         int lastDot = domainPart.lastIndexOf('.');
         String tld = lastDot >= 0 ? domainPart.substring(lastDot + 1) : "";
-        if (localPart.length() > MAX_EMAIL_LOCAL_LENGTH
+        if (localPart.length() > 64
                 || localPart.startsWith(".")
                 || localPart.endsWith(".")
                 || localPart.contains("..")
@@ -175,9 +170,9 @@ public class User {
         return email;
     }
 
-    // Nếu người dùng bỏ trống họ tên thì lấy tạm username làm tên hiển thị.
+    // user bỏ trống họ tên thì lấy tạm username hiện lên
     public static String resolveFullName(String rawFullName, String fallbackUsername) {
-        if (rawFullName != null && rawFullName.length() > MAX_FULL_NAME_LENGTH) {
+        if (rawFullName != null && rawFullName.length() > 100) {
             throw new InvalidRequestException("Họ tên không quá 100 ký tự.");
         }
         return (rawFullName == null || rawFullName.trim().isEmpty()) ? fallbackUsername : rawFullName.trim();
@@ -187,7 +182,7 @@ public class User {
         return role == Role.ROLE_ADMIN;
     }
 
-    // Đổi mật khẩu đã băm và tăng tokenVersion để vô hiệu hóa toàn bộ phiên cũ.
+    // đổi mật khẩu đã băm kèm tăng tokenVersion để đá hết phiên cũ
     public void changePassword(String encodedPassword) {
         this.password = encodedPassword;
         this.tokenVersion++;
@@ -198,7 +193,7 @@ public class User {
         this.updatedAt = updatedAt;
     }
 
-    // Sửa họ tên và email không tăng tokenVersion để người dùng không bị đăng xuất oan.
+    // đổi họ tên hay email thì giữ nguyên tokenVersion kẻo user bị văng đăng nhập oan
     public void updateProfile(String fullName, String email) {
         this.fullName = fullName;
         this.email = email;
@@ -209,7 +204,7 @@ public class User {
         this.updatedAt = updatedAt;
     }
 
-    // Khóa tài khoản kèm tăng tokenVersion để đá văng mọi JWT còn hạn.
+    // khóa tài khoản kèm tăng tokenVersion để đá văng hết JWT còn hạn
     public void disable() {
         this.enabled = false;
         this.tokenVersion++;
@@ -220,7 +215,7 @@ public class User {
         this.updatedAt = updatedAt;
     }
 
-    // Mở khóa tài khoản và xoay tokenVersion để buộc đăng nhập lại sạch từ đầu.
+    // mở khóa tài khoản rồi xoay tokenVersion bắt đăng nhập lại cho sạch
     public void enable() {
         this.enabled = true;
         this.tokenVersion++;
@@ -231,7 +226,7 @@ public class User {
         this.updatedAt = updatedAt;
     }
 
-    // Đổi vai trò kèm tăng tokenVersion để quyền mới có hiệu lực ngay, không còn token mang role cũ.
+    // đổi role kèm tăng tokenVersion cho quyền mới ăn ngay, khỏi sót token cầm role cũ
     public void changeRole(Role newRole) {
         this.role = Objects.requireNonNull(newRole);
         this.tokenVersion++;

@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.math.BigInteger;
 import java.util.List;
 
-// API công khai để tìm kiếm, duyệt phân trang, liệt kê thể loại và xem chi tiết phim.
+// API công khai để tìm kiếm, duyệt phân trang, lấy thể loại và xem chi tiết phim
 @RestController
 @RequestMapping("/api/movies")
 public class MovieController {
@@ -27,7 +27,7 @@ public class MovieController {
         this.movieQueryService = movieQueryService;
     }
 
-    // Nhận cả ba tên tham số search/query/q vì các trang cũ ở frontend gọi không giống nhau; số bản ghi trả về bị chặn trần trong service.
+    // nhận cả 3 param search/query/q vì mấy trang cũ bên frontend gọi không giống nhau, số bản ghi đã bị chặn trần trong service
     @GetMapping
     public ApiResponse<List<MovieView>> listMovies(
             @RequestParam(required = false) String search,

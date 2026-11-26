@@ -1,5 +1,5 @@
 package com.dippie.dto.report;
 
-// Phản hồi sau khi lưu báo cáo lỗi, trả về mã định danh vừa tạo.
+// lưu báo lỗi xong thì trả lại id vừa tạo
 public record PlaybackReportCreatedResponse(Long id) {
 }

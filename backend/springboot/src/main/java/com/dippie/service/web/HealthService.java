@@ -11,13 +11,10 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import javax.sql.DataSource;
 
-// Kiểm tra sống cho backend: thử mở một kết nối DB trong tối đa 2 giây.
-// Việc chạm vào DataSource nằm ở service này, controller chỉ đọc kết quả rồi chọn mã HTTP.
+// check sức khỏe backend, thử mở 1 kết nối DB trong tối đa 2 giây
+// để phần đụng DataSource ở service này cho gọn, controller chỉ đọc kết quả rồi chọn mã HTTP
 @Service
 public class HealthService {
-
-    private static final int VALIDATION_TIMEOUT_SECONDS = 2;
-    private static final String SERVICE_NAME = "Dippie MovieRCM Backend";
 
     private final DataSource dataSource;
 
@@ -27,13 +24,13 @@ public class HealthService {
 
     public HealthStatus check() {
         return isDatabaseHealthy()
-                ? new UpStatus("UP", SERVICE_NAME, OpenApiConfig.API_VERSION)
+                ? new UpStatus("UP", "Dippie MovieRCM Backend", OpenApiConfig.API_VERSION)
                 : new DownStatus("DOWN");
     }
 
     private boolean isDatabaseHealthy() {
         try (Connection connection = dataSource.getConnection()) {
-            return connection.isValid(VALIDATION_TIMEOUT_SECONDS);
+            return connection.isValid(2);
         } catch (SQLException ex) {
             return false;
         }

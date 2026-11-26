@@ -15,7 +15,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-// Kiểm tra khi luồng refresh đang tải bản chụp mới, các luồng gọi current() vẫn nhận ngay bản chụp cũ mà không bị chặn.
+// lúc luồng refresh đang dựng bản chụp mới thì ai gọi current() vẫn lấy bản cũ xài liền, không bị đứng chờ
 class CatalogReadModelCacheTest {
 
     @Test

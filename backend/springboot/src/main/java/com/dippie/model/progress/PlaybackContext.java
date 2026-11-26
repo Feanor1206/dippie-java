@@ -5,7 +5,7 @@ import com.dippie.model.catalog.CatalogSeason;
 import com.dippie.model.catalog.CatalogSeries;
 import com.dippie.model.catalog.EpisodeRuntime;
 
-// Ngữ cảnh phát đã kiểm tra hợp lệ, gom tập phim, bộ phim, mùa và thông tin nguồn video.
+// ngữ cảnh phát đã check hợp lệ, gom tập, bộ, mùa với nguồn video
 public record PlaybackContext(
         CatalogEpisode episode,
         CatalogSeries series,
@@ -14,7 +14,7 @@ public record PlaybackContext(
         Long assetDurationMs
 ) {
 
-    // Dùng EpisodeRuntime.known() để bỏ qua thời lượng metadata lỗi (dưới 1 phút, như ep_jadoo_s01_0014) cho cả hiển thị, đánh dấu hoàn thành lẫn kiểm tra positionMs khi lưu.
+    // qua EpisodeRuntime.known() để bỏ thời lượng metadata lỗi dưới 1 phút (như ep_jadoo_s01_0014) cho cả hiển thị, tính hoàn thành lẫn check positionMs
     public WatchDuration duration() {
         return WatchDuration.resolve(EpisodeRuntime.known(episode.getDurationMs()), assetDurationMs);
     }

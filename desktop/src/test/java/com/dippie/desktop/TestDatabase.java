@@ -11,10 +11,10 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.util.UUID;
 
-// Lớp cha cho các bài test JDBC: mỗi test tạo một DB H2 riêng trong bộ nhớ rồi nạp lại schema và fixtures.
+// lớp cha cho mấy bài test JDBC, mỗi test tạo 1 DB H2 riêng trong RAM rồi nạp lại schema và fixtures
 abstract class TestDatabase {
     protected JdbcDatabase db;
-    // H2 in-memory sẽ tự xóa sạch bảng ngay khi kết nối cuối đóng lại, nên mình giữ riêng kết nối này mở suốt bài test.
+    // H2 in-memory đóng kết nối cuối là tự xóa sạch bảng liền nên phải giữ riêng kết nối này mở suốt bài test
     private Connection keepAliveConnection;
 
     @BeforeEach
@@ -28,8 +28,9 @@ abstract class TestDatabase {
     }
 
     private void loadScript(String resource) throws Exception {
-        try (var reader = new InputStreamReader(getClass().getResourceAsStream(resource), StandardCharsets.UTF_8)) {
-            RunScript.execute(keepAliveConnection, reader);
+        try (var input = getClass().getResourceAsStream(resource);
+                var reader = new InputStreamReader(input, StandardCharsets.UTF_8);
+                var result = RunScript.execute(keepAliveConnection, reader)) {
         }
     }
 

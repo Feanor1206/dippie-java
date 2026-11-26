@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 
-// Bảng audit_log ghi lại ảnh chụp dữ liệu trước và sau mỗi thao tác sửa hoặc xóa trên DB.
+// bảng audit_log chụp lại dữ liệu trước với sau mỗi lần sửa hay xóa trên DB
 @Entity
 @Table(name = "audit_log",
         indexes = {
@@ -83,7 +83,7 @@ public class AuditLog {
         return actionAt;
     }
 
-    // Cắt tròn actionAt xuống giây theo giờ UTC để khớp với kiểu TIMESTAMP trên MySQL.
+    // cắt tròn actionAt xuống giây theo giờ UTC cho khớp cột TIMESTAMP bên MySQL
     @PrePersist
     private void initActionAt() {
         actionAt = LocalDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS);

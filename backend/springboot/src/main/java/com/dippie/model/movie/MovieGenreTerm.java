@@ -5,7 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-// Bảng từ điển tên thể loại chuẩn để bảng nối movie_genres trỏ khóa ngoại sang.
+// bảng từ điển tên thể loại chuẩn cho movie_genres trỏ khóa ngoại sang
 @Entity
 @Table(name = "movie_genre_terms")
 public class MovieGenreTerm {

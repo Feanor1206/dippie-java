@@ -42,7 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Bộ test hồi quy cho security header, kiểm soát proxy tin cậy, quy tắc mật khẩu, MySQL TLS, Swagger, Actuator và timestamp UTC.
+// test hồi quy security header, proxy tin cậy, luật mật khẩu, MySQL TLS, Swagger, Actuator với giờ UTC
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -88,7 +88,7 @@ class HighSecurityFixesTest {
         userRepository.deleteAll();
     }
 
-    // Kiểm tra Spring gắn đủ CSP, Referrer-Policy, Permissions-Policy, X-Frame-Options, nosniff và Cache-Control: no-store cho API cần đăng nhập.
+    // check Spring gắn đủ CSP, Referrer-Policy, Permissions-Policy, X-Frame-Options, nosniff với no-store cho API cần login
     @Test
     void setsSpringSecurityHeadersAndNoStoreOnAuthenticatedApiResponses() throws Exception {
         User alice = userRepository.saveAndFlush(new User(
@@ -111,7 +111,7 @@ class HighSecurityFixesTest {
                 .andExpect(jsonPath("$.timestamp", endsWith("Z")));
     }
 
-    // Chỉ tin X-Forwarded-For từ proxy nội bộ trong dải cho phép và giới hạn số lần thử đổi mật khẩu theo tài khoản.
+    // chỉ tin X-Forwarded-For từ proxy nội bộ trong dải cho phép, đồng thời siết số lần thử đổi mật khẩu theo nick
     @Test
     void resolvesClientIpOnlyFromTrustedProxyAndThrottlesPasswordChange() throws Exception {
         MockHttpServletRequest untrusted = new MockHttpServletRequest();
@@ -124,7 +124,7 @@ class HighSecurityFixesTest {
         trusted.addHeader("X-Forwarded-For", "1.2.3.4, 198.51.100.77, 10.0.0.2");
         assertThat(clientIpResolver.resolve(trusted)).isEqualTo("198.51.100.77");
 
-        // Thử sai mật khẩu 10 lần trên /api/users/me/password thì lần thứ 11 phải bị chặn 429 kèm Retry-After.
+        // nhập sai 10 lần ở /api/users/me/password thì phát 11 dính 429 kèm Retry-After
         User bob = userRepository.saveAndFlush(new User(
                 "bob_pw", "bob.pw@example.com", passwordEncoder.encode("secret123"), "Bob",
                 Role.ROLE_USER, LocalDateTime.of(2026, 3, 1, 10, 0)
@@ -149,7 +149,7 @@ class HighSecurityFixesTest {
                 .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
     }
 
-    // Chặn mật khẩu chỉ gồm khoảng trắng, email sai định dạng và ngăn admin tự hạ mật khẩu xuống dưới 16 ký tự.
+    // chặn mật khẩu toàn dấu cách, email sai format và cấm admin hạ mật khẩu xuống dưới 16 ký tự
     @Test
     void rejectsWhitespacePasswordsFakeEmailsAndAdminPasswordDowngrade() throws Exception {
         mockMvc.perform(post("/api/auth/register")
@@ -176,7 +176,7 @@ class HighSecurityFixesTest {
                     .andExpect(jsonPath("$.message").value("Địa chỉ email chưa đúng định dạng."));
         }
 
-        // Admin không được hạ mật khẩu xuống dưới 16 ký tự qua /api/users/me/password.
+        // admin đừng hòng hạ mật khẩu xuống dưới 16 ký tự qua /api/users/me/password
         User admin = userRepository.saveAndFlush(new User(
                 "admin_strong", "admin.strong@dippie.com",
                 passwordEncoder.encode("Current-Strong-Admin-Password-1"),
@@ -194,18 +194,18 @@ class HighSecurityFixesTest {
                 .andExpect(jsonPath("$.message").value("Mật khẩu quản trị cần từ 16 ký tự đến tối đa 72 byte."));
     }
 
-    // Kiểm tra tắt Swagger ngoài demo, bật TLS MySQL ở prod và chỉ mở health/info cho Actuator.
+    // check tắt Swagger ngoài demo, bật TLS MySQL ở prod và Actuator chỉ mở health với info
     @Test
     void verifiesProdMysqlTlsSwaggerDisabledOutsideDemoAndActuatorConfig() throws Exception {
-        // Ở profile test (không phải demo), Swagger UI và /v3/api-docs phải đóng.
+        // chạy profile test không phải demo nên Swagger UI với /v3/api-docs phải đóng cửa
         mockMvc.perform(get("/v3/api-docs")).andExpect(status().isNotFound());
         mockMvc.perform(get("/swagger-ui/index.html")).andExpect(status().isNotFound());
 
-        // Phát sự kiện sẵn sàng trong MockMvc trước khi gọi các probe liveness/readiness của Actuator.
+        // bắn sự kiện sẵn sàng trong MockMvc trước rồi mới gọi probe liveness, readiness của Actuator
         AvailabilityChangeEvent.publish(eventPublisher, this, LivenessState.CORRECT);
         AvailabilityChangeEvent.publish(eventPublisher, this, ReadinessState.ACCEPTING_TRAFFIC);
 
-        // Actuator chỉ mở health và info, không lộ chi tiết components.
+        // Actuator chỉ mở health với info thôi, đừng lộ chi tiết components
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
@@ -218,7 +218,7 @@ class HighSecurityFixesTest {
                 .andExpect(jsonPath("$.status").value("UP"));
         mockMvc.perform(get("/actuator/info"))
                 .andExpect(status().isOk());
-        // Endpoint Actuator ngoài danh sách mở bị chặn 401 với khách chưa đăng nhập và 404 kể cả khi đã đăng nhập admin.
+        // endpoint Actuator ngoài danh sách mở thì khách ăn 401, admin đăng nhập rồi cũng ăn 404
         mockMvc.perform(get("/actuator/env"))
                 .andExpect(status().isUnauthorized());
         User adminCheck = userRepository.saveAndFlush(new User(
@@ -240,13 +240,13 @@ class HighSecurityFixesTest {
                 .findFirst().orElseThrow();
         PropertySource<?> prod = loader.load("prod", new ClassPathResource("application-prod.yml")).getFirst();
 
-        // Swagger tắt ở cấu hình gốc và prod, chỉ mở trong profile demo.
+        // Swagger tắt ở cấu hình gốc lẫn prod, mở mỗi bên demo thôi
         assertThat(base.getProperty("springdoc.api-docs.enabled")).isEqualTo(false);
         assertThat(base.getProperty("springdoc.swagger-ui.enabled")).isEqualTo(false);
         assertThat(demoDoc.getProperty("springdoc.api-docs.enabled")).isEqualTo(true);
         assertThat(prod.getProperty("springdoc.api-docs.enabled")).isEqualTo(false);
 
-        // Prod ép sslMode=REQUIRED và chặn allowPublicKeyRetrieval theo mặc định.
+        // lên prod mặc định ép sslMode=REQUIRED với khóa allowPublicKeyRetrieval luôn
         String prodUrl = String.valueOf(prod.getProperty("spring.datasource.url"));
         assertThat(prodUrl).contains("sslMode=${MYSQL_SSL_MODE:REQUIRED}");
         assertThat(prodUrl).contains("allowPublicKeyRetrieval=${MYSQL_ALLOW_PUBLIC_KEY_RETRIEVAL:false}");
@@ -254,13 +254,13 @@ class HighSecurityFixesTest {
         assertThat(String.valueOf(mysqlDoc.getProperty("spring.datasource.url")))
                 .contains("sslMode=${MYSQL_SSL_MODE:PREFERRED}");
 
-        // Prod tách Actuator sang cổng 9090, chỉ mở health/info và xuất log dạng JSON ECS.
+        // prod đẩy Actuator ra cổng 9090, mở mỗi health/info rồi xuất log JSON chuẩn ECS
         assertThat(String.valueOf(prod.getProperty("management.server.port"))).contains("9090");
         assertThat(prod.getProperty("management.endpoints.web.exposure.include")).isEqualTo("health,info");
         assertThat(prod.getProperty("logging.structured.format.console")).isEqualTo("ecs");
     }
 
-    // Mọi mốc thời gian API phải có đuôi Z chuẩn UTC và /api/movies mặc định trả tối đa 200 phim.
+    // giờ giấc API phải có đuôi Z chuẩn UTC, còn /api/movies mặc định giới hạn tối đa 200 phim
     @Test
     void returnsUtcIsoTimestampsWithZAndCapsMovieListing() throws Exception {
         movieRepository.saveAllAndFlush(IntStream.range(0, 210)

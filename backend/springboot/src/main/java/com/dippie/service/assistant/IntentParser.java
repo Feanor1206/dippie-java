@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Tách câu hỏi tiếng Việt thành ChatIntent: nhận diện chế độ, thể loại cần/tránh, mốc năm, số lượng và tâm trạng.
+// tách câu hỏi tiếng Việt ra ChatIntent để bắt mode, thể loại cần hay tránh, mốc năm, số lượng với tâm trạng
 public final class IntentParser {
 
     private static final int FLAGS = Pattern.UNICODE_CHARACTER_CLASS;
@@ -119,9 +119,9 @@ public final class IntentParser {
         return parse(query, List.of());
     }
 
-    // Ghép câu hiện tại với mạch hỏi trước nếu là câu chỉnh bộ lọc ("không kinh dị", "tập khác"), rồi rút toàn bộ điều kiện tìm kiếm.
+    // câu kiểu chỉnh bộ lọc ("không kinh dị", "tập khác") thì nối với mạch hỏi trước rồi mới rút hết điều kiện tìm
     public ChatIntent parse(String query, List<ChatHistoryMessage> history) {
-        // Chỉ nối từ câu hỏi gốc gần nhất của user và bỏ qua câu trùng y hệt câu đang hỏi.
+        // chỉ nối từ câu hỏi gốc gần nhất của user, câu nào trùng y hệt câu đang hỏi thì bỏ qua
         String rawQuery = query == null ? "" : query;
         String trimmedQuery = rawQuery.trim();
         List<String> priorQueries = new ArrayList<>();
@@ -152,7 +152,7 @@ public final class IntentParser {
             fullQuery = rawQuery;
         }
 
-        // Nhìn ngược tối đa 40 ký tự trước tên thể loại để phân biệt người dùng muốn tìm hay muốn tránh (như "không kinh dị").
+        // ngó ngược tối đa 40 ký tự trước tên thể loại xem người hỏi muốn tìm hay muốn tránh (như "không kinh dị")
         String folded = TextFolding.fold(fullQuery);
         Map<String, Object> constraints = new LinkedHashMap<>();
         List<String> include = new ArrayList<>();
@@ -189,7 +189,7 @@ public final class IntentParser {
             constraints.put("exclude_genres", List.copyOf(exclude));
         }
 
-        // Gom mốc năm phát hành: "trước 2015" thành <= 2014, "sau 2020" thành >= 2021, còn "từ/đến/năm" lấy đúng mốc.
+        // gom mốc năm phát hành, "trước 2015" thành <= 2014, "sau 2020" thành >= 2021, còn "từ/đến/năm" lấy đúng mốc
         Matcher yearMatcher = YEAR_RE.matcher(folded);
         while (yearMatcher.find()) {
             String relation = yearMatcher.group(1);
@@ -208,7 +208,7 @@ public final class IntentParser {
             }
         }
 
-        // Chỉ bắt câu hỏi tổng quan về bộ phim (số tập, số mùa, nhân vật, tóm tắt) khi không phải tìm cảnh, tìm tập cụ thể hay gợi ý.
+        // chỉ bắt câu hỏi chung về bộ phim (số tập, số mùa, nhân vật, tóm tắt) lúc không phải tìm cảnh, tìm tập cụ thể hay gợi ý
         String foldedQuery = TextFolding.foldNormalized(rawQuery);
         String seriesInfo = null;
         boolean moment = MOMENT_HINT_RE.matcher(folded).find();
@@ -242,7 +242,7 @@ public final class IntentParser {
             constraints.put("series_only", true);
         }
 
-        // Chốt chế độ xử lý, số lượng kết quả cần lấy (6 cho gợi ý, 8 cho liệt kê, 1 cho tìm cụ thể) và tâm trạng đích.
+        // chốt mode, số kết quả cần lấy (gợi ý 6, liệt kê 8, tìm cụ thể 1) với tâm trạng đích
         boolean chitchat = CHITCHAT_RE.matcher(foldedQuery).matches();
         boolean mood = MOOD_RE.matcher(folded).find();
         boolean moodDiscovery = mood
@@ -286,7 +286,7 @@ public final class IntentParser {
         return PATCH_RE.matcher(TextFolding.fold(query).trim()).find() || ChatFollowUp.asksForAlternate(query);
     }
 
-    // Bắt phép tính cộng trừ nhân chia đơn thuần để CineBot không tìm nhầm số trong tên tập phim.
+    // bắt phép tính cộng trừ nhân chia đơn giản để CineBot khỏi tìm nhầm số sang tên tập phim
     public static boolean asksForArithmetic(String query) {
         return ARITHMETIC_RE.matcher(TextFolding.foldNormalized(query)).matches();
     }

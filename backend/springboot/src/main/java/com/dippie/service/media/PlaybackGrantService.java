@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-// Kiểm tra quyền xem cùng tệp vật lý rồi phát hành vé phát JWT ngắn hạn để trình phát gắn lên URL stream.
+// check quyền xem với file trên đĩa rồi cấp vé phát JWT ngắn hạn để player gắn lên URL stream
 @Service
 public class PlaybackGrantService {
 
@@ -50,7 +50,7 @@ public class PlaybackGrantService {
         this.reads.setReadOnly(true);
     }
 
-    // Tách phần kiểm tra CSDL vào giao dịch chỉ đọc ngắn rồi mới kiểm tra tệp trên đĩa và ký JWT.
+    // gói phần check DB vào transaction chỉ đọc ngắn rồi mới ra ngoài kiểm tra file trên đĩa với ký JWT
     public PlaybackGrantResponse issueGrant(String assetId) {
         Viewer viewer = currentViewer.find().orElse(null);
         AuthorizedGrant authorized = reads.execute(status -> {
@@ -67,7 +67,7 @@ public class PlaybackGrantService {
         });
         mediaFiles.requireFile(authorized.asset());
 
-        // Gắn userId và tokenVersion vào vé phát (không nhét username) để khi người dùng đăng xuất hoặc bị khóa là mất quyền ngay.
+        // nhét userId với tokenVersion vào vé phát (khỏi nhét username) để user logout hay bị khóa là hết xem ngay
         String token = jwtService.issuePlaybackGrant(
                 assetId,
                 viewer == null ? null : viewer.userId(),
@@ -79,7 +79,7 @@ public class PlaybackGrantService {
                 MediaAssetView.STREAM_PATH_PREFIX + assetId + "?grant=" + token, expiresIn, expiresIn);
     }
 
-    // Gom tài nguyên đã duyệt cùng tokenVersion hiện tại để mang ra khỏi giao dịch CSDL.
+    // gói media đã duyệt kèm tokenVersion để mang ra ngoài transaction DB
     private record AuthorizedGrant(MediaAsset asset, long tokenVersion) {
     }
 }

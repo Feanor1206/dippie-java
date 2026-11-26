@@ -23,7 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-// Service chỉ đọc, tải các bảng danh mục rồi lắp thành cây Composite (bộ, mùa, tập) để hiển thị và lọc.
+// service chỉ đọc, tải mấy bảng danh mục rồi lắp thành cây Composite (bộ, mùa, tập) để hiện và lọc
 public final class CatalogService {
     private final JdbcDatabase db;
     private final SeriesDao seriesDao;
@@ -44,7 +44,7 @@ public final class CatalogService {
         this.ratingDao = ratingDao;
     }
 
-    // Đọc mỗi bảng một lượt trong cùng kết nối rồi gom bằng Map theo khóa ngoại, tránh truy vấn lặp theo từng bộ hay từng tập.
+    // đọc mỗi bảng 1 lượt trên cùng kết nối rồi gom bằng Map theo khóa ngoại cho khỏi truy vấn lặp theo từng bộ, từng tập
     public List<SeriesNode> load() {
         return db.read(connection -> {
             var seasonsBySeries = seasonDao.findAll(connection).stream().collect(Collectors.groupingBy(Season::seriesId));
@@ -69,7 +69,7 @@ public final class CatalogService {
         });
     }
 
-    // Xếp tập và mùa theo số thứ tự (null đẩy xuống cuối), các tập chưa thuộc mùa nào thì gom vào nhóm Chưa xếp mùa.
+    // xếp tập và mùa theo số thứ tự (null đẩy xuống cuối), tập nào chưa thuộc mùa nào thì gom vào nhóm Chưa xếp mùa
     private static List<SeasonNode> buildSeasons(List<Season> seasons, List<Episode> episodes,
                                                  Map<String, Double> averages, Map<String, List<String>> driveSources) {
         Map<String, List<EpisodeNode>> episodesBySeason = new HashMap<>();
@@ -102,7 +102,7 @@ public final class CatalogService {
         return List.copyOf(seasonNodes);
     }
 
-    // Lọc mà không làm thay đổi cây gốc, luôn giữ lại nhánh bộ và mùa phía trên kết quả khớp.
+    // lọc mà không làm biến đổi cây gốc, luôn giữ lại nhánh bộ và mùa phía trên kết quả khớp
     public static List<SeriesNode> filter(List<SeriesNode> tree, String query) {
         String term = SearchText.normalize(query);
         if (term.isEmpty()) {

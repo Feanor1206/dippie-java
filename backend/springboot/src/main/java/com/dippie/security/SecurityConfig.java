@@ -36,10 +36,11 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-// Cấu hình Spring Security không lưu session, phân quyền kiểu fail-closed, gắn các header phòng thủ và bật CORS cùng BCrypt.
+// cấu hình Spring Security không lưu session, phân quyền kiểu fail-closed, gắn header phòng thủ và bật CORS cùng BCrypt
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -54,8 +55,6 @@ public class SecurityConfig {
                     + "connect-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; "
                     + "media-src 'self' blob:; worker-src 'self' blob:";
     static final String PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=()";
-    private static final long HSTS_MAX_AGE_SECONDS = 31_536_000L;
-    private static final String UNAUTHENTICATED_MESSAGE = "Bạn cần đăng nhập để tiếp tục.";
     private static final String ADMIN_FORBIDDEN_MESSAGE = "Chỉ tài khoản quản trị mới dùng được mục này.";
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -75,21 +74,21 @@ public class SecurityConfig {
         this.objectMapper = objectMapper;
     }
 
-    // Chuỗi filter bảo mật chính. Việt nhớ là mình để anyRequest().authenticated(),
-    // nên sau này mở thêm API công khai nào phải khai báo rõ ở đây kẻo bị chặn 401.
+    // chuỗi filter bảo mật chính, Việt nhớ ở đây để anyRequest().authenticated() nha
+    // sau này mở thêm API công khai nào phải khai báo rõ ở đây kẻo bị chặn 401
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
                 .headers(headers -> headers
-                        // Tắt Cache-Control mặc định của Spring để khỏi ghi đè cache dài hạn của file tĩnh, chỉ gắn no-store cho API nhạy cảm.
+                        // tắt Cache-Control mặc định của Spring kẻo ghi đè cache dài hạn của file tĩnh, chỉ gắn no-store cho API nhạy cảm
                         .cacheControl(cache -> cache.disable())
                         .contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY))
                         .referrerPolicy(referrer -> referrer.policy(
                                 ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
                         .httpStrictTransportSecurity(hsts -> hsts
-                                .maxAgeInSeconds(HSTS_MAX_AGE_SECONDS)
+                                .maxAgeInSeconds(31_536_000L)
                                 .includeSubDomains(true))
                         .addHeaderWriter(new StaticHeadersWriter("Permissions-Policy", PERMISSIONS_POLICY))
                         .addHeaderWriter(noStoreHeaderWriter())
@@ -104,10 +103,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        // Nhóm route quản trị và route riêng của tài khoản đang đăng nhập.
+                        // nhóm route quản trị và route riêng của user đang đăng nhập
                         .requestMatchers("/api/admin/**").hasAuthority(Role.ROLE_ADMIN.name())
                         .requestMatchers("/api/auth/me", "/api/auth/logout", "/api/users/**").authenticated()
-                        // Các route API và tài liệu công khai được mở rõ ràng.
+                        // mấy route API và tài liệu công khai được mở rõ ràng
                         .requestMatchers(HttpMethod.GET,
                                 "/api/health",
                                 "/actuator/health",
@@ -137,16 +136,16 @@ public class SecurityConfig {
                                 "/api/reports/playback"
                         ).permitAll()
                         .requestMatchers("/error").permitAll()
-                        // Mở GET/HEAD cho SPA và file tĩnh ngoài các prefix API/Actuator.
+                        // mở GET/HEAD cho SPA và file tĩnh ngoài mấy prefix API/Actuator
                         .requestMatchers(frontendRouteMatcher()).permitAll()
-                        // Mặc định fail-closed: mọi route hay HTTP method chưa liệt kê đều yêu cầu đăng nhập.
+                        // mặc định fail-closed, route hay HTTP method nào chưa liệt kê thì đều bắt đăng nhập
                         .anyRequest().authenticated())
                 .addFilterBefore(requestBodySizeLimitFilter, SecurityContextHolderFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
 
-    // Khớp GET/HEAD tới giao diện SPA hoặc file tĩnh nằm ngoài các tiền tố API, Actuator và Swagger.
+    // khớp GET/HEAD tới SPA hoặc file tĩnh nằm ngoài prefix API, Actuator và Swagger
     private static RequestMatcher frontendRouteMatcher() {
         return request -> {
             String method = request.getMethod();
@@ -166,7 +165,7 @@ public class SecurityConfig {
         };
     }
 
-    // Trả 403 JSON cho /api/admin/** khi chưa đăng nhập và 401 JSON cho các route cần xác thực khác.
+    // chưa đăng nhập mà gọi /api/admin/** thì trả 403 JSON, còn mấy route cần xác thực khác trả 401 JSON
     private AuthenticationEntryPoint jsonAuthenticationEntryPoint() {
         return (request, response, authException) -> {
             String path = normalizedPath(request);
@@ -174,11 +173,11 @@ public class SecurityConfig {
                 writeJsonError(response, HttpServletResponse.SC_FORBIDDEN, ADMIN_FORBIDDEN_MESSAGE);
                 return;
             }
-            writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, UNAUTHENTICATED_MESSAGE);
+            writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, "Bạn cần đăng nhập để tiếp tục.");
         };
     }
 
-    // Trả 403 JSON khi đã đăng nhập nhưng không có quyền quản trị.
+    // đã đăng nhập mà không có quyền admin thì trả 403 JSON
     private AccessDeniedHandler jsonAccessDeniedHandler() {
         return (request, response, accessDeniedException) ->
                 writeJsonError(response, HttpServletResponse.SC_FORBIDDEN, ADMIN_FORBIDDEN_MESSAGE);
@@ -188,10 +187,12 @@ public class SecurityConfig {
         response.setStatus(status);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        objectMapper.writeValue(response.getWriter(), ApiResponse.failure(message));
+        try (PrintWriter writer = response.getWriter()) {
+            objectMapper.writeValue(writer, ApiResponse.failure(message));
+        }
     }
 
-    // Gắn Cache-Control: no-store cho các route auth, users, admin hoặc request mang header Authorization, trừ /api/chat và tài nguyên tĩnh.
+    // gắn Cache-Control: no-store cho route auth, users, admin hoặc request có Authorization, trừ /api/chat và file tĩnh
     private static HeaderWriter noStoreHeaderWriter() {
         return (HttpServletRequest request, HttpServletResponse response) -> {
             String path = normalizedPath(request);
@@ -220,7 +221,7 @@ public class SecurityConfig {
         return uri;
     }
 
-    // Ghi header bảo mật sớm trước khi response commit để các endpoint stream vẫn có đủ header.
+    // ghi header bảo mật sớm trước khi response commit để mấy endpoint stream vẫn đủ header
     private static ObjectPostProcessor<HeaderWriterFilter> eagerHeaderWriting() {
         return new ObjectPostProcessor<>() {
             @Override
@@ -231,7 +232,7 @@ public class SecurityConfig {
         };
     }
 
-    // Mở CORS cho các origin đã khai báo trong cấu hình, kèm cookie và header Authorization.
+    // mở CORS cho mấy origin đã cấu hình, cho phép kèm cookie và header Authorization
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
@@ -244,7 +245,8 @@ public class SecurityConfig {
         return source;
     }
 
-    // Tắt tự đăng ký ở servlet container vì JwtAuthenticationFilter là @Component; nếu Việt xóa bean này thì filter sẽ chạy hai lần mỗi request.
+    // tắt tự đăng ký ở servlet container vì JwtAuthenticationFilter là @Component
+    // Việt đừng xóa bean này nha, xóa là filter chạy 2 lần mỗi request
     @Bean
     public FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterServletRegistration(JwtAuthenticationFilter filter) {
         FilterRegistrationBean<JwtAuthenticationFilter> registration = new FilterRegistrationBean<>(filter);
@@ -252,7 +254,7 @@ public class SecurityConfig {
         return registration;
     }
 
-    // Tắt tự đăng ký ở servlet container để RequestBodySizeLimitFilter chỉ chạy một lần đúng thứ tự trong chuỗi Security.
+    // tắt tự đăng ký ở servlet container để RequestBodySizeLimitFilter chỉ chạy 1 lần đúng thứ tự trong chuỗi Security
     @Bean
     public FilterRegistrationBean<RequestBodySizeLimitFilter> bodyLimitFilterServletRegistration(
             RequestBodySizeLimitFilter filter

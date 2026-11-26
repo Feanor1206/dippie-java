@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.util.Locale;
 
-// Bộ giới hạn tần suất đăng nhập với hai cửa sổ độc lập theo IP và theo tài khoản, chặn cả dò mật khẩu dàn trải lẫn dò phân tán từ nhiều IP.
+// rate limit đăng nhập gồm 2 cửa sổ tách riêng theo IP và theo tài khoản, chặn cả dò dàn trải lẫn dò từ nhiều IP
 @Component
 public class LoginRateLimiter {
 
@@ -27,7 +27,7 @@ public class LoginRateLimiter {
         );
     }
 
-    // Đếm lượt thử theo IP trước rồi mới đếm theo tài khoản; trả số giây cần chờ hoặc 0 nếu chưa bị chặn.
+    // đếm theo IP trước rồi mới đếm theo tài khoản, trả số giây phải chờ hoặc 0 nếu chưa bị chặn
     public long retryAfterSeconds(String clientIp, String identifier) {
         String normalizedIp = normalizeIp(clientIp);
         long ipRetry = ipLimiter.retryAfterSeconds("ip:" + normalizedIp);

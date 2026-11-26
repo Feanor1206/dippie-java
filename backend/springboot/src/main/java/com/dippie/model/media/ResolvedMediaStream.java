@@ -9,12 +9,12 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-// Đóng gói đường dẫn tệp video đã qua kiểm tra quyền cùng hàm chép dữ liệu theo khoảng byte ra phản hồi HTTP.
+// gói đường dẫn file video đã check quyền kèm hàm đổ từng khoảng byte ra HTTP
 public record ResolvedMediaStream(Path path, long totalLength, MediaType mediaType) {
 
     private static final int CHUNK_SIZE = 64 * 1024;
 
-    // Ghi đồng bộ từng khúc 64KB bằng FileChannel thay vì async stream để video dài không bị Spring cắt giữa chừng do async timeout.
+    // ghi đồng bộ từng khúc 64KB bằng FileChannel thay vì async stream, kẻo video dài bị Spring cắt ngang vì async timeout
     public void writeRange(long start, long length, OutputStream outputStream) throws IOException {
         if (length <= 0) {
             return;
@@ -24,7 +24,7 @@ public record ResolvedMediaStream(Path path, long totalLength, MediaType mediaTy
         try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
             channel.position(start);
             long remaining = length;
-            // Giới hạn buffer theo số byte còn lại để không đọc lố sang phần ngoài Range được yêu cầu.
+            // chặn limit của buffer theo số byte còn lại kẻo đọc lố ra ngoài Range khách xin
             while (remaining > 0) {
                 byteBuffer.clear();
                 byteBuffer.limit((int) Math.min(CHUNK_SIZE, remaining));

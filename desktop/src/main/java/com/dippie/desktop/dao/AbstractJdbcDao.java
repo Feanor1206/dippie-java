@@ -10,8 +10,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
-// Lớp cha DAO trừu tượng gom sẵn cách chạy PreparedStatement, gắn tham số và ánh xạ bằng RowMapper.
-// Các DAO con kế thừa lớp này rồi chỉ cần khai báo bảng, cột và mapper (kế thừa + generic).
+// lớp cha DAO trừu tượng gom sẵn cách chạy PreparedStatement, gắn tham số và map bằng RowMapper
+// các DAO con kế thừa lớp này rồi chỉ khai báo bảng, cột với mapper (kế thừa và generic)
 public abstract class AbstractJdbcDao<T, ID> implements Dao<T, ID> {
     protected final JdbcDatabase db;
     private final String table;
@@ -25,7 +25,7 @@ public abstract class AbstractJdbcDao<T, ID> implements Dao<T, ID> {
         this(db, table, columns, mapper, List.of("id"), key -> new Object[]{key});
     }
 
-    // Overload này nhận khóa ghép nhiều cột để dùng lại chung cho bảng nối như catalog_episode_assets.
+    // overload này nhận khóa ghép nhiều cột để xài chung cho bảng nối như catalog_episode_assets
     protected AbstractJdbcDao(JdbcDatabase db, String table, String columns, RowMapper<T> mapper,
                               List<String> keyColumns, Function<ID, Object[]> keyValues) {
         this.db = db;
@@ -68,7 +68,7 @@ public abstract class AbstractJdbcDao<T, ID> implements Dao<T, ID> {
         return query(connection, "SELECT COUNT(*) FROM " + table, row -> row.getLong(1)).getFirst();
     }
 
-    // Luôn dùng PreparedStatement để tránh SQL injection và đóng gọn cả statement lẫn ResultSet.
+    // luôn chạy PreparedStatement cho khỏi dính SQL injection và tự đóng gọn cả statement lẫn ResultSet
     protected static <R> List<R> query(Connection connection, String sql, RowMapper<R> mapper,
                                        Object... parameters) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -83,7 +83,7 @@ public abstract class AbstractJdbcDao<T, ID> implements Dao<T, ID> {
         }
     }
 
-    // Nhận Connection từ service truyền vào để câu lệnh ghi tham gia đúng giao dịch đang mở.
+    // nhận Connection từ service truyền xuống để lệnh ghi ăn chung transaction đang mở
     protected static int update(Connection connection, String sql, Object... parameters) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             bind(statement, parameters);

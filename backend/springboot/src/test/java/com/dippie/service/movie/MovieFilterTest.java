@@ -9,7 +9,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Test đơn vị cho MovieFilter: khớp nguyên token thể loại (không ăn chuỗi con hay lệch dấu) và tìm không phân biệt hoa thường.
+// test MovieFilter khớp nguyên token thể loại chứ không ăn chuỗi con hay lệch dấu, tìm không phân biệt hoa thường
 class MovieFilterTest {
 
     @Test

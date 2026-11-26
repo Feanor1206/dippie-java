@@ -4,11 +4,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.List;
 
-// Danh sách dải IP/CIDR của reverse proxy được phép gửi X-Forwarded-For, đọc từ dippie.proxy; điền "none" để tắt hoàn toàn.
+// danh sách IP/CIDR của reverse proxy được phép gửi X-Forwarded-For từ dippie.proxy, điền "none" là tắt hết
 @ConfigurationProperties("dippie.proxy")
 public record TrustedProxyProperties(List<String> trustedCidrs) {
 
-    // Mặc định chỉ tin loopback và các dải mạng nội bộ RFC1918 (như mạng Docker chứa Caddy).
+    // mặc định chỉ tin loopback và mấy dải nội bộ RFC1918 (như mạng Docker chứa Caddy)
     public static final List<String> DEFAULT_TRUSTED_CIDRS = List.of(
             "127.0.0.1/32",
             "::1/128",

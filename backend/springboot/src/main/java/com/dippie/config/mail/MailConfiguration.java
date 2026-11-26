@@ -13,11 +13,12 @@ import org.springframework.mail.javamail.JavaMailSender;
 
 import java.time.Clock;
 
-// Factory cấu hình Spring chọn Strategy gửi thư tùy theo profile đang chạy và biến spring.mail.host.
+// factory của Spring chọn Strategy gửi thư tùy theo profile đang chạy và spring.mail.host
 @Configuration
 public class MailConfiguration {
 
-    // Profile demo và test luôn ghi ra tệp .eml để tránh gửi nhầm thư thật; bản chạy thật dùng SMTP khi có spring.mail.host và bean JavaMailSender.
+    // profile demo/test luôn ghi ra file .eml kẻo gửi nhầm thư thật
+    // chạy thật mới dùng SMTP khi có spring.mail.host và bean JavaMailSender
     @Bean
     public MailDeliveryStrategy mailDeliveryStrategy(
             Environment environment,

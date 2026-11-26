@@ -41,7 +41,7 @@ import static com.dippie.model.catalog.CatalogCollection.SERIES;
 import static com.dippie.model.catalog.CatalogCollection.SOURCES;
 import static com.dippie.model.catalog.CatalogCollection.TEXT_TRACKS;
 
-// Ghi các bảng danh mục theo đúng thứ tự khóa ngoại, dùng hàm upsert generic để 11 loại entity đi chung một luồng thêm hoặc cập nhật.
+// ghi mấy bảng danh mục đúng thứ tự khóa ngoại, viết hàm upsert generic để 11 loại entity đi chung 1 luồng thêm hay sửa
 @Repository
 public class CatalogRecordWriter {
 
@@ -55,19 +55,19 @@ public class CatalogRecordWriter {
         this.links = links;
     }
 
-    // Ghi toàn bộ 11 bảng danh mục theo thứ tự cha trước con sau, xen kẽ flush để khóa ngoại luôn khớp.
+    // ghi đủ 11 bảng theo thứ tự cha trước con sau, kẹp flush ở giữa cho khóa ngoại luôn khớp
     public void write(JsonNode document, CatalogDiff.Analysis diff, int revision, LocalDateTime now) {
         Batch batch = new Batch(document, diff.storedRows(), revision, now);
         Map<String, Movie> movies = legacy.loadMovies(document);
 
-        // Nhóm bảng gốc độc lập và bộ phim phải xuống DB trước mùa và tập.
+        // mấy bảng gốc độc lập với bộ phim phải xuống DB trước mùa và tập nha
         upsert(batch, GENRES, CatalogGenre.class, CatalogRecordMapper::genre, CatalogGenre::applyImport);
         upsert(batch, ATTRIBUTE_SCALES, CatalogAttributeScale.class, CatalogRecordMapper::scale, CatalogAttributeScale::applyImport);
         upsert(batch, SOURCES, CatalogSource.class, CatalogRecordMapper::source, CatalogSource::applyImport);
         upsert(batch, SERIES, CatalogSeries.class, CatalogRecordMapper::series, CatalogSeries::applyImport);
         entities.flush();
 
-        // Ghi mùa rồi tới tập phim, xong đồng bộ metadata sang bảng movies cũ.
+        // ghi mùa rồi tới tập, xong xuôi thì đồng bộ metadata sang bảng movies cũ
         upsert(batch, SEASONS, CatalogSeason.class, CatalogRecordMapper::season, CatalogSeason::applyImport);
         entities.flush();
         upsert(batch, EPISODES, CatalogEpisode.class,
@@ -75,26 +75,26 @@ public class CatalogRecordWriter {
         entities.flush();
         legacy.syncMetadata(document, movies);
 
-        // Dời tạm các phân đoạn đổi chỗ sang vị trí âm trước khi ghi phân đoạn, nhân vật và các bảng nối phân loại.
+        // đẩy tạm mấy phân đoạn đổi chỗ sang vị trí âm trước khi ghi phân đoạn, nhân vật với mấy bảng nối
         moveSegments(batch);
         upsert(batch, SEGMENTS, CatalogSegment.class, CatalogRecordMapper::segment, CatalogSegment::applyImport);
         upsert(batch, CHARACTERS, CatalogCharacter.class, CatalogRecordMapper::character, CatalogCharacter::applyImport);
         entities.flush();
         links.replaceTaxonomy(document);
 
-        // Cuối cùng ghi tệp media, phụ đề và phân cảnh phụ thuộc vào tập phim.
+        // chốt hạ bằng file media, phụ đề với phân cảnh phụ thuộc tập phim
         writeAssets(batch, movies);
         upsert(batch, TEXT_TRACKS, CatalogTextTrack.class, CatalogRecordMapper::textTrack, CatalogTextTrack::applyImport);
         upsert(batch, SCENES, CatalogScene.class, CatalogRecordMapper::scene, CatalogScene::applyImport);
         entities.flush();
     }
 
-    // Khi gói nhập lại không đổi nội dung vẫn làm mới metadata bảng movies cũ để sửa lệch dữ liệu nếu có.
+    // gói nhập lại y hệt vẫn refresh metadata bảng movies cũ để vá lệch data nếu có
     public void refreshLegacyMetadata(JsonNode document) {
         legacy.syncMetadata(document, legacy.loadMovies(document));
     }
 
-    // Ghi và flush hết các media_assets trước rồi mới gắn related_asset_id, tránh tự tham chiếu vào bản ghi chưa có trong DB.
+    // ghi rồi flush hết media_assets trước rồi mới móc related_asset_id kẻo tự trỏ vào dòng chưa nằm trong DB
     private void writeAssets(Batch batch, Map<String, Movie> movies) {
         JsonNode items = MEDIA_ASSETS.items(batch.document());
         if (items.isEmpty()) {
@@ -112,7 +112,7 @@ public class CatalogRecordWriter {
         links.syncEpisodeAssets(items);
     }
 
-    // Hàm generic dùng chung cho mọi bảng CatalogRecord: chưa có thì persist mới, có rồi thì gọi callback cập nhật tại chỗ.
+    // hàm generic xài chung cho mọi bảng CatalogRecord, chưa có thì persist mới, có rồi thì gọi callback sửa tại chỗ
     private <T extends CatalogRecord> List<T> upsert(Batch batch, CatalogCollection collection, Class<T> type,
             Function<CatalogRecordMapper.Row, T> create, BiConsumer<T, T> update) {
         JsonNode items = collection.items(batch.document());
@@ -133,8 +133,8 @@ public class CatalogRecordWriter {
         return written;
     }
 
-    // Việt đừng bỏ bước dời tạm sang vị trí âm này nhé.
-    // Khi hai phân đoạn trong cùng tập đổi chỗ cho nhau, ghi thẳng vị trí mới sẽ đụng ngay unique (episode_id, position).
+    // Việt đừng bỏ bước dời tạm sang vị trí âm chỗ này nha
+    // hai phân đoạn trong cùng tập mà đổi chỗ nhau, ghi thẳng vị trí mới là dính ngay unique (episode_id, position)
     private void moveSegments(Batch batch) {
         List<CatalogSegment> moving = new ArrayList<>();
         Map<String, Set<Integer>> occupied = new HashMap<>();
@@ -150,7 +150,7 @@ public class CatalogRecordWriter {
         if (moving.isEmpty()) {
             return;
         }
-        // Đọc sẵn các số âm đang tồn tại trong DB (nếu có) để tránh gán trùng số âm tạm.
+        // kéo sẵn mấy số âm đang có trong DB (nếu có) kẻo gán trùng số âm tạm
         entities.createQuery("""
                 select row.episodeId, row.position from CatalogSegment row
                 where row.episodeId in :ids and row.position < 0
@@ -168,7 +168,7 @@ public class CatalogRecordWriter {
         entities.flush();
     }
 
-    // Gom tài liệu JSON, bản đồ các hàng đang lưu, phiên bản và thời điểm nhập để đỡ truyền nhiều tham số qua các bước ghi.
+    // gom JSON, map hàng đang lưu, phiên bản với thời điểm nhập vào 1 record cho đỡ truyền lỉnh kỉnh nhiều tham số
     private record Batch(JsonNode document, Map<CatalogCollection, Map<String, CatalogRecord>> storedRows,
             int revision, LocalDateTime now) {
     }

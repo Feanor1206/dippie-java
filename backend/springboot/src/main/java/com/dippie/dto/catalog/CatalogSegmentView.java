@@ -4,7 +4,7 @@ import com.dippie.model.catalog.CatalogSegment;
 
 import java.time.LocalDateTime;
 
-// Bản ghi chỉ đọc chứa thông tin một phân đoạn trong tập phim để serialize ra JSON.
+// view chỉ đọc của một phân đoạn trong tập phim để xuất JSON
 public record CatalogSegmentView(
         String id, String episodeId, int position, String title, String aliasesJson, String synopsis,
         String translationsJson, String primaryLanguage, String characterIdsJson, String plotFactsJson,

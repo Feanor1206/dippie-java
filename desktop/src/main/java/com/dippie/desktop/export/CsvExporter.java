@@ -8,10 +8,10 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 
-// Xuất dữ liệu ra tệp CSV chuẩn UTF-8. Cấu trúc cột của từng bảng tách sang CsvStrategy (mẫu Strategy).
+// xuất dữ liệu ra file CSV chuẩn UTF-8, cấu trúc cột từng bảng tách sang CsvStrategy kiểu Strategy
 public final class CsvExporter {
-    // Ghi ra tệp tạm trong cùng thư mục rồi mới thay tệp đích để lỡ lỗi giữa chừng không làm hỏng tệp cũ.
-    // Có ghi thêm BOM (\uFEFF) đầu tệp để Excel mở tiếng Việt không bị vỡ dấu.
+    // ghi ra file tạm cùng thư mục rồi mới thay file đích để lỡ lỗi giữa chừng không hỏng file cũ
+    // có thêm BOM (\uFEFF) đầu file để Excel mở tiếng Việt khỏi vỡ dấu
     public <T> void write(Path destination, CsvStrategy<T> strategy, List<T> rows) throws IOException {
         Path target = destination.toAbsolutePath();
         Path tempFile = Files.createTempFile(target.getParent(), "dippie-", ".csv.tmp");
@@ -29,7 +29,7 @@ public final class CsvExporter {
         }
     }
 
-    // Ghi từng ô cách nhau bằng dấu phẩy và xuống dòng CRLF cho khớp chuẩn Excel.
+    // ghi từng ô ngăn bằng dấu phẩy và xuống dòng CRLF cho đúng chuẩn Excel
     private static void writeRow(BufferedWriter writer, List<?> cells) throws IOException {
         for (int index = 0; index < cells.size(); index++) {
             if (index > 0) {
@@ -40,7 +40,7 @@ public final class CsvExporter {
         writer.write("\r\n");
     }
 
-    // Thêm dấu nháy đơn trước chuỗi mở đầu bằng =, +, -, @ hoặc ký tự xuống dòng để Excel không chạy nó như công thức.
+    // thêm dấu nháy đơn trước chuỗi mở đầu bằng =, +, -, @ hoặc xuống dòng kẻo Excel chạy thành công thức
     private static String escape(Object cell) {
         String text = cell == null ? "" : cell.toString();
         String trimmed = text.stripLeading();

@@ -2,7 +2,7 @@ package com.dippie.security;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-// Ngưỡng dung lượng tối đa cho body HTTP theo từng nhóm route, đọc từ dippie.http.body-limit để tránh request khổng lồ ngốn RAM.
+// trần dung lượng body HTTP theo từng nhóm route, đọc từ dippie.http.body-limit kẻo request khổng lồ ngốn RAM
 @ConfigurationProperties("dippie.http.body-limit")
 public record HttpBodyLimitProperties(
         long defaultMaxBytes,

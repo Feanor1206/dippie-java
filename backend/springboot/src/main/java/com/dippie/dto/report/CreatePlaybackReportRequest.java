@@ -4,8 +4,8 @@ import com.dippie.exception.InvalidRequestException;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-// Dữ liệu gửi lên khi người xem báo lỗi phát video.
-// Mình giữ episodeId ở dạng JsonNode vì Jackson tự ép số hay boolean sang String, nên cần tự kiểm tra kiểu để chặn id sai định dạng.
+// body gửi lên lúc người xem báo lỗi phát video
+// giữ episodeId kiểu JsonNode kẻo Jackson tự ép số hay boolean sang String, tự check kiểu cho chắc
 public record CreatePlaybackReportRequest(
         JsonNode episodeId,
         String assetId,
@@ -14,9 +14,8 @@ public record CreatePlaybackReportRequest(
 ) {
 
     private static final int MAX_ID_LENGTH = 100;
-    private static final int MAX_NOTE_LENGTH = 500;
 
-    // Chỉ nhận episodeId dạng chuỗi có độ dài hợp lệ, từ chối số nguyên, boolean hay object.
+    // chỉ nhận episodeId là chuỗi đúng độ dài, đá số nguyên, boolean hay object ra hết
     public String resolvedEpisodeId() {
         if (episodeId == null || episodeId.isNull()) {
             throw new InvalidRequestException("Vui lòng chọn tập phim cần báo lỗi.");
@@ -31,7 +30,7 @@ public record CreatePlaybackReportRequest(
         return trimmedId;
     }
 
-    // assetId là trường tùy chọn; chuỗi rỗng sau khi trim sẽ đổi về null.
+    // assetId có cũng được không có cũng sao, trim ra rỗng thì đổi thành null
     public String resolvedAssetId() {
         if (assetId == null) {
             return null;
@@ -46,12 +45,12 @@ public record CreatePlaybackReportRequest(
         return trimmed;
     }
 
-    // Chặn ghi chú dài quá 500 ký tự và quy chuỗi toàn khoảng trắng về null.
+    // chặn ghi chú quá 500 ký tự, chuỗi toàn dấu cách thì kéo về null
     public String resolvedNote() {
         if (note == null) {
             return null;
         }
-        if (note.length() > MAX_NOTE_LENGTH) {
+        if (note.length() > 500) {
             throw new InvalidRequestException("Ghi chú không được dài quá 500 ký tự.");
         }
         String trimmed = note.trim();

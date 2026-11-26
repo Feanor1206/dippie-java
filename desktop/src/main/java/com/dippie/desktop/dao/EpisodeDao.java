@@ -3,9 +3,8 @@ package com.dippie.desktop.dao;
 import com.dippie.desktop.db.JdbcDatabase;
 import com.dippie.desktop.model.catalog.CatalogRows.Episode;
 
-// DAO chỉ đọc bảng catalog_episodes.
-// Chỗ cột cuối dễ nhầm nha Việt: mã YouTube nằm trong external_ids của raw_json chứ không phải record_json
-// (record_json chỉ giữ trạng thái và phiên bản), nên mình chọn raw_json đưa vào Episode.recordJson.
+// DAO đọc catalog_episodes, chỗ cột cuối dễ nhầm nha Việt vì record_json chỉ giữ trạng thái và phiên bản
+// mã YouTube nằm ở external_ids trong raw_json nên lấy raw_json đưa vào Episode.recordJson
 public final class EpisodeDao extends AbstractJdbcDao<Episode, String> {
     public EpisodeDao(JdbcDatabase db) {
         super(db, "catalog_episodes", "id, series_id, season_id, number, title, synopsis, duration_ms, raw_json",

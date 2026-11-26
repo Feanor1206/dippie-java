@@ -5,16 +5,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.List;
 
-// Phản hồi JSON của API khám phá, gom ý định tìm kiếm, danh sách phim, gợi ý câu hỏi kế tiếp và trạng thái chỉ mục.
-// DiscoverService dựng record này, controller chỉ trả nó về cho giao diện.
+// JSON trả về cho API khám phá, DiscoverService dựng sẵn rồi controller chỉ việc đẩy ra
 public record DiscoverResponse(Intent structuredIntent, String explanation, List<ObjectNode> results, List<String> followUps,
         PipelineStages pipelineStages) {
 
-    // Mô tả ý định khám phá có cấu trúc đi kèm phản hồi.
+    // ý định tìm kiếm có cấu trúc gửi kèm trong phản hồi
     public record Intent(@JsonProperty("intent_type") String intentType, @JsonProperty("semantic_query") String semanticQuery) {
     }
 
-    // Báo tên bộ truy xuất và việc chỉ mục cục bộ đã sẵn sàng hay chưa.
+    // báo tên bộ truy xuất với việc index cục bộ đã sẵn sàng chưa
     public record PipelineStages(String retrieval, boolean indexReady) {
     }
 }

@@ -15,8 +15,8 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 
-// Xuất JsonNode ra chuỗi theo đúng quy tắc json.dumps bên Python (hex escape chữ thường, sắp khóa theo code point, định dạng float giống repr).
-// Việt đừng đổi sang ObjectMapper.writeValueAsString thường, chỉ lệch một ký tự là sai mã băm SHA-256 so với phía Python.
+// xuất JsonNode ra chuỗi đúng luật json.dumps bên Python (hex escape chữ thường, sắp khóa theo code point, float giống repr)
+// Việt đừng đổi sang ObjectMapper.writeValueAsString thường nha, lệch 1 ký tự thôi là sai mã băm SHA-256 so với Python
 public final class CatalogJsonWriter {
 
     private static final JsonFactory FACTORY = JsonFactory.builder().disable(JsonWriteFeature.WRITE_HEX_UPPER_CASE).build();
@@ -41,7 +41,8 @@ public final class CatalogJsonWriter {
     private CatalogJsonWriter() {
     }
 
-    // Truyền canonical = true để ra chuỗi gọn đã sắp khóa cho việc băm nội dung, còn false giữ khoảng trắng khi lưu rawJson.
+    // truyền canonical = true để ra chuỗi gọn đã sắp khóa phục vụ băm, còn false giữ khoảng trắng khi lưu rawJson
+    @SuppressWarnings("resource") // setPrettyPrinter trả lại đúng generator trong try nên JDT báo nhầm
     public static String encode(JsonNode node, boolean canonical) {
         StringWriter output = new StringWriter();
         try (JsonGenerator generator = FACTORY.createGenerator(output)) {
@@ -56,7 +57,7 @@ public final class CatalogJsonWriter {
     }
 
     private static void write(JsonNode node, JsonGenerator generator, boolean canonical) throws IOException {
-        // Đệ quy ghi từng kiểu nút; chỉ sắp xếp danh sách khóa khi ở chế độ canonical.
+        // đệ quy ghi từng loại node, chỉ sắp xếp khóa khi bật canonical
         switch (node.getNodeType()) {
             case OBJECT -> {
                 List<String> keys = new ArrayList<>();
@@ -91,7 +92,7 @@ public final class CatalogJsonWriter {
         if (!Double.isFinite(value) || value == 0) {
             return Double.toString(value);
         }
-        // Mô phỏng ngưỡng đổi sang ký hiệu khoa học của Python (số mũ từ -4 đến 15) để băm số thực không bị lệch.
+        // bắt chước ngưỡng đổi sang ký hiệu khoa học của Python (số mũ từ -4 đến 15) kẻo băm số thực bị lệch
         BigDecimal decimal = BigDecimal.valueOf(value).stripTrailingZeros();
         if (decimal.precision() == 2) {
             BigDecimal oneDigit = new BigDecimal(value).round(new MathContext(1, RoundingMode.HALF_EVEN));

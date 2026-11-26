@@ -1,9 +1,9 @@
 package com.dippie.model.mail;
 
-// Gói nội dung một bức thư gửi đi (người nhận, tiêu đề, thân thư) dưới dạng bất biến.
+// gói bất biến nội dung một email gửi đi (người nhận, tiêu đề, thân thư)
 public record EmailMessage(String to, String subject, String body) {
 
-    // Lọc bỏ ký tự xuống dòng ở to và subject để chặn chèn thêm header email trái phép.
+    // chặn ký tự xuống dòng trong to với subject kẻo bị chèn header email bậy
     public EmailMessage {
         if (to == null || to.isBlank()) {
             throw new IllegalArgumentException("Email người nhận không được để trống.");

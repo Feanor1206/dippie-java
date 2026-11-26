@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// API công khai tiếp nhận yêu cầu quên mật khẩu và bước xác nhận đổi sang mật khẩu mới.
+// API công khai cho luồng quên mật khẩu và xác nhận đổi mật khẩu mới
 @RestController
 @RequestMapping("/api/auth/password-reset")
 public class PasswordResetController {
@@ -27,7 +27,7 @@ public class PasswordResetController {
         this.clientIpResolver = clientIpResolver;
     }
 
-    // Luôn trả 202 với cùng một thông báo dù email có trong DB hay không để tránh bị dò tài khoản.
+    // luôn trả 202 cùng 1 câu dù email có trong DB hay không kẻo bị dò tài khoản
     @PostMapping("/request")
     public ResponseEntity<ApiResponse<Void>> requestReset(
             @RequestBody(required = false) PasswordResetRequestDto request,
@@ -38,7 +38,7 @@ public class PasswordResetController {
                 .body(ApiResponse.ok(null, PasswordResetService.REQUEST_ACCEPTED_MESSAGE));
     }
 
-    // Kiểm tra token, đổi mật khẩu xong trả 204 không cần thân phản hồi.
+    // check token rồi đổi mật khẩu, xong trả 204 không cần body
     @PostMapping("/confirm")
     public ResponseEntity<Void> confirmReset(@RequestBody(required = false) PasswordResetConfirmRequest request) {
         passwordResetService.confirmReset(request);

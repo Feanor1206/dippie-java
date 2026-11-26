@@ -7,7 +7,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Xác minh quy tắc đọc trạng thái xuất bản từ recordJson, ép về DRAFT khi JSON sai hoặc không thỏa luật ready.
+// test đọc trạng thái xuất bản từ recordJson, cứ lỗi JSON hay không đạt chuẩn ready là ép về DRAFT
 class PublicationStatusTest {
 
     @Test
@@ -28,7 +28,7 @@ class PublicationStatusTest {
         assertThat(PublicationStatus.of(recordJson)).isEqualTo(PublicationStatus.DRAFT);
     }
 
-    // Trường hợp status bị escape unicode chỉ được nhận READY nếu bản thân raw JSON vẫn có chữ "ready".
+    // chỗ này để ý nha, status bị escape unicode chỉ được tính READY khi raw JSON gốc vẫn có chữ "ready"
     @Test
     void acceptsEscapedReadyWhenTheRawRecordAlsoContainsReady() {
         assertThat(PublicationStatus.of("{\"status\":\"re\\u0061dy\",\"title\":\"Ready\"}"))

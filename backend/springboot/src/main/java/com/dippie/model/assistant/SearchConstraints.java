@@ -6,8 +6,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 import java.util.Set;
 
-// Bộ lọc bất biến truyền từ API khám phá hoặc CineBot vào LexicalIndex.
-// Hai cờ excludedItems và allowExternalLookup đánh dấu @JsonIgnore vì chỉ dùng nội bộ giữa phiên chat và chỉ mục.
+// bộ lọc bất biến từ API khám phá hay CineBot đưa vào LexicalIndex
+// excludedItems với allowExternalLookup gắn @JsonIgnore vì chỉ dùng nội bộ giữa phiên chat và index
 public record SearchConstraints(
         @JsonProperty("include_genres") List<String> includeGenres,
         @JsonProperty("exclude_genres") List<String> excludeGenres,

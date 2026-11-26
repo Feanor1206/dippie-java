@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-// API cho tủ phim cá nhân của tài khoản đang đăng nhập gồm xem sau, yêu thích và đánh giá.
+// API tủ phim cá nhân của user đang đăng nhập gồm xem sau, yêu thích và đánh giá
 @RestController
 @RequestMapping("/api/users")
 public class LibraryController {

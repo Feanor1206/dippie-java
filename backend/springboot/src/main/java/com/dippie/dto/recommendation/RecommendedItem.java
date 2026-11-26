@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import java.util.List;
 import java.util.Map;
 
-// DTO từng tập phim gợi ý trả về JSON; giữ đủ cả tên trường snake_case và camelCase để tương thích bản frontend cũ.
+// view một tập được gợi ý, giữ đủ cả field snake_case với camelCase cho khỏi gãy frontend cũ
 @JsonInclude(JsonInclude.Include.ALWAYS)
 public record RecommendedItem(
         String id, String title, Integer year, double rating, String runtime, List<String> genres,
@@ -42,7 +42,7 @@ public record RecommendedItem(
 ) {
     private static final String EPISODE = "episode";
 
-    // Dựng kết quả gợi ý theo sở thích, lấy luôn mô tả tập phim làm bằng chứng hiển thị.
+    // dựng mục gợi ý theo sở thích, mượn luôn mô tả tập làm đoạn giải thích
     public static RecommendedItem affinity(RecommendationCandidate item, double score) {
         return from(item, score,
                 List.of(new Evidence(item.id(), item.description(), item.startMs(), item.endMs(), EPISODE)));
@@ -65,7 +65,7 @@ public record RecommendedItem(
                 comparativeAttributes, diagnostics, episodeId, startMs, score, calibratedScore, evidence, summary);
     }
 
-    // Đoạn văn bản và mốc thời gian trích ra để giải thích vì sao tập phim hợp với truy vấn.
+    // đoạn chữ kèm mốc giờ trích ra để giải thích sao tập này hợp câu hỏi
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Evidence(String documentId, String text, Long startMs, Long endMs, String itemType) {
     }

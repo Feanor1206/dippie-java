@@ -14,7 +14,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Kiểm tra các mẫu câu trả lời của CatalogReplies: câu dẫn mốc giờ, lọc đoạn trích lặp tên tập và trả lời thông tin bộ phim.
+// test mẫu câu của CatalogReplies: dẫn mốc giờ, bỏ trích dẫn lặp tên tập với trả lời thông tin bộ phim
 class CatalogRepliesTest {
 
     static Stream<Arguments> sourceIntroParityCases() {

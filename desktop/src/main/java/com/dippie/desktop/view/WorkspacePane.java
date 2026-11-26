@@ -16,7 +16,7 @@ import javafx.scene.layout.BorderPane;
 
 import java.util.List;
 
-// Khung chính gom 4 tab quản trị, gắn Observer làm mới chéo giữa các tab và cài phím tắt Ctrl+F, Ctrl+Z, F5.
+// khung chính gom 4 tab quản trị, gắn Observer làm mới chéo giữa các tab và cài phím tắt Ctrl+F, Ctrl+Z, F5
 public final class WorkspacePane extends BorderPane {
     private static final KeyCombination SHORTCUT_SEARCH =
             new KeyCodeCombination(KeyCode.F, KeyCombination.SHORTCUT_DOWN);
@@ -43,7 +43,7 @@ public final class WorkspacePane extends BorderPane {
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         setCenter(tabs);
 
-        // Gắn phím tắt lên Scene lúc vào phiên và gỡ sạch khi rời Scene để đăng xuất rồi không bị rò listener.
+        // gắn phím tắt lên Scene lúc vào phiên rồi gỡ sạch lúc rời Scene kẻo đăng xuất vẫn bị rò listener
         EventHandler<KeyEvent> shortcutFilter = event -> {
             if (SHORTCUT_SEARCH.match(event)) {
                 DataPane active = activePane();
@@ -76,7 +76,7 @@ public final class WorkspacePane extends BorderPane {
             }
         });
 
-        // Nghe Observer từ AdminController để chỉ tải lại những tab bị ảnh hưởng sau mỗi lần sửa.
+        // nghe Observer từ AdminController để chỉ tải lại đúng mấy tab bị ảnh hưởng sau mỗi lần sửa
         controller.usersChangedProperty().addListener((property, previous, changed) -> {
             users.refresh();
             dashboard.refresh();
@@ -87,12 +87,12 @@ public final class WorkspacePane extends BorderPane {
             dashboard.refresh();
         });
 
-        // Gọi refresh() qua lớp cha DataPane (đa hình) để nạp dữ liệu ban đầu cho cả 4 tab.
+        // gọi refresh() qua lớp cha DataPane kiểu đa hình để nạp dữ liệu ban đầu cho cả 4 tab
         List<DataPane> panes = List.of(dashboard, catalog, users, ratings);
         panes.forEach(DataPane::refresh);
     }
 
-    // Chuyển nhanh sang tab theo chỉ số (tiện ích chụp ảnh màn hình cũng dùng hàm này).
+    // chuyển nhanh sang tab theo chỉ số (tool chụp ảnh màn hình cũng gọi hàm này)
     public void selectTab(int index) {
         tabs.getSelectionModel().select(index);
     }
@@ -106,7 +106,7 @@ public final class WorkspacePane extends BorderPane {
         return selected != null && selected.getContent() instanceof DataPane pane ? pane : null;
     }
 
-    // Chặn ở đây để lúc Việt đang gõ trong ô tìm kiếm thì Ctrl+Z hoàn tác chữ, không bị nhảy sang hoàn tác tài khoản.
+    // chặn ở đây để lúc Việt đang gõ trong ô tìm kiếm thì Ctrl+Z hoàn tác chữ chứ không nhảy sang hoàn tác tài khoản
     private boolean isEditingText() {
         if (getScene() == null) {
             return false;

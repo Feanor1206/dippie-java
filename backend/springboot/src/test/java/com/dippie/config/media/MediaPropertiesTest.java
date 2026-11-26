@@ -5,7 +5,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Kiểm tra quy tắc tự gán ổ đĩa Drive mặc định theo hệ điều hành trong MediaProperties.
+// test quy tắc tự chọn ổ đĩa Drive mặc định theo hệ điều hành trong MediaProperties
 class MediaPropertiesTest {
 
     @ParameterizedTest

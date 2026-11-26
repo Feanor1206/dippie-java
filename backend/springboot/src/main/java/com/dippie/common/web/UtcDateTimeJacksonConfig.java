@@ -19,8 +19,8 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
-// Cấu hình Jackson ép mọi LocalDateTime xuất ra JSON theo chuẩn ISO-8601 UTC có đuôi Z.
-// Việt đừng bỏ module này vì thiếu Z là trình duyệt sẽ hiểu nhầm thành giờ máy người dùng thay vì quy đổi từ UTC.
+// cấu hình Jackson ép mọi LocalDateTime ra JSON chuẩn ISO-8601 UTC có đuôi Z
+// Việt đừng bỏ module này nha, thiếu Z là trình duyệt hiểu nhầm thành giờ máy người dùng thay vì quy đổi từ UTC
 @Configuration
 public class UtcDateTimeJacksonConfig {
 
@@ -32,7 +32,7 @@ public class UtcDateTimeJacksonConfig {
         return module;
     }
 
-    // Gắn offset UTC khi xuất LocalDateTime để chuỗi JSON luôn kết thúc bằng Z.
+    // gắn offset UTC lúc xuất LocalDateTime để chuỗi JSON luôn có đuôi Z
     private static final class UtcLocalDateTimeSerializer extends JsonSerializer<LocalDateTime> {
 
         @Override
@@ -46,7 +46,7 @@ public class UtcDateTimeJacksonConfig {
         }
     }
 
-    // Nhận cả chuỗi ISO-8601 có offset/Z lẫn chuỗi không múi giờ, rồi quy hết về LocalDateTime theo UTC.
+    // nhận cả chuỗi ISO-8601 có offset/Z lẫn chuỗi không múi giờ rồi quy hết về LocalDateTime theo UTC
     private static final class UtcLocalDateTimeDeserializer extends JsonDeserializer<LocalDateTime> {
 
         @Override

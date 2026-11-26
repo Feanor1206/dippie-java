@@ -9,7 +9,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Test đơn vị cho TextFolding: bỏ dấu tiếng Việt, hạ chữ thường và gộp khoảng trắng khớp với bản Python.
+// test TextFolding bỏ dấu, hạ thường rồi gộp khoảng trắng cho khớp bản Python
 class TextFoldingTest {
 
     static Stream<Arguments> parityCases() {

@@ -10,17 +10,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-// Kiểm tra an toàn đường dẫn video trước khi đọc ổ đĩa, chặn path traversal và symlink thoát khỏi thư mục gốc.
-// Việt nhớ đừng bỏ bước kiểm tra từng đoạn bên dưới, vì chỉ chuẩn hóa chuỗi thôi không chặn được symlink trỏ ra ngoài.
+// check an toàn đường dẫn video trước khi đọc đĩa, chặn path traversal với symlink trỏ ra ngoài root
+// Việt đừng bỏ bước soi từng đoạn bên dưới nha, chỉ normalize chuỗi thôi là không chặn nổi symlink thoát ra ngoài đâu
 public final class MediaPathPolicy {
 
     private MediaPathPolicy() {
     }
 
-    // Giữ đường dẫn tương đối đã qua kiểm tra cùng danh sách các đoạn đường dẫn sạch.
+    // giữ đường dẫn tương đối đã duyệt kèm list các đoạn sạch
     public record ValidatedRelativePath(String raw, List<String> segments) {
 
-        // Cắt bỏ tiền tố thư mục (như VideoDieppie/) nếu hợp lệ, tránh tình huống cắt xong bị dính dấu / ở đầu.
+        // cắt tiền tố thư mục (như VideoDieppie/) nếu hợp lệ, tránh cắt xong bị dư dấu / ở đầu
         public Optional<ValidatedRelativePath> stripPrefix(String prefix) {
             if (!raw.startsWith(prefix) || raw.length() <= prefix.length() || raw.charAt(prefix.length()) == '/') {
                 return Optional.empty();
@@ -38,7 +38,7 @@ public final class MediaPathPolicy {
         return parse(relativePath).isPresent();
     }
 
-    // Tách đường dẫn thành từng đoạn và loại ngay dấu \, dấu :, ký tự điều khiển hoặc đoạn "..".
+    // tách từng đoạn đường dẫn, gặp \, :, ký tự điều khiển hay ".." là loại ngay
     public static Optional<ValidatedRelativePath> parse(String relativePath) {
         if (relativePath == null || relativePath.isBlank() || relativePath.startsWith("/")) {
             return Optional.empty();
@@ -46,7 +46,7 @@ public final class MediaPathPolicy {
         int length = relativePath.length();
         List<String> segments = new ArrayList<>();
         int start = 0;
-        // Quét từng ký tự để chặn ký tự lạ trên Windows/Unix rồi cắt theo dấu /.
+        // quét từng ký tự chặn ký tự lạ trên Windows/Unix rồi cắt theo dấu /
         for (int i = 0; i <= length; i++) {
             if (i < length) {
                 char ch = relativePath.charAt(i);
@@ -57,7 +57,7 @@ public final class MediaPathPolicy {
                     continue;
                 }
             }
-            // Gặp ".." (kể cả có khoảng trắng đuôi trên Windows) thì loại luôn; đoạn rỗng và "." thì bỏ qua.
+            // gặp ".." (kể cả dính khoảng trắng đuôi trên Windows) là loại luôn, còn đoạn rỗng với "." thì bỏ qua
             int end = i;
             if (isParentReference(relativePath, start, end)) {
                 return Optional.empty();
@@ -77,14 +77,14 @@ public final class MediaPathPolicy {
         return parse(relativePath).flatMap(validated -> resolveRegularFile(root, validated));
     }
 
-    // Đi từng cấp từ thư mục gốc xuống tệp đích, chặn mọi symlink và xác nhận đường dẫn thật vẫn nằm trong root.
+    // dò từng cấp từ root xuống file đích, chặn sạch symlink và chốt lại đường dẫn thật vẫn nằm trong root
     public static Optional<Path> resolveRegularFile(Path root, ValidatedRelativePath validated) {
         if (root == null || validated == null || validated.segments().isEmpty()) {
             return Optional.empty();
         }
         List<String> segments = validated.segments();
         try {
-            // Lấy đường dẫn thật của thư mục gốc; nếu hệ thống tệp không hỗ trợ toRealPath thì rơi về đường dẫn chuẩn hóa.
+            // lấy đường dẫn thật của root, ổ nào không hỗ trợ toRealPath thì lui về bản normalize
             Path baseRoot;
             boolean usedRealRoot;
             try {
@@ -101,7 +101,7 @@ public final class MediaPathPolicy {
                 usedRealRoot = false;
             }
 
-            // Soi từng cấp với NOFOLLOW_LINKS: các cấp giữa phải là thư mục thật, cấp cuối phải là tệp thật.
+            // soi từng cấp bằng NOFOLLOW_LINKS, mấy cấp giữa phải là thư mục thật còn cấp cuối phải là file thật
             Path current = baseRoot;
             for (int i = 0; i < segments.size(); i++) {
                 current = current.resolve(segments.get(i));
@@ -119,7 +119,7 @@ public final class MediaPathPolicy {
                 }
             }
 
-            // So sánh đường dẫn có và không đi theo link lần cuối để chắc chắn tệp không thoát ra khỏi baseRoot.
+            // so lại bản có với không theo link lần chót cho chắc file không trồi khỏi baseRoot
             if (usedRealRoot) {
                 Path noFollow = current.toRealPath(LinkOption.NOFOLLOW_LINKS);
                 Path followed = current.toRealPath();
@@ -139,7 +139,7 @@ public final class MediaPathPolicy {
         }
     }
 
-    // Cắt khoảng trắng cuối đoạn trước khi so ".." vì Windows tự bỏ khoảng trắng đuôi khi mở tệp.
+    // gọt khoảng trắng đuôi trước khi so ".." vì Windows tự cắt khoảng trắng cuối lúc mở file
     private static boolean isParentReference(String path, int start, int end) {
         while (end > start && path.charAt(end - 1) == ' ') {
             end--;

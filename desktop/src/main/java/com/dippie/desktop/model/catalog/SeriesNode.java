@@ -4,14 +4,14 @@ import com.dippie.desktop.model.SearchText;
 
 import java.util.List;
 
-// Nút gốc cấp bộ phim trong cây Composite, chứa danh sách mùa và điểm trung bình của cả bộ.
+// nút gốc cấp bộ phim trong cây Composite, chứa danh sách mùa và điểm trung bình cả bộ
 public record SeriesNode(String id, String title, String originalTitle, String synopsis,
                          Double averageRating, List<SeasonNode> children) implements CatalogNode {
     public SeriesNode {
         children = List.copyOf(children);
     }
 
-    // Khớp tên bộ hoặc tên gốc thì giữ trọn nhánh, còn không thì lọc sâu xuống từng mùa.
+    // khớp tên bộ hay tên gốc thì giữ trọn nhánh, không thì lọc sâu xuống từng mùa
     public SeriesNode filter(String term) {
         if (matches(term) || SearchText.contains(originalTitle, term)) {
             return this;

@@ -10,7 +10,7 @@ import java.time.Clock;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-// Chắn trước /api/chat bằng hai lớp: rate limit theo IP cùng userId và semaphore giới hạn số luồng SSE chạy song song.
+// chắn trước /api/chat 2 lớp, rate limit theo IP với userId rồi thêm semaphore chặn số luồng SSE chạy song song
 @Component
 public class ChatStreamGuard {
 
@@ -19,7 +19,6 @@ public class ChatStreamGuard {
     public static final String CONCURRENCY_LIMIT_MESSAGE =
             "Đang có nhiều người hỏi CineBot cùng lúc, bạn đợi một lát rồi thử lại nhé.";
 
-    private static final long CONCURRENCY_RETRY_AFTER_SECONDS = 5L;
 
     private final FixedWindowRateLimiter clientRateLimiter;
     private final Semaphore concurrentStreams;
@@ -38,7 +37,7 @@ public class ChatStreamGuard {
         this.concurrentStreams = new Semaphore(this.maxConcurrentStreams);
     }
 
-    // Chặn theo IP trước rồi mới đếm theo userId để khách chưa đăng nhập cũng không spam được, qua hết mới lấy permit mở stream.
+    // check IP trước rồi mới đếm userId để khách chưa đăng nhập cũng khỏi spam, qua hết mới cấp permit mở stream
     public Permit acquire(String clientIp, Long userId) {
         String normalizedIp = (clientIp == null || clientIp.isBlank()) ? "unknown" : clientIp.trim();
         long ipRetryAfter = clientRateLimiter.retryAfterSeconds("ip:" + normalizedIp);
@@ -52,7 +51,7 @@ public class ChatStreamGuard {
             }
         }
         if (!concurrentStreams.tryAcquire()) {
-            throw new ChatCapacityException(CONCURRENCY_LIMIT_MESSAGE, CONCURRENCY_RETRY_AFTER_SECONDS);
+            throw new ChatCapacityException(CONCURRENCY_LIMIT_MESSAGE, 5L);
         }
         return new Permit(concurrentStreams);
     }
@@ -65,12 +64,12 @@ public class ChatStreamGuard {
         return maxConcurrentStreams;
     }
 
-    // Dùng giữa các test để xóa bộ đếm tần suất cũ.
+    // dùng giữa mấy bài test để xóa bộ đếm rate limit cũ
     public void resetRateLimit() {
         clientRateLimiter.reset();
     }
 
-    // Việt để ý Permit dùng AtomicBoolean nhé, để dù close() có bị gọi lặp cũng chỉ release đúng một chỗ semaphore.
+    // Việt để ý Permit dùng AtomicBoolean nha, có gọi close() lặp cũng chỉ release đúng 1 slot semaphore thôi
     public static final class Permit implements AutoCloseable {
 
         private final Semaphore semaphore;

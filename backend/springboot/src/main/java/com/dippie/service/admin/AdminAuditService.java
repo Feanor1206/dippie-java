@@ -18,11 +18,11 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Map;
 
-// Service ghi và đọc nhật ký quản trị, gom chung một định dạng để mọi luồng ghi log dùng nhất quán.
+// ghi với đọc nhật ký quản trị, gom chung 1 format để các luồng log đều nhau
 @Service
 public class AdminAuditService {
 
-    // Các mã hành động cố định cho những thao tác quản trị trong hệ thống.
+    // mấy mã hành động cố định cho thao tác quản trị
     public enum Action {
         USER_ROLE_CHANGED,
         USER_DISABLED,
@@ -34,7 +34,7 @@ public class AdminAuditService {
         ADMIN_BOOTSTRAP_UPDATED
     }
 
-    // Loại đối tượng bị tác động trong mỗi dòng nhật ký.
+    // loại đối tượng bị tác động trong từng dòng log
     public enum TargetType {
         USER, CATALOG_PACKAGE, CATALOG_SNAPSHOT, PLAYBACK_REPORT
     }
@@ -56,27 +56,27 @@ public class AdminAuditService {
         this.clock = clock;
     }
 
-    // Ghi log từ tài khoản admin đang đăng nhập bằng enum Action.
+    // ghi log theo admin đang đăng nhập dùng enum Action
     @Transactional
     public void record(Viewer actor, Action action, TargetType targetType, String targetId, Map<String, Object> details) {
         record(actor, action.name(), targetType.name(), targetId, details);
     }
 
-    // Bản nhận mã hành động dạng chuỗi để các gói tính năng khác tự mở rộng; nếu actor null thì ghi dưới tên system.
+    // bản nhận action dạng chuỗi cho các gói khác tự mở rộng, actor null thì ghi tên system
     @Transactional
     public void record(Viewer actor, String action, String targetType, String targetId, Map<String, Object> details) {
         recordForActor(actor == null ? null : actor.userId(), actor == null ? SYSTEM_ACTOR : actor.username(),
                 action, targetType, targetId, details);
     }
 
-    // Ghi trực tiếp theo userId và username khi caller không có sẵn đối tượng Viewer.
+    // ghi thẳng theo userId với username lúc chỗ gọi không có sẵn Viewer
     @Transactional
     public void recordForActor(Long actorUserId, String actorUsername, Action action, TargetType targetType,
             String targetId, Map<String, Object> details) {
         recordForActor(actorUserId, actorUsername, action.name(), targetType.name(), targetId, details);
     }
 
-    // Lưu ngay bằng saveAndFlush để bản ghi nhật ký đi cùng giao dịch với thao tác chính.
+    // dùng saveAndFlush để dòng audit đi chung transaction với thao tác chính luôn
     @Transactional
     public void recordForActor(Long actorUserId, String actorUsername, String action, String targetType,
             String targetId, Map<String, Object> details) {
@@ -85,7 +85,7 @@ public class AdminAuditService {
         auditEventRepository.saveAndFlush(event);
     }
 
-    // Kiểm tra quyền admin ngay ở tầng service rồi mới lấy danh sách sự kiện mới nhất.
+    // check quyền admin ngay tầng service rồi mới lấy log mới nhất
     @Transactional(readOnly = true)
     public AdminPageResponse<AdminAuditEventView> listEvents(int page, int size) {
         currentViewer.requireAdmin();
@@ -108,7 +108,7 @@ public class AdminAuditService {
         }
     }
 
-    // Dữ liệu cũ hoặc JSON lỗi thì trả Map rỗng để cả trang nhật ký không hỏng theo một dòng.
+    // dữ liệu cũ hay JSON lỗi thì trả Map rỗng kẻo hỏng cả trang nhật ký vì 1 dòng
     private Map<String, Object> parseDetails(String detailsJson) {
         if (detailsJson == null || detailsJson.isBlank()) {
             return Map.of();
@@ -121,7 +121,7 @@ public class AdminAuditService {
         }
     }
 
-    // Cắt username vượt 50 ký tự cho khớp cột DB, còn trống thì gán về system.
+    // cắt username quá 50 ký tự cho vừa cột DB, trống thì gán system
     private static String normalizeUsername(String rawUsername) {
         if (rawUsername == null || rawUsername.isBlank()) {
             return SYSTEM_ACTOR;

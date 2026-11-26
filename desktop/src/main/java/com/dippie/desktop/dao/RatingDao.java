@@ -11,13 +11,13 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-// DAO của bảng movie_ratings, dùng cho cả tab kiểm duyệt đánh giá lẫn bảng thống kê ở Tổng quan.
+// DAO bảng movie_ratings, dùng cho cả tab kiểm duyệt đánh giá lẫn thống kê ở Tổng quan
 public final class RatingDao extends AbstractJdbcDao<Rating, Long> {
     public RatingDao(JdbcDatabase db) {
         super(db, "movie_ratings", "id, user_id, movie_id, rating, updated_at", RatingDao::mapRating);
     }
 
-    // COALESCE(e.series_id, r.movie_id) ghép được cả đánh giá theo tập lẫn theo bộ phim, còn LEFT JOIN giữ lại phim cũ ngoài danh mục.
+    // COALESCE(e.series_id, r.movie_id) ghép được cả đánh giá theo tập lẫn theo bộ, còn LEFT JOIN giữ lại phim cũ ngoài danh mục
     public List<RatingContext> findContexts(Connection connection) throws SQLException {
         return query(connection, """
                 SELECT r.id, r.user_id, r.movie_id, r.rating, r.updated_at, u.username,
@@ -39,7 +39,7 @@ public final class RatingDao extends AbstractJdbcDao<Rating, Long> {
         return update(connection, "DELETE FROM movie_ratings WHERE id = ?", id);
     }
 
-    // Tính điểm trung bình theo từng movie_id để gán riêng cho bộ phim hoặc từng tập trên cây danh mục.
+    // tính điểm trung bình theo từng movie_id để gắn riêng cho bộ phim hoặc từng tập trên cây danh mục
     public List<Summary> summaries(Connection connection) throws SQLException {
         return query(connection, """
                 SELECT movie_id, AVG(rating) AS average_rating
@@ -47,7 +47,7 @@ public final class RatingDao extends AbstractJdbcDao<Rating, Long> {
                 """, row -> new Summary(row.getString("movie_id"), row.getDouble("average_rating")));
     }
 
-    // Lấy 10 tập điểm trung bình cao nhất, bằng điểm thì ưu tiên tập nhiều lượt chấm hơn.
+    // lấy top 10 tập điểm trung bình cao nhất, bằng điểm thì ưu tiên tập nhiều lượt chấm hơn
     public List<TopRated> topRatedEpisodes(Connection connection) throws SQLException {
         return query(connection, """
                 SELECT e.id, e.title, s.title AS series_title, AVG(r.rating) AS average_rating, COUNT(*) AS total
@@ -70,18 +70,18 @@ public final class RatingDao extends AbstractJdbcDao<Rating, Long> {
                 row.getInt("rating"), row.getObject("updated_at", LocalDateTime.class));
     }
 
-    // Gom bản ghi đánh giá kèm username và bộ phim liên quan (seriesId có thể null với phim cũ).
+    // gom đánh giá kèm username và bộ phim liên quan (phim cũ thì seriesId có thể null)
     public record RatingContext(Rating rating, String username, String seriesId, String seriesTitle) {
         public long id() {
             return rating.id();
         }
     }
 
-    // Điểm trung bình của một bộ phim hoặc tập phim đã có người chấm.
+    // điểm trung bình của 1 bộ phim hoặc tập phim đã có người chấm
     public record Summary(String movieId, double average) {
     }
 
-    // Số lượt chấm cho từng mức điểm từ 1 đến 10.
+    // số lượt chấm cho từng mức điểm từ 1 đến 10
     public record ScoreCount(int score, long count) {
     }
 }

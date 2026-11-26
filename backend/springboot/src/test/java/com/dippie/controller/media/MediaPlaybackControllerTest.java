@@ -53,7 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Bài test tích hợp cho toàn bộ luồng cấp vé phát, phân quyền xuất bản danh mục và phát video HTTP Range qua MockMvc.
+// test trọn luồng cấp vé phát, check quyền xuất bản catalog với stream video HTTP Range qua MockMvc
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -199,7 +199,7 @@ class MediaPlaybackControllerTest {
         writeFile(mediaRoot.resolve("synthetic/draft_sea.mp4"), payload);
         writeFile(mediaRoot.resolve("synthetic/draft_ser.mp4"), payload);
 
-        // Bản ghi chỉ có trong media_assets mà chưa vào catalog_media_assets thì mọi vai trò đều ăn 404.
+        // chỉ nằm ở media_assets mà chưa vào catalog_media_assets thì ai hỏi cũng ăn 404
         saveRawMediaAsset("ast-noncat", "local", "synthetic/noncat.mp4", payload.length, true, true);
         mockMvc.perform(post("/api/media/grant/ast-noncat")).andExpect(status().isNotFound());
         mockMvc.perform(post("/api/media/grant/ast-noncat").header(HttpHeaders.AUTHORIZATION, userAuth))
@@ -208,7 +208,7 @@ class MediaPlaybackControllerTest {
                 .andExpect(status().isNotFound());
         mockMvc.perform(get("/api/media/stream/ast-noncat")).andExpect(status().isNotFound());
 
-        // Tập đang ở trạng thái draft bị chặn với khách và user thường, chỉ admin mới xin vé xem trước được.
+        // tập còn draft thì khách với user thường chịu thua, mỗi admin xin vé xem trước được
         catalogEpisodeRepository.saveAndFlush(new CatalogEpisode(
                 "ep_draft", "ser_orbit", "sea_orbit_1", 2, "Tập nháp", null, null, null,
                 "regular", null, 60_000L, null, null, null, null, null, null, null, null, null,
@@ -223,7 +223,7 @@ class MediaPlaybackControllerTest {
         mockMvc.perform(post("/api/media/grant/ast-draft-ep").header(HttpHeaders.AUTHORIZATION, adminAuth))
                 .andExpect(status().isOk());
 
-        // Mùa còn draft thì mọi tập bên trong cũng bị ẩn dù bản thân tập đã đánh dấu ready.
+        // mùa còn draft thì tập con có ready cũng bị giấu theo nha
         catalogSeasonRepository.saveAndFlush(new CatalogSeason(
                 "sea_draft", "ser_orbit", 2, "Mùa nháp", null, "regular", null, null, null, null, DRAFT, null, 1
         ));
@@ -238,7 +238,7 @@ class MediaPlaybackControllerTest {
         mockMvc.perform(get("/api/media/stream/ast-draft-sea").header(HttpHeaders.AUTHORIZATION, userAuth))
                 .andExpect(status().isNotFound());
 
-        // Cả bộ phim còn draft thì toàn bộ video con cũng bị ẩn theo.
+        // cả bộ còn draft thì video bên trong ẩn sạch
         catalogSeriesRepository.saveAndFlush(new CatalogSeries(
                 "ser_draft", "Bộ nháp", null, null, null, null, null, null, null, null, null,
                 2026, null, null, null, null, null, null, null, null, null, DRAFT, null, 1
@@ -299,7 +299,7 @@ class MediaPlaybackControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Không tìm thấy video: ast-other"));
 
-        // Kiểm tra payload JWT của vé phát không lộ username trong sub, và mất hiệu lực ngay khi tokenVersion tăng lên.
+        // vé phát không được lộ username trong sub, tăng tokenVersion là hết hạn ngay
         String payloadJson = new String(
                 java.util.Base64.getUrlDecoder().decode(grantToken.split("\\.")[1]),
                 StandardCharsets.UTF_8
@@ -490,7 +490,7 @@ class MediaPlaybackControllerTest {
         if (authHeader != null) {
             requestBuilder.header(HttpHeaders.AUTHORIZATION, authHeader);
         }
-        // Khẳng định endpoint stream chạy đồng bộ hoàn toàn, không bật async dispatch.
+        // chắc chắn endpoint stream chạy đồng bộ hẳn, không nhảy sang async dispatch
         return mockMvc.perform(requestBuilder)
                 .andExpect(request().asyncNotStarted())
                 .andReturn();

@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.Locale;
 
-// Trạng thái xuất bản của bản ghi catalog (ready, draft, archived); dữ liệu lỗi hoặc thiếu luôn kéo về DRAFT để khỏi lộ nhầm tập chưa duyệt.
+// trạng thái xuất bản catalog (ready, draft, archived), thiếu hay lỗi thì kéo hết về DRAFT kẻo lộ tập chưa duyệt
 public enum PublicationStatus {
     READY("ready"),
     DRAFT("draft"),
@@ -26,7 +26,7 @@ public enum PublicationStatus {
         return value;
     }
 
-    // Parse trường status trong recordJson; nhánh READY kiểm tra thêm raw text có chứa chữ "ready" để chặn trường hợp chuỗi bị escape unicode mà không ghi rõ ready.
+    // đọc status trong recordJson, nhánh READY check thêm chuỗi gốc có chữ "ready" kẻo bị lách bằng unicode escape
     public static PublicationStatus of(String recordJson) {
         String status = JsonText.parse(recordJson)
                 .filter(JsonNode::isObject)
@@ -40,7 +40,7 @@ public enum PublicationStatus {
         };
     }
 
-    // Chỉ trạng thái READY mới được hiển thị ra cho người xem.
+    // chỉ READY mới cho hiện ra phía người xem
     public boolean isPublished() {
         return this == READY;
     }

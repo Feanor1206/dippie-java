@@ -13,10 +13,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-// Repository cho bảng password_reset_tokens, dùng khóa PESSIMISTIC_WRITE lúc xác nhận token.
+// repo bảng password_reset_tokens, có khóa PESSIMISTIC_WRITE lúc xác nhận token
 public interface PasswordResetTokenRepository extends JpaRepository<PasswordResetToken, Long> {
 
-    // Khóa dòng theo tokenHash để chặn hai request gửi song song cùng tiêu thụ một đường dẫn đặt lại.
+    // khóa dòng theo tokenHash chặn hai request song song cùng xài chung một link đặt lại
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select t from PasswordResetToken t where t.tokenHash = :tokenHash")
     Optional<PasswordResetToken> findByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
@@ -25,7 +25,7 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
 
     void deleteByUserId(Long userId);
 
-    // Khi một token được dùng thành công, đánh dấu hết các token chưa dùng còn lại của cùng tài khoản.
+    // một token dùng xong thì khóa nốt mấy token chưa dùng còn lại của cùng user
     @Modifying(flushAutomatically = true)
     @Query("""
             update PasswordResetToken t

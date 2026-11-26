@@ -4,7 +4,7 @@ import com.dippie.model.library.MovieRating;
 
 import java.time.LocalDateTime;
 
-// DTO trả thông tin đánh giá phim của một tài khoản ra API.
+// view lượt chấm điểm phim của một user trả ra API
 public record MovieRatingView(
         Long id,
         Long userId,

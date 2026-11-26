@@ -20,8 +20,8 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
-// Bản cài đặt cục bộ của CatalogSearch giữ LexicalIndex trong bộ nhớ qua AtomicReference.
-// Lớp này cũng là Observer nghe CatalogImportedEvent để tự dựng lại chỉ mục mà không làm gián đoạn truy vấn đang chạy.
+// bản chạy cục bộ của CatalogSearch, giữ LexicalIndex trong RAM qua AtomicReference
+// kiêm luôn Observer nghe CatalogImportedEvent để tự dựng lại chỉ mục mà không làm gián đoạn truy vấn đang chạy
 @Service
 public class LocalCatalogSearch implements CatalogSearch {
 
@@ -83,7 +83,7 @@ public class LocalCatalogSearch implements CatalogSearch {
         return index == null ? List.of() : index.availableSeriesTitles();
     }
 
-    // Chạy truy vấn trên LexicalIndex kèm bộ lọc kiểm tra tập phim có tệp phát khả dụng hay không.
+    // chạy tìm kiếm trên LexicalIndex kèm bộ lọc xem tập phim có file phát khả dụng không
     public List<LexicalIndex.Match> matches(LexicalIndex index, String query, int limit, SearchConstraints constraints) {
         var filters = constraints == null ? SearchConstraints.NONE : constraints;
         return index.search(query, limit, filters, discoverable());
@@ -93,7 +93,7 @@ public class LocalCatalogSearch implements CatalogSearch {
         return catalog.current().playableFilter(files);
     }
 
-    // Trả về chỉ mục đang dùng hoặc dựng lười lần đầu khi chưa có phiên bản nào trong bộ nhớ.
+    // trả chỉ mục đang dùng, chưa có trong RAM thì dựng lười lần đầu luôn
     public LexicalIndex index() {
         Snapshot snapshot = current.get();
         return snapshot == null ? initialize() : snapshot.index();
@@ -113,7 +113,7 @@ public class LocalCatalogSearch implements CatalogSearch {
         return snapshot.index();
     }
 
-    // Phải đối chiếu lại snapshot mới nhất trong DB trước khi dựng lại, tránh sự kiện cũ hoặc chưa lưu DB ghi đè nhầm chỉ mục mới hơn.
+    // nhớ đối chiếu lại snapshot mới nhất trong DB trước khi dựng lại nha, kẻo event cũ hay chưa lưu DB ghi đè mất bản mới hơn
     @EventListener
     public synchronized void rebuild(CatalogImportedEvent event) {
         Snapshot previous = current.get();
@@ -131,7 +131,7 @@ public class LocalCatalogSearch implements CatalogSearch {
         }
     }
 
-    // Nhận bản xuất danh mục mới, chặn thế hệ cũ hơn hoặc lệch snapshotId rồi hoán đổi nguyên tử toàn bộ chỉ mục.
+    // nhận bản danh mục mới, chặn thế hệ cũ hơn hay lệch snapshotId rồi swap nguyên tử cả chỉ mục
     public synchronized IndexSyncOutcome accept(long generation, String snapshotId, JsonNode catalog, boolean forceRebuild) {
         Snapshot previous = current.get();
         if (previous != null && previous.generation() >= generation && previous.id() != null) {
@@ -150,7 +150,7 @@ public class LocalCatalogSearch implements CatalogSearch {
         return new LexicalIndex(SearchCatalogFlattener.flatten(catalog));
     }
 
-    // Cặp thông tin thế hệ và bản chụp gắn với một LexicalIndex đã dựng xong.
+    // gói số thế hệ, mã snapshot với LexicalIndex đã dựng xong
     private record Snapshot(long generation, String id, LexicalIndex index) {
     }
 }

@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-// DTO trả thông tin phim ra API, gắn thêm vị trí trong bộ phim/tập phim và điểm cộng đồng qua @JsonUnwrapped.
+// view phim trả API, kèm vị trí bộ/tập với điểm cộng đồng qua @JsonUnwrapped
 public record MovieView(
         String id, String title, Integer year, double rating, String runtime, List<String> genres, String description,
         String poster, String backdrop, String videoUrl, @JsonIgnore String itemType, @JsonIgnore String seriesId,
@@ -32,7 +32,7 @@ public record MovieView(
         genres = genres == null ? List.of() : List.copyOf(genres);
     }
 
-    // Dùng @JsonAnyGetter thay vì xuất thẳng các field record để phim lẻ không có khóa item_type thừa trong JSON, còn tập phim chưa đánh số vẫn xuất episode_number là null.
+    // dùng @JsonAnyGetter để phim lẻ khỏi thừa key item_type, còn tập chưa đánh số vẫn xuất episode_number là null
     @JsonAnyGetter
     public Map<String, Object> catalogPlacement() {
         if (itemType == null) {
@@ -57,13 +57,13 @@ public record MovieView(
         return create(movie, null, null, null, null, null, movie.getRuntime(), SeriesArtwork.EMPTY, ratings);
     }
 
-    // Đổi chuỗi runtime "Series" kiểu cũ sang nhãn tiếng Việt từ CatalogDisplayText và bù ảnh bìa nếu bảng movies chưa có.
+    // đổi runtime "Series" cũ sang nhãn tiếng Việt từ CatalogDisplayText, bù ảnh bìa nếu bảng movies thiếu
     public static MovieView forSeries(Movie movie, String seriesTitle, SeriesArtwork artwork, RatingSummary ratings) {
         String runtime = "Series".equals(movie.getRuntime()) ? CatalogDisplayText.SERIES : movie.getRuntime();
         return create(movie, SERIES, movie.getId(), seriesTitle, null, null, runtime, artwork, ratings);
     }
 
-    // Dựng DTO cho một tập phim, tính nhãn thời lượng từ durationMs và giữ lại liên kết về bộ phim cha.
+    // dựng view cho một tập, tính nhãn thời lượng từ durationMs rồi giữ link về bộ phim cha
     public static MovieView forEpisode(Movie movie, String seriesId, String seriesTitle, Integer episodeNumber,
             Long durationMs, SeriesArtwork artwork, RatingSummary ratings) {
         return create(movie, EPISODE, seriesId, seriesTitle, movie.getId(), episodeNumber, EpisodeRuntime.label(durationMs),

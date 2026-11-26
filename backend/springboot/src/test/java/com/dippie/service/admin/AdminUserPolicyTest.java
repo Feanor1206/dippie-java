@@ -15,12 +15,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Unit test cho các luật trong AdminUserPolicy và hành vi tăng token_version trên entity User.
+// unit test mấy luật trong AdminUserPolicy với chuyện nhảy token_version trên User
 class AdminUserPolicyTest {
 
     private final AdminUserPolicy policy = new AdminUserPolicy();
 
-    // Nhận các vai trò hợp lệ sau khi trim và báo lỗi 400 với giá trị trống hoặc lạ.
+    // trim xong nhận role hợp lệ, trống hay lạ là quăng 400
     @Test
     void parsesValidRolesAndRejectsInvalidValues() {
         assertThat(policy.parseRole("ROLE_USER")).isEqualTo(Role.ROLE_USER);
@@ -34,7 +34,7 @@ class AdminUserPolicyTest {
                 .isInstanceOf(InvalidRequestException.class);
     }
 
-    // Admin không được tự hạ quyền hoặc tự khóa tài khoản của chính mình.
+    // admin không được tự hạ quyền hay tự khóa chính tài khoản đó đâu nha
     @Test
     void forbidsAdminFromChangingOwnRoleOrStatus() {
         Viewer actor = new Viewer(1L, "admin1", Role.ROLE_ADMIN);
@@ -49,7 +49,7 @@ class AdminUserPolicyTest {
                 .hasMessage(AdminUserPolicy.SELF_CHANGE_MESSAGE);
     }
 
-    // Khi hệ thống chỉ còn một admin đang mở thì chặn cả hạ quyền lẫn khóa tài khoản đó.
+    // còn đúng 1 admin đang mở thì cấm cả hạ quyền lẫn khóa tài khoản đó
     @Test
     void forbidsDemotingOrDisablingLastEnabledAdmin() {
         Viewer actor = new Viewer(1L, "admin1", Role.ROLE_ADMIN);
@@ -64,7 +64,7 @@ class AdminUserPolicyTest {
                 .hasMessage(AdminUserPolicy.LAST_ADMIN_MESSAGE);
     }
 
-    // Còn từ 2 admin đang mở trở lên thì cho phép hạ quyền hoặc khóa một admin khác.
+    // có từ 2 admin đang mở trở lên thì hạ quyền hay khóa admin kia vô tư
     @Test
     void allowsDemotingOrDisablingAdminWhenAnotherEnabledAdminRemains() {
         Viewer actor = new Viewer(1L, "admin1", Role.ROLE_ADMIN);
@@ -76,7 +76,7 @@ class AdminUserPolicyTest {
                 .doesNotThrowAnyException();
     }
 
-    // Sửa user thường hoặc admin đã bị khóa sẵn không làm giảm số admin hoạt động nên vẫn hợp lệ.
+    // sửa user thường hay admin đã khóa sẵn thì số admin sống không giảm nên vẫn cho qua
     @Test
     void allowsModifyingDisabledAdminOrRegularUserWhenOnlyOneEnabledAdminExists() {
         Viewer actor = new Viewer(1L, "admin1", Role.ROLE_ADMIN);
@@ -94,7 +94,7 @@ class AdminUserPolicyTest {
                 .doesNotThrowAnyException();
     }
 
-    // Đổi mật khẩu, khóa, mở hoặc đổi quyền phải tăng token_version để đá phiên cũ; riêng sửa hồ sơ thì giữ nguyên.
+    // đổi mật khẩu, khóa mở hay đổi quyền là tăng token_version đá phiên cũ, riêng sửa hồ sơ thì giữ nguyên
     @Test
     void userLifecycleMutationsIncrementTokenVersionWhileProfileUpdateDoesNot() {
         User user = createUser(10L, "alice", Role.ROLE_USER);

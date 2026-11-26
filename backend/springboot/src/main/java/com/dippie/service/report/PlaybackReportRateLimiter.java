@@ -8,12 +8,9 @@ import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 
-// Giới hạn tần suất gửi báo lỗi theo IP bằng FixedWindowRateLimiter để tránh spam làm đầy bảng playback_reports.
+// chặn spam báo lỗi theo IP bằng FixedWindowRateLimiter kẻo đầy bảng playback_reports
 @Component
 public class PlaybackReportRateLimiter {
-
-    private static final String LIMIT_EXCEEDED_MESSAGE =
-            "Bạn đã gửi quá nhiều báo cáo trong thời gian ngắn. Vui lòng đợi một lát rồi thử lại.";
 
     private final FixedWindowRateLimiter delegate;
 
@@ -26,16 +23,16 @@ public class PlaybackReportRateLimiter {
         );
     }
 
-    // Chặn IP vượt ngưỡng bằng lỗi 429 kèm thời gian chờ Retry-After.
+    // IP vượt ngưỡng thì ném 429 kèm số giây chờ Retry-After
     public void enforce(String clientIp) {
         String key = (clientIp == null || clientIp.isBlank()) ? "unknown" : clientIp.trim();
         long retryAfter = delegate.retryAfterSeconds("report:" + key);
         if (retryAfter > 0) {
-            throw new TooManyRequestsException(LIMIT_EXCEEDED_MESSAGE, retryAfter);
+            throw new TooManyRequestsException("Bạn đã gửi quá nhiều báo cáo trong thời gian ngắn. Vui lòng đợi một lát rồi thử lại.", retryAfter);
         }
     }
 
-    // Xóa bộ đếm giữa các bài test để trạng thái không bị dính sang nhau.
+    // xóa bộ đếm giữa các bài test cho khỏi dính trạng thái
     public void reset() {
         delegate.reset();
     }

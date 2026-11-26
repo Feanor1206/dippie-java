@@ -26,7 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// Xử lý tự xóa tài khoản: xác nhận mật khẩu, dọn sạch dữ liệu cá nhân và chặn xóa quản trị viên hoạt động cuối cùng.
+// luồng tự xóa tài khoản, check mật khẩu, dọn dữ liệu cá nhân và chặn xóa admin hoạt động cuối cùng
 @Service
 public class AccountErasureService {
 
@@ -36,8 +36,6 @@ public class AccountErasureService {
     public static final String MISSING_PASSWORD_MESSAGE =
             "Hãy nhập mật khẩu hiện tại để xác nhận xóa tài khoản.";
 
-    private static final String TARGET_TYPE_USER = "USER";
-    private static final String UNAUTHENTICATED_MESSAGE = "Bạn cần đăng nhập để tiếp tục.";
 
     private final CurrentViewer currentViewer;
     private final UserRepository userRepository;
@@ -74,7 +72,7 @@ public class AccountErasureService {
         this.auditTrailWriter = auditTrailWriter;
     }
 
-    // Xóa tài khoản hiện tại trong một transaction, giữ thứ tự khóa khớp với AdminUserService để tránh deadlock.
+    // xóa tài khoản trong 1 transaction, giữ thứ tự khóa khớp AdminUserService kẻo deadlock
     @Transactional
     public void deleteCurrentAccount(DeleteAccountRequest request) {
         Viewer viewer = currentViewer.require();
@@ -83,8 +81,8 @@ public class AccountErasureService {
             throw new InvalidRequestException(MISSING_PASSWORD_MESSAGE);
         }
 
-        // Việt đừng đổi thứ tự khóa chỗ này: phải khóa danh sách admin trước giống AdminUserService,
-        // nếu không thì hai admin vừa sửa quyền vừa tự xóa cùng lúc sẽ deadlock ngay.
+        // Việt đừng đổi thứ tự khóa chỗ này, phải khóa danh sách admin trước giống AdminUserService
+        // không thì 2 admin vừa sửa quyền vừa tự xóa cùng lúc là deadlock ngay
         List<User> enabledAdmins = userRepository.findEnabledByRoleForUpdate(Role.ROLE_ADMIN);
         User user = resolveLockedUser(viewer.userId(), enabledAdmins);
 
@@ -93,7 +91,7 @@ public class AccountErasureService {
             throw new InvalidRequestException(WRONG_PASSWORD_MESSAGE);
         }
 
-        // Chặn admin hoạt động cuối cùng tự xóa để hệ thống luôn còn ít nhất một người quản trị.
+        // chặn admin đang bật cuối cùng tự xóa kẻo hệ thống mất sạch người quản trị
         if (user.isAdmin() && user.isEnabled() && enabledAdmins.size() <= 1) {
             throw new ConflictException(LAST_ADMIN_MESSAGE);
         }
@@ -102,7 +100,7 @@ public class AccountErasureService {
         String username = user.getUsername();
         String roleName = user.getRole().name();
 
-        // Xóa dữ liệu cá nhân ở các bảng phụ; riêng báo cáo lỗi phát chỉ gỡ userId để đội vận hành vẫn xem được lỗi phim.
+        // dọn dữ liệu cá nhân ở mấy bảng phụ, riêng báo lỗi phát chỉ gỡ userId để còn xem lại lỗi phim
         movieRatingRepository.deleteByUserId(userId);
         watchlistItemRepository.deleteByUserId(userId);
         favoriteItemRepository.deleteByUserId(userId);
@@ -111,7 +109,7 @@ public class AccountErasureService {
         playbackReportRepository.clearReporterUser(userId);
         playbackReportRepository.clearResolverUser(userId);
 
-        // Xóa và flush bản ghi user trước khi ghi audit để actorUserId là null, tránh vướng khóa ngoại nhưng vẫn lưu tên cũ.
+        // xóa rồi flush user trước khi ghi audit để actorUserId là null, khỏi vướng khóa ngoại mà vẫn giữ tên cũ
         userRepository.delete(user);
         userRepository.flush();
 
@@ -123,18 +121,18 @@ public class AccountErasureService {
                 null,
                 username,
                 ACTION_ACCOUNT_DELETED,
-                TARGET_TYPE_USER,
+                "USER",
                 String.valueOf(userId),
                 details
         );
     }
 
-    // Nếu người xóa là admin đang bật thì lấy luôn từ danh sách vừa khóa, khỏi khóa trùng thêm một lượt nữa.
+    // đang là admin bật sẵn thì lấy luôn từ list vừa khóa, khỏi khóa trùng thêm lượt nữa
     private User resolveLockedUser(Long userId, List<User> enabledAdmins) {
         return enabledAdmins.stream()
                 .filter(candidate -> candidate.getId().equals(userId))
                 .findFirst()
                 .orElseGet(() -> userRepository.findByIdForUpdate(userId)
-                        .orElseThrow(() -> new UnauthorizedException(UNAUTHENTICATED_MESSAGE)));
+                        .orElseThrow(() -> new UnauthorizedException("Bạn cần đăng nhập để tiếp tục.")));
     }
 }

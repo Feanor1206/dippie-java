@@ -28,17 +28,16 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-// Controller admin xử lý toàn bộ API kiểm tra, nhập, xem lịch sử, đồng bộ snapshot và xuất danh mục.
+// controller admin lo hết mấy API kiểm tra, nhập, xem lịch sử, đồng bộ snapshot và xuất danh mục
 @RestController
 @RequestMapping("/api/admin/catalog")
 public class AdminCatalogController {
-
-    private static final int MAX_JSON_NESTING_DEPTH = 64;
 
     private final CurrentViewer currentViewer;
     private final CatalogImportService importService;
@@ -52,16 +51,16 @@ public class AdminCatalogController {
         this.importService = importService;
         this.exportService = exportService;
         this.auditTrailWriter = auditTrailWriter;
-        // Mình copy riêng một ObjectMapper rồi khóa độ sâu JSON tối đa 64 tầng và bật FAIL_ON_TRAILING_TOKENS.
-        // Việt đừng dùng chung mapper mặc định ở đây, gặp payload lồng quá sâu dễ tràn stack hoặc cạn RAM lúc đọc request.
+        // copy riêng 1 ObjectMapper rồi khóa độ sâu JSON tối đa 64 tầng và bật FAIL_ON_TRAILING_TOKENS
+        // Việt đừng dùng chung mapper mặc định ở đây nha, gặp payload lồng sâu quá là dễ tràn stack hoặc cạn RAM
         ObjectMapper boundedMapper = mapper.copy();
         boundedMapper.getFactory().setStreamReadConstraints(
-                StreamReadConstraints.builder().maxNestingDepth(MAX_JSON_NESTING_DEPTH).build()
+                StreamReadConstraints.builder().maxNestingDepth(64).build()
         );
         documentReader = boundedMapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     }
 
-    // Kiểm tra gói JSON rồi trả về ước lượng thay đổi mà không ghi gì xuống CSDL.
+    // check gói JSON rồi trả ước lượng thay đổi, chưa ghi gì xuống DB
     @PostMapping("/validate")
     public ResponseEntity<CatalogValidation> validate(HttpServletRequest request) {
         currentViewer.requireAdmin();
@@ -72,28 +71,28 @@ public class AdminCatalogController {
         }
     }
 
-    // Nhận gói danh mục JSON từ admin rồi chạy luồng nhập chính thức.
+    // nhận gói danh mục JSON từ admin rồi chạy luồng nhập chính thức
     @PostMapping("/import")
     public CatalogImportResult importPackage(HttpServletRequest request) {
         currentViewer.requireAdmin();
         return importService.importPackage(readDocument(request));
     }
 
-    // Lấy lịch sử các gói danh mục đã nhập, mới nhất đứng trước.
+    // lấy lịch sử mấy gói danh mục đã nhập, mới nhất lên đầu
     @GetMapping("/history")
     public List<CatalogPackageView> history() {
         currentViewer.requireAdmin();
         return importService.history();
     }
 
-    // Xem danh sách các snapshot đồng bộ chỉ mục hiện có.
+    // xem danh sách các snapshot đồng bộ chỉ mục hiện có
     @GetMapping("/snapshots")
     public List<CatalogSnapshotView> snapshots() {
         currentViewer.requireAdmin();
         return importService.snapshots();
     }
 
-    // Đồng bộ lại snapshot mới nhất sang bộ tìm kiếm rồi ghi vết vào audit log.
+    // đồng bộ lại snapshot mới nhất sang bộ tìm kiếm rồi ghi audit log
     @PostMapping("/snapshots/{id}/retry")
     public CatalogSnapshotView retry(@PathVariable String id) {
         Viewer actor = currentViewer.requireAdmin();
@@ -106,7 +105,7 @@ public class AdminCatalogController {
         return retried;
     }
 
-    // Xuất danh mục hiện tại ra JSON theo cờ lọc bản nháp, tệp riêng tư và ghi audit log.
+    // xuất danh mục hiện tại ra JSON theo cờ lọc bản nháp, file riêng tư rồi ghi audit log
     @GetMapping("/export")
     public JsonNode export(@RequestParam(name = "includeDraft", required = false) String rawIncludeDraft,
             @RequestParam(name = "includePrivate", required = false) String rawIncludePrivate) {
@@ -133,8 +132,8 @@ public class AdminCatalogController {
     }
 
     private CatalogDocument readDocument(HttpServletRequest request) {
-        try {
-            JsonNode json = documentReader.readTree(request.getInputStream());
+        try (InputStream body = request.getInputStream()) {
+            JsonNode json = documentReader.readTree(body);
             if (json != null && !json.isMissingNode()) {
                 return new CatalogDocument(json);
             }

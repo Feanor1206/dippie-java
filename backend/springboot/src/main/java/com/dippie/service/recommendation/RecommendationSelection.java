@@ -5,10 +5,8 @@ import com.dippie.common.collection.DiverseSelection;
 import java.util.List;
 import java.util.function.Function;
 
-// Chọn tập phim từ danh sách đã chấm điểm qua DiverseSelection để một bộ phim không chiếm hết cả kệ gợi ý.
+// lọc tập từ list đã chấm điểm qua DiverseSelection kẻo 1 bộ chiếm sạch cả kệ gợi ý
 public final class RecommendationSelection {
-
-    private static final int SERIES_CAP_DIVISOR = 3;
 
     private RecommendationSelection() {
     }
@@ -17,7 +15,7 @@ public final class RecommendationSelection {
         return select(ranked, series, context, context.capSeries());
     }
 
-    // Người xem đã lọc riêng một bộ thì lấy thẳng theo hạng; có cá nhân hóa hoặc bật capSeries thì chặn tối đa ceil(limit / 3) tập mỗi bộ, còn lại chia vòng tròn giữa các bộ.
+    // lọc 1 bộ thì lấy theo hạng, có cá nhân hóa hay capSeries thì chặn trần ceil(limit / 3) tập mỗi bộ, còn lại chia vòng tròn
     public static <T> List<T> select(List<T> ranked, Function<T, String> series, RecommendationContext context,
             boolean capSeries) {
         int limit = context.request().limit();
@@ -25,7 +23,7 @@ public final class RecommendationSelection {
             return ranked.stream().limit(limit).toList();
         }
         return capSeries || context.signals().personalized()
-                ? DiverseSelection.capped(ranked, series, limit, Math.ceilDiv(limit, SERIES_CAP_DIVISOR))
+                ? DiverseSelection.capped(ranked, series, limit, Math.ceilDiv(limit, 3))
                 : DiverseSelection.roundRobin(ranked, series, limit);
     }
 }

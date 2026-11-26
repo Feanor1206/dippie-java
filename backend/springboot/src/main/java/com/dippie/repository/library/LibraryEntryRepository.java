@@ -11,11 +11,11 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 
-// Repo chung @NoRepositoryBean dùng generics với #{#entityName} để FavoriteItemRepository và WatchlistItemRepository không phải viết lại JPQL giống nhau.
+// repo cha @NoRepositoryBean dùng generics với #{#entityName} để FavoriteItemRepository và WatchlistItemRepository khỏi lặp lại JPQL
 @NoRepositoryBean
 public interface LibraryEntryRepository<E extends LibraryEntry> extends JpaRepository<E, Long> {
 
-    // Join thẳng sang bảng Movie để tên phim và poster luôn lấy bản mới nhất khi metadata phim được cập nhật.
+    // join thẳng sang Movie để tên phim với poster luôn ăn bản mới nhất khi metadata đổi
     @Query("""
             select new com.dippie.dto.library.LibraryItemView(
                 item.id,
@@ -39,6 +39,6 @@ public interface LibraryEntryRepository<E extends LibraryEntry> extends JpaRepos
 
     void deleteByUserIdAndMovieId(Long userId, String movieId);
 
-    // Gọi lúc xóa tài khoản để dọn sạch các mục thư viện thuộc user đó.
+    // xóa tài khoản thì gọi dọn sạch thư viện của user đó
     void deleteByUserId(Long userId);
 }

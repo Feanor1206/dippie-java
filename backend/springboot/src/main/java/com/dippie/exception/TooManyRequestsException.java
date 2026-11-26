@@ -5,7 +5,7 @@ import org.springframework.http.HttpStatus;
 
 import java.util.Map;
 
-// Lỗi gọi vượt giới hạn tần suất, trả HTTP 429 kèm sẵn header Retry-After cho client biết cần chờ bao lâu.
+// gọi vượt tần suất cho phép, trả 429 kèm sẵn header Retry-After cho client biết phải chờ bao lâu
 public class TooManyRequestsException extends DomainException {
 
     public TooManyRequestsException(String message, long retryAfterSeconds) {

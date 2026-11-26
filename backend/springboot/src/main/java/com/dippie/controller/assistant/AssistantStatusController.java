@@ -10,7 +10,7 @@ import com.dippie.service.assistant.CatalogSearch;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// Endpoint /api/assistant/status cho frontend kiểm tra chỉ mục tìm kiếm đã sẵn sàng chưa.
+// /api/assistant/status cho frontend check xem chỉ mục tìm kiếm đã sẵn sàng chưa
 @RestController
 public class AssistantStatusController {
 
@@ -24,7 +24,7 @@ public class AssistantStatusController {
         this.currentViewer = currentViewer;
     }
 
-    // Chỉ admin mới thấy tổng số tài liệu và tên provider LLM, còn user thường chỉ nhận searchReady để tránh lộ cấu hình nội bộ.
+    // chỉ admin mới thấy tổng số tài liệu với tên provider LLM, user thường chỉ nhận searchReady cho khỏi lộ cấu hình
     @GetMapping("/api/assistant/status")
     public ApiResponse<AssistantStatus> status() {
         boolean ready = search.isReady();

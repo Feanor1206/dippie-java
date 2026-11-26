@@ -10,7 +10,7 @@ import com.dippie.desktop.model.UserAccount;
 
 import java.util.List;
 
-// Service quản lý tài khoản, kiểm tra các quy tắc an toàn rồi lưu thay đổi kèm nhật ký trong một giao dịch.
+// service quản lý tài khoản, check quy tắc an toàn xong lưu thay đổi kèm audit log trong 1 transaction
 public final class UserService {
     private final JdbcDatabase db;
     private final UserDao userDao;
@@ -26,7 +26,7 @@ public final class UserService {
         return userDao.findAll();
     }
 
-    // Khóa danh sách quản trị viên đang hoạt động trước để tránh hai phiên cùng lúc hạ quyền người quản trị cuối cùng.
+    // khóa danh sách admin đang hoạt động trước kẻo 2 phiên cùng lúc hạ quyền mất ông admin cuối cùng
     public UserAccount change(AdminSession session, UserAccount selected, Role role, boolean enabled) {
         return db.transaction(connection -> {
             var enabledAdmins = userDao.lockEnabledAdmins(connection);
@@ -40,7 +40,7 @@ public final class UserService {
                     .orElseThrow(() -> new DataAccessException.Conflict("Tài khoản này không còn tồn tại. Hãy làm mới bảng."));
             verifyChange(current, selected, role, enabled, enabledAdmins.size());
 
-            // Lưu thay đổi, tăng token_version để vô hiệu phiên web cũ và ghi nhật ký quản trị.
+            // lưu thay đổi, tăng token_version cho phiên web cũ hết xài rồi ghi audit log
             if (userDao.updateAccess(connection, current.id(), role, enabled) != 1) {
                 throw new DataAccessException.Conflict("Chưa cập nhật được tài khoản này.");
             }
@@ -53,7 +53,7 @@ public final class UserService {
         });
     }
 
-    // So sánh tokenVersion, vai trò và trạng thái để lệnh cũ hoặc nút Hoàn tác không ghi đè lên thay đổi mới hơn từ phiên khác.
+    // so tokenVersion, vai trò với trạng thái để lệnh cũ hay nút Hoàn tác không ghi đè thay đổi mới hơn từ phiên khác
     private static void verifyChange(UserAccount current, UserAccount selected, Role role,
                                      boolean enabled, int enabledAdminCount) {
         if (current.tokenVersion() != selected.tokenVersion()

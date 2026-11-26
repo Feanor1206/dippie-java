@@ -5,7 +5,7 @@ import com.dippie.model.report.PlaybackReport;
 import java.time.Instant;
 import java.time.ZoneOffset;
 
-// Dữ liệu hiển thị một báo lỗi trên trang admin, kèm tên bộ, tên tập và mốc tạo theo UTC ISO-8601.
+// view một báo lỗi bên trang admin, kèm tên bộ, tên tập với giờ tạo chuẩn UTC ISO-8601
 public record PlaybackReportView(
         Long id,
         String episodeId,
@@ -18,7 +18,7 @@ public record PlaybackReportView(
         Instant createdAt
 ) {
 
-    // Chuyển entity báo lỗi sang DTO và quy đổi LocalDateTime sang Instant ở múi giờ UTC.
+    // đổi entity báo lỗi sang view rồi ép LocalDateTime thành Instant múi giờ UTC
     public static PlaybackReportView of(PlaybackReport report, String seriesTitle, String episodeTitle) {
         Instant createdInstant = report.getCreatedAt() == null
                 ? null

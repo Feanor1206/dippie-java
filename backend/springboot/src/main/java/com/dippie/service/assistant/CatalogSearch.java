@@ -6,8 +6,8 @@ import com.dippie.model.assistant.SearchHit;
 import java.util.List;
 import java.util.Optional;
 
-// Giao diện chung cho tầng tìm kiếm danh mục, dùng lại ở cả CineBot lẫn luồng gợi ý khám phá.
-// Các hàm tra cứu mở rộng trả về rỗng sẵn để bản mock trong test chỉ cần cài isReady và search.
+// interface chung cho tầng tìm kiếm danh mục, dùng lại cho cả CineBot lẫn luồng khám phá
+// mấy hàm phụ có default trả rỗng sẵn để mock trong test chỉ cần cài isReady với search cho gọn
 public interface CatalogSearch {
 
     boolean isReady();
@@ -16,19 +16,19 @@ public interface CatalogSearch {
         return 0;
     }
 
-    // Tìm danh sách kết quả khớp theo từ khóa, giới hạn số lượng và bộ lọc ràng buộc.
+    // tìm kết quả khớp từ khóa theo giới hạn số lượng và bộ lọc
     List<SearchHit> search(String query, int limit, SearchConstraints constraints);
 
     default Optional<SearchHit> item(String id) {
         return Optional.empty();
     }
 
-    // Lấy phân đoạn đứng ngay sau tài liệu hiện tại trong cùng tập phim (dùng cho câu hỏi kiểu "cảnh sau đó thì sao").
+    // lấy phân đoạn đứng sau ngay trong cùng tập, dùng lúc hỏi kiểu "cảnh sau đó thì sao"
     default Optional<SearchHit> nextSegment(String documentId) {
         return Optional.empty();
     }
 
-    // Gợi ý các bộ phim khác gần thể loại và chủ đề với bộ phim người dùng nhắc tới.
+    // gợi ý mấy bộ khác gần thể loại với chủ đề của bộ vừa nhắc
     default List<SearchHit> similarSeries(String reference, int limit) {
         return List.of();
     }

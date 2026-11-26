@@ -1,6 +1,6 @@
 package com.dippie.desktop.service;
 
-// Ngoại lệ đăng nhập tách rõ 3 lý do từ chối: sai thông tin, không có quyền quản trị và tài khoản bị khóa.
+// lỗi đăng nhập tách rõ 3 lý do là sai thông tin, không có quyền admin và tài khoản bị khóa
 public final class AuthException extends RuntimeException {
     private final Reason reason;
 
@@ -13,7 +13,7 @@ public final class AuthException extends RuntimeException {
         return reason;
     }
 
-    // Gắn từng lý do từ chối với câu báo tiếng Việt hiện trên hộp thoại.
+    // gắn từng lý do từ chối với câu tiếng Việt hiện trên hộp thoại
     public enum Reason {
         INVALID_CREDENTIALS("Sai tên đăng nhập, email hoặc mật khẩu."),
         NOT_ADMIN("Tài khoản này không phải quản trị viên."),

@@ -19,8 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Optional;
 
-// Controller REST cho nhóm API /api/catalog (danh sách bộ phim, chi tiết bộ/tập và tìm kiếm nhanh).
-// Mọi endpoint đều lấy quyền người xem từ CurrentViewer rồi chuyển xuống tầng service lọc dữ liệu.
+// controller cho nhóm /api/catalog gồm danh sách bộ phim, chi tiết bộ/tập và tìm nhanh
+// mọi endpoint đều lấy quyền người xem từ CurrentViewer rồi đẩy xuống service lọc
 @RestController
 @RequestMapping("/api/catalog")
 public class CatalogController {
@@ -45,7 +45,7 @@ public class CatalogController {
         return catalog.listSeriesCards();
     }
 
-    // Lấy chi tiết một bộ phim kèm các mùa và lát cắt tập phim theo offset/limit tùy chọn.
+    // lấy chi tiết 1 bộ phim kèm các mùa và lát cắt tập theo offset/limit tùy chọn
     @GetMapping("/series/{seriesId}")
     public CatalogSeriesDetail seriesDetail(
             @PathVariable String seriesId,
@@ -55,14 +55,14 @@ public class CatalogController {
         return catalog.seriesDetail(seriesId, isAdmin(currentViewer.find()), episodeOffset, episodeLimit);
     }
 
-    // Lấy chi tiết tập phim kèm phân đoạn, tệp video khả dụng, phân cảnh và nguồn phát YouTube.
+    // lấy chi tiết tập phim kèm phân đoạn, file video khả dụng, phân cảnh và nguồn YouTube
     @GetMapping("/episodes/{episodeId}")
     public CatalogEpisodeDetail episodeDetail(@PathVariable String episodeId) {
         Optional<Viewer> viewer = currentViewer.find();
         return catalog.episodeDetail(episodeId, viewer.isPresent(), isAdmin(viewer));
     }
 
-    // Tìm nhanh trong danh mục theo phạm vi hiển thị của khách, thành viên hoặc quản trị viên.
+    // tìm nhanh trong danh mục đúng phạm vi hiển thị của khách, thành viên hay admin
     @GetMapping("/search")
     public List<CatalogSearchHit> search(
             @RequestParam(defaultValue = "") String q,

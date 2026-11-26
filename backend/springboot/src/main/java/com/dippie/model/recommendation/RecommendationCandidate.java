@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-// Một tập phim ứng viên dùng chung giữa các Strategy gợi ý, kèm sẵn bộ đặc trưng đã tính trước để khỏi xử lý lại mỗi request.
+// ứng viên tập phim dùng chung cho các Strategy gợi ý, tính sẵn đặc trưng để mỗi request khỏi làm lại
 public record RecommendationCandidate(
         String id, String title, String seriesId, String seasonId, Integer episodeNumber, Integer year,
         double rating, String runtime, String poster, String backdrop, String description,
@@ -30,12 +30,12 @@ public record RecommendationCandidate(
                 Features.from(seriesId, title, description, genreTerms, themes, keywords, characters, durationMs));
     }
 
-    // Tín hiệu thích hay không thích có thể gắn theo mã tập hoặc mã cả bộ phim nên phải kiểm cả hai.
+    // tín hiệu thích hay không thích có thể gắn theo mã tập hoặc mã cả bộ nên phải check cả hai
     public boolean matchesPreference(Set<String> ids) {
         return ids.contains(id) || (seriesId != null && ids.contains(seriesId));
     }
 
-    // Đặc trưng đã hạ chữ thường và bỏ dấu từ trước để các vòng chấm điểm sở thích, tâm trạng chạy nhanh.
+    // đặc trưng đã hạ thường bỏ dấu sẵn cho mấy vòng chấm sở thích, tâm trạng chạy cho nhanh
     public record Features(
             Set<String> genreTags,
             Set<String> themeTags,
@@ -46,7 +46,7 @@ public record RecommendationCandidate(
             int calmScore,
             Long knownDurationMs
     ) {
-        // Gom themes với keywords vào chung themeTags, đồng thời tính trước cờ tập tổng hợp, cờ kịch tính và điểm êm dịu.
+        // gộp themes với keywords vào themeTags, tính sẵn luôn cờ tổng hợp, cờ kịch tính với điểm êm dịu
         public static Features from(String seriesId, String title, String description, List<String> genreTerms,
                 List<String> themes, List<String> keywords, List<String> characters, Long durationMs) {
             Set<String> foldedThemes = foldSet(themes);

@@ -18,12 +18,9 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
 
-// Quản lý bảng ánh xạ thể loại song ngữ (mã gốc, tên tiếng Anh, nhãn tiếng Việt) và đếm số phim đang mở theo từng thể loại.
+// bảng map thể loại song ngữ (mã gốc, tên tiếng Anh, nhãn tiếng Việt) kèm đếm số phim đang mở theo thể loại
 @Repository
 public class MovieGenreDirectory {
-
-    private static final String ANIMATION_ID = "animation";
-    private static final String ANIMATION_LABEL = "Hoạt hình";
 
     private final EntityManager entities;
     private volatile CachedNames cachedNames;
@@ -32,16 +29,16 @@ public class MovieGenreDirectory {
         this.entities = entities;
     }
 
-    // Mở rộng một từ khóa thể loại sang mọi tên đồng nghĩa tiếng Anh/mã gốc để câu lọc SQL bắt đủ cả dữ liệu cũ lẫn mới.
+    // bung 1 từ khóa thể loại ra đủ tên tiếng Anh với mã gốc để lọc SQL bắt hết dữ liệu cũ lẫn mới
     public Function<String, Set<String>> filterNames(CatalogReadModel model) {
         return namesFor(model)::alternatives;
     }
 
-    // Đếm các thể loại đang có phim hiển thị, gom cả bảng movie_genres lẫn cột CSV cũ về cùng mã chuẩn rồi gắn nhãn tiếng Việt.
+    // đếm thể loại đang có phim mở, gom cả bảng movie_genres với cột CSV cũ về cùng mã chuẩn rồi gắn nhãn tiếng Việt
     public List<MovieGenreView> visibleGenres(CatalogReadModel model) {
         Names names = namesFor(model);
         Set<String> hiddenIds = model.hiddenMovieIds();
-        // Lấy toàn bộ phim không bị ẩn kèm liên kết thể loại (nếu có) và chuỗi thể loại cũ
+        // kéo hết phim không bị ẩn kèm link thể loại và chuỗi thể loại cũ
         String hql = """
                 select movie.id, link.genreName, movie.genres
                 from Movie movie left join MovieGenre link on link.movieId = movie.id
@@ -49,7 +46,7 @@ public class MovieGenreDirectory {
         var query = hiddenIds.isEmpty() ? entities.createQuery(hql, Object[].class)
                 : entities.createQuery(hql + "where movie.id not in :hidden", Object[].class)
                         .setParameter("hidden", hiddenIds);
-        // Mỗi phim chỉ tính một lần cho mỗi mã thể loại chuẩn để tránh đếm trùng khi một phim có nhiều dòng join
+        // mỗi phim chỉ tính 1 lần cho mỗi mã chuẩn kẻo 1 phim nhiều dòng join bị đếm trùng
         Map<String, Set<String>> idsByMovie = new HashMap<>();
         for (Object[] row : query.getResultList()) {
             Set<String> ids = idsByMovie.computeIfAbsent((String) row[0], id -> new HashSet<>());
@@ -60,7 +57,7 @@ public class MovieGenreDirectory {
                         .map(names::canonical).forEach(ids::add);
             }
         }
-        // Sắp theo mã bằng TreeMap rồi gắn nhãn tiếng Việt trước khi trả về
+        // dùng TreeMap sắp sẵn theo mã rồi gắn nhãn tiếng Việt trước khi trả
         Map<String, Long> counts = new TreeMap<>();
         idsByMovie.values().forEach(ids -> ids.forEach(id -> counts.merge(id, 1L, Long::sum)));
         return counts.entrySet().stream()
@@ -68,7 +65,7 @@ public class MovieGenreDirectory {
                 .toList();
     }
 
-    // So sánh tham chiếu trực tiếp vì CatalogReadModel là snapshot bất biến; chỉ dựng lại bảng tên khi cache danh mục đổi bản mới.
+    // so thẳng tham chiếu == vì CatalogReadModel là snapshot bất biến, chỉ dựng lại bảng tên khi cache đổi bản mới
     private Names namesFor(CatalogReadModel model) {
         CachedNames current = cachedNames;
         if (current != null && current.model() == model) {
@@ -98,7 +95,7 @@ public class MovieGenreDirectory {
                     String label = genre.viLabel();
                     labels.put(id, label == null || label.isBlank() ? id : label);
                 });
-        labels.putIfAbsent(ANIMATION_ID, ANIMATION_LABEL);
+        labels.putIfAbsent("animation", "Hoạt hình");
         return new Names(labels, englishById, canonicalByEnglish, idsByEnglish);
     }
 
@@ -106,11 +103,11 @@ public class MovieGenreDirectory {
         return text.strip().toLowerCase(Locale.ROOT);
     }
 
-    // Bộ đệm gắn bảng ánh xạ thể loại với đúng phiên bản CatalogReadModel đang dùng.
+    // cache gắn bảng map thể loại theo đúng bản CatalogReadModel đang xài
     private record CachedNames(CatalogReadModel model, Names names) {
     }
 
-    // Bảng tra cứu hai chiều giữa mã thể loại chuẩn, tên tiếng Anh và nhãn hiển thị tiếng Việt.
+    // bảng tra 2 chiều giữa mã chuẩn, tên tiếng Anh với nhãn tiếng Việt
     private record Names(
             Map<String, String> labels,
             Map<String, String> englishById,
@@ -118,7 +115,7 @@ public class MovieGenreDirectory {
             Map<String, Set<String>> idsByEnglish
     ) {
 
-        // Gom cả mã gốc lẫn các tên tiếng Anh tương đương cho cùng một token lọc.
+        // gom cả mã gốc lẫn mấy tên tiếng Anh tương đương cho cùng 1 token lọc
         Set<String> alternatives(String token) {
             Set<String> matches = new LinkedHashSet<>();
             matches.add(token);
@@ -133,7 +130,7 @@ public class MovieGenreDirectory {
             return matches;
         }
 
-        // Đưa tên thể loại bất kỳ (mã gốc hoặc tiếng Anh) về đúng mã chuẩn để đếm không bị tách làm hai dòng.
+        // kéo tên thể loại bất kỳ (mã gốc hay tiếng Anh) về đúng mã chuẩn kẻo lúc đếm bị tách thành 2 dòng
         String canonical(String rawName) {
             String token = normalize(rawName);
             if (labels.containsKey(token)) {

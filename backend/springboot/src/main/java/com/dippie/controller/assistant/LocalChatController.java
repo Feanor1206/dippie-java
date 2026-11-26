@@ -34,16 +34,12 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.stream.Stream;
 
-// Endpoint POST /api/chat đọc body có trần dung lượng, kiểm tra quá tải trước khi mở luồng rồi đẩy SSE về frontend.
+// POST /api/chat đọc body có trần dung lượng, check quá tải trước rồi mới mở luồng SSE về frontend
 @RestController
 public class LocalChatController {
 
     public static final int MAX_REQUEST_BYTES = 256 * 1024;
-    private static final String NOT_READY_DETAIL = "Kho phim đang được cập nhật, bạn thử lại sau ít phút nhé.";
-    private static final int READ_BUFFER_SIZE = 4096;
     private static final String PAYLOAD_TOO_LARGE_MESSAGE = RequestBodyTooLargeException.DEFAULT_MESSAGE;
-    private static final String CACHE_CONTROL_VALUE = "no-cache, no-transform";
-    private static final String ACCEL_BUFFERING_HEADER = "X-Accel-Buffering";
 
     private final ChatService chatService;
     private final ObjectMapper objectMapper;
@@ -72,23 +68,24 @@ public class LocalChatController {
                 : properties.chat().maxRequestBytes();
     }
 
-    // Phải đọc body, kiểm tra chỉ mục và lấy permit xong trước khi mở SSE thì các lỗi 400/413/429/503 mới trả JSON sạch được.
+    // phải đọc body, check chỉ mục và xin permit xong trước khi mở SSE thì lỗi 400/413/429/503 mới trả JSON sạch được
     @PostMapping("/api/chat")
+    @SuppressWarnings("resource") // permit được đóng trong try-with-resources của lambda stream bên dưới
     public ResponseEntity<StreamingResponseBody> chat(HttpServletRequest request) throws IOException {
-        // Đọc body có trần dung lượng và kiểm tra JSON trước để request hỏng không chiếm chỗ semaphore.
+        // đọc body có trần dung lượng và check JSON trước kẻo request hỏng chiếm chỗ semaphore
         byte[] body = readBoundedBody(request);
         ChatRequestValidator.ValidatedChatRequest validated = validator.parseAndValidate(body);
 
         if (!chatService.isReady()) {
-            throw new ServiceUnavailableException(NOT_READY_DETAIL);
+            throw new ServiceUnavailableException("Kho phim đang được cập nhật, bạn thử lại sau ít phút nhé.");
         }
 
-        // Xin permit trước khi trả StreamingResponseBody để lúc chạm trần sẽ nhảy sang handleCapacity trả 429 JSON {"detail": "..."}.
+        // xin permit trước khi trả StreamingResponseBody để lúc chạm trần nhảy qua handleCapacity trả 429 JSON kèm field detail
         String clientIp = clientIpResolver.resolve(request);
         Long viewerUserId = currentViewer.find().map(Viewer::userId).orElse(null);
         ChatStreamGuard.Permit permit = streamGuard.acquire(clientIp, viewerUserId);
 
-        // Việt nhớ giữ permit trong try-with-resources này nhé, để client ngắt kết nối giữa chừng thì permit vẫn được trả về semaphore.
+        // Việt nhớ giữ permit trong try-with-resources này nhé, lỡ client ngắt giữa chừng thì permit vẫn trả lại semaphore
         HttpHeaders headers = buildSseHeaders();
         StreamingResponseBody streamBody = outputStream -> {
             try (permit; Stream<ChatEvent> events = chatService.stream(
@@ -110,13 +107,13 @@ public class LocalChatController {
                 .body(streamBody);
     }
 
-    // Trả lỗi validation theo đúng mẫu {"detail": "..."} mà frontend chat đang parse.
+    // trả lỗi validation đúng dạng JSON có field detail mà frontend chat đang parse
     @ExceptionHandler(ChatRequestValidator.ChatValidationException.class)
     public ResponseEntity<Map<String, String>> handleValidation(ChatRequestValidator.ChatValidationException exception) {
         return detailError(exception.status(), exception.getMessage());
     }
 
-    // Trả HTTP 429 dạng JSON {"detail": "..."} kèm Retry-After trước khi luồng SSE kịp mở.
+    // trả 429 JSON có field detail kèm Retry-After trước khi luồng SSE kịp mở
     @ExceptionHandler(ChatCapacityException.class)
     public ResponseEntity<Map<String, String>> handleCapacity(ChatCapacityException exception) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
@@ -136,7 +133,7 @@ public class LocalChatController {
                 .body(Map.of("detail", detail));
     }
 
-    // Switch thẳng trên sealed interface ChatEvent để compiler nhắc ngay nếu sau này thêm loại sự kiện mới.
+    // switch thẳng trên sealed interface ChatEvent để compiler nhắc liền nếu sau này thêm event mới
     private String formatSseFrame(ChatEvent event) throws IOException {
         Object payload = switch (event) {
             case ChatEvent.Metadata(ChatMetadata metadata) -> metadata;
@@ -150,18 +147,18 @@ public class LocalChatController {
     private HttpHeaders buildSseHeaders() {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_EVENT_STREAM_VALUE + "; charset=utf-8");
-        headers.set(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_VALUE);
-        headers.set(ACCEL_BUFFERING_HEADER, "no");
+        headers.set(HttpHeaders.CACHE_CONTROL, "no-cache, no-transform");
+        headers.set("X-Accel-Buffering", "no");
         return headers;
     }
 
-    // Kiểm tra cả Content-Length lẫn số byte đọc thực tế phòng request gửi chunked không khai báo độ dài.
+    // check cả Content-Length lẫn số byte đọc thật phòng request gửi chunked không khai báo độ dài
     private byte[] readBoundedBody(HttpServletRequest request) throws IOException {
         if (request.getContentLengthLong() > maxRequestBytes) {
             throw new ChatPayloadTooLargeException(PAYLOAD_TOO_LARGE_MESSAGE);
         }
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        byte[] chunk = new byte[READ_BUFFER_SIZE];
+        byte[] chunk = new byte[4096];
         int total = 0;
         try (InputStream input = request.getInputStream()) {
             int bytesRead;

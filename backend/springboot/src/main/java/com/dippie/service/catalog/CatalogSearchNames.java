@@ -12,7 +12,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-// Gom tên gọi, tên gốc và bí danh của nhân vật hoặc bộ phim thành danh sách phẳng không trùng để đưa vào chỉ mục tìm kiếm.
+// gom tên gọi, tên gốc với biệt danh của nhân vật hay bộ phim ra list phẳng không trùng để đẩy vào chỉ mục
 public final class CatalogSearchNames {
 
     private final Map<String, List<String>> characters;
@@ -22,13 +22,13 @@ public final class CatalogSearchNames {
                 row -> of(row.getName(), null, row.getAliasesJson())));
     }
 
-    // Đổi mảng JSON mã nhân vật sang toàn bộ tên và bí danh tương ứng.
+    // đổi mảng JSON mã nhân vật ra hết tên với biệt danh tương ứng
     public List<String> characters(String idsJson) {
         return JsonText.stringList(idsJson).stream().map(id -> characters.getOrDefault(id, List.of()))
                 .flatMap(List::stream).distinct().toList();
     }
 
-    // Gộp tên phim, tên gốc, bí danh JSON và các cách gọi tắt cấu hình trong SeriesSearchAliases.
+    // gộp tên phim, tên gốc, biệt danh JSON với mấy cách gọi tắt trong SeriesSearchAliases
     public static List<String> series(CatalogSeries row) {
         return Stream.concat(of(row.getTitle(), row.getOriginalTitle(), row.getAliasesJson()).stream(),
                 SeriesSearchAliases.forSeries(row.getId()).stream()).distinct().toList();
@@ -39,7 +39,7 @@ public final class CatalogSearchNames {
                 .filter(Objects::nonNull).filter(name -> !name.isBlank()).distinct().toList();
     }
 
-    // Hỗ trợ cả mảng chuỗi thuần lẫn mảng object {"text": "..."} vì các gói import cũ và mới lưu hai dạng khác nhau.
+    // nhận cả mảng chuỗi lẫn mảng object {"text": chuỗi} vì gói import cũ với mới lưu 2 kiểu khác nhau
     public static List<String> aliases(String aliasesJson) {
         return JsonText.parse(aliasesJson).filter(JsonNode::isArray).stream()
                 .flatMap(JsonNode::valueStream)
