@@ -70,7 +70,6 @@ public class LocalChatController {
 
     // phải đọc body, check chỉ mục và xin permit xong trước khi mở SSE thì lỗi 400/413/429/503 mới trả JSON sạch được
     @PostMapping("/api/chat")
-    @SuppressWarnings("resource") // permit được đóng trong try-with-resources của lambda stream bên dưới
     public ResponseEntity<StreamingResponseBody> chat(HttpServletRequest request) throws IOException {
         // đọc body có trần dung lượng và check JSON trước kẻo request hỏng chiếm chỗ semaphore
         byte[] body = readBoundedBody(request);

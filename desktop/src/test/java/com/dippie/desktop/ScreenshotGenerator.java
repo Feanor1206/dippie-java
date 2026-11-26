@@ -80,7 +80,6 @@ public final class ScreenshotGenerator {
     }
 
     // dựng cửa sổ y như app thật rồi chụp lần lượt màn đăng nhập với 4 tab quản trị
-    @SuppressWarnings("resource") // UiTasks phải sống tới khi chụp xong, tool chạy 1 lần rồi tắt JVM
     private static void captureAll(AdminServices services, Path outputDir, CompletableFuture<Void> done) {
         UiTasks tasks = new UiTasks(null);
         HeaderBar header = new HeaderBar(tasks, () -> {

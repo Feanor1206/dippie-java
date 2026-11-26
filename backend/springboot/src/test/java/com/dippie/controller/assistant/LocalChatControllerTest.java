@@ -290,7 +290,6 @@ class LocalChatControllerTest {
     }
 
     @Test
-    @SuppressWarnings("resource") // luồng giả trong RAM, khỏi close
     void flushesPerEventAndStopsWritingWhenClientDisconnects() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/chat");
         request.setContentType(MediaType.APPLICATION_JSON_VALUE);

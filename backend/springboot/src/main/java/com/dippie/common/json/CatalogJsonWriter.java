@@ -42,7 +42,6 @@ public final class CatalogJsonWriter {
     }
 
     // truyền canonical = true để ra chuỗi gọn đã sắp khóa phục vụ băm, còn false giữ khoảng trắng khi lưu rawJson
-    @SuppressWarnings("resource") // setPrettyPrinter trả lại đúng generator trong try nên JDT báo nhầm
     public static String encode(JsonNode node, boolean canonical) {
         StringWriter output = new StringWriter();
         try (JsonGenerator generator = FACTORY.createGenerator(output)) {

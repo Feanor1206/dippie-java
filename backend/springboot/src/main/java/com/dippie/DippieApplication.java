@@ -11,7 +11,6 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 @ConfigurationPropertiesScan
 public class DippieApplication {
 
-    @SuppressWarnings("resource") // Spring tự đóng context khi app tắt nên khỏi close ở đây
     public static void main(String[] args) {
         SpringApplication.run(DippieApplication.class, args);
     }

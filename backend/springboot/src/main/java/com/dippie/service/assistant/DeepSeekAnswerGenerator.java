@@ -93,7 +93,6 @@ public final class DeepSeekAnswerGenerator implements AnswerGenerator, AutoClose
         this(llm, objectMapper, templateFallback, Clock.systemUTC());
     }
 
-    @SuppressWarnings("resource") // HttpClient giao luôn cho generator giữ, close() của generator sẽ đóng nó
     public DeepSeekAnswerGenerator(
             AssistantProperties.Llm llm,
             ObjectMapper objectMapper,

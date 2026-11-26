@@ -118,7 +118,6 @@ class CriticalSecurityFixesTest {
 
     // check pool async có trần, siết số request mỗi phút với số luồng SSE song song trên /api/chat
     @Test
-    @SuppressWarnings("resource") // permit gom vào held rồi trả hết trong finally
     void enforcesChatRateLimitConcurrencyCapAndBoundedAsyncExecutor() throws Exception {
         assertThat(mvcAsyncTaskExecutor.getMaxPoolSize()).isGreaterThan(0).isLessThanOrEqualTo(64);
         assertThat(mvcAsyncTaskExecutor.getQueueCapacity()).isGreaterThan(0);
