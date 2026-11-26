@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Configuration;
 
 import java.time.Clock;
 
-// Cung cấp một bean Clock chạy theo UTC cho toàn app để các chỗ phụ thuộc thời gian (JWT, rate limit) dễ thay đồng hồ giả khi viết test.
+// cấp 1 bean Clock chạy UTC cho cả app để mấy chỗ dính thời gian (JWT, rate limit) dễ cắm đồng hồ giả lúc test
 @Configuration
 public class ClockConfig {
 

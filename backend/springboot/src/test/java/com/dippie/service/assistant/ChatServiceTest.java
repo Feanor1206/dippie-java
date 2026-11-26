@@ -22,7 +22,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
-// Kiểm tra ChatService điều phối chào hỏi, xếp hạng theo tâm trạng, nhánh báo lỗi và trạng thái conversation trong sự kiện Done.
+// test ChatService điều phối câu chào, xếp hạng theo tâm trạng, nhánh lỗi với trạng thái hội thoại trong event Done
 class ChatServiceTest {
 
     private final IntentParser intentParser = new IntentParser();
@@ -171,7 +171,7 @@ class ChatServiceTest {
         };
     }
 
-    // Hàm giả lập truy vấn kho phim cho các ca test trong ChatServiceTest.
+    // hàm giả truy vấn kho phim dùng cho mấy ca test trên
     @FunctionalInterface
     private interface SearchFunction {
         List<SearchHit> search(String query, int limit, SearchConstraints constraints);

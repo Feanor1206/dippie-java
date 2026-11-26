@@ -2,7 +2,7 @@ package com.dippie.dto.recommendation;
 
 import java.util.List;
 
-// Kết quả trả về của API gợi ý, gồm danh sách tập phim và câu lý do ngắn hiển thị trên giao diện.
+// kết quả API gợi ý gồm list tập phim kèm câu giải thích ngắn hiện lên giao diện
 public record RecommendationResult(List<RecommendedItem> recommendedMovies, String reasoning) {
 
     public RecommendationResult {

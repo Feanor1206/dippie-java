@@ -5,7 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Check;
 
-// Lưu thang đo thuộc tính nội dung (giới hạn minimum < maximum) dùng chung phần khung bản ghi từ CatalogRecord.
+// thang đo thuộc tính nội dung (ràng buộc minimum < maximum), kế thừa khung cột chung từ CatalogRecord
 @Entity
 @Table(name = "catalog_attribute_scales")
 @Check(name = "ck_catalog_scale_bounds", constraints = "minimum < maximum")
@@ -35,7 +35,7 @@ public class CatalogAttributeScale extends CatalogRecord {
     protected CatalogAttributeScale() {
     }
 
-    // Chép đè thông tin thang đo từ bản ghi mới import sang bản ghi đang có trong DB.
+    // chép đè thông tin thang đo mới import sang bản ghi đang nằm trong DB
     public void applyImport(CatalogAttributeScale imported) {
         replaceRecordFrom(imported);
         name = imported.name;

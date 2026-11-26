@@ -12,7 +12,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Chấm điểm mức độ khớp tâm trạng (vui hay buồn) cho từng kết quả phim dựa trên metadata và lời thoại.
+// chấm điểm độ khớp tâm trạng (vui hay buồn) của từng kết quả phim dựa trên metadata với lời thoại
 public final class MoodEvidence {
 
     private static final Pattern CHEERFUL_RE = Pattern.compile(
@@ -29,7 +29,7 @@ public final class MoodEvidence {
     private MoodEvidence() {
     }
 
-    // Gỡ tiêu đề khỏi phần mô tả trước khi đếm từ khóa để tránh một tập chỉ chứa chữ "vui" ở tiêu đề bị tính điểm ảo.
+    // gỡ tiêu đề khỏi phần mô tả trước khi đếm từ khóa kẻo tập nào chỉ có chữ "vui" ở tiêu đề lại ăn điểm ảo
     public static int score(SearchHit item, String target) {
         if (item == null) {
             return 0;
@@ -48,7 +48,7 @@ public final class MoodEvidence {
         appendWithoutTitle(texts, item.visualSummary(), title);
         appendWithoutTitle(texts, item.dialogueSummary(), title);
 
-        // Chỉ đếm trích đoạn cấp scene, segment hoặc dialogue để không tính lặp mô tả chung của cả tập.
+        // chỉ đếm trích đoạn cấp scene, segment hay dialogue cho khỏi tính lặp mô tả chung của cả tập
         if (item.evidence() != null) {
             for (SearchEvidence evidence : item.evidence()) {
                 if (evidence != null

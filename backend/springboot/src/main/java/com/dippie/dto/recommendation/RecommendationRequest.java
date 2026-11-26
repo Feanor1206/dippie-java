@@ -14,7 +14,7 @@ import jakarta.validation.constraints.Size;
 import java.io.IOException;
 import java.util.List;
 
-// Payload cho API /api/recommend, điền sẵn giá trị mặc định cho các trường bỏ trống và kiểm tra giới hạn đầu vào.
+// body cho /api/recommend, điền sẵn mặc định chỗ bỏ trống rồi chặn đầu vào quá giới hạn
 public record RecommendationRequest(
         @Size(max = 20, message = "Bạn chỉ chọn được tối đa 20 thể loại.")
         List<@NotNull(message = "Thể loại không được để trống.")
@@ -39,14 +39,14 @@ public record RecommendationRequest(
         limit = limit == null ? DEFAULT_LIMIT : limit;
     }
 
-    // Deserializer riêng cho trường limit: không truyền thì lấy 4, còn truyền chuỗi, số thực hay null rõ ràng thì báo lỗi luôn.
+    // deserializer riêng cho limit: bỏ trống thì lấy 4, còn gửi chuỗi, số thực hay null hẳn thì báo lỗi
     public static final class LimitDeserializer extends StdScalarDeserializer<Integer> {
 
         public LimitDeserializer() {
             super(Integer.class);
         }
 
-        // Chỉ nhận đúng số nguyên JSON, chặn kiểu ép chuỗi "5" hay số thực 4.5 mặc định của Jackson.
+        // chỉ nhận đúng số nguyên JSON, chặn Jackson tự ép "5" hay 4.5
         @Override
         public Integer deserialize(JsonParser parser, DeserializationContext context) throws IOException {
             if (parser.hasToken(JsonToken.VALUE_NUMBER_INT)) {
@@ -60,7 +60,7 @@ public record RecommendationRequest(
             return DEFAULT_LIMIT;
         }
 
-        // Client cố tình gửi {"limit": null} thì từ chối thay vì âm thầm rơi về mặc định.
+        // client cố tình gửi {"limit": null} thì chặn luôn chứ không lặng lẽ rơi về mặc định
         @Override
         public Integer getNullValue(DeserializationContext context) throws JsonMappingException {
             return context.reportInputMismatch(Integer.class, "Nếu có truyền số lượng gợi ý thì không được để trống.");

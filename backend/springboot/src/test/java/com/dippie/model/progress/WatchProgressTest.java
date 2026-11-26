@@ -12,7 +12,7 @@ import java.time.ZoneOffset;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Test đơn vị cho WatchProgress: khởi đầu ở version 0, tăng tuần tự và giữ nguyên trạng thái khi expectedVersion lệch.
+// test WatchProgress bắt đầu từ version 0, tăng dần từng nấc, lệch expectedVersion thì giữ nguyên không sửa
 class WatchProgressTest {
 
     @Test

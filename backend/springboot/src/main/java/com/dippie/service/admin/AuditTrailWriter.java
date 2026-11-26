@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
-// Cổng Facade public để các service khác như báo lỗi phát hay đặt lại mật khẩu ghi nhật ký mà không cần lộ AdminAuditService ra ngoài gói admin.
+// cổng Facade cho mấy service ngoài gói admin như báo lỗi phát hay quên mật khẩu ghi log mà khỏi lộ AdminAuditService
 @Component
 public class AuditTrailWriter {
 
@@ -16,7 +16,7 @@ public class AuditTrailWriter {
         this.adminAuditService = adminAuditService;
     }
 
-    // Ghi sự kiện gắn với tài khoản đang đăng nhập.
+    // ghi log gắn với user đang đăng nhập
     public void record(
             Viewer actor,
             String action,
@@ -27,7 +27,7 @@ public class AuditTrailWriter {
         adminAuditService.record(actor, action, targetType, targetId, details);
     }
 
-    // Ghi sự kiện với userId và username truyền thẳng, tiện dùng khi không có sẵn phiên Viewer.
+    // ghi log bằng userId với username truyền thẳng lúc không có sẵn Viewer
     public void recordForActor(
             Long actorUserId,
             String actorUsername,

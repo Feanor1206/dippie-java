@@ -4,7 +4,7 @@ import com.dippie.model.catalog.CatalogSnapshot;
 
 import java.time.LocalDateTime;
 
-// Dữ liệu phản ánh trạng thái một bản ghi snapshot catalog cho màn hình quản trị.
+// view trạng thái một bản snapshot catalog cho trang admin
 public record CatalogSnapshotView(
         String id, long snapshotVersion, String contentHash, int totalItems, String status, Integer retryCount,
         String errorMessage, LocalDateTime createdAt, LocalDateTime completedAt, LocalDateTime updatedAt

@@ -39,7 +39,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Bộ test tích hợp cho các API quản trị: kiểm tra phân quyền, phân trang tìm user, chặn hạ quyền admin cuối cùng khi chạy song song và ghi nhật ký.
+// test API admin: phân quyền, tìm user phân trang, khóa admin cuối khi chạy song song với ghi audit
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -85,7 +85,7 @@ class AdminControllerTest {
         userRepository.deleteAll();
     }
 
-    // Chặn khách chưa đăng nhập lẫn tài khoản thường trên toàn bộ endpoint quản trị.
+    // khách với user thường đụng vào endpoint admin là chặn hết
     @Test
     void rejectsNonAdminAndAnonymousAcrossAdminEndpoints() throws Exception {
         User regular = saveUser("viewer", "viewer@example.com", Role.ROLE_USER);
@@ -111,7 +111,7 @@ class AdminControllerTest {
                 .andExpect(status().isForbidden());
     }
 
-    // Kiểm tra phân trang và tìm kiếm không phân biệt hoa thường theo username hoặc email.
+    // test phân trang với tìm username, email không phân biệt hoa thường
     @Test
     void listsSearchesAndPagesUsers() throws Exception {
         User admin = saveUser("boss", "boss@dippie.com", Role.ROLE_ADMIN);
@@ -149,7 +149,7 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.data.items[0].username").value("alice"));
     }
 
-    // Chạy trọn vòng đổi quyền, khóa mở tài khoản, thu hồi JWT cũ và xác minh thứ tự dòng nhật ký.
+    // test trọn vòng đổi quyền, khóa mở nick, đá JWT cũ rồi check thứ tự audit
     @Test
     void enforcesRoleAndStatusRulesRevokesTokensAndRecordsAuditEvents() throws Exception {
         User admin = saveUser("admin1", "admin1@dippie.com", Role.ROLE_ADMIN);
@@ -249,7 +249,7 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.data.items[3].details.newRole").value("ROLE_ADMIN"));
     }
 
-    // Cho hai admin hạ quyền nhau cùng lúc để xác nhận khóa DB luôn giữ lại đúng một admin đang hoạt động.
+    // hai admin cùng hạ quyền nhau một lúc, khóa DB phải giữ lại đúng 1 admin sống kẻo mất quyền hết
     @Test
     void concurrentMutualAdminDemotionAlwaysLeavesAtLeastOneEnabledAdmin() throws Exception {
         User admin1 = saveUser("admin1", "admin1@dippie.com", Role.ROLE_ADMIN);

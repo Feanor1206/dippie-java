@@ -23,7 +23,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// Điều phối luồng quên mật khẩu: cấp token dùng một lần dạng băm SHA-256, gửi mail qua Strategy và thu hồi mọi phiên cũ sau khi đổi mật khẩu.
+// lo luồng quên mật khẩu, cấp token dùng 1 lần băm SHA-256, gửi mail qua Strategy rồi đá hết phiên cũ
 @Service
 public class PasswordResetService {
 
@@ -34,7 +34,6 @@ public class PasswordResetService {
             "Đường dẫn đặt lại mật khẩu không đúng hoặc đã hết hạn. Bạn vui lòng yêu cầu gửi lại nhé.";
     public static final String ACTION_PASSWORD_RESET_COMPLETED = "PASSWORD_RESET_COMPLETED";
 
-    private static final String TARGET_TYPE_USER = "USER";
 
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository tokenRepository;
@@ -68,7 +67,7 @@ public class PasswordResetService {
         this.clock = clock;
     }
 
-    // Xử lý yêu cầu quên mật khẩu; nếu email chưa đăng ký hoặc tài khoản đang bị khóa thì âm thầm kết thúc để không lộ thông tin tài khoản.
+    // email chưa đăng ký hay bị khóa thì im lặng thoát luôn kẻo lộ tài khoản có tồn tại không
     @Transactional
     public void requestReset(PasswordResetRequestDto request, String clientIp) {
         rateLimiter.enforce(clientIp);
@@ -76,7 +75,7 @@ public class PasswordResetService {
         PasswordResetRequestDto payload = request == null ? new PasswordResetRequestDto(null) : request;
         String email = User.validateEmail(payload.rawEmail());
 
-        // Tìm tài khoản đang hoạt động theo email không phân biệt hoa thường; không thấy thì dừng im lặng để giữ đúng phản hồi 202 chung.
+        // tìm user đang bật theo email không phân biệt hoa thường, không thấy thì dừng để vẫn trả 202 chung
         User user = userRepository.findByEmailIgnoreCaseOrderByIdAsc(email).stream()
                 .filter(User::isEnabled)
                 .findFirst()
@@ -85,7 +84,7 @@ public class PasswordResetService {
             return;
         }
 
-        // Sinh token ngẫu nhiên, chỉ lưu mã băm SHA-256 có hạn 30 phút rồi gửi token gốc qua Strategy mail.
+        // sinh token ngẫu nhiên, lưu bản băm SHA-256 hạn 30 phút rồi gửi token gốc qua Strategy mail
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
         String rawToken = tokenCodec.generateRawToken();
         String tokenHash = tokenCodec.hash(rawToken);
@@ -101,7 +100,7 @@ public class PasswordResetService {
         mailDeliveryStrategy.deliver(message);
     }
 
-    // Xác nhận token một lần, đổi mật khẩu, tăng token_version để vô hiệu hóa các JWT cũ và ghi nhật ký.
+    // duyệt token dùng 1 lần, đổi mật khẩu, tăng token_version cắt hết JWT cũ rồi ghi audit
     @Transactional
     public void confirmReset(PasswordResetConfirmRequest request) {
         PasswordResetConfirmRequest payload = request == null
@@ -114,7 +113,7 @@ public class PasswordResetService {
         String newPassword = payload.rawNewPassword();
         PasswordPolicy.DEFAULT.validateUserPassword(newPassword);
 
-        // Khóa dòng token theo mã băm để hai request xác nhận cùng lúc không tiêu thụ trùng một token.
+        // khóa dòng token theo mã băm kẻo 2 request gọi cùng lúc xài trùng 1 token
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
         String tokenHash = tokenCodec.hash(rawToken);
         PasswordResetToken resetToken = tokenRepository.findByTokenHashForUpdate(tokenHash)
@@ -124,12 +123,12 @@ public class PasswordResetService {
         User user = userRepository.findByIdForUpdate(resetToken.getUserId())
                 .filter(User::isEnabled)
                 .orElseThrow(() -> new InvalidRequestException(INVALID_OR_EXPIRED_TOKEN_MESSAGE));
-        // Việt nhớ giữ nhánh kiểm tra này nhé: admin cũng phải qua luật mật khẩu quản trị, tránh lách qua luồng quên mật khẩu để đặt mật khẩu yếu.
+        // Việt nhớ giữ chỗ này nhé, admin vẫn phải qua luật mật khẩu quản trị kẻo lách qua quên mật khẩu đặt pass yếu
         if (user.isAdmin()) {
             PasswordPolicy.DEFAULT.validateAdminPassword(newPassword);
         }
 
-        // Đánh dấu token đã dùng, khóa hết các token còn mở khác của tài khoản này rồi đổi mật khẩu (hàm changePassword sẽ tự tăng token_version).
+        // đánh dấu token đã dùng, hủy hết mấy token còn mở khác rồi đổi pass (changePassword tự tăng token_version)
         resetToken.markUsed(now);
         tokenRepository.saveAndFlush(resetToken);
         tokenRepository.invalidateOtherActiveTokens(user.getId(), resetToken.getId(), now);
@@ -137,7 +136,7 @@ public class PasswordResetService {
         user.changePassword(passwordEncoder.encode(newPassword), now);
         User savedUser = userRepository.saveAndFlush(user);
 
-        // Lưu vết vào nhật ký quản trị khi người dùng đặt lại mật khẩu xong.
+        // ghi vết vào audit lúc đặt lại mật khẩu xong
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("username", savedUser.getUsername());
         details.put("tokenId", resetToken.getId());
@@ -145,7 +144,7 @@ public class PasswordResetService {
                 savedUser.getId(),
                 savedUser.getUsername(),
                 ACTION_PASSWORD_RESET_COMPLETED,
-                TARGET_TYPE_USER,
+                "USER",
                 String.valueOf(savedUser.getId()),
                 details
         );

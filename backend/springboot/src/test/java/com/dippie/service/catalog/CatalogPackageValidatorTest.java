@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-// Kiểm tra CatalogPackageValidator bắt đúng lỗi đầu tiên, đường dẫn trường JSON và giá trị mặc định khi thiếu trường.
+// test CatalogPackageValidator tóm đúng lỗi đầu tiên, đường dẫn field JSON với giá trị mặc định lúc thiếu trường
 class CatalogPackageValidatorTest {
 
     private final ObjectMapper mapper = new ObjectMapper();

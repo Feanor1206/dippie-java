@@ -2,7 +2,7 @@ package com.dippie.dto.user;
 
 import com.dippie.model.user.User;
 
-// Phản hồi sau khi đăng nhập, đăng ký hoặc đổi mật khẩu: chứa JWT dạng Bearer và thông tin cơ bản của tài khoản.
+// trả về sau đăng nhập, đăng ký hay đổi mật khẩu, gồm JWT dạng Bearer với thông tin cơ bản
 public record AuthResponse(
         String token,
         String type,

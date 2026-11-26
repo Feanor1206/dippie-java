@@ -8,7 +8,7 @@ import javafx.scene.control.Alert;
 
 import java.util.function.Consumer;
 
-// Controller cho màn hình đăng nhập (MVC), nối form giao diện với AuthService.
+// controller màn hình đăng nhập (MVC), nối form giao diện với AuthService
 public final class LoginController {
     private final AdminServices services;
     private final UiTasks tasks;
@@ -18,7 +18,7 @@ public final class LoginController {
         this.tasks = tasks;
     }
 
-    // Kiểm tra đầu vào ngay tại đây để nếu gõ thiếu hoặc quá 72 byte thì báo luôn, khỏi bật trạng thái đang kết nối DB.
+    // check đầu vào ngay đây để gõ thiếu hay quá 72 byte thì báo liền, khỏi bật trạng thái đang kết nối DB
     public void login(String identifier, String password, Consumer<AdminSession> onSuccess) {
         try {
             AuthService.validateInput(identifier, password);

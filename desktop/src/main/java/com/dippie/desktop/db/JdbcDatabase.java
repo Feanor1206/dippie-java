@@ -3,7 +3,7 @@ package com.dippie.desktop.db;
 import java.sql.Connection;
 import java.sql.SQLException;
 
-// Quản lý vòng đời kết nối và gom nhiều lệnh ghi vào chung một giao dịch JDBC.
+// quản lý vòng đời kết nối và gom nhiều lệnh ghi vào chung 1 transaction JDBC
 public final class JdbcDatabase {
     private final DatabaseConfig config;
 
@@ -15,7 +15,7 @@ public final class JdbcDatabase {
         return ConnectionProvider.INSTANCE.open(config);
     }
 
-    // Mở một kết nối để đọc rồi tự đóng bằng try-with-resources, lỗi SQL thì bọc sang DataAccessException.Query.
+    // mở kết nối đọc rồi tự đóng bằng try-with-resources, dính lỗi SQL thì bọc sang DataAccessException.Query
     public <T> T read(Work<T> work) {
         try (Connection connection = open()) {
             return work.run(connection);
@@ -24,7 +24,7 @@ public final class JdbcDatabase {
         }
     }
 
-    // Chạy mọi lệnh ghi trên cùng một kết nối và chỉ commit khi tất cả đều xong.
+    // chạy hết lệnh ghi trên cùng 1 kết nối, xong xuôi hết mới commit
     public <T> T transaction(Work<T> work) {
         try (Connection connection = open()) {
             connection.setAutoCommit(false);
@@ -33,7 +33,7 @@ public final class JdbcDatabase {
                 connection.commit();
                 return result;
             } catch (SQLException | RuntimeException failure) {
-                // Nếu rollback cũng lỗi thì gắn vào suppressed để không làm mất lỗi gốc.
+                // lỡ rollback cũng lỗi thì gắn vào suppressed kẻo mất lỗi gốc
                 try {
                     connection.rollback();
                 } catch (SQLException rollbackFailure) {
@@ -46,7 +46,7 @@ public final class JdbcDatabase {
         }
     }
 
-    // Functional interface cho một đoạn thao tác JDBC nhận kết nối đang mở.
+    // functional interface cho 1 đoạn chạy JDBC nhận kết nối đang mở
     @FunctionalInterface
     public interface Work<T> {
         T run(Connection connection) throws SQLException;

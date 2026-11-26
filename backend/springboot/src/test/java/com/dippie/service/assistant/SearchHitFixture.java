@@ -7,7 +7,7 @@ import com.dippie.model.assistant.SearchHit;
 import java.util.List;
 import java.util.Map;
 
-// Builder dựng nhanh dữ liệu SearchHit mẫu cho các bài test CineBot và tìm kiếm.
+// kiểu Builder dựng nhanh SearchHit mẫu cho mấy bài test CineBot với tìm kiếm cho gọn
 public final class SearchHitFixture {
 
     private String id = "hit-1";

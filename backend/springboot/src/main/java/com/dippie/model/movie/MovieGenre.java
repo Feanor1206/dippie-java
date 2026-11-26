@@ -15,7 +15,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.io.Serializable;
 
-// Bảng nối movie_genres giữa phim và tên thể loại, dùng khóa chính ghép MovieGenre.Key.
+// bảng nối movie_genres giữa phim với tên thể loại, khóa ghép là MovieGenre.Key
 @Entity
 @Table(name = "movie_genres",
         indexes = {
@@ -56,7 +56,7 @@ public class MovieGenre {
         return new Key(movieId, genreName);
     }
 
-    // Khóa chính ghép (movieId, genreName) cho @IdClass của bảng movie_genres.
+    // khóa ghép (movieId, genreName) cho @IdClass
     public record Key(String movieId, String genreName) implements Serializable {
     }
 }

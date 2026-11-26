@@ -4,8 +4,8 @@ import org.springframework.http.HttpStatus;
 
 import java.util.Map;
 
-// Lớp cha trừu tượng cho mọi lỗi nghiệp vụ trong Dippie. Các lớp con kế thừa và gán sẵn HTTP status cùng header riêng,
-// nhờ đó GlobalExceptionHandler chỉ cần bắt một chỗ là xử lý được hết.
+// lớp cha trừu tượng cho mọi lỗi nghiệp vụ trong Dippie, mỗi lớp con tự gắn sẵn HTTP status và header riêng
+// nhờ vậy GlobalExceptionHandler chỉ cần bắt đúng 1 chỗ là lo được hết
 public abstract class DomainException extends RuntimeException {
 
     private final HttpStatus status;

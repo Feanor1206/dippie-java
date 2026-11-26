@@ -7,8 +7,8 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// Bộ đếm rate limit theo cửa sổ cố định trong bộ nhớ. Việt để ý chỗ đẩy phần tử khi đầy bảng:
-// mình làm theo kiểu fail-closed, không cho đẩy mấy key đang bị chặn ra ngoài kẻo attacker spam key rác để xóa bộ đếm.
+// đếm rate limit theo cửa sổ cố định trong RAM, Việt để ý chỗ đẩy phần tử khi bảng đầy nha
+// chạy kiểu fail-closed, không đẩy mấy key đang bị chặn ra kẻo bị spam key rác xóa mất bộ đếm
 public final class FixedWindowRateLimiter {
 
     private final int maxAttempts;
@@ -28,13 +28,13 @@ public final class FixedWindowRateLimiter {
         this.clock = clock;
     }
 
-    // Cộng một lượt gọi cho key; trả 0 nếu còn hạn mức, trả số giây cần chờ nếu đã chạm trần.
+    // cộng 1 lượt gọi cho key, còn hạn mức thì trả 0, chạm trần thì trả số giây cần chờ
     public long retryAfterSeconds(String key) {
         String normalizedKey = (key == null || key.isBlank()) ? "unknown" : key;
         Instant now = clock.instant();
         Instant cutoff = now.minus(window);
         synchronized (lock) {
-            // Dọn các cửa sổ đã hết hạn trước khi kiểm tra hoặc thêm key mới.
+            // dọn mấy cửa sổ hết hạn trước khi check hoặc thêm key mới
             evictExpired(cutoff);
             WindowState current = entries.get(normalizedKey);
             if (current != null && current.count() >= maxAttempts) {
@@ -42,7 +42,7 @@ public final class FixedWindowRateLimiter {
             }
             if (current == null) {
                 if (entries.size() >= maxEntries && !evictLowestUnblocked()) {
-                    // Bảng đã chật toàn key đang bị chặn thì từ chối luôn request mới thay vì đá mục tiêu bị khóa ra.
+                    // bảng chật kín key đang bị chặn thì từ chối luôn request mới chứ không đá mục tiêu bị khóa ra
                     return Math.max(1L, window.toSeconds());
                 }
                 entries.put(normalizedKey, new WindowState(now, 1));
@@ -77,7 +77,7 @@ public final class FixedWindowRateLimiter {
         }
     }
 
-    // Khi bảng đầy, chỉ chọn key chưa bị chặn và có ít lượt thử nhất để nhường chỗ, giữ nguyên mấy key đang bị khóa.
+    // bảng đầy thì chỉ chọn key chưa bị chặn và ít lượt thử nhất để nhường chỗ, giữ nguyên mấy key đang bị khóa
     private boolean evictLowestUnblocked() {
         String victimKey = null;
         int lowestCount = Integer.MAX_VALUE;
@@ -104,7 +104,7 @@ public final class FixedWindowRateLimiter {
         return Math.max(1L, remainingSeconds + 1L);
     }
 
-    // Lưu mốc mở cửa sổ và số lượt thử đã đếm cho một key.
+    // giữ mốc mở cửa sổ và số lượt thử đã đếm cho 1 key
     private record WindowState(Instant startedAt, int count) {
 
         private WindowState increment() {

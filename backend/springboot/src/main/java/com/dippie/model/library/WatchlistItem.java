@@ -16,7 +16,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
-// Entity ánh xạ bảng watchlist_items, kế thừa LibraryEntry để dùng chung các cột cơ bản.
+// bảng watchlist_items, kế thừa LibraryEntry dùng lại mấy cột cơ bản
 @Entity
 @Table(
         name = "watchlist_items",

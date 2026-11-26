@@ -11,7 +11,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Chạy thử script 14_query_performance_indexes.sql trên H2 chế độ MySQL hai lần liền để chắc tạo index lặp lại không lỗi.
+// chạy 14_query_performance_indexes.sql 2 lần liền trên H2 chế độ MySQL xem tạo lại index có êm không
 class QueryPerformanceIndexesH2MigrationTest {
 
     @Test
@@ -29,7 +29,7 @@ class QueryPerformanceIndexesH2MigrationTest {
             statement.execute("CREATE TABLE catalog_scenes (id VARCHAR(100) PRIMARY KEY, episode_id VARCHAR(100), start_ms BIGINT)");
             statement.execute("CREATE TABLE catalog_episodes (id VARCHAR(100) PRIMARY KEY, series_id VARCHAR(100), publication_status VARCHAR(16), number INT)");
 
-            // Chạy cùng file SQL hai lần liên tiếp để kiểm tra tính idempotent.
+            // chạy đúp 2 lần cùng file SQL để chắc nó idempotent
             var migration = new FileSystemResource(Path.of("../../database/migrations/14_query_performance_indexes.sql"));
             ScriptUtils.executeSqlScript(connection, migration);
             ScriptUtils.executeSqlScript(connection, migration);

@@ -26,14 +26,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// ApplicationRunner chạy lúc khởi động để tạo tài khoản quản trị đầu tiên, ép đổi mật khẩu admin yếu
-// và xáo trộn mật khẩu các tài khoản demo cũ trước khi server nhận request thật.
+// ApplicationRunner chạy lúc mở app để tạo admin đầu tiên, ép đổi mật khẩu admin yếu
+// và xáo sạch mật khẩu mấy tài khoản demo cũ trước khi server nhận request thật
 @Component
 public class AdminBootstrap implements ApplicationRunner {
 
     public static final String ACTION_ADMIN_BOOTSTRAP_UPDATED = "ADMIN_BOOTSTRAP_UPDATED";
-    private static final String TARGET_TYPE_USER = "USER";
-    private static final int SCRAMBLE_BYTES = 32;
     private static final List<String> KNOWN_WEAK_ADMIN_PASSWORDS = List.of(
             DemoAccountSeeder.DEMO_PASSWORD,
             "password",
@@ -69,7 +67,7 @@ public class AdminBootstrap implements ApplicationRunner {
         this.clock = clock;
     }
 
-    // Constructor rút gọn cho unit test khi không cần Environment và AuditTrailWriter.
+    // constructor gọn cho unit test lúc không cần Environment với AuditTrailWriter
     public AdminBootstrap(
             BootstrapAdminProperties properties,
             boolean seedDemoData,
@@ -80,17 +78,17 @@ public class AdminBootstrap implements ApplicationRunner {
         this(properties, seedDemoData, null, userRepository, passwordEncoder, null, clock);
     }
 
-    // Kiểm tra cấu hình bootstrap, buộc đổi mật khẩu admin yếu nếu có và vô hiệu hóa mật khẩu demo cũ.
+    // check cấu hình bootstrap, ép đổi pass admin yếu nếu có rồi khóa sạch mật khẩu demo cũ
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        // Việt giữ điều kiện isDemoOnlyProfile() này: lỡ ai bật dippie.seed-demo-data=true trên mysql/prod
-        // thì bước kiểm tra an toàn vẫn phải chạy.
+        // Việt giữ điều kiện isDemoOnlyProfile() này nha, lỡ ai bật nhầm dippie.seed-demo-data=true trên mysql/prod
+        // thì mấy bước kiểm tra an toàn vẫn phải chạy
         if (seedDemoData && isDemoOnlyProfile()) {
             return;
         }
 
-        // Đọc biến môi trường bootstrap và kiểm tra đủ cặp username/password cùng chuẩn độ mạnh admin.
+        // đọc biến môi trường bootstrap, check đủ cặp username/password với độ mạnh mật khẩu admin
         String username = trimToEmpty(properties.username());
         String email = trimToEmpty(properties.email());
         String password = properties.password() == null ? "" : properties.password();
@@ -105,7 +103,7 @@ public class AdminBootstrap implements ApplicationRunner {
             PasswordPolicy.DEFAULT.validateBootstrapPassword(password);
         }
 
-        // Rà toàn bộ tài khoản admin hiện có xem có tài khoản nào còn dùng mật khẩu demo hoặc mật khẩu yếu đã biết không.
+        // quét hết mấy tài khoản admin đang có xem có cái nào còn xài pass demo hay pass yếu quen thuộc không
         List<User> admins = userRepository.findByRole(Role.ROLE_ADMIN);
         User matchedAdmin = admins.stream()
                 .filter(candidate -> candidate.getUsername().equals(username))
@@ -115,8 +113,8 @@ public class AdminBootstrap implements ApplicationRunner {
                 .filter(candidate -> hasKnownWeakPassword(candidate.getPassword()))
                 .toList();
 
-        // Nếu phát hiện admin mật khẩu yếu thì buộc cấu hình đúng username đó để xoay mật khẩu;
-        // còn chưa có admin nào thì mới cho phép tự tạo tài khoản quản trị đầu tiên.
+        // thấy admin nào pass yếu là ép khai đúng username đó để xoay pass
+        // còn chưa có admin nào thì mới cho tự tạo tài khoản quản trị đầu tiên
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
         if (!weakAdmins.isEmpty()) {
             if (weakAdmins.size() != 1
@@ -156,7 +154,7 @@ public class AdminBootstrap implements ApplicationRunner {
             recordBootstrapAudit("created_bootstrap_admin", saved);
         }
 
-        // Ghi đè mật khẩu ngẫu nhiên cho các tài khoản demo cũ để không ai đăng nhập được bằng mật khẩu mặc định.
+        // ghi đè mật khẩu ngẫu nhiên lên mấy tài khoản demo cũ kẻo ai vào bằng pass mặc định
         scrambleLegacyDemoUser(DemoAccountSeeder.DEMO_USERNAME, DemoAccountSeeder.DEMO_EMAIL, now);
         scrambleLegacyDemoUser("demo", "demo@dippie.com", now);
     }
@@ -207,7 +205,7 @@ public class AdminBootstrap implements ApplicationRunner {
                 null,
                 "system",
                 ACTION_ADMIN_BOOTSTRAP_UPDATED,
-                TARGET_TYPE_USER,
+                "USER",
                 String.valueOf(admin.getId()),
                 details
         );
@@ -217,7 +215,7 @@ public class AdminBootstrap implements ApplicationRunner {
         userRepository.findByUsernameAndEmailAndRole(username, email, Role.ROLE_USER)
                 .filter(user -> hasKnownWeakPassword(user.getPassword()))
                 .ifPresent(user -> {
-                    byte[] randomBytes = new byte[SCRAMBLE_BYTES];
+                    byte[] randomBytes = new byte[32];
                     secureRandom.nextBytes(randomBytes);
                     String randomSecret = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
                     user.changePassword(passwordEncoder.encode(randomSecret), now);

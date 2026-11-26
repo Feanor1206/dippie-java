@@ -4,7 +4,7 @@ import com.dippie.model.catalog.YoutubeSource;
 
 import java.util.List;
 
-// Kết quả chi tiết một tập phim kèm phân đoạn, tệp phát, phân cảnh và nguồn YouTube chính lẫn dự phòng.
+// chi tiết một tập phim kèm phân đoạn, file phát, phân cảnh và nguồn YouTube chính lẫn dự phòng
 public record CatalogEpisodeDetail(CatalogEpisodeView episode, List<CatalogSegmentView> segments,
         List<CatalogMediaAssetView> mediaAssets, List<CatalogSceneView> scenes, YoutubeSource youtube,
         YoutubeSource youtubeFallback) {

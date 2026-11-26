@@ -2,9 +2,9 @@ package com.dippie.service.mail;
 
 import com.dippie.model.mail.EmailMessage;
 
-// Giao diện Strategy tách cách gửi email khỏi các service gọi nó, nhờ vậy dễ chuyển giữa SMTP thật và hộp thư .eml.
+// kiểu Strategy tách cách gửi mail khỏi service gọi, cần đổi giữa SMTP thật với file .eml là xong
 public interface MailDeliveryStrategy {
 
-    // Gửi một bức thư theo cài đặt Strategy đang được nạp.
+    // gửi mail theo Strategy đang bật
     void deliver(EmailMessage message);
 }

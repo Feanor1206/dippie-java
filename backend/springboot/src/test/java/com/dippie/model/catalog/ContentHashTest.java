@@ -8,7 +8,7 @@ import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Đối chiếu mã băm SHA-256 chuẩn hóa với kết quả phía Python và kiểm tra CatalogDocument không bị sửa lây từ bên ngoài.
+// so hash SHA-256 chuẩn hóa cho khớp bên Python rồi check CatalogDocument khỏi bị sửa lây từ ngoài
 class ContentHashTest {
 
     private final ObjectMapper mapper = new ObjectMapper();

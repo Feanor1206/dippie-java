@@ -9,7 +9,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Kiểm tra bộ làm phẳng chỉ đưa bản ghi ready hoặc bản ghi cũ chưa có status vào chỉ mục, bỏ qua draft, pending và hidden.
+// test bộ làm phẳng chỉ nhét bản ghi ready hay bản cũ chưa có status vào index, gạt draft, pending với hidden ra
 class SearchCatalogFlattenerTest {
 
     private final ObjectMapper mapper = new ObjectMapper();

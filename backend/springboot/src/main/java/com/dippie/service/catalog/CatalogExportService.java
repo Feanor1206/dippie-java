@@ -27,12 +27,11 @@ import static com.dippie.model.catalog.CatalogCollection.MEDIA_ASSETS;
 import static com.dippie.model.catalog.CatalogCollection.SOURCES;
 import static com.dippie.model.catalog.CatalogCollection.TEXT_TRACKS;
 
-// Xuất dữ liệu danh mục từ CSDL ra định dạng JSON chuẩn theo cờ lọc bản nháp và tệp riêng tư.
+// xuất danh mục từ DB ra JSON chuẩn, có cờ lọc bản nháp với file riêng tư
 @Service
 @Transactional(readOnly = true)
 public class CatalogExportService {
 
-    private static final String SCHEMA_VERSION = "dippie.catalog.v1";
     private static final String PUBLIC_ACCESS_POLICY = "public";
 
     private final CatalogPackageRepository packages;
@@ -45,24 +44,24 @@ public class CatalogExportService {
         this.clock = clock;
     }
 
-    // Dùng cho API admin, cho phép chọn giữ hoặc bỏ bản nháp và tệp riêng tư.
+    // dùng cho API admin, thích giữ hay bỏ bản nháp với file riêng tư đều được
     public JsonNode exportCatalog(boolean includeDraft, boolean includePrivate) {
         return exportCatalog(includeDraft, includePrivate, CatalogDates.now(clock));
     }
 
-    // Chỉ xuất nội dung công khai đã xuất bản cho bộ tìm kiếm; ghim mốc created_at về epoch lúc CSDL trống để JSON ổn định.
+    // chỉ xuất phần công khai đã xuất bản cho bộ tìm kiếm, ghim created_at về epoch lúc DB trống để JSON ra ổn định
     public JsonNode exportForIndex() {
         return exportCatalog(false, false, LocalDateTime.ofEpochSecond(0, 0, ZoneOffset.UTC));
     }
 
     private JsonNode exportCatalog(boolean includeDraft, boolean includePrivate, LocalDateTime defaultCreated) {
         CatalogPackage latest = packages.findFirstByOrderByImportedAtDesc().orElse(null);
-        ObjectNode catalog = JsonNodeFactory.instance.objectNode().put("schema_version", SCHEMA_VERSION);
+        ObjectNode catalog = JsonNodeFactory.instance.objectNode().put("schema_version", "dippie.catalog.v1");
         catalog.set("package", metadata(latest, defaultCreated));
         for (CatalogCollection collection : CatalogCollection.values()) {
             catalog.set(collection.field(), exportRows(collection, includeDraft, includePrivate));
         }
-        // Khi bỏ bản nháp thì nhớ lọc lại phụ đề trỏ vào nguồn nháp, nếu không JSON xuất ra sẽ dính source_id không tồn tại.
+        // bỏ bản nháp thì nhớ lọc luôn phụ đề trỏ sang nguồn nháp nha, kẻo JSON xuất ra dính source_id ma
         if (!includeDraft) {
             filterTrackSources(catalog);
         }
@@ -87,7 +86,7 @@ public class CatalogExportService {
     }
 
     private ArrayNode exportRows(CatalogCollection collection, boolean includeDraft, boolean includePrivate) {
-        // Dựng câu JPQL lọc theo trạng thái xuất bản, quyền public và quan hệ tập/tệp của phụ đề.
+        // dựng JPQL lọc theo trạng thái xuất bản, quyền public với quan hệ tập/file của phụ đề
         boolean publishedEpisode = collection == EPISODES && !includeDraft;
         boolean checkRecord = collection != EPISODES && !includeDraft;
         String projection = checkRecord ? "row.rawJson, row.recordJson" : "row.rawJson";
@@ -114,7 +113,7 @@ public class CatalogExportService {
                         + PUBLIC_ACCESS_POLICY + "'))");
             }
         }
-        // Lọc sơ bằng LIKE ở tầng SQL xong vẫn phải parse recordJson để kiểm tra chính xác trạng thái xuất bản.
+        // lọc sơ bằng LIKE ở SQL xong vẫn phải parse recordJson kiểm tra lại cho chắc trạng thái xuất bản
         ArrayNode exported = JsonNodeFactory.instance.arrayNode();
         query.append(" order by row.id");
         for (Object[] row : entities.createQuery(query.toString(), Object[].class).getResultList()) {
@@ -131,7 +130,7 @@ public class CatalogExportService {
         return exported;
     }
 
-    // Chỉ giữ lại các bản phụ đề không gắn nguồn hoặc có source_id nằm trong tập nguồn đã xuất.
+    // chỉ giữ mấy phụ đề không gắn nguồn hoặc có source_id nằm trong tập nguồn đã xuất
     private static void filterTrackSources(ObjectNode catalog) {
         Set<JsonNode> sources = new HashSet<>();
         catalog.path(SOURCES.field()).forEach(source -> sources.add(source.path("id")));

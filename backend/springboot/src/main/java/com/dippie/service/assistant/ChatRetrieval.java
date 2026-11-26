@@ -16,12 +16,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-// Lo phần tìm phim cho CineBot: bỏ qua chào hỏi và phép tính, giải câu hỏi nối tiếp, xếp hạng tâm trạng và chia đều nhiều bộ phim.
+// lo tìm phim cho CineBot, bỏ qua chào hỏi với phép tính, giải câu nối tiếp, xếp tâm trạng rồi chia đều các bộ
 public final class ChatRetrieval {
 
-    private static final int DISCOVERY_LIMIT = 100;
-    private static final int LONG_EPISODE_MINUTES = 90;
-    private static final int SHORT_EPISODE_MINUTES = 10;
     private static final Pattern GENERAL_MOOD = Pattern.compile(
             "(?:hom nay )?(?:(?:toi|minh) )?(?:dang |thay |bi |can |muon )?"
                     + "(?:(?:stress|cang thang|giai tri|thu gian)\\b[ ]*)+(?:qua|mot chut)?[.!? ]*");
@@ -33,10 +30,10 @@ public final class ChatRetrieval {
         this.catalog = catalog;
     }
 
-    // Chọn danh sách phim khớp ý định và kiểm tra xem kho phim còn tập thay thế cho nút "tập khác" hay không.
+    // tìm phim khớp ý định rồi kiểm tra kho còn tập thay thế cho nút "tập khác" không
     public Selection find(ChatIntent intent, String query, List<ChatHistoryMessage> history,
             Optional<ChatFollowUp> followUp, boolean asksForAlternate) {
-        // Không gọi tìm kiếm khi người dùng chỉ chào hỏi hoặc hỏi phép tính số học ngoài phạm vi phim.
+        // chào hỏi hay hỏi phép tính ngoài lề thì bỏ qua tìm kiếm cho nhanh
         if ("chitchat".equals(intent.mode()) || IntentParser.asksForArithmetic(query)) {
             return new Selection(List.of(), false);
         }
@@ -51,9 +48,9 @@ public final class ChatRetrieval {
             return new Selection(similar, false);
         }
 
-        // Nếu câu hỏi chỉ than mệt/stress chung mà không khớp từ nào, mình tìm dự phòng bằng từ khóa "hài hước".
+        // nếu chỉ than mệt hay stress chung mà không ra phim nào thì tìm dự phòng bằng "hài hước"
         var constraints = intent.toSearchConstraints(excluded);
-        int limit = constraints.discovery() ? DISCOVERY_LIMIT : intent.requestedK();
+        int limit = constraints.discovery() ? 100 : intent.requestedK();
         String searchQuery = intent.semanticQuery();
         var hits = catalog.search(searchQuery, limit, constraints);
         if (hits == null) {
@@ -66,7 +63,7 @@ public final class ChatRetrieval {
         if (!constraints.discovery()) {
             return new Selection(List.copyOf(hits), false);
         }
-        // Ở chế độ khám phá, xếp lại theo điểm tâm trạng (trừ yêu cầu trước khi ngủ đã xếp riêng) rồi xoay vòng theo bộ phim cho đa dạng.
+        // chế độ khám phá thì xếp lại theo điểm tâm trạng (trừ yêu cầu trước khi ngủ đã xếp riêng) rồi xoay vòng từng bộ
         var ranked = intent.moodRecommendation() && !EpisodeMood.bedtimeRequest(searchQuery)
                 ? rankMood(hits, intent, constraints.preferShort()) : hits;
         var selected = DiverseSelection.roundRobin(ranked, hit -> Objects.requireNonNullElse(hit.seriesId(), hit.id()),
@@ -84,13 +81,13 @@ public final class ChatRetrieval {
                 && !used.contains(hit.id()));
     }
 
-    // Đẩy tập quá dài (trên 90 phút) hoặc vượt ngưỡng ngắn (10 phút) xuống dưới rồi mới so điểm tâm trạng.
+    // đẩy tập quá dài (trên 90 phút) hay quá ngưỡng ngắn (10 phút) xuống dưới rồi mới so điểm tâm trạng
     private static List<SearchHit> rankMood(List<SearchHit> hits, ChatIntent intent, boolean preferShort) {
         boolean episodes = intent.asksForEpisodes();
         var ranked = hits.stream().filter(item -> !episodes || !"series".equals(item.itemType()))
                 .map(item -> new MoodHit(item, MoodEvidence.score(item, intent.moodTarget()),
-                        episodes && overMinutes(item, LONG_EPISODE_MINUTES),
-                        preferShort && overMinutes(item, SHORT_EPISODE_MINUTES)))
+                        episodes && overMinutes(item, 90),
+                        preferShort && overMinutes(item, 10)))
                 .filter(item -> item.score() > 0)
                 .sorted(Comparator.comparing(MoodHit::overLong)
                         .thenComparing(MoodHit::overShort)
@@ -107,11 +104,11 @@ public final class ChatRetrieval {
         return matcher.matches() && Integer.parseInt(matcher.group(1)) > minutes;
     }
 
-    // Bản ghi tạm gắn điểm tâm trạng và cờ vượt thời lượng phục vụ sắp xếp.
+    // record tạm kẹp điểm tâm trạng với cờ quá thời lượng để dễ sort
     private record MoodHit(SearchHit hit, int score, boolean overLong, boolean overShort) {
     }
 
-    // Danh sách phim đã chọn kèm cờ báo còn tập phát nội bộ chưa gợi ý hay không.
+    // danh sách phim đã chọn kèm cờ báo còn tập phát nội bộ chưa gợi ý không
     public record Selection(List<SearchHit> hits, boolean hasAlternatives) {
     }
 }

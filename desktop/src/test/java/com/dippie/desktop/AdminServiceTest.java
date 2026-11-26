@@ -13,11 +13,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-// Test đăng nhập, đổi quyền, ghi nhật ký quản trị và hoàn tác trên DB H2 tạo từ schema thật.
+// test đăng nhập, đổi quyền, ghi audit log và hoàn tác trên DB H2 tạo từ schema thật
 class AdminServiceTest extends TestDatabase {
     private final AdminSession admin = new AdminSession(1, 0);
 
-    // Dùng BCrypt cost 4 để chạy test nhanh mà vẫn đi qua đúng luồng băm thật.
+    // dùng BCrypt cost 4 để test chạy cho nhanh mà vẫn đi qua luồng băm thật
     private AuthService auth() throws Exception {
         execute("UPDATE users SET password = ?", new BCryptPasswordEncoder(4).encode("mật khẩu"));
         return new AuthService(new UserDao(db));

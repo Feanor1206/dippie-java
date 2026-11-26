@@ -1,6 +1,6 @@
 package com.dippie.dto.account;
 
-// Payload đổi mật khẩu; hai hàm raw* giữ nguyên khoảng trắng vì mật khẩu có thể chứa dấu cách.
+// body đổi mật khẩu, hai hàm raw* giữ nguyên dấu cách vì mật khẩu có thể có khoảng trắng
 public record ChangePasswordRequest(String currentPassword, String newPassword) {
 
     public String rawCurrentPassword() {

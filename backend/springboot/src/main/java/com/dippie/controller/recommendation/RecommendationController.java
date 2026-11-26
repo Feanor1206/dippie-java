@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-// Endpoint REST nhận yêu cầu gợi ý phim từ trang chủ và kệ chọn tâm trạng.
+// endpoint nhận yêu cầu gợi ý phim từ trang chủ và kệ chọn tâm trạng
 @RestController
 public class RecommendationController {
 

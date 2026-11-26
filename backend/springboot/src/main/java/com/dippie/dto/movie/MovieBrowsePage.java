@@ -3,7 +3,7 @@ package com.dippie.dto.movie;
 import java.math.BigInteger;
 import java.util.List;
 
-// Gói một trang kết quả duyệt phim kèm tổng số mục, tổng số trang và cờ chuyển trang.
+// một trang kết quả duyệt phim kèm tổng mục, tổng trang với cờ chuyển trang
 public record MovieBrowsePage(
         List<MovieView> items,
         BigInteger page,
@@ -18,7 +18,7 @@ public record MovieBrowsePage(
         items = items == null ? List.of() : List.copyOf(items);
     }
 
-    // Dùng BigInteger cho page để khi client gửi số trang rất lớn cũng không bị tràn kiểu long khi tính hasNext.
+    // dùng BigInteger cho page để client gửi số trang siêu to cũng không tràn long lúc tính hasNext
     public static MovieBrowsePage of(List<MovieView> items, BigInteger page, int size, long totalElements) {
         long totalPages = totalElements > 0 ? (totalElements + size - 1) / size : 0;
         boolean hasNext = page.add(BigInteger.ONE).compareTo(BigInteger.valueOf(totalPages)) < 0;

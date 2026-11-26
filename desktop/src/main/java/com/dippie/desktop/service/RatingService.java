@@ -14,7 +14,7 @@ import com.dippie.desktop.model.RatingRow;
 import java.util.List;
 import java.util.stream.Collectors;
 
-// Service cho tab Đánh giá: tải danh sách kèm tên phim và xóa đánh giá trong một giao dịch có ghi nhật ký.
+// service cho tab Đánh giá, lo tải danh sách kèm tên phim và xóa đánh giá kèm audit log trong 1 transaction
 public final class RatingService {
     private final JdbcDatabase db;
     private final RatingDao ratingDao;
@@ -30,7 +30,7 @@ public final class RatingService {
         this.auditDao = auditDao;
     }
 
-    // Ghép tên phim từ bảng movies vào từng đánh giá, phim cũ không nằm trong danh mục thì gắn nhãn Phim ngoài danh mục.
+    // ghép tên phim từ bảng movies vào từng đánh giá, phim cũ ngoài danh mục thì gắn nhãn Phim ngoài danh mục
     public List<RatingRow> list() {
         return db.read(connection -> {
             var movieTitles = movieDao.findRatedMovies(connection).stream()
@@ -41,7 +41,7 @@ public final class RatingService {
         });
     }
 
-    // Khóa dòng đánh giá rồi đối chiếu với bản chụp lúc admin bấm xóa, tránh xóa nhầm nếu người dùng vừa đổi điểm.
+    // khóa dòng đánh giá rồi so với bản chụp lúc admin bấm xóa kẻo xóa nhầm khi user vừa đổi điểm
     public void delete(AdminSession session, RatingRow selected) {
         db.transaction(connection -> {
             var actor = AdminQuery.requireCurrent(session, userDao.lockAccount(connection, session.userId()).orElse(null));
@@ -51,7 +51,7 @@ public final class RatingService {
                 throw new DataAccessException.Conflict("Đánh giá này vừa thay đổi. Hãy làm mới bảng rồi xem lại trước khi xóa.");
             }
 
-            // Xóa và ghi nhật ký trên cùng kết nối để hai bước cùng thành công hoặc cùng hủy.
+            // xóa và ghi audit log trên cùng kết nối để 2 bước cùng thành công hoặc cùng rollback
             if (ratingDao.delete(connection, current.id()) != 1) {
                 throw new DataAccessException.Conflict("Chưa xóa được đánh giá này.");
             }

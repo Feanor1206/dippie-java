@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Optional;
 import java.util.Set;
 
-// Cổng kiểm tra phim có đang mở công khai hay không dựa trên danh sách phim ẩn của danh mục.
+// cổng check phim có đang mở công khai không dựa theo list phim ẩn của danh mục
 @Component
 public class MovieVisibility {
 
@@ -22,7 +22,7 @@ public class MovieVisibility {
         this.catalogVisibility = catalogVisibility;
     }
 
-    // Lấy phim theo mã và tự loại bỏ nếu mã nằm trong danh sách ẩn hiện tại.
+    // lấy phim theo mã, nằm trong list ẩn thì bỏ qua luôn
     @Transactional(readOnly = true)
     public Optional<Movie> findVisibleById(String movieId) {
         if (movieId == null) {
@@ -31,7 +31,7 @@ public class MovieVisibility {
         return findVisibleById(movieId, catalogVisibility.hiddenMovieIds());
     }
 
-    // Dùng tập hiddenIds đã tải sẵn trong cùng luồng gọi để đỡ đọc lại từ cache; lọc lại lần nữa sau khi truy vấn phòng trường hợp ID phân biệt hoa thường khác nhau ở DB.
+    // xài lại tập hiddenIds đã kéo sẵn cho đỡ đọc cache lần nữa, vẫn lọc lại sau query phòng DB phân biệt hoa thường ID khác nhau
     public Optional<Movie> findVisibleById(String movieId, Set<String> hiddenIds) {
         return movieId == null || hiddenIds.contains(movieId) ? Optional.empty()
                 : movieRepository.findById(movieId).filter(movie -> !hiddenIds.contains(movie.getId()));

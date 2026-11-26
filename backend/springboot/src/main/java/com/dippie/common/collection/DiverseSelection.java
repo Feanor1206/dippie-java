@@ -8,13 +8,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-// Hai hàm chọn danh sách gợi ý sao cho đa dạng theo nhóm (ví dụ thể loại hoặc hãng phim), viết generic để tái sử dụng cho nhiều kiểu dữ liệu.
+// 2 hàm chọn danh sách gợi ý cho đa dạng theo nhóm (thể loại, hãng phim), viết generic để dùng lại nhiều kiểu
 public final class DiverseSelection {
 
     private DiverseSelection() {
     }
 
-    // Lấy xoay vòng mỗi nhóm một phần tử cho đến khi đủ limit, tránh một nhóm áp đảo hết danh sách.
+    // lấy xoay vòng mỗi nhóm 1 phần tử tới khi đủ limit kẻo 1 nhóm chiếm hết danh sách
     public static <T> List<T> roundRobin(List<T> ranked, Function<T, String> groupOf, int limit) {
         Map<String, ArrayDeque<T>> groups = new LinkedHashMap<>();
         ranked.forEach(item -> groups.computeIfAbsent(groupOf.apply(item), key -> new ArrayDeque<>()).addLast(item));
@@ -32,7 +32,7 @@ public final class DiverseSelection {
         return List.copyOf(selected);
     }
 
-    // Giữ nguyên thứ tự xếp hạng ban đầu nhưng mỗi nhóm chỉ lấy tối đa maxPerGroup phần tử.
+    // giữ nguyên thứ tự xếp hạng ban đầu nhưng mỗi nhóm tối đa maxPerGroup phần tử
     public static <T> List<T> capped(List<T> ranked, Function<T, String> groupOf, int limit, int maxPerGroup) {
         Map<String, Integer> counts = new HashMap<>();
         List<T> selected = new ArrayList<>(Math.min(limit, ranked.size()));

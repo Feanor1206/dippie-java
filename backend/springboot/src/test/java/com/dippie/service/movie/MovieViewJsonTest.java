@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Test JSON của MovieView để chắc chắn phim lẻ không lộ key thừa, phim bộ đổi nhãn runtime và tập chưa đánh số vẫn xuất episode_number là null.
+// test JSON của MovieView cho phim lẻ khỏi lộ key thừa, phim bộ đổi nhãn runtime còn tập chưa đánh số thì episode_number là null
 class MovieViewJsonTest {
 
     private final ObjectMapper mapper = new ObjectMapper();

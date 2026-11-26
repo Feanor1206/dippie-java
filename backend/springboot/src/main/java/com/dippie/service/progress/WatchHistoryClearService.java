@@ -7,7 +7,7 @@ import com.dippie.security.Viewer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-// Service xóa toàn bộ bản ghi tiến độ xem thuộc về tài khoản đang đăng nhập.
+// xóa sạch lịch sử xem của tài khoản đang đăng nhập
 @Service
 public class WatchHistoryClearService {
 
@@ -19,7 +19,7 @@ public class WatchHistoryClearService {
         this.watchProgressRepository = watchProgressRepository;
     }
 
-    // Bọc trong @Transactional để xóa sạch các dòng watch_progress của đúng user hiện tại trong một lần ghi.
+    // bọc @Transactional để xóa gọn hết dòng watch_progress của đúng user đó trong 1 lượt
     @Transactional
     public void clearAll() {
         Viewer viewer = currentViewer.require();

@@ -2,7 +2,7 @@ package com.dippie.model.report;
 
 import com.dippie.exception.InvalidRequestException;
 
-// Năm mã lý do báo lỗi hợp lệ mà API chấp nhận, khớp với ràng buộc CHECK dưới bảng playback_reports.
+// 5 mã lý do báo lỗi API nhận, khớp đúng ràng buộc CHECK của bảng playback_reports
 public enum PlaybackReportReason {
 
     KHONG_PHAT("khong_phat"),
@@ -23,7 +23,7 @@ public enum PlaybackReportReason {
         return code;
     }
 
-    // Đọc mã lý do từ JSON sang enum tương ứng, sai hoặc bỏ trống thì ném lỗi 400.
+    // đổi mã lý do từ JSON sang enum, trống hay sai là ném 400
     public static PlaybackReportReason parse(String rawReason) {
         if (rawReason == null || rawReason.isBlank()) {
             throw new InvalidRequestException(INVALID_REASON_MESSAGE);

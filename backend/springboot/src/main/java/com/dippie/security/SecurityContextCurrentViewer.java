@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Optional;
 
-// Đọc Viewer hiện tại từ SecurityContextHolder sau khi JwtAuthenticationFilter đã xác thực xong.
+// đọc Viewer hiện tại từ SecurityContextHolder sau khi JwtAuthenticationFilter xác thực xong
 @Component
 public class SecurityContextCurrentViewer implements CurrentViewer {
 

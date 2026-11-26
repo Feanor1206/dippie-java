@@ -9,23 +9,22 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HexFormat;
 
-// Sinh token ngẫu nhiên 256 bit từ SecureRandom và băm SHA-256 trước khi ghi xuống DB.
+// sinh token ngẫu nhiên 256 bit từ SecureRandom rồi băm SHA-256 trước khi lưu DB
 @Component
 public class ResetTokenCodec {
 
-    private static final int TOKEN_BYTE_LENGTH = 32;
     private static final HexFormat HEX = HexFormat.of();
 
     private final SecureRandom secureRandom = new SecureRandom();
 
-    // Sinh chuỗi 32 byte ngẫu nhiên rồi mã hóa Base64 URL-safe không đệm để gắn thẳng vào query string.
+    // lấy 32 byte ngẫu nhiên rồi mã hóa Base64 URL-safe không đệm để gắn thẳng lên query string
     public String generateRawToken() {
-        byte[] bytes = new byte[TOKEN_BYTE_LENGTH];
+        byte[] bytes = new byte[32];
         secureRandom.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    // Băm token gốc ra chuỗi hex 64 ký tự bằng SHA-256 để lưu và tra cứu trong DB.
+    // băm token gốc ra hex 64 ký tự bằng SHA-256 để lưu với tra trong DB
     public String hash(String rawToken) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

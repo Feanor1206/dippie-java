@@ -8,7 +8,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 
-// DAO chỉ đọc bảng watch_progress để thống kê lượt xem theo từng bộ phim.
+// DAO đọc watch_progress để thống kê lượt xem theo từng bộ phim
 public final class WatchProgressDao extends AbstractJdbcDao<WatchProgress, Long> {
     public WatchProgressDao(JdbcDatabase db) {
         super(db, "watch_progress", "id, user_id, episode_id, position_ms",
@@ -16,7 +16,7 @@ public final class WatchProgressDao extends AbstractJdbcDao<WatchProgress, Long>
                         row.getString("episode_id"), row.getLong("position_ms")));
     }
 
-    // Mỗi tài khoản tính một lần cho mỗi bộ khi đã có position_ms > 0, lấy top 10 bộ nhiều người xem nhất.
+    // mỗi user tính 1 lần cho mỗi bộ khi đã có position_ms > 0, lấy top 10 bộ nhiều người xem nhất
     public List<MostWatched> mostWatchedSeries(Connection connection) throws SQLException {
         return query(connection, """
                 SELECT s.id, s.title, COUNT(DISTINCT p.user_id) AS viewers

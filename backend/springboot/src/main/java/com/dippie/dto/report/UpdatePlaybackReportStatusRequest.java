@@ -1,5 +1,5 @@
 package com.dippie.dto.report;
 
-// Thân request chứa trạng thái mới khi admin xử lý một báo lỗi phát video.
+// body gửi trạng thái mới khi admin xử lý báo lỗi video
 public record UpdatePlaybackReportStatusRequest(String status) {
 }

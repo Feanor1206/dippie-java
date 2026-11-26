@@ -25,7 +25,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
-// Xử lý tìm kiếm, đổi quyền và bật tắt tài khoản, kèm khóa bản ghi trong DB để tránh hai admin hạ quyền lẫn nhau cùng lúc.
+// tìm user, đổi quyền, bật tắt tài khoản, có khóa bản ghi trong DB kẻo 2 admin hạ quyền nhau cùng lúc
 @Service
 public class AdminUserService {
 
@@ -44,7 +44,7 @@ public class AdminUserService {
         this.clock = clock;
     }
 
-    // Kiểm tra quyền admin rồi tìm phân trang theo tên đăng nhập hoặc email không phân biệt hoa thường.
+    // check admin rồi tìm phân trang theo username hoặc email không phân biệt hoa thường
     @Transactional(readOnly = true)
     public AdminPageResponse<AdminUserView> listUsers(String query, int page, int size) {
         currentViewer.requireAdmin();
@@ -56,7 +56,7 @@ public class AdminUserService {
         return AdminPageResponse.of(result);
     }
 
-    // Khóa tài khoản đích, kiểm tra luật an toàn rồi cập nhật vai trò và ghi nhật ký.
+    // khóa user đích, check luật an toàn rồi đổi role kèm ghi audit
     @Transactional
     public AdminUserView changeRole(Long targetUserId, UpdateUserRoleRequest request) {
         Viewer actor = currentViewer.requireAdmin();
@@ -66,7 +66,7 @@ public class AdminUserService {
         adminUserPolicy.ensureCanChangeRole(actor, target, newRole, locked.enabledAdminCount());
 
         Role previousRole = target.getRole();
-        // Vai trò không đổi thì trả luôn, khỏi sửa DB hay ghi thêm dòng nhật ký thừa.
+        // role y cũ thì trả luôn, khỏi đụng DB hay ghi log thừa
         if (previousRole == newRole) {
             return AdminUserView.from(target);
         }
@@ -81,10 +81,10 @@ public class AdminUserService {
         return AdminUserView.from(saved);
     }
 
-    // Khóa tài khoản đích, kiểm tra luật an toàn rồi bật hoặc khóa tài khoản kèm ghi nhật ký.
+    // khóa user đích, check luật an toàn rồi bật tắt tài khoản kèm ghi audit
     @Transactional
     public AdminUserView changeStatus(Long targetUserId, UpdateUserStatusRequest request) {
-        // Kiểm tra quyền admin và dữ liệu enabled trước khi đụng vào DB.
+        // check admin với trường enabled trước khi đụng DB
         Viewer actor = currentViewer.requireAdmin();
         if (request == null || request.enabled() == null) {
             throw new InvalidRequestException("Vui lòng chọn trạng thái bật hoặc khóa cho tài khoản.");
@@ -94,7 +94,7 @@ public class AdminUserService {
         User target = locked.target();
         adminUserPolicy.ensureCanChangeStatus(actor, target, targetEnabled, locked.enabledAdminCount());
 
-        // Trạng thái giữ nguyên thì trả luôn để không tăng token_version hay ghi log dư.
+        // trạng thái y cũ thì trả luôn kẻo tăng oan token_version với ghi log dư
         boolean previousEnabled = target.isEnabled();
         if (previousEnabled == targetEnabled) {
             return AdminUserView.from(target);
@@ -118,16 +118,16 @@ public class AdminUserService {
         return AdminUserView.from(saved);
     }
 
-    // Việt để ý đoạn khóa này: khi thao tác có nguy cơ làm giảm số admin đang mở, mình phải khóa toàn bộ
-    // danh sách admin hoạt động cùng lúc để hai request song song không cùng thấy còn 2 admin rồi hạ quyền nhau sạch trơn.
+    // Việt để ý đoạn khóa này nha, hễ thao tác có nguy cơ làm giảm số admin đang bật thì phải khóa hết
+    // cả list admin đang bật cùng lúc kẻo 2 request song song cùng thấy còn 2 admin rồi hạ nhau sạch trơn
     private LockedTarget lockTargetForMutation(Viewer actor, Long targetUserId, boolean mayReduceAdmins) {
-        // Chặn tự sửa sớm để trả 409 ngay, rồi đọc thử bản ghi đích xem có tồn tại không.
+        // chặn tự sửa sớm để trả 409 ngay, rồi mới check xem user đích có tồn tại không
         if (Objects.equals(actor.userId(), targetUserId)) {
             throw new ConflictException(AdminUserPolicy.SELF_CHANGE_MESSAGE);
         }
         User existingTarget = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy người dùng."));
-        // Khóa toàn bộ admin đang hoạt động khi thao tác có thể làm giảm số lượng admin.
+        // khóa hết admin đang bật nếu thao tác này có thể làm giảm số admin
         if (mayReduceAdmins && existingTarget.isAdmin() && existingTarget.isEnabled()) {
             List<User> enabledAdmins = userRepository.findEnabledByRoleForUpdate(Role.ROLE_ADMIN);
             User target = enabledAdmins.stream()
@@ -137,7 +137,7 @@ public class AdminUserService {
                             .orElseThrow(() -> new NotFoundException("Không tìm thấy người dùng.")));
             return new LockedTarget(target, enabledAdmins.size());
         }
-        // Không thuộc nhánh giảm admin thì khóa riêng bản ghi đích; nếu lúc khóa thấy vừa lên admin thì đếm lại cho chắc.
+        // không giảm admin thì khóa riêng user đích thôi, lỡ lúc khóa thấy nó vừa lên admin thì đếm lại cho chắc
         User target = userRepository.findByIdForUpdate(targetUserId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy người dùng."));
         long adminCount = mayReduceAdmins && target.isAdmin() && target.isEnabled()
@@ -150,7 +150,7 @@ public class AdminUserService {
         adminAuditService.record(actor, action, AdminAuditService.TargetType.USER, String.valueOf(saved.getId()), details);
     }
 
-    // Giữ bản ghi user đã khóa kèm số admin đang hoạt động tại cùng thời điểm khóa.
+    // gói user đã khóa kèm số admin đang bật tại đúng lúc khóa
     private record LockedTarget(User target, long enabledAdminCount) {
     }
 }

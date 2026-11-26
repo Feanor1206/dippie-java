@@ -21,13 +21,11 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-// Facade ghép các bước của một lượt chat: phân tích ý định, tìm kho phim, gắn đánh giá rồi phát luồng ChatEvent.
+// kiểu Facade gom cả lượt chat: phân tích ý định, tìm kho phim, gắn rating rồi phát luồng ChatEvent
 public class ChatService {
 
     private static final String RETRIEVAL_STAGE = "java-lexical";
     private static final String TEMPLATE_STAGE = "template";
-    private static final String CAPACITY_ERROR_TEXT = "CineBot đang hơi quá tải, bạn thử lại sau chút nhé.";
-    private static final String UNAVAILABLE_ERROR_TEXT = "CineBot đang tạm gián đoạn, bạn thử tìm trực tiếp trong Kho phim nhé.";
 
     private final CatalogSearch catalogSearch;
     private final IntentParser intentParser;
@@ -56,7 +54,7 @@ public class ChatService {
         return catalogSearch.isReady();
     }
 
-    // Trả về Stream lười phát đúng thứ tự Metadata, các Token rồi Done (hoặc một sự kiện Error duy nhất nếu bước tìm phim lỗi).
+    // trả Stream lười phát đúng thứ tự Metadata, Token rồi Done, còn tìm phim lỗi thì bắn đúng 1 Error
     public Stream<ChatEvent> stream(String query, List<ChatHistoryMessage> history) {
         ChatIntent intent = intentParser.parse(query, history);
         Optional<ChatFollowUp> followUp = ChatFollowUp.parse(query);
@@ -67,12 +65,12 @@ public class ChatService {
             selection = retrieval.find(intent, query, history, followUp, asksForAlternate);
             results = ratings.withSummaries(selection.hits(), SearchHit::id, SearchHit::withRatings);
         } catch (ChatCapacityException | TooManyRequestsException exception) {
-            return Stream.of(new ChatEvent.Error(CAPACITY_ERROR_TEXT));
+            return Stream.of(new ChatEvent.Error("CineBot đang hơi quá tải, bạn thử lại sau chút nhé."));
         } catch (RuntimeException exception) {
-            return Stream.of(new ChatEvent.Error(UNAVAILABLE_ERROR_TEXT));
+            return Stream.of(new ChatEvent.Error("CineBot đang tạm gián đoạn, bạn thử tìm trực tiếp trong Kho phim nhé."));
         }
 
-        // Các ca nhiều kết quả, gợi ý chung, tóm tắt, hỏi nối tiếp hay tập chỉ xem YouTube mình cho đi thẳng qua mẫu chuẩn để khỏi gọi LLM tốn thời gian.
+        // nhiều kết quả, gợi ý chung, tóm tắt, câu nối tiếp hay tập chỉ xem YouTube thì đi thẳng Template cho nhanh, khỏi gọi LLM
         boolean suppressFollowUps = !results.isEmpty()
                 && (intent.moodRecommendation() || intent.seriesInfo() != null);
         List<String> followUps = suppressFollowUps ? List.of() : FollowUpSuggestions.build(results, selection.hasAlternatives());
@@ -86,7 +84,7 @@ public class ChatService {
         AtomicReference<String> conversationStage = new AtomicReference<>(TEMPLATE_STAGE);
         AtomicReference<Stream<String>> openTokenStream = new AtomicReference<>();
 
-        // Tự lái Spliterator 3 pha (0: metadata, 1: token, 2: done) để luồng sinh chữ chỉ mở khi controller bắt đầu đọc và luôn đóng trong onClose.
+        // tự lái Spliterator 3 pha (0 metadata, 1 token, 2 done) để lúc controller đọc mới mở luồng chữ và luôn đóng ở onClose
         Spliterator<ChatEvent> spliterator = new Spliterators.AbstractSpliterator<>(
                 Long.MAX_VALUE,
                 Spliterator.ORDERED | Spliterator.NONNULL

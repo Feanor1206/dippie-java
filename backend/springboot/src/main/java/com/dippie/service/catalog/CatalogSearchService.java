@@ -21,12 +21,9 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
-// Dịch vụ tìm kiếm nhanh trên ô tìm kiếm danh mục, chạy thẳng trên SearchIndex trong bộ nhớ đệm.
+// service tìm kiếm nhanh cho ô search danh mục, chạy thẳng trên SearchIndex trong cache
 @Service
 public class CatalogSearchService {
-
-    private static final int DEFAULT_SEARCH_LIMIT = 200;
-    private static final int MAX_SEARCH_LIMIT = 500;
 
     private final CatalogReadModelCache cache;
     private final RatingLookup ratings;
@@ -41,15 +38,15 @@ public class CatalogSearchService {
         return search(query, authenticated, admin, null);
     }
 
-    // Chạy tìm kiếm theo vai trò người xem, chặn giới hạn tối đa 500 kết quả rồi nạp gộp điểm đánh giá cho các bộ/tập phim.
+    // tìm theo quyền người xem, chặn tối đa 500 kết quả rồi kéo gộp rating cho mấy bộ với tập phim
     @Transactional(readOnly = true)
     public List<CatalogSearchHit> search(String query, boolean authenticated, boolean admin, Integer limit) {
         if (query == null || query.isBlank()) {
             return List.of();
         }
         int effectiveLimit = (limit == null || limit <= 0)
-                ? DEFAULT_SEARCH_LIMIT
-                : Math.min(limit, MAX_SEARCH_LIMIT);
+                ? 200
+                : Math.min(limit, 500);
         var hits = cache.current().searchIndex().ranked(query, authenticated, admin)
                 .limit(effectiveLimit)
                 .map(RankedRow::hit).toList();
@@ -66,11 +63,11 @@ public class CatalogSearchService {
         return TextFolding.foldNormalized(text);
     }
 
-    // Chỉ mục trong bộ nhớ giữ sẵn các dòng tìm kiếm, tập từ chính xác và bảng posting gom theo độ dài để lọc ứng viên khớp mờ nhanh.
+    // chỉ mục trong RAM giữ sẵn mấy dòng tìm kiếm, tập từ chuẩn với bảng posting chia theo độ dài để lọc ứng viên khớp mờ cho nhanh
     public record SearchIndex(List<SearchRow> rows, Set<String> exactWords, Map<String, BitSet> topicPostings,
             Map<Integer, Map<String, BitSet>> topicPostingsByLength) {
 
-        // Lập trước tập từ đúng chính tả và bảng posting theo độ dài cho các cụm từ chủ đề của bộ/tập phim.
+        // lập sẵn tập từ đúng chính tả với bảng posting theo độ dài cho mấy cụm chủ đề của bộ với tập
         public static SearchIndex from(List<SearchRow> rows) {
             List<SearchRow> copy = List.copyOf(rows);
             Set<String> exactWords = new HashSet<>();
@@ -100,7 +97,7 @@ public class CatalogSearchService {
             return new SearchIndex(copy, Set.copyOf(exactWords), Map.copyOf(topicPostings), Map.copyOf(byLength));
         }
 
-        // Chấm hạng các hàng được phép xem rồi sắp theo độ ưu tiên của SearchRank.
+        // chấm hạng mấy hàng được phép xem rồi xếp theo ưu tiên của SearchRank
         public Stream<RankedRow> ranked(String query, boolean authenticated, boolean admin) {
             String term = folded(query);
             if (term.isEmpty()) {
@@ -109,7 +106,7 @@ public class CatalogSearchService {
             var words = NameSimilarity.words(term);
             Predicate<String> allowShortFuzzy = word -> !exactWords.contains(word);
 
-            // Chấm hạng tất cả bộ phim trước để các tập phim con kế thừa hạng từ bộ phim cha ở lượt quét sau.
+            // chấm hạng hết các bộ phim trước để lượt quét sau mấy tập con kế thừa luôn hạng từ bộ cha
             Map<String, SearchRank> seriesRanks = new HashMap<>();
             for (SearchRow row : rows) {
                 if (row.visibleTo(authenticated, admin) && row.hit().type().equals("series")) {
@@ -120,7 +117,7 @@ public class CatalogSearchService {
                 }
             }
 
-            // Thu hẹp ứng viên bằng giao BitSet trước khi chạy so khớp mờ theo cụm chủ đề.
+            // thu hẹp ứng viên bằng giao BitSet trước rồi mới chạy so khớp mờ theo cụm chủ đề
             BitSet topicCandidates = topicCandidates(words, allowShortFuzzy);
             Stream.Builder<RankedRow> matches = Stream.builder();
             for (int index = 0; index < rows.size(); index++) {
@@ -139,7 +136,7 @@ public class CatalogSearchService {
             return matches.build().sorted(Comparator.comparing(RankedRow::rank));
         }
 
-        // Giao các tập bit ứng viên của từng từ khóa trong nhóm độ dài lân cận để chỉ phải chạy so khớp cụm trên một phần nhỏ danh mục.
+        // giao mấy BitSet ứng viên của từng từ trong nhóm độ dài sát nhau để chỉ phải khớp cụm trên một góc nhỏ danh mục
         private BitSet topicCandidates(List<String> words, Predicate<String> allowShortFuzzy) {
             if (words.isEmpty() || words.stream().noneMatch(word -> word.codePointCount(0, word.length()) >= 4)) {
                 return new BitSet();
@@ -184,11 +181,11 @@ public class CatalogSearchService {
         }
     }
 
-    // Cặp kết quả tìm kiếm kèm hạng khớp dùng để sắp xếp.
+    // kết quả tìm kiếm kẹp hạng khớp để dễ sort
     public record RankedRow(CatalogSearchHit hit, SearchRank rank) {
     }
 
-    // Một dòng dữ liệu đã bỏ dấu và chuyển chữ thường sẵn tên, trường mô tả, quyền xem và cụm từ chủ đề cho tìm kiếm trong bộ nhớ.
+    // một dòng dữ liệu đã bỏ dấu, hạ chữ thường sẵn tên, mô tả, quyền xem với cụm chủ đề cho tìm kiếm trong RAM
     public record SearchRow(CatalogSearchHit hit, boolean publicVisible, boolean memberVisible, List<String> names, List<String> fields,
             List<List<String>> seriesNames, List<List<String>> fuzzyNames, List<List<String>> topicPhrases) {
 
@@ -196,7 +193,7 @@ public class CatalogSearchService {
             return named(hit, publicVisible, memberVisible, List.of(), List.of(), List.of(), fields);
         }
 
-        // Tiền xử lý chữ bỏ dấu cho tên, trường mô tả và tách sẵn danh sách từ cho bước khớp mờ.
+        // bỏ dấu sẵn tên với mô tả, tiện tách luôn danh sách từ cho bước khớp mờ
         public static SearchRow named(CatalogSearchHit hit, boolean publicVisible, boolean memberVisible, List<String> names,
                 List<String> characters, List<String> fuzzyAliases, String... fields) {
             var foldedNames = names.stream().map(CatalogSearchService::folded).distinct().toList();
@@ -218,7 +215,7 @@ public class CatalogSearchService {
             return admin || (authenticated ? memberVisible : publicVisible);
         }
 
-        // Xếp hạng riêng cho bộ phim theo thứ tự khớp đúng tên, chứa chuỗi con rồi mới đến khớp mờ.
+        // xếp hạng riêng cho bộ phim, khớp đúng tên trước, chứa chuỗi con sau rồi mới tới khớp mờ
         public SearchRank seriesRank(String term, List<String> words, Predicate<String> allowShortFuzzy) {
             if (names.contains(term)) {
                 return SearchRank.SERIES_EXACT;
@@ -229,7 +226,7 @@ public class CatalogSearchService {
             return fuzzyMatches(seriesNames, words, allowShortFuzzy) ? SearchRank.SERIES_FUZZY : null;
         }
 
-        // Tính hạng cho một dòng: ưu tiên hạng khớp chính xác của bản thân hoặc bộ phim cha trước khi rơi xuống khớp mờ.
+        // tính hạng cho một dòng, ưu tiên khớp chuẩn của chính nó hay bộ phim cha trước khi rơi xuống khớp mờ
         public SearchRank rank(String term, List<String> words, Map<String, SearchRank> seriesRanks,
                 Predicate<String> allowShortFuzzy) {
             var seriesRank = seriesRanks.get(hit.id());

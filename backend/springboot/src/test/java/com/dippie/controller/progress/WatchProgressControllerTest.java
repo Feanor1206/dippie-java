@@ -49,7 +49,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Test tích hợp cho WatchProgressController: khóa lạc quan, ghi song song trả đúng một 200 và một 409, giới hạn 30 tập gần đây và lọc tập không phát được.
+// test WatchProgressController: khóa lạc quan, ghi song song 1 cái 200 với 1 cái 409, trần 30 tập và lọc tập hỏng
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -57,7 +57,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class WatchProgressControllerTest {
 
     private static final String READY = "{\"status\":\"ready\"}";
-    private static final String DRAFT = "{\"status\":\"draft\"}";
 
     private final MockMvc mockMvc;
     private final ObjectMapper objectMapper;
@@ -291,7 +290,7 @@ class WatchProgressControllerTest {
                 new CatalogSeason("season", "s", 1, "Season", null, "regular", null,
                         null, null, null, READY, null, 1),
                 new CatalogSeason("draft-season", "s", 2, "Draft Season", null, "regular", null,
-                        null, null, null, DRAFT, null, 1)
+                        null, null, null, "{\"status\":\"draft\"}", null, 1)
         ));
 
         LocalDateTime baseTime = LocalDateTime.of(2024, 1, 1, 0, 0, 0);
@@ -337,7 +336,7 @@ class WatchProgressControllerTest {
 
         Set<Integer> excluded = Set.of(25, 26, 27, 28, 29);
         List<String> expectedIds = new ArrayList<>();
-        // Sau khi loại các tập lỗi (25..29 và 31), danh sách phải kéo bù các tập cũ hơn để vẫn đủ số mục hợp lệ còn lại
+        // bỏ mấy tập lỗi (25 tới 29 và 31) xong phải kéo bù tập cũ hơn lên cho đủ danh sách hợp lệ
         for (int i = 30; i >= 0; i--) {
             if (!excluded.contains(i)) {
                 expectedIds.add("ep" + i);
@@ -423,7 +422,7 @@ class WatchProgressControllerTest {
                 "sea_jadoo_s01", "ser_jadoo", 1, "Mùa 1", null, "regular", null,
                 null, null, null, READY, null, 1
         ));
-        // Giống hệt ep_jadoo_s01_0014 ngoài catalog thật: metadata duration_ms bị lỗi 5000ms nhưng phát bằng YouTube fallback.
+        // y hệt ca ep_jadoo_s01_0014 ngoài catalog thật, metadata duration_ms bị sai 5000ms nhưng đang phát bằng YouTube fallback
         episodeRepository.saveAndFlush(new CatalogEpisode(
                 "ep_jadoo_s01_0014", "ser_jadoo", "sea_jadoo_s01", 14, "Tập 14", null, null, null,
                 "regular", null, 5_000L, null, null, null, null, null, null, null,
@@ -451,7 +450,7 @@ class WatchProgressControllerTest {
                 .andExpect(jsonPath("$.data.durationMs").isEmpty())
                 .andExpect(jsonPath("$.data.completed").value(false));
 
-        // File nội bộ có assetDurationMs = 5000ms thật vẫn phải chặn khi vượt 5000ms
+        // còn file nội bộ có assetDurationMs = 5000ms thật thì quá 5000ms vẫn chặn nha
         mockMvc.perform(put("/api/users/watch-progress/ep_jadoo_s01_0014")
                         .header(HttpHeaders.AUTHORIZATION, userAuth)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -472,7 +471,7 @@ class WatchProgressControllerTest {
         ));
 
         LocalDateTime base = LocalDateTime.of(2026, 1, 1, 0, 0, 0);
-        // 30 tập hợp lệ nằm cũ hơn, đè lên trên là 95 tập có asset bị chuyển sang private (vượt lô 90 dòng đầu)
+        // nhét 30 tập hợp lệ xuống dưới, đè lên 95 tập private để vượt lô 90 dòng đầu xem có lật trang lấy đủ không
         for (int i = 0; i < 125; i++) {
             String episodeId = "ep_pg_" + i;
             String assetId = "ast_pg_" + i;

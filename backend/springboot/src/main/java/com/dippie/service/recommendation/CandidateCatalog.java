@@ -10,7 +10,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
-// Nạp danh sách tập phim ứng viên cho tầng gợi ý và giữ bản cache ăn theo đúng tham chiếu CatalogReadModel hiện tại.
+// nạp list tập phim ứng viên cho tầng gợi ý, cache ăn theo đúng tham chiếu CatalogReadModel hiện tại
 @Repository
 public class CandidateCatalog {
 
@@ -23,7 +23,7 @@ public class CandidateCatalog {
         this.files = files;
     }
 
-    // Danh sách ứng viên được cache theo snapshot danh mục, nhưng bộ lọc playableFilter vẫn chạy mỗi lượt để cập nhật kịp nếu tệp video trên đĩa bị xóa hoặc mới thêm.
+    // ứng viên cache theo snapshot danh mục, còn playableFilter vẫn chạy mỗi lượt để cập nhật kịp lúc file trên đĩa đổi
     public List<RecommendationCandidate> load() {
         CatalogReadModel catalog = cache.current();
         List<RecommendationCandidate> candidates = candidatesFor(catalog);
@@ -31,7 +31,7 @@ public class CandidateCatalog {
         return candidates.stream().filter(item -> playable.test(item.id())).toList();
     }
 
-    // So tham chiếu == với snapshot cũ để chỉ chuyển đổi lại danh sách ứng viên khi catalog thật sự đổi phiên bản.
+    // so thẳng == với snapshot cũ để chỉ dựng lại list ứng viên lúc catalog đổi bản mới
     private List<RecommendationCandidate> candidatesFor(CatalogReadModel catalog) {
         CachedCandidates current = cached;
         if (current != null && current.model() == catalog) {
@@ -51,7 +51,7 @@ public class CandidateCatalog {
                 profile.seasonNumber(), profile.summaryQuality());
     }
 
-    // Cặp snapshot CatalogReadModel và danh sách ứng viên tương ứng đã dựng sẵn.
+    // cặp snapshot CatalogReadModel với list ứng viên đã dựng sẵn theo nó
     private record CachedCandidates(CatalogReadModel model, List<RecommendationCandidate> candidates) {
     }
 }

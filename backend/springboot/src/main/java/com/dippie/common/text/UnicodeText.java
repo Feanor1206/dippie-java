@@ -3,7 +3,7 @@ package com.dippie.common.text;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-// Cắt khoảng trắng và gập hoa thường theo chuẩn Unicode, viết cho khớp với hành vi strip và casefold bên Python.
+// cắt khoảng trắng và gập hoa thường chuẩn Unicode cho khớp strip với casefold bên Python
 public final class UnicodeText {
 
     public static final String SPACE = "[\\p{IsWhite_Space}\\x1c-\\x1f]";
@@ -12,19 +12,19 @@ public final class UnicodeText {
     private UnicodeText() {
     }
 
-    // Xóa mọi ký tự khoảng trắng Unicode ở hai đầu chuỗi.
+    // xóa hết khoảng trắng Unicode ở 2 đầu chuỗi
     public static String strip(String text) {
         return SURROUNDING_SPACE.matcher(text).replaceAll("");
     }
 
-    // Gập chữ hoa thường theo quy tắc casefold Unicode để so khớp văn bản không phân biệt hoa thường.
+    // gập hoa thường theo luật casefold Unicode để so khớp văn bản không phân biệt hoa thường
     public static String caseFold(String text) {
         if (text == null || text.isEmpty()) {
             return "";
         }
         StringBuilder folded = new StringBuilder(text.length());
         int length = text.length();
-        // Nhánh ASCII chạy trực tiếp cho nhanh, còn các ký tự đặc biệt như ı, ẞ hay chữ Cherokee xử lý riêng.
+        // nhánh ASCII chạy thẳng cho nhanh, còn mấy ký tự đặc biệt như ı, ẞ hay chữ Cherokee xử lý riêng
         for (int index = 0; index < length;) {
             int codePoint = text.codePointAt(index);
             index += Character.charCount(codePoint);

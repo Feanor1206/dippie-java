@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// Các endpoint /api/auth cho đăng nhập, đăng ký và lấy hồ sơ tài khoản đang đăng nhập.
+// mấy endpoint /api/auth cho đăng nhập, đăng ký và lấy hồ sơ user hiện tại
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -39,7 +39,7 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok(response, "Đăng nhập thành công"));
     }
 
-    // Trả HTTP 201 kèm JWT ngay để client đăng nhập luôn sau khi tạo tài khoản.
+    // trả 201 kèm JWT luôn để tạo tài khoản xong là client đăng nhập ngay
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(
             @RequestBody(required = false) RegisterRequest request,

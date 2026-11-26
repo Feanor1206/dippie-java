@@ -33,11 +33,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Bài test tích hợp kiểm tra API trạng thái trợ lý, nạp gói dữ liệu mẫu và đối chiếu kết quả xếp hạng trên /v1/search với /v1/discover.
+// test API trạng thái trợ lý, import gói mẫu rồi so thứ hạng /v1/search với /v1/discover
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-// Lớp này cần CSDL và chỉ mục tìm kiếm trống lúc bắt đầu, nên dùng context riêng để không dính dữ liệu của test chạy trước.
+// tách context riêng để đầu test DB với chỉ mục trống trơn, khỏi dính dữ liệu test trước
 @TestPropertySource(properties = "dippie.test.context=CatalogSearchParityTest")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
@@ -69,7 +69,7 @@ class CatalogSearchParityTest {
         ));
         String adminAuthHeader = "Bearer " + jwtService.issueLoginToken(admin.getUsername(), admin.getTokenVersion());
 
-        // Khách chưa đăng nhập chỉ xem được cờ searchReady, không thấy llmProvider hay tổng số tài liệu nội bộ.
+        // khách chưa login chỉ thấy cờ searchReady thôi, giấu llmProvider với tổng số tài liệu
         mvc.perform(get("/api/assistant/status"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.mode").doesNotExist())

@@ -10,12 +10,11 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
-// Điều phối ba Strategy tìm tệp video tùy theo storageProvider của MediaAsset.
-// Với nguồn drive thì dò lần lượt: bản cache cục bộ, ổ Drive gắn kết, rồi mới tới thư mục local; nguồn local chỉ tìm trong thư mục local.
+// điều phối 3 Strategy tìm file video tùy theo storageProvider của MediaAsset
+// nguồn drive thì dò cache máy, ổ Drive gắn kết rồi mới tới local, còn nguồn local chỉ tìm trong local
 @Component
 public class MediaFileResolver {
 
-    private static final String DRIVE_PROVIDER = "drive";
     public static final String MISSING_FILE_MESSAGE = "Không tìm thấy video để phát.";
 
     private final List<MediaLocationStrategy> driveStrategies;
@@ -30,7 +29,7 @@ public class MediaFileResolver {
         this.localStrategies = List.of(localMediaLocation);
     }
 
-    // Dùng khi tạo resolver trực tiếp trong unit test hoặc chỗ không qua Spring container.
+    // tạo nhanh resolver trong unit test hay chỗ không chạy qua Spring
     public static MediaFileResolver forProperties(MediaProperties properties) {
         return new MediaFileResolver(
                 new DriveCacheLocation(properties),
@@ -39,12 +38,12 @@ public class MediaFileResolver {
         );
     }
 
-    // Chặn đường dẫn xấu ngay từ đầu rồi chạy lần lượt các Strategy của nguồn tương ứng.
+    // chặn đường dẫn bẩn ngay từ đầu rồi chạy lần lượt các Strategy của nguồn đó
     public Optional<Path> resolve(MediaAsset asset) {
         if (asset == null || !MediaPathPolicy.isValidRelativePath(asset.getRelativePath())) {
             return Optional.empty();
         }
-        List<MediaLocationStrategy> strategies = DRIVE_PROVIDER.equalsIgnoreCase(asset.getStorageProvider())
+        List<MediaLocationStrategy> strategies = "drive".equalsIgnoreCase(asset.getStorageProvider())
                 ? driveStrategies
                 : localStrategies;
         for (MediaLocationStrategy strategy : strategies) {

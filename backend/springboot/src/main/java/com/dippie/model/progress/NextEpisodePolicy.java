@@ -8,14 +8,14 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-// Quy tắc chọn tập tiếp theo trong một bộ phim từ danh sách tập và lịch sử tiến độ.
-// Thứ tự ưu tiên: nối lại tập đang xem dở mới nhất, sau đó chọn tập chưa xem ngay sau tập vừa xem xong, hết nữa mới quay vòng về tập chưa xem sớm nhất.
+// luật chọn tập phát tiếp trong bộ phim từ danh sách tập với lịch sử xem
+// ưu tiên nối tập đang dở mới nhất, tới tập chưa xem ngay sau tập vừa xem xong, hết nữa mới vòng về tập chưa xem sớm nhất
 public final class NextEpisodePolicy {
 
     private static final Comparator<Integer> NUMBER_ORDER = Comparator.nullsLast(Comparator.naturalOrder());
     private static final Comparator<Episode> EPISODE_ORDER = Comparator.comparing(Episode::seasonNumber, NUMBER_ORDER)
             .thenComparing(Episode::episodeNumber, NUMBER_ORDER).thenComparing(Episode::id);
-    // Khi hai tập cùng updatedAt (vì TIMESTAMP cắt tới giây), lấy bản ghi có progressId lớn hơn trước khi rơi về thứ tự tập.
+    // hai tập trùng giây updatedAt do TIMESTAMP làm tròn thì lấy progressId lớn hơn, hòa nữa mới theo thứ tự tập
     private static final Comparator<ResumeCandidate> RESUME_ORDER = Comparator
             .comparing((ResumeCandidate candidate) -> candidate.choice().resumedAt(),
                     Comparator.nullsLast(Comparator.reverseOrder()))
@@ -25,12 +25,12 @@ public final class NextEpisodePolicy {
     private NextEpisodePolicy() {
     }
 
-    // Chọn một tập để phát tiếp hoặc trả về rỗng nếu mọi tập đủ điều kiện đều đã xem xong.
+    // chọn một tập phát tiếp, xem hết sạch mấy tập hợp lệ rồi thì trả rỗng
     public static Optional<Choice> pick(List<Episode> episodes, List<Progress> progress) {
         Map<String, Progress> byEpisode = progress.stream()
                 .collect(Collectors.toMap(Progress::episodeId, Function.identity()));
 
-        // Chia các tập thành ba nhóm: đang xem dở (giữ tập cập nhật gần nhất), đã xem xong (giữ tập hoàn thành gần nhất) và chưa xem
+        // chia 3 nhóm: đang xem dở (giữ tập mới nhất), xem xong (giữ tập hoàn thành gần nhất) với chưa xem
         ResumeCandidate resumeChoice = null;
         CompletedEpisode latestCompleted = null;
         List<Episode> unwatched = new java.util.ArrayList<>();
@@ -69,7 +69,7 @@ public final class NextEpisodePolicy {
         }
         unwatched.sort(EPISODE_ORDER);
 
-        // Nếu người xem nhảy cóc tới xem xong tập giữa bộ thì gợi ý tập chưa xem ngay phía sau, tránh kéo ngược về tập 1
+        // người xem nhảy cóc tới tập giữa bộ thì gợi ý tập chưa xem ngay sau nó, khỏi kéo ngược về tập 1
         if (latestCompleted != null) {
             Episode anchor = latestCompleted.episode();
             for (Episode candidate : unwatched) {
@@ -86,19 +86,19 @@ public final class NextEpisodePolicy {
             .thenComparing(CompletedEpisode::progressId, Comparator.nullsLast(Comparator.reverseOrder()))
             .thenComparing(CompletedEpisode::episode, EPISODE_ORDER.reversed());
 
-    // Gói ứng viên nối lại kèm progressId để phân thắng bại khi trùng mốc giây.
+    // gói ứng viên xem tiếp kèm progressId để phân thắng bại lúc trùng giây
     private record ResumeCandidate(Choice choice, Long progressId) {
     }
 
-    // Tập vừa hoàn thành gần nhất dùng làm mốc định vị tập chưa xem kế tiếp.
+    // tập vừa xem xong gần nhất làm mốc tìm tập chưa xem kế tiếp
     private record CompletedEpisode(Episode episode, LocalDateTime updatedAt, Long progressId) {
     }
 
-    // Dữ liệu tối giản của một tập phim đủ để sắp thứ tự mùa, số tập và tính ngưỡng hoàn thành.
+    // thông tin tối giản của một tập, vừa đủ để xếp mùa/tập và tính ngưỡng xem xong
     public record Episode(String id, String title, Integer seasonNumber, Integer episodeNumber, Long durationMs) {
     }
 
-    // Tiến độ đã lưu của một tập phim truyền vào cho NextEpisodePolicy.pick().
+    // tiến độ đã lưu của một tập truyền vào NextEpisodePolicy.pick()
     public record Progress(String episodeId, long positionMs, LocalDateTime updatedAt, Long assetDurationMs,
             String assetId, Long progressId) {
 
@@ -108,12 +108,12 @@ public final class NextEpisodePolicy {
         }
     }
 
-    // Tập được đề xuất kèm thời điểm phát tiếp, lý do chọn và nguồn video đang xem (nếu nối lại).
+    // tập được chọn kèm mốc phát tiếp, lý do với nguồn video đang xem nếu là nối lại
     public record Choice(Episode episode, long resumePositionMs, Reason reason, LocalDateTime resumedAt,
             String assetId) {
     }
 
-    // Phân biệt gợi ý nối tiếp tập đang dở (RESUME) với gợi ý mở tập mới chưa xem (NEXT_UNWATCHED).
+    // phân biệt nối lại tập đang dở (RESUME) với mở tập chưa xem (NEXT_UNWATCHED)
     public enum Reason {
         RESUME,
         NEXT_UNWATCHED

@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-// Ý định câu hỏi sau khi IntentParser tách xong (chế độ, phạm vi, thể loại, tâm trạng và bộ lọc), dùng key snake_case cho JSON trả về.
+// ý định câu hỏi IntentParser tách ra (mode, phạm vi, thể loại, tâm trạng, bộ lọc), JSON xuất key snake_case
 public record ChatIntent(
         @JsonProperty("intent_type") String intentType,
         @JsonProperty("mode") String mode,
@@ -42,7 +42,7 @@ public record ChatIntent(
         return toSearchConstraints(Set.of());
     }
 
-    // Gói lại toàn bộ bộ lọc cùng tập phim cần bỏ qua sang SearchConstraints để gửi xuống CatalogSearch.
+    // gom hết bộ lọc với mấy tập cần bỏ qua sang SearchConstraints rồi đẩy xuống CatalogSearch
     public SearchConstraints toSearchConstraints(Set<String> excludedItems) {
         Integer yearMin = constraints.get("year_min") instanceof Number number ? number.intValue() : null;
         Integer yearMax = constraints.get("year_max") instanceof Number number ? number.intValue() : null;

@@ -17,7 +17,7 @@ import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-// Kiểm tra thứ tự tìm tệp video giữa nguồn Drive và local, đồng thời khóa chặt các ca path traversal và symlink.
+// test thứ tự tìm file video giữa Drive với local, khóa chặt mấy ca path traversal với symlink
 class MediaFileResolverTest {
 
     @TempDir

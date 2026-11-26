@@ -1,6 +1,6 @@
 package com.dippie.desktop.service;
 
-// Hợp đồng Command cho các thao tác quản trị có thể hoàn tác.
+// interface Command cho mấy thao tác quản trị hoàn tác được
 public interface Command {
     void execute();
 

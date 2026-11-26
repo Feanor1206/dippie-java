@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// Endpoint công khai cho cả khách lẫn thành viên gửi báo lỗi khi phát video gặp sự cố.
+// endpoint công khai cho cả khách lẫn thành viên gửi báo lỗi khi phát video trục trặc
 @RestController
 @RequestMapping("/api/reports")
 public class PlaybackReportController {
@@ -27,7 +27,7 @@ public class PlaybackReportController {
         this.clientIpResolver = clientIpResolver;
     }
 
-    // Lấy IP thực của máy khách để áp giới hạn tốc độ, lưu xong trả 201 kèm id báo cáo.
+    // lấy IP thật của client để áp rate limit, lưu xong trả 201 kèm id báo cáo
     @PostMapping("/playback")
     public ResponseEntity<ApiResponse<PlaybackReportCreatedResponse>> submitPlaybackReport(
             @RequestBody(required = false) CreatePlaybackReportRequest request,

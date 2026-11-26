@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-// Mở endpoint cho admin xem lại lịch sử thao tác quản trị theo từng trang.
+// endpoint cho admin xem lại lịch sử thao tác quản trị theo trang
 @RestController
 @RequestMapping("/api/admin/audit-events")
 public class AdminAuditController {
@@ -22,7 +22,7 @@ public class AdminAuditController {
         this.adminAuditService = adminAuditService;
     }
 
-    // Trả về các sự kiện mới nhất trước, mặc định mỗi trang 20 dòng.
+    // mới nhất lên trước, mặc định 20 dòng mỗi trang
     @GetMapping
     public ResponseEntity<ApiResponse<AdminPageResponse<AdminAuditEventView>>> listEvents(
             @RequestParam(name = "page", defaultValue = "0") int page,

@@ -12,7 +12,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import java.time.Clock;
 import java.time.LocalDateTime;
 
-// Service quản lý danh sách xem sau, cài newEntry() của lớp cha để trả về WatchlistItem.
+// danh sách xem sau, chỉ cài newEntry() trả WatchlistItem cho luồng chung ở lớp cha
 @Service
 public class WatchlistService extends AbstractLibraryListService<WatchlistItem> {
 

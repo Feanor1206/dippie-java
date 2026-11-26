@@ -7,7 +7,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 
-// DAO chỉ đọc bảng movies để tra tên phim cho màn hình kiểm duyệt đánh giá.
+// DAO đọc bảng movies để tra tên phim cho màn hình kiểm duyệt đánh giá
 public final class MovieDao extends AbstractJdbcDao<Movie, String> {
     private static final RowMapper<Movie> MAPPER =
             row -> new Movie(row.getString("id"), row.getString("title"));
@@ -16,7 +16,7 @@ public final class MovieDao extends AbstractJdbcDao<Movie, String> {
         super(db, "movies", "id, title", MAPPER);
     }
 
-    // Chỉ tải tên của những phim thực sự có đánh giá (kể cả phim cũ ngoài danh mục) cho gọn truy vấn.
+    // chỉ tải tên mấy phim thật sự có đánh giá (kể cả phim cũ ngoài danh mục) cho gọn truy vấn
     public List<Movie> findRatedMovies(Connection connection) throws SQLException {
         return query(connection, """
                 SELECT m.id, m.title FROM movies m

@@ -24,7 +24,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-// Kiểm tra vòng đời snapshot: list() luôn chỉ đọc, bản mới nhất cập nhật theo bộ tìm kiếm, bản cũ bị bỏ qua và CACHE_REQUIRED cũ chuyển sang BLOCKED.
+// test vòng đời snapshot: list() chỉ đọc, bản mới nhất theo bộ tìm kiếm, bản cũ bỏ qua còn CACHE_REQUIRED cũ thành BLOCKED
 class CatalogSnapshotReconciliationTest {
 
     private final CatalogSnapshotRepository repository = mock(CatalogSnapshotRepository.class);

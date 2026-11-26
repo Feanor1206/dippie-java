@@ -9,14 +9,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
-// Tách IP thật của client từ request; mình chỉ đọc X-Forwarded-For khi kết nối trực tiếp đi từ reverse proxy nằm trong dải tin cậy.
+// tách IP thật của client từ request, chỉ tin X-Forwarded-For khi kết nối trực tiếp đến từ reverse proxy trong dải tin cậy
 @Component
 public class ClientIpResolver {
 
-    private static final String HEADER_X_FORWARDED_FOR = "X-Forwarded-For";
-    private static final String HEADER_X_REAL_IP = "X-Real-IP";
     private static final String UNKNOWN_IP = "unknown";
-    private static final int MAX_IP_TOKEN_LENGTH = 64;
     private static final Pattern IPV4_LITERAL = Pattern.compile(
             "^(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}$"
     );
@@ -35,7 +32,7 @@ public class ClientIpResolver {
         this.trustedBlocks = List.copyOf(parsed);
     }
 
-    // Đọc IP thật của client, tránh bị người dùng tự chèn X-Forwarded-For giả khi gọi thẳng vào backend.
+    // lấy IP thật của client kẻo user tự nhét X-Forwarded-For giả lúc gọi thẳng vào backend
     public String resolve(HttpServletRequest request) {
         if (request == null) {
             return UNKNOWN_IP;
@@ -44,13 +41,13 @@ public class ClientIpResolver {
         if (remoteIp == null) {
             return UNKNOWN_IP;
         }
-        // Gọi thẳng từ IP ngoài danh sách proxy tin cậy thì lấy luôn remoteAddr, bỏ qua mọi header chuyển tiếp.
+        // gọi thẳng từ IP ngoài danh sách proxy tin cậy thì lấy luôn remoteAddr, bỏ qua hết mấy header chuyển tiếp
         if (!isTrustedProxy(remoteIp)) {
             return remoteIp;
         }
 
-        // Duyệt X-Forwarded-For từ phải sang trái để bỏ qua các proxy nội bộ và không bị đánh lừa bởi IP giả ghép ở đầu chuỗi.
-        String forwardedFor = request.getHeader(HEADER_X_FORWARDED_FOR);
+        // duyệt X-Forwarded-For từ phải sang trái để bỏ qua proxy nội bộ, tránh bị lừa bởi IP giả nhét đầu chuỗi
+        String forwardedFor = request.getHeader("X-Forwarded-For");
         if (forwardedFor != null && !forwardedFor.isBlank()) {
             String resolved = resolveFromForwardedFor(forwardedFor);
             if (resolved != null) {
@@ -58,7 +55,7 @@ public class ClientIpResolver {
             }
         }
 
-        String realIp = normalizeIp(request.getHeader(HEADER_X_REAL_IP));
+        String realIp = normalizeIp(request.getHeader("X-Real-IP"));
         if (realIp != null) {
             return realIp;
         }
@@ -78,7 +75,7 @@ public class ClientIpResolver {
         return false;
     }
 
-    // Đọc ngược từ hop gần server nhất; gặp IP đầu tiên nằm ngoài dải proxy tin cậy thì lấy làm IP client.
+    // đọc ngược từ hop gần server nhất, đụng IP đầu tiên nằm ngoài dải proxy tin cậy thì lấy làm IP client
     private String resolveFromForwardedFor(String headerValue) {
         String[] parts = headerValue.split(",");
         String lastTrustedIp = null;
@@ -95,16 +92,16 @@ public class ClientIpResolver {
         return lastTrustedIp;
     }
 
-    // Lọc chỉ nhận chuỗi IPv4/IPv6 thuần trước khi gọi InetAddress để chuỗi rác hay tên miền không kích hoạt DNS lookup.
+    // lọc chỉ nhận chuỗi IPv4/IPv6 thuần trước khi gọi InetAddress kẻo chuỗi rác hay tên miền kích hoạt DNS lookup
     private static String normalizeIp(String raw) {
         if (raw == null) {
             return null;
         }
         String trimmed = raw.trim();
-        if (trimmed.isEmpty() || trimmed.length() > MAX_IP_TOKEN_LENGTH) {
+        if (trimmed.isEmpty() || trimmed.length() > 64) {
             return null;
         }
-        // Bóc ngoặc vuông kèm cổng ở dạng [::1]:8080.
+        // bóc ngoặc vuông kèm port kiểu [::1]:8080
         if (trimmed.startsWith("[")) {
             int closing = trimmed.indexOf(']');
             if (closing <= 1) {
@@ -112,10 +109,10 @@ public class ClientIpResolver {
             }
             trimmed = trimmed.substring(1, closing);
         } else if (trimmed.indexOf(':') > 0 && trimmed.indexOf(':') == trimmed.lastIndexOf(':')) {
-            // Tách phần cổng nếu là IPv4 dạng a.b.c.d:port.
+            // cắt phần port nếu là IPv4 dạng a.b.c.d:port
             trimmed = trimmed.substring(0, trimmed.indexOf(':'));
         }
-        // Bỏ zone id của IPv6 link-local (ví dụ %eth0).
+        // bỏ zone id của IPv6 link-local như %eth0
         int zoneIndex = trimmed.indexOf('%');
         if (zoneIndex > 0) {
             trimmed = trimmed.substring(0, zoneIndex);
@@ -147,7 +144,7 @@ public class ClientIpResolver {
         }
         try {
             byte[] raw = InetAddress.getByName(literalIp).getAddress();
-            // Đổi IPv6 dạng ánh xạ IPv4 (::ffff:a.b.c.d) về 4 byte để so khớp chung với các dải IPv4.
+            // đổi IPv6 bọc IPv4 (::ffff:a.b.c.d) về 4 byte để so khớp chung với mấy dải IPv4
             if (raw.length == 16 && isIpv4Mapped(raw)) {
                 byte[] ipv4 = new byte[4];
                 System.arraycopy(raw, 12, ipv4, 0, 4);
@@ -168,7 +165,7 @@ public class ClientIpResolver {
         return bytes[10] == (byte) 0xff && bytes[11] == (byte) 0xff;
     }
 
-    // Biểu diễn một dải mạng CIDR (IPv4 hoặc IPv6) để so khớp IP theo tiền tố bit.
+    // gói 1 dải mạng CIDR (IPv4 hoặc IPv6) để so khớp IP theo tiền tố bit
     private record CidrBlock(byte[] networkBytes, int prefixBits) {
 
         static CidrBlock parse(String raw) {

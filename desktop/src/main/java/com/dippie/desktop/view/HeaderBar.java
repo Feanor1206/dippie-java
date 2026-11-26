@@ -13,7 +13,7 @@ import javafx.scene.layout.VBox;
 
 import java.util.Locale;
 
-// Thanh đầu trang hiện tên ứng dụng bên trái, còn bên phải hiện người đang đăng nhập và nút Đăng xuất.
+// thanh đầu trang, bên trái hiện tên app còn bên phải hiện người đang đăng nhập với nút Đăng xuất
 public final class HeaderBar extends HBox {
     private final Label avatar = new Label("Q");
     private final Label adminName = new Label();
@@ -25,7 +25,7 @@ public final class HeaderBar extends HBox {
         setAlignment(Pos.CENTER_LEFT);
         getStyleClass().add("app-header");
 
-        // Cụm tên ứng dụng ở góc trái.
+        // cụm tên app ở góc trái
         Label mark = new Label("D");
         mark.getStyleClass().add("brand-mark");
         Label brand = new Label("Dippie Admin");
@@ -38,7 +38,7 @@ public final class HeaderBar extends HBox {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        // Khung tên quản trị viên và nút Đăng xuất ở góc phải, ẩn đi khi đang ở màn hình đăng nhập.
+        // khung tên admin với nút Đăng xuất bên phải, ẩn đi khi đang ở màn hình đăng nhập
         avatar.getStyleClass().add("admin-avatar");
         adminName.getStyleClass().add("admin-name");
         adminMeta.getStyleClass().add("admin-meta");
@@ -62,7 +62,7 @@ public final class HeaderBar extends HBox {
         getChildren().addAll(brandBox, spacer, sessionBox);
     }
 
-    // Hiện tạm chữ đang tải trong lúc lấy họ tên quản trị viên từ DB.
+    // hiện tạm chữ đang tải trong lúc lấy họ tên admin từ DB
     public void showLoadingSession() {
         avatar.setText("...");
         adminName.setText("Đang tải thông tin...");
@@ -70,7 +70,7 @@ public final class HeaderBar extends HBox {
         sessionBox.setVisible(true);
     }
 
-    // Điền họ tên (nếu trống thì lấy username) và chữ cái đầu làm avatar lên thanh trên cùng.
+    // điền họ tên (trống thì lấy username) và chữ cái đầu làm avatar lên thanh trên cùng
     public void showSignedIn(UserAccount admin) {
         String displayName = admin.fullName() != null && !admin.fullName().isBlank()
                 ? admin.fullName().strip() : admin.username();
@@ -80,7 +80,7 @@ public final class HeaderBar extends HBox {
         sessionBox.setVisible(true);
     }
 
-    // Ẩn khung thông tin phiên khi quay về màn hình đăng nhập.
+    // ẩn khung thông tin phiên khi quay về màn hình đăng nhập
     public void clearSignedIn() {
         sessionBox.setVisible(false);
     }

@@ -523,18 +523,18 @@ def build_slides():
     private final HttpStatus status;
     ...
 }
-// Lỗi không tìm thấy dữ liệu được yêu cầu, trả HTTP 404.
+// không tìm thấy dữ liệu cần lấy, trả 404
 public class NotFoundException extends DomainException {
     public NotFoundException(String message) {
         super(HttpStatus.NOT_FOUND, message);
     }
 }"""
 
-    code_interface = """// Interface Strategy chung cho các cách gợi ý phim (theo sở thích hoặc theo tâm trạng).
+    code_interface = """// kiểu Strategy cho các cách gợi ý phim, thêm kiểu gợi ý mới thì viết thêm 1 lớp là xong
 public interface RecommendationStrategy {
     RecommendationResult recommend(RecommendationContext context);
 }
-// Hợp đồng chung cho mọi DAO chỉ đọc theo thực thể T và kiểu khóa chính ID.
+// interface chung cho mọi DAO chỉ đọc theo thực thể T và kiểu khóa chính ID
 public interface Dao<T, ID> {
     Optional<T> findById(ID id);
     List<T> findAll();

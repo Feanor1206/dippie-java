@@ -1,5 +1,5 @@
 package com.dippie.dto.assistant;
 
-// Khung trả lỗi thống nhất chỉ bọc trường detail.
+// khung báo lỗi gọn chỉ bọc mỗi trường detail
 public record DiscoverErrorBody(Object detail) {
 }

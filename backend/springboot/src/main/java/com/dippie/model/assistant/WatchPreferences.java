@@ -5,12 +5,12 @@ import com.dippie.model.catalog.EpisodeRuntime;
 
 import java.util.regex.Pattern;
 
-// Lưu giới hạn thời lượng tối đa và cờ ưu tiên tập ngắn rút ra từ câu hỏi (dưới X phút, trước khi ngủ hay cho bé).
+// trần thời lượng với cờ ưu tiên tập ngắn bóc ra từ câu hỏi (dưới X phút, trước khi ngủ hay cho bé)
 public record WatchPreferences(Long maxDurationMs, boolean preferShort) {
 
     private static final Pattern DURATION = Pattern.compile("\\b(duoi|it hon|toi da|khong qua)\\s+(\\d{1,3})\\s*(?:phut|min)\\b");
 
-    // Ưu tiên số phút người dùng nói rõ ("dưới" hay "ít hơn" thì trừ 1 ms thành nhỏ hơn hẳn), còn lại lấy trần mặc định theo ngữ cảnh.
+    // user nói rõ số phút thì lấy số đó ("dưới"/"ít hơn" trừ 1 ms thành nhỏ hơn hẳn), không thì lấy trần mặc định theo ngữ cảnh
     public static WatchPreferences from(String foldedQuery, String fullQuery) {
         Long defaultMax = defaultBound(fullQuery);
         var durationMatcher = DURATION.matcher(foldedQuery);

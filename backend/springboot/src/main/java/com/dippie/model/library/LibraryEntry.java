@@ -9,7 +9,7 @@ import org.hibernate.annotations.ColumnDefault;
 
 import java.time.LocalDateTime;
 
-// Lớp cha @MappedSuperclass gom các cột chung (id, userId, movieId, addedAt) cho cả bảng yêu thích và xem sau.
+// lớp cha @MappedSuperclass gom mấy cột chung (id, userId, movieId, addedAt) cho hai bảng yêu thích và xem sau
 @MappedSuperclass
 public abstract class LibraryEntry {
 

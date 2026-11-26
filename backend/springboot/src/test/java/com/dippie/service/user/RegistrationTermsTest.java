@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Xác minh đăng ký bắt buộc đồng ý điều khoản, lưu mốc terms_accepted_at và tài khoản cũ vẫn đăng nhập bình thường.
+// test đăng ký bắt buộc tick điều khoản, lưu mốc terms_accepted_at còn nick cũ vẫn vào bình thường
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -63,7 +63,7 @@ class RegistrationTermsTest {
         userRepository.deleteAll();
     }
 
-    // Thiếu acceptedTerms hoặc gửi false đều phải trả 400 và không tạo dòng user nào trong DB.
+    // thiếu acceptedTerms hay gửi false là ăn 400, không tạo user nào trong DB
     @Test
     void rejectsMissingOrFalseAcceptedTerms() throws Exception {
         mockMvc.perform(post("/api/auth/register")
@@ -92,7 +92,7 @@ class RegistrationTermsTest {
         assertThat(userRepository.count()).isZero();
     }
 
-    // Tài khoản mới phải lưu terms_accepted_at, còn tài khoản cũ có terms_accepted_at = null vẫn đăng nhập được.
+    // nick mới phải lưu terms_accepted_at, nick cũ để null vẫn đăng nhập vô tư
     @Test
     void storesTermsAcceptedAtOnRegistrationWithoutAffectingExistingAccounts() throws Exception {
         mockMvc.perform(post("/api/auth/register")
@@ -110,7 +110,7 @@ class RegistrationTermsTest {
         User registered = userRepository.findByUsername("agreed_user").orElseThrow();
         assertThat(registered.getTermsAcceptedAt()).isNotNull();
 
-        // Giả lập tài khoản cũ có terms_accepted_at để trống, kiểm tra không bị chặn lúc đăng nhập.
+        // dựng nick cũ để trống terms_accepted_at để chắc lúc đăng nhập không bị chặn
         User legacy = userRepository.saveAndFlush(new User(
                 "legacy_user",
                 "legacy@example.com",

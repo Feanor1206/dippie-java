@@ -1,7 +1,7 @@
 package com.dippie.model.progress;
 
-// Quy tắc xác định xem một tập phim đã được coi là xem xong chưa.
-// Việt nhớ đừng tự sửa NEAR_END_CAP_MS hay COMPLETION_DIVISOR nhé: AdminStatsQuery dùng thẳng hai hằng này trong JPQL để số thống kê khớp y hệt bên player.
+// luật tính xem tập phim đã xem xong chưa
+// Việt đừng tự sửa NEAR_END_CAP_MS hay COMPLETION_DIVISOR nha, AdminStatsQuery kéo thẳng vào JPQL để số liệu khớp y hệt bên player
 public final class CompletionPolicy {
 
     public static final long NEAR_END_CAP_MS = 60_000L;
@@ -10,7 +10,7 @@ public final class CompletionPolicy {
     private CompletionPolicy() {
     }
 
-    // Coi là xem xong khi người xem đã vào 5% cuối (tối thiểu 1 ms cho clip siêu ngắn), nhưng chặn trần ở 60 giây cuối với tập dài.
+    // vào 5% cuối là tính xem xong (ít nhất 1 ms với clip siêu ngắn), còn tập dài thì chặn trần ở 60 giây cuối
     public static boolean isCompleted(long positionMs, Long durationMs) {
         if (durationMs == null || durationMs <= 0) {
             return false;

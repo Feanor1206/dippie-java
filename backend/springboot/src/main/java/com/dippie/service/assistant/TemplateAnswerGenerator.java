@@ -11,7 +11,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-// Strategy sinh câu trả lời bằng mẫu tiếng Việt dựng sẵn, dùng khi chưa bật LLM hoặc khi DeepSeek phải fallback.
+// kiểu Strategy trả lời bằng mẫu tiếng Việt dựng sẵn, dùng lúc chưa bật LLM hay khi DeepSeek rơi fallback
 public final class TemplateAnswerGenerator implements AnswerGenerator {
 
     private static final Pattern TOKEN_STREAM_RE = Pattern.compile("\\S+\\s*");
@@ -25,7 +25,7 @@ public final class TemplateAnswerGenerator implements AnswerGenerator {
         this.availableSeries = availableSeries;
     }
 
-    // Ghép câu trả lời mẫu, gắn thêm ghi chú YouTube nếu cần rồi tách từng từ kèm khoảng trắng để phát dần về frontend.
+    // ghép câu trả lời mẫu, gắn thêm nhắc nhở YouTube nếu cần rồi cắt từng từ kèm khoảng trắng để phát dần về frontend
     @Override
     public Stream<String> answer(ChatIntent intent, List<SearchHit> results, Consumer<String> onStage) {
         onStage.accept("template");
@@ -34,7 +34,7 @@ public final class TemplateAnswerGenerator implements AnswerGenerator {
         return tokenize(text).stream();
     }
 
-    // Chọn mẫu câu theo thứ tự ưu tiên: chào hỏi, hết kết quả, hỏi bộ phim, tóm tắt, câu hỏi nối tiếp rồi tới gợi ý.
+    // chọn mẫu câu theo đúng thứ tự ưu tiên: chào hỏi, hết kết quả, hỏi bộ phim, tóm tắt, câu nối tiếp rồi tới gợi ý
     private String buildText(ChatIntent intent, List<SearchHit> hits) {
         if ("chitchat".equals(intent.mode())) {
             return CatalogReplies.chitchat(intent.semanticQuery());

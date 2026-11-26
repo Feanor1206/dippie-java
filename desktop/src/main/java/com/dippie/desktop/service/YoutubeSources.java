@@ -5,8 +5,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
-// Tách link YouTube từ mảng external_ids trong chuỗi raw_json của tập phim.
-// Mình dùng possessive quantifier (++ và *+) trong regex để không bị treo backtracking khi JSON dài.
+// tách link YouTube từ mảng external_ids trong raw_json của tập phim
+// dùng possessive quantifier (++ và *+) trong regex kẻo JSON dài làm treo backtracking
 final class YoutubeSources {
     private static final String JSON_STRING = "\"(?:[^\"\\\\]++|\\\\.)*+\"";
     private static final Pattern EXTERNAL_IDS = Pattern.compile(
@@ -19,7 +19,7 @@ final class YoutubeSources {
     private YoutubeSources() {
     }
 
-    // Chọn nguồn theo thứ tự ưu tiên của enum Kind: youtube_playback, rồi youtube_watch, cuối cùng mới tới youtube_video_id.
+    // chọn nguồn theo thứ tự ưu tiên của enum Kind là youtube_playback, rồi youtube_watch, cuối cùng mới tới youtube_video_id
     static Optional<String> findUrl(String recordJson) {
         if (recordJson == null) {
             return Optional.empty();
@@ -48,7 +48,7 @@ final class YoutubeSources {
         return Optional.empty();
     }
 
-    // Thứ tự khai báo ở đây chính là độ ưu tiên của từng loại mã YouTube.
+    // thứ tự khai báo ở đây chính là độ ưu tiên của từng loại mã YouTube
     private enum Kind {
         PLAYBACK, WATCH, FALLBACK;
 

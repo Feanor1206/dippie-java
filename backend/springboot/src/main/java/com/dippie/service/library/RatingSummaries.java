@@ -17,7 +17,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-// Adapter cài RatingLookup để các gói khác như movie hay catalog tra điểm cộng đồng mà không phụ thuộc vào gói library.
+// kiểu Adapter cài RatingLookup cho gói movie hay catalog tra điểm cộng đồng mà khỏi phụ thuộc gói library
 @Service
 public class RatingSummaries implements RatingLookup {
 
@@ -42,7 +42,7 @@ public class RatingSummaries implements RatingLookup {
         return RatingLookup.super.forItem(id);
     }
 
-    // Việt đừng tăng CHUNK_SIZE lên quá cao nhé, mình chia lô 500 ID sau khi lọc trùng để tránh câu SQL IN quá dài trên mấy trang nhiều phim.
+    // Việt đừng tăng CHUNK_SIZE cao quá nha, chia lô 500 ID sau khi lọc trùng kẻo câu SQL IN dài quá trên mấy trang nhiều phim
     @Override
     @Transactional(readOnly = true)
     public Map<String, RatingSummary> byId(List<String> ids) {
@@ -64,7 +64,7 @@ public class RatingSummaries implements RatingLookup {
         return merged;
     }
 
-    // Dựng subquery tính điểm trung bình bằng Criteria API để MovieQueryService sắp xếp theo điểm cộng đồng ngay trong SQL.
+    // dựng subquery tính điểm trung bình bằng Criteria API để MovieQueryService sort theo điểm cộng đồng ngay dưới SQL
     @Override
     public Expression<Double> averageSubquery(HibernateCriteriaBuilder builder, JpaCriteriaQuery<?> query,
             Expression<String> itemId) {

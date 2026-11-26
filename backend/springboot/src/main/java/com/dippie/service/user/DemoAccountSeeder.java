@@ -18,8 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDateTime;
 
-// Tạo sẵn tài khoản admin và user mẫu cho môi trường demo/test.
-// Mình đặt @Order(10) để chạy trước DemoHistorySeeder (@Order(20)) và khóa profile không bao giờ chạy cùng mysql/prod.
+// tạo sẵn tài khoản admin với user mẫu cho môi trường demo/test
+// @Order(10) để chạy trước DemoHistorySeeder (@Order(20)), khóa profile không bao giờ chạy cùng mysql/prod
 @Component
 @Order(10)
 @Profile("(demo | test) & !mysql & !prod")
@@ -41,7 +41,7 @@ public class DemoAccountSeeder implements ApplicationRunner {
         this.clock = clock;
     }
 
-    // Chỉ chèn hai tài khoản mẫu nếu chưa có sẵn trong DB.
+    // chỉ chèn 2 tài khoản mẫu nếu dưới DB chưa có sẵn
     @Override
     @Transactional
     public void run(ApplicationArguments args) {

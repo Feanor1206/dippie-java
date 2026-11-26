@@ -17,7 +17,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDate;
 
-// Mùa phim thuộc một series (kế thừa CatalogRecord); khóa duy nhất (series_id, id) để bảng catalog_episodes nối khóa ngoại kép kiểm tra đúng mùa của đúng bộ.
+// mùa phim thuộc series (kế thừa CatalogRecord), khóa unique (series_id, id) để catalog_episodes nối khóa ngoại kép đúng mùa của đúng bộ
 @Entity
 @Table(name = "catalog_seasons",
         uniqueConstraints = {
@@ -66,7 +66,7 @@ public class CatalogSeason extends CatalogRecord {
     protected CatalogSeason() {
     }
 
-    // Chép lại metadata mùa phim khi import đè (translationsJson và attributesJson không đụng tới).
+    // import đè thì chép lại metadata mùa, không đụng vào translationsJson với attributesJson
     public void applyImport(CatalogSeason imported) {
         replaceRecordFrom(imported);
         seriesId = imported.seriesId;
@@ -121,7 +121,7 @@ public class CatalogSeason extends CatalogRecord {
         return releaseDate;
     }
 
-    // Ưu tiên lấy release_year_start khai báo sẵn trong rawJson (nếu > 0), thiếu thì rơi về năm của releaseDate.
+    // ưu tiên lấy release_year_start trong rawJson nếu > 0, thiếu mới lấy năm của releaseDate
     public Integer getReleaseYearStart() {
         int declaredYear = JsonText.parse(getRawJson()).map(node -> node.path("release_year_start").asInt()).orElse(0);
         if (declaredYear > 0) {

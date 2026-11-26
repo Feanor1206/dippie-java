@@ -9,8 +9,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.concurrent.atomic.AtomicReference;
 
-// Hoạt động kiểu Caching Proxy giữ bản chụp CatalogReadModel trong AtomicReference và làm Observer nghe CatalogImportedEvent để tự nạp bản mới.
-// Nhờ giữ tham chiếu bất biến, trong lúc luồng import đang dựng bản mới thì request của người dùng vẫn đọc bản cũ bình thường không bị chờ khóa.
+// chạy kiểu Caching Proxy giữ CatalogReadModel trong AtomicReference, kiêm luôn Observer nghe CatalogImportedEvent để tự nạp bản mới
+// vì tham chiếu bất biến nên lúc luồng import đang dựng bản mới thì user vẫn đọc bản cũ ngon lành, khỏi chờ khóa
 @Component
 public class CatalogReadModelCache {
 
@@ -23,19 +23,19 @@ public class CatalogReadModelCache {
         this.loader = loader;
     }
 
-    // Lấy bản chụp hiện có trong bộ nhớ, chỉ nạp lần đầu khi bộ đệm đang rỗng.
+    // lấy bản chụp đang có trong RAM, cache trống mới nạp lần đầu
     public CatalogReadModel current() {
         CatalogReadModel current = model.get();
         return current == null ? initialize() : current;
     }
 
-    // Xóa bản chụp hiện tại để lần đọc kế tiếp tự nạp mới từ CSDL.
+    // xóa bản chụp hiện tại để lần đọc sau tự kéo mới từ DB
     public synchronized void invalidate() {
         model.set(null);
     }
 
-    // Khi có gói danh mục mới được nạp, dựng sẵn bản mới rồi mới thay thế.
-    // Nếu bước nạp lỗi, mình chủ động gọi invalidate để lần gọi sau thử tải lại thay vì kẹt mãi ở dữ liệu cũ.
+    // có gói danh mục mới thì dựng xong bản mới hẳn rồi mới thay thế
+    // bước nạp mà lỗi thì gọi invalidate luôn cho lần sau thử tải lại, khỏi kẹt mãi ở data cũ
     @EventListener
     public synchronized void refresh(CatalogImportedEvent event) {
         try {

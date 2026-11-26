@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Kịch bản đăng xuất qua MockMvc để chắc chắn mọi thiết bị của cùng một tài khoản đều bị thu hồi JWT.
+// test đăng xuất qua MockMvc để chắc đá sạch JWT trên mọi thiết bị của cùng nick
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -64,7 +64,7 @@ class SessionLogoutControllerTest {
         userRepository.deleteAll();
     }
 
-    // Gọi đăng xuất khi chưa có token hợp lệ phải nhận 401.
+    // chưa có token hợp lệ mà đòi logout thì trả 401
     @Test
     void rejectsAnonymousLogoutWith401() throws Exception {
         mockMvc.perform(post("/api/auth/logout"))
@@ -72,7 +72,7 @@ class SessionLogoutControllerTest {
                 .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
     }
 
-    // Đăng xuất trên một thiết bị sẽ tăng tokenVersion làm chết hết token cũ của user đó, nhưng phiên người khác vẫn chạy bình thường.
+    // logout 1 máy là tăng tokenVersion cho chết sạch token cũ của nick đó, máy người khác không ảnh hưởng
     @Test
     void incrementsTokenVersionRevokesAllPriorTokensAndKeepsOtherUsersValid() throws Exception {
         User alice = userRepository.saveAndFlush(new User(
@@ -103,7 +103,7 @@ class SessionLogoutControllerTest {
         User updatedAlice = userRepository.findById(alice.getId()).orElseThrow();
         assertThat(updatedAlice.getTokenVersion()).isEqualTo(1L);
 
-        // Cả hai máy của Alice cùng mất phiên ngay lập tức.
+        // hai máy của Alice bay phiên cùng lúc luôn
         mockMvc.perform(get("/api/auth/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + aliceDeviceOne))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/auth/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + aliceDeviceTwo))
@@ -111,12 +111,12 @@ class SessionLogoutControllerTest {
         mockMvc.perform(post("/api/auth/logout").header(HttpHeaders.AUTHORIZATION, "Bearer " + aliceDeviceOne))
                 .andExpect(status().isUnauthorized());
 
-        // Token của Bob không bị liên lụy.
+        // token của Bob vẫn sống khỏe
         mockMvc.perform(get("/api/auth/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + bobToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.username").value("bob"));
 
-        // Alice đăng nhập lại thì nhận JWT mang tokenVersion mới và vào lại được.
+        // Alice đăng nhập lại là có JWT mang tokenVersion mới vào lại ngon lành
         MvcResult relogin = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(

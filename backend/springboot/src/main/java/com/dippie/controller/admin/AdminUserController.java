@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-// API quản trị tài khoản người dùng: tìm kiếm phân trang, đổi quyền và bật tắt tài khoản.
+// API quản trị user, gồm tìm phân trang, đổi quyền và khóa/mở khóa
 @RestController
 @RequestMapping("/api/admin/users")
 public class AdminUserController {
@@ -27,7 +27,7 @@ public class AdminUserController {
         this.adminUserService = adminUserService;
     }
 
-    // Lọc tài khoản theo tên đăng nhập hoặc email; để trống query thì trả toàn bộ theo trang.
+    // lọc theo username hoặc email, bỏ trống query thì trả hết theo trang
     @GetMapping
     public ResponseEntity<ApiResponse<AdminPageResponse<AdminUserView>>> listUsers(
             @RequestParam(name = "query", defaultValue = "") String query,
@@ -37,7 +37,7 @@ public class AdminUserController {
         return ResponseEntity.ok(ApiResponse.ok(adminUserService.listUsers(query, page, size)));
     }
 
-    // Đổi vai trò cho tài khoản có id tương ứng.
+    // đổi vai trò của user theo id
     @PatchMapping("/{id}/role")
     public ResponseEntity<ApiResponse<AdminUserView>> changeRole(
             @PathVariable("id") Long id,
@@ -47,7 +47,7 @@ public class AdminUserController {
         return ResponseEntity.ok(ApiResponse.ok(updated, "Đã cập nhật vai trò người dùng."));
     }
 
-    // Bật hoặc khóa tài khoản người dùng theo id.
+    // khóa hoặc mở khóa user theo id
     @PatchMapping("/{id}/status")
     public ResponseEntity<ApiResponse<AdminUserView>> changeStatus(
             @PathVariable("id") Long id,

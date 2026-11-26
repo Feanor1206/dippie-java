@@ -12,7 +12,7 @@ import static com.dippie.model.progress.NextEpisodePolicy.Reason.NEXT_UNWATCHED;
 import static com.dippie.model.progress.NextEpisodePolicy.Reason.RESUME;
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Test đơn vị cho NextEpisodePolicy: ưu tiên nối lại tập đang xem dở, đi tiếp từ tập vừa xem xong và quay vòng khi đã hết tập cuối.
+// test NextEpisodePolicy ưu tiên nối tiếp tập xem dở, đi tiếp từ tập vừa xong rồi quay vòng khi hết tập cuối
 class NextEpisodePolicyTest {
 
     private static final Episode FIRST = new Episode("first", "First", 1, 4, 100_000L);
@@ -49,7 +49,7 @@ class NextEpisodePolicyTest {
 
     @Test
     void prefersNextUnwatchedAfterMostRecentlyCompletedAndWrapsWhenFinaleCompleted() {
-        // Nhảy cóc xem xong tập 2 trước thì hệ thống phải gợi ý tiếp tập 3 thay vì kéo ngược về tập 1
+        // nhảy cóc xem xong tập 2 trước thì đẩy tiếp lên tập 3 chứ đừng kéo ngược về tập 1
         var afterSecond = NextEpisodePolicy.pick(
                 List.of(FIRST, SECOND, THIRD),
                 List.of(progress(SECOND, 95_000L, 5))
@@ -57,7 +57,7 @@ class NextEpisodePolicyTest {
         assertThat(afterSecond.episode()).isEqualTo(THIRD);
         assertThat(afterSecond.reason()).isEqualTo(NEXT_UNWATCHED);
 
-        // Xem hết tập cuối rồi mà tập đầu vẫn chưa xem thì mới quay vòng về tập đầu
+        // xem hết tập cuối mà tập đầu chưa đụng thì mới quay vòng lại tập đầu
         var wrapped = NextEpisodePolicy.pick(
                 List.of(FIRST, SECOND, THIRD),
                 List.of(progress(THIRD, 95_000L, 6))
@@ -69,7 +69,7 @@ class NextEpisodePolicyTest {
     @Test
     void breaksSameSecondUpdatedAtTiesUsingProgressId() {
         LocalDateTime sameSecond = LocalDateTime.of(2026, 11, 26, 0, 33, 45);
-        // Lưu tập 1 rồi lưu tập 2 trong đúng một giây -> bản ghi có progressId lớn hơn phải thắng
+        // lưu tập 1 rồi tập 2 trong cùng 1 giây thì dòng nào progressId lớn hơn sẽ thắng
         var resume = NextEpisodePolicy.pick(
                 List.of(FIRST, SECOND, THIRD),
                 List.of(
@@ -81,7 +81,7 @@ class NextEpisodePolicyTest {
         assertThat(resume.resumePositionMs()).isEqualTo(12_000L);
         assertThat(resume.reason()).isEqualTo(RESUME);
 
-        // Hai tập cùng hoàn thành trong một giây -> lấy tập vừa hoàn thành sau (progressId cao hơn) làm mốc
+        // hai tập cùng xong trong 1 giây thì lấy tập xong sau (progressId cao hơn) làm mốc
         var afterCompleted = NextEpisodePolicy.pick(
                 List.of(FIRST, SECOND, THIRD),
                 List.of(

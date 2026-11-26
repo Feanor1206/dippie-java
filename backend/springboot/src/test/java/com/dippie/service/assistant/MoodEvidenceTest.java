@@ -10,7 +10,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Test chấm điểm tâm trạng vui/buồn trong MoodEvidence, gồm cả việc gỡ tiêu đề khỏi mô tả và đọc các trường tâm trạng phụ.
+// test chấm điểm vui buồn trong MoodEvidence, tính cả bỏ tiêu đề khỏi mô tả với đọc trường tâm trạng phụ
 class MoodEvidenceTest {
 
     @Test

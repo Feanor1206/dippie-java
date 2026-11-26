@@ -29,8 +29,8 @@ import javafx.stage.FileChooser;
 import java.util.List;
 import java.util.function.Function;
 
-// Lớp cha trừu tượng của 4 tab dữ liệu, gom sẵn bảng, lớp phủ đang tải, thanh công cụ và nút xuất CSV.
-// WorkspacePane gọi chung refresh() và focusSearch() qua kiểu DataPane này (đa hình).
+// lớp cha trừu tượng của 4 tab dữ liệu, gom sẵn bảng, lớp phủ đang tải, thanh công cụ với nút xuất CSV
+// WorkspacePane gọi chung refresh() và focusSearch() qua DataPane này theo đa hình
 public abstract class DataPane extends BorderPane {
     protected final UiTasks tasks;
     private final BooleanProperty loading = new SimpleBooleanProperty(false);
@@ -42,7 +42,7 @@ public abstract class DataPane extends BorderPane {
 
     public abstract void refresh();
 
-    // Tab nào có ô tìm kiếm thì ghi đè hàm này để Ctrl+F nhảy thẳng con trỏ vào đó.
+    // tab nào có ô tìm kiếm thì ghi đè hàm này để bấm Ctrl+F nhảy thẳng con trỏ vào đó
     public void focusSearch() {
     }
 
@@ -50,7 +50,7 @@ public abstract class DataPane extends BorderPane {
         loading.set(isLoading);
     }
 
-    // Bọc nội dung chính kèm lớp phủ đang tải để tránh bấm nhầm lúc truy vấn chưa xong.
+    // bọc nội dung chính kèm lớp phủ đang tải kẻo bấm nhầm lúc truy vấn chưa xong
     protected void setContent(Node content) {
         ProgressIndicator indicator = new ProgressIndicator();
         indicator.setPrefSize(32, 32);
@@ -72,7 +72,7 @@ public abstract class DataPane extends BorderPane {
         setCenter(container);
     }
 
-    // Thanh công cụ dùng FlowPane để tự xuống dòng khi thu hẹp cửa sổ.
+    // thanh công cụ dùng FlowPane để thu hẹp cửa sổ là tự xuống dòng
     protected static FlowPane toolbar(Node... controls) {
         var toolbar = new FlowPane(10, 8, controls);
         toolbar.setAlignment(Pos.CENTER_LEFT);
@@ -81,7 +81,7 @@ public abstract class DataPane extends BorderPane {
         return toolbar;
     }
 
-    // Thanh công cụ đẩy hai nhóm nút về hai đầu trái và phải trên cùng một hàng.
+    // đẩy 2 nhóm nút về 2 đầu trái phải trên cùng 1 hàng
     protected static HBox splitToolbar(Node left, Node right) {
         Region gap = new Region();
         HBox.setHgrow(gap, Priority.ALWAYS);
@@ -96,7 +96,7 @@ public abstract class DataPane extends BorderPane {
         return table(rows, "Chưa có dữ liệu", "Bấm Làm mới hoặc nhấn F5 để tải lại.");
     }
 
-    // Tạo bảng sẵn cột tự co giãn theo độ rộng và khung báo khi chưa có dòng nào.
+    // tạo bảng sẵn cột tự co giãn theo độ rộng kèm khung báo khi trống
     protected static <T> TableView<T> table(ObservableList<T> rows, String emptyTitle, String emptyHint) {
         var table = new TableView<>(rows);
         table.setPlaceholder(emptyPlaceholder(emptyTitle, emptyHint));
@@ -104,7 +104,7 @@ public abstract class DataPane extends BorderPane {
         return table;
     }
 
-    // Khung báo trống dùng chung cho bảng và cây khi chưa có dữ liệu hoặc lọc không ra.
+    // khung báo trống dùng chung cho bảng và cây lúc chưa có dữ liệu hay lọc không ra
     protected static VBox emptyPlaceholder(String title, String hint) {
         Label heading = new Label(title);
         heading.getStyleClass().add("empty-title");
@@ -117,14 +117,14 @@ public abstract class DataPane extends BorderPane {
         return box;
     }
 
-    // Nhãn bo tròn cho trạng thái, vai trò, điểm số hoặc bộ đếm.
+    // nhãn bo tròn cho trạng thái, vai trò, điểm số hay bộ đếm
     protected static Label pill(String text, String variantClass) {
         Label label = new Label(text);
         label.getStyleClass().addAll("pill", variantClass);
         return label;
     }
 
-    // Giữ nguyên kiểu gốc V của ô thay vì đổi sang String để JavaFX sắp xếp số đúng thứ tự.
+    // giữ nguyên kiểu gốc V của ô thay vì đổi sang String để JavaFX sort số đúng thứ tự
     protected static <T, V> TableColumn<T, V> column(String title, double width, Function<T, V> extractor) {
         var column = new TableColumn<T, V>(title);
         column.setPrefWidth(width);
@@ -133,14 +133,14 @@ public abstract class DataPane extends BorderPane {
         return column;
     }
 
-    // Cột số căn phải cho dễ dóng hàng khi đọc.
+    // cột số căn phải cho dễ dóng hàng
     protected static <T, V> TableColumn<T, V> numericColumn(String title, double width, Function<T, V> extractor) {
         var column = column(title, width, extractor);
         column.getStyleClass().add("numeric-cell");
         return column;
     }
 
-    // Chụp bản sao danh sách đang hiện trên bảng (giữ đúng bộ lọc và thứ tự sắp xếp) rồi ghi CSV ở luồng nền.
+    // chụp bản sao danh sách đang hiện trên bảng (giữ đúng bộ lọc và thứ tự sort) rồi ghi CSV ở luồng nền
     protected <T> Button exportButton(TableView<T> table, CsvStrategy<T> strategy, String filename) {
         var export = new Button("Xuất CSV");
         export.getStyleClass().add("secondary-button");

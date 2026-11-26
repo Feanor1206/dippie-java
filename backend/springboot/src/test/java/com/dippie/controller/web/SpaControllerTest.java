@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Test tích hợp cho định tuyến SPA, cache file tĩnh và lỗi 503 khi chưa build frontend.
+// test route SPA, cache file tĩnh với trả 503 khi chưa build frontend
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -114,7 +114,7 @@ class SpaControllerTest {
 
     @Test
     void keepsApiStaticAndNonHtmlMissesAsResourceErrors() throws Exception {
-        // Route API không tồn tại phải bị chặn 401 ngay khi chưa đăng nhập.
+        // chưa đăng nhập mà gọi route API lạ là ăn 401 luôn
         for (String route : new String[]{"/api/no-route", "/v1/no-route", "/v3/no-route"}) {
             mockMvc.perform(get(route).accept(MediaType.TEXT_HTML))
                     .andExpect(status().isUnauthorized())
@@ -122,7 +122,7 @@ class SpaControllerTest {
                     .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
         }
 
-        // Khi đã đăng nhập, route API không tồn tại trả 404 dạng JSON thay vì index.html.
+        // đăng nhập rồi mà gọi route API lạ phải trả 404 kiểu JSON chứ đừng trả index.html
         userRepository.deleteAll();
         User viewer = userRepository.saveAndFlush(new User(
                 "spa_viewer", "spa.viewer@example.com", "pw", "SPA Viewer",

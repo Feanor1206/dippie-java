@@ -5,7 +5,7 @@ import com.dippie.model.movie.Movie;
 
 import java.time.LocalDateTime;
 
-// DTO trả về cho từng mục phim trong danh sách yêu thích hoặc xem sau.
+// view một phim trong danh sách yêu thích hay xem sau
 public record LibraryItemView(
         Long id,
         Long userId,

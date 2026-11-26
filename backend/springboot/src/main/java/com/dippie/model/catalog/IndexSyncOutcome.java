@@ -1,6 +1,6 @@
 package com.dippie.model.catalog;
 
-// Trạng thái trả về khi đồng bộ một snapshot danh mục sang bộ chỉ mục tìm kiếm.
+// kết quả trạng thái sau khi đẩy một snapshot catalog sang index tìm kiếm
 public enum IndexSyncOutcome {
     READY, PENDING, BUILDING, SYNC_FAILED
 }

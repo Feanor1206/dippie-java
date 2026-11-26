@@ -16,7 +16,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 
-// Nhánh Strategy ghi email ra tệp .eml trên ổ đĩa thay cho SMTP thật, dùng khi chạy dev, demo hoặc test.
+// nhánh Strategy xuất mail ra file .eml trên đĩa thay vì SMTP thật, tiện lúc chạy dev, demo với test
 public class FileOutboxMailDeliveryStrategy implements MailDeliveryStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(FileOutboxMailDeliveryStrategy.class);
@@ -32,7 +32,7 @@ public class FileOutboxMailDeliveryStrategy implements MailDeliveryStrategy {
         this.clock = clock;
     }
 
-    // Tạo thư mục outbox nếu chưa có, xuất tệp .eml chuẩn UTF-8 rồi ghi đúng một dòng log.
+    // tạo thư mục outbox nếu chưa có, xuất file .eml UTF-8 rồi ghi đúng 1 dòng log
     @Override
     public void deliver(EmailMessage message) {
         Instant now = clock.instant();
@@ -48,14 +48,14 @@ public class FileOutboxMailDeliveryStrategy implements MailDeliveryStrategy {
                     StandardOpenOption.CREATE_NEW,
                     StandardOpenOption.WRITE
             );
-            // Việt đừng thêm email người nhận vào dòng log này nhé, chỉ in thư mục để tránh lọt PII ra file log.
+            // Việt đừng nhét email người nhận vào log chỗ này nhé, chỉ in thư mục kẻo lọt PII ra file log
             log.info("Đã lưu một email mới vào thư mục {}", directory);
         } catch (IOException ex) {
             throw new IllegalStateException("Không thể lưu tệp email vào thư mục hộp thư.", ex);
         }
     }
 
-    // Xuất nội dung theo chuẩn RFC 5322 kèm charset UTF-8 để mở trực tiếp trên trình đọc thư vẫn nguyên dấu tiếng Việt.
+    // format theo chuẩn RFC 5322 kèm UTF-8 để mở thẳng trên app mail không bị lỗi dấu tiếng Việt
     private String formatEml(EmailMessage message, Instant sentAt) {
         String rfcDate = DateTimeFormatter.RFC_1123_DATE_TIME.format(sentAt.atOffset(ZoneOffset.UTC));
         return "From: " + properties.from() + "\r\n"
@@ -69,7 +69,7 @@ public class FileOutboxMailDeliveryStrategy implements MailDeliveryStrategy {
                 + message.body();
     }
 
-    // Ghép tên tệp <timestamp>-<recipient>.eml; nếu hai thư gửi trùng mili giây thì thêm hậu tố số để không ghi đè.
+    // đặt tên file <timestamp>-<recipient>.eml, lỡ 2 mail gửi trùng mili giây thì gắn thêm đuôi số kẻo ghi đè
     private static Path resolveUniqueFilePath(Path directory, Instant now, String recipient) {
         String timestamp = FILE_TIMESTAMP.format(now);
         String safeRecipient = sanitizeFilenameSegment(recipient);
@@ -83,7 +83,7 @@ public class FileOutboxMailDeliveryStrategy implements MailDeliveryStrategy {
         return candidate;
     }
 
-    // Thay các ký tự không hợp lệ cho tên tệp trên Windows và chặn chuỗi ".." để tránh ghi ra ngoài thư mục outbox.
+    // lọc ký tự cấm trên Windows và chặn ".." kẻo nó ghi trồi ra ngoài thư mục outbox
     private static String sanitizeFilenameSegment(String recipient) {
         String cleaned = recipient.replaceAll("[^a-zA-Z0-9._@-]", "_").replace("..", "_");
         return cleaned.isBlank() ? "recipient" : cleaned;

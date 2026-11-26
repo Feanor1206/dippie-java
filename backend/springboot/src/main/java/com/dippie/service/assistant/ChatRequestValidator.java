@@ -15,16 +15,14 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-// Giải mã và kiểm tra body JSON gửi lên /api/chat: chặn trường lạ, giới hạn độ dài chữ và chỉ nhận role user/assistant.
+// đọc và kiểm tra JSON gửi lên /api/chat, chặn field lạ, giới hạn độ dài và chỉ nhận role user hay assistant
 public final class ChatRequestValidator {
 
-    private static final String MISSING_QUERY_DETAIL = "Bạn chưa nhập câu hỏi cho CineBot.";
     private static final String INVALID_JSON_DETAIL = "Dữ liệu gửi lên không đúng định dạng.";
     private static final String INVALID_MESSAGE_DETAIL =
             "Mỗi tin nhắn trong lịch sử cần có vai trò user hoặc assistant và không dài quá 4000 ký tự.";
     private static final int MAX_TEXT_LENGTH = 4000;
     private static final int MAX_MESSAGES = 40;
-    private static final int MAX_SESSION_ID_LENGTH = 128;
     private static final int MAX_REFERENCES = 100;
     private static final int MAX_REFERENCE_LENGTH = 300;
     private static final Pattern SESSION_ID_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+$");
@@ -36,7 +34,7 @@ public final class ChatRequestValidator {
         this.objectMapper = objectMapper;
     }
 
-    // Nhận cả field query lẫn message; nếu cả hai đều trống thì lấy tin nhắn cuối trong messages làm câu hỏi hiệu lực.
+    // nhận cả query lẫn message, trống hết thì lấy tin cuối trong messages làm câu hỏi chính
     public ValidatedChatRequest parseAndValidate(byte[] rawBody) {
         JsonNode root = parseJsonObject(rawBody);
         rejectUnknownFields(root);
@@ -50,7 +48,7 @@ public final class ChatRequestValidator {
             effectiveQuery = messages.getLast().content();
         }
         if (effectiveQuery.isBlank()) {
-            throw new ChatValidationException(HttpStatus.BAD_REQUEST, MISSING_QUERY_DETAIL);
+            throw new ChatValidationException(HttpStatus.BAD_REQUEST, "Bạn chưa nhập câu hỏi cho CineBot.");
         }
         return new ValidatedChatRequest(effectiveQuery.trim(), messages);
     }
@@ -110,13 +108,13 @@ public final class ChatRequestValidator {
             throw unprocessable("Mã phiên phải là chuỗi ký tự.");
         }
         String sessionId = sessionNode.asText();
-        if (sessionId.isEmpty() || sessionId.length() > MAX_SESSION_ID_LENGTH
+        if (sessionId.isEmpty() || sessionId.length() > 128
                 || !SESSION_ID_PATTERN.matcher(sessionId).matches()) {
             throw unprocessable("Mã phiên không hợp lệ.");
         }
     }
 
-    // Chỉ tin nhắn vai trò assistant mới giữ itemIds và documentIds, còn role khác như system bị chặn luôn ở đây.
+    // chỉ role assistant mới giữ itemIds với documentIds, role lạ kiểu system chặn luôn ở đây
     private List<ChatHistoryMessage> parseMessages(JsonNode root) {
         JsonNode messagesNode = root.get("messages");
         if (messagesNode == null || messagesNode.isNull()) {
@@ -172,11 +170,11 @@ public final class ChatRequestValidator {
         return new ChatValidationException(HttpStatus.UNPROCESSABLE_ENTITY, detail);
     }
 
-    // Câu hỏi hiệu lực cùng danh sách lịch sử hội thoại sau khi đã qua bước kiểm tra.
+    // câu hỏi chính kèm lịch sử chat sau khi qua bước kiểm tra
     public record ValidatedChatRequest(String query, List<ChatHistoryMessage> messages) {
     }
 
-    // Kế thừa DomainException để báo lỗi dữ liệu đầu vào /api/chat về JSON {"detail": "..."}.
+    // kế thừa DomainException để lỗi đầu vào /api/chat trả về JSON dạng {"detail": thông báo}
     public static final class ChatValidationException extends DomainException {
 
         public ChatValidationException(HttpStatus status, String detail) {

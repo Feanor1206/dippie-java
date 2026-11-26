@@ -2,7 +2,7 @@ package com.dippie.dto.admin;
 
 import java.util.List;
 
-// Gói toàn bộ chỉ số vận hành trả cho màn hình thống kê, sao chép hai danh sách xếp hạng thành bất biến.
+// gom mấy số liệu thống kê cho màn admin, copy hai list top sang bất biến luôn
 public record AdminStatsResponse(
         long totalUsers,
         long activeUsers,

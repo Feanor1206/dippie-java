@@ -33,7 +33,7 @@ import static com.dippie.model.catalog.CatalogCollection.MEDIA_ASSETS;
 import static com.dippie.model.catalog.CatalogCollection.SEASONS;
 import static com.dippie.model.catalog.CatalogCollection.SERIES;
 
-// Đồng bộ dữ liệu từ các bảng catalog mới sang bảng cũ movies và media_assets để các trang duyệt phim và phát video cũ vẫn chạy ổn.
+// đồng bộ dữ liệu từ mấy bảng catalog mới sang bảng cũ movies với media_assets để trang duyệt phim và phát video cũ vẫn chạy ngon
 @Repository
 public class CatalogLegacyRows {
 
@@ -47,7 +47,7 @@ public class CatalogLegacyRows {
         this.movieGenres = movieGenres;
     }
 
-    // Nạp trước và khóa các hàng trong bảng movies cho tất cả bộ phim, tập và tệp chuẩn bị cập nhật.
+    // kéo sẵn và khóa mấy hàng bảng movies cho toàn bộ phim, tập với file sắp sửa
     public Map<String, Movie> loadMovies(JsonNode document) {
         Set<String> ids = new HashSet<>();
         SERIES.items(document).forEach(item -> ids.add(item.path("id").textValue()));
@@ -66,7 +66,7 @@ public class CatalogLegacyRows {
         }
     }
 
-    // Cập nhật tiêu đề, năm phát hành, thời lượng, mô tả và thể loại cho mọi hàng Movie bị ảnh hưởng bởi đợt nhập.
+    // cập nhật tiêu đề, năm, thời lượng, mô tả với thể loại cho mọi hàng Movie bị đụng tới trong đợt nhập
     public void syncMetadata(JsonNode document, Map<String, Movie> movies) {
         var seriesIds = ids(SERIES, document);
         var seasonIds = ids(SEASONS, document);
@@ -75,7 +75,7 @@ public class CatalogLegacyRows {
             return;
         }
 
-        // Khi bộ phim hoặc mùa đổi thông tin thì kéo cả các tập con để tính lại năm phát hành và thể loại kế thừa.
+        // bộ hay mùa đổi thông tin thì kéo luôn mấy tập con lên tính lại năm phát hành với thể loại kế thừa
         var series = seriesIds.isEmpty() ? List.<CatalogSeries>of()
                 : entities.createQuery("select series from CatalogSeries series where series.id in :ids",
                         CatalogSeries.class).setParameter("ids", seriesIds).getResultList();
@@ -91,7 +91,7 @@ public class CatalogLegacyRows {
         episodes.stream().map(row -> row.episode().getId()).filter(id -> !movies.containsKey(id)).forEach(missing::add);
         loadMovies(missing, movies);
 
-        // Ghi metadata mới vào từng hàng Movie rồi đồng bộ lại bảng nối movie_genres.
+        // ghi metadata mới vào từng hàng Movie rồi đồng bộ lại bảng nối movie_genres
         Map<String, Set<String>> genres = new LinkedHashMap<>();
         for (CatalogSeries row : series) {
             applyMetadata(movies, genres, row.getId(), row.getTitle(), row.getReleaseYearStart(), CatalogDisplayText.SERIES,
@@ -130,7 +130,7 @@ public class CatalogLegacyRows {
         return ids;
     }
 
-    // Đồng bộ danh sách CatalogMediaAsset sang bảng media_assets cũ; nếu phim đích chưa có trong movies thì tạo tạm một hàng giữ khóa ngoại.
+    // đồng bộ CatalogMediaAsset sang bảng media_assets cũ, phim đích chưa có trong movies thì tạo tạm 1 hàng giữ khóa ngoại
     public void syncAssets(JsonNode items, List<CatalogMediaAsset> assets, Map<String, Movie> movies) {
         if (assets.isEmpty()) {
             return;
@@ -141,7 +141,7 @@ public class CatalogLegacyRows {
                 .setParameter("ids", ids).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList()
                 .forEach(asset -> legacy.put(asset.getId(), asset));
 
-        // Phải tạo và flush đủ các hàng Movie liên kết trước vì media_assets.movie_id có ràng buộc khóa ngoại.
+        // nhớ tạo rồi flush đủ mấy hàng Movie liên kết trước nha, không là vướng khóa ngoại media_assets.movie_id
         Map<String, Set<String>> linkedMovieGenres = new HashMap<>();
         for (int index = 0; index < assets.size(); index++) {
             String id = assets.get(index).getId();
@@ -156,7 +156,7 @@ public class CatalogLegacyRows {
         movieGenres.sync(linkedMovieGenres);
         entities.flush();
 
-        // Suy đoán MIME từ đuôi tệp rồi chèn mới hoặc cập nhật từng bản ghi MediaAsset cũ.
+        // đoán MIME theo đuôi file rồi chèn mới hay cập nhật từng bản ghi MediaAsset cũ
         for (int index = 0; index < assets.size(); index++) {
             CatalogMediaAsset asset = assets.get(index);
             String id = asset.getId();
@@ -180,7 +180,7 @@ public class CatalogLegacyRows {
         return movie;
     }
 
-    // Record hứng kết quả JPQL gom tập phim kèm bộ và mùa cha để suy ra năm phát hành.
+    // record hứng kết quả JPQL gom tập phim kèm bộ với mùa cha để suy ra năm phát hành
     private record EpisodeRow(CatalogEpisode episode, CatalogSeries series, CatalogSeason season) {
     }
 

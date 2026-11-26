@@ -18,7 +18,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Bộ ca test cho IntentParser: tách thể loại cần/tránh, mốc năm, số lượng, hỏi thông tin bộ phim, câu chỉnh bộ lọc và JSON snake_case.
+// test IntentParser tách thể loại cần hay tránh, mốc năm, số lượng, hỏi thông tin phim, chỉnh filter với JSON snake_case
 class IntentParserTest {
 
     private final IntentParser parser = new IntentParser();

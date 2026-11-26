@@ -1,6 +1,6 @@
 package com.dippie.desktop.service;
 
-// Invoker của mẫu Command, chỉ giữ thao tác sửa tài khoản thành công gần nhất trong phiên này.
+// kiểu Command (vai Invoker), chỉ giữ thao tác sửa tài khoản thành công gần nhất trong phiên này
 public final class CommandHistory {
     private Command last;
 
@@ -13,7 +13,7 @@ public final class CommandHistory {
         return last != null;
     }
 
-    // Chỉ xóa lịch sử sau khi giao dịch hoàn tác chạy xong; nếu bị lỗi thì giữ nguyên trạng thái.
+    // chỉ xóa lịch sử sau khi transaction hoàn tác chạy xong, lỡ lỗi thì giữ nguyên trạng thái
     public void undo() {
         if (last != null) {
             last.undo();

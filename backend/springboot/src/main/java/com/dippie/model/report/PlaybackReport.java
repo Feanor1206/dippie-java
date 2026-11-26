@@ -20,8 +20,8 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
-// Bảng playback_reports lưu báo lỗi phát video từ người xem và kết quả xử lý của admin.
-// Hai khóa ngoại tới User đều đặt SET_NULL để khi tài khoản bị xóa thì dữ liệu báo lỗi vẫn được giữ lại.
+// bảng playback_reports lưu báo lỗi phát video với kết quả xử lý của admin
+// hai khóa ngoại sang User đều đặt SET_NULL để xóa tài khoản rồi dữ liệu báo lỗi vẫn còn nguyên
 @Entity
 @Table(
         name = "playback_reports",
@@ -162,7 +162,7 @@ public class PlaybackReport {
         return updatedAt;
     }
 
-    // Cập nhật trạng thái xử lý, mã admin phụ trách và mốc thời gian cập nhật.
+    // cập nhật trạng thái xử lý, id admin xử lý với giờ cập nhật
     public void updateResolution(PlaybackReportStatus nextStatus, Long resolverUserId, LocalDateTime resolvedAt) {
         this.status = nextStatus.code();
         this.resolvedByUserId = resolverUserId;

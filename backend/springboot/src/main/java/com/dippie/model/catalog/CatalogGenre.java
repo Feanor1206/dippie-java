@@ -11,7 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.stream.Stream;
 
-// Thể loại phim trong catalog (kế thừa CatalogRecord), tự parse nhãn đa ngôn ngữ từ labelsJson vì dữ liệu nguồn có thể ở dạng object hoặc mảng.
+// thể loại phim (kế thừa CatalogRecord), tự parse labelsJson đa ngôn ngữ vì dữ liệu nguồn lúc là object lúc là mảng
 @Entity
 @Table(name = "catalog_genres")
 public class CatalogGenre extends CatalogRecord {
@@ -28,7 +28,7 @@ public class CatalogGenre extends CatalogRecord {
     protected CatalogGenre() {
     }
 
-    // Chép đè nhãn, tên gọi khác và mô tả thể loại từ bản ghi mới import.
+    // import đè thì chép lại nhãn, tên gọi khác với mô tả thể loại
     public void applyImport(CatalogGenre imported) {
         replaceRecordFrom(imported);
         labelsJson = imported.labelsJson;
@@ -44,12 +44,12 @@ public class CatalogGenre extends CatalogRecord {
         this.description = description;
     }
 
-    // Trích nhãn của thể loại theo mã ngôn ngữ truyền vào, trả null nếu JSON lỗi hoặc không có ngôn ngữ đó.
+    // lấy nhãn theo mã ngôn ngữ, JSON lỗi hay không có ngôn ngữ đó thì trả null
     public String label(String language) {
         return JsonText.parse(labelsJson).map(labels -> extractLabel(labels, language)).orElse(null);
     }
 
-    // Chọn nhãn hiển thị ưu tiên tiếng Việt, rồi tiếng Anh, nhãn hợp lệ đầu tiên trong JSON, cuối cùng mới lấy id.
+    // chọn nhãn ưu tiên tiếng Việt, tới tiếng Anh, tới nhãn hợp lệ đầu tiên, hết nữa mới rơi về id
     public String preferredLabel() {
         return JsonText.parse(labelsJson).map(labels -> {
             String vi = extractLabel(labels, "vi");
@@ -61,26 +61,26 @@ public class CatalogGenre extends CatalogRecord {
         }).orElse(getId());
     }
 
-    // Gom id, mọi nhãn đa ngôn ngữ và danh sách aliases thành tập từ khóa tìm kiếm bất biến.
+    // gom id, đủ nhãn đa ngôn ngữ với aliases thành tập từ khóa tìm kiếm bất biến
     public Set<String> allSearchTerms() {
         Set<String> terms = new LinkedHashSet<>();
         terms.add(getId());
         JsonText.parse(labelsJson).ifPresent(labels -> labelValues(labels).forEach(terms::add));
-        // Mỗi phần tử trong aliasesJson có thể là chuỗi thẳng hoặc object có trường text.
+        // phần tử trong aliasesJson lúc là chuỗi thẳng lúc là object có trường text
         JsonText.parse(aliasesJson).filter(JsonNode::isArray).ifPresent(aliases -> aliases.valueStream()
                 .map(alias -> alias.isTextual() ? alias.textValue() : alias.path("text").textValue())
                 .filter(term -> term != null && !term.isBlank()).map(String::strip).forEach(terms::add));
         return Set.copyOf(terms);
     }
 
-    // Hỗ trợ cả hai kiểu cấu trúc labelsJson: object { "vi": "..." } và mảng [{ "language": "vi", "text": "..." }].
+    // đỡ được cả hai kiểu labelsJson: object {"vi": "nhãn"} lẫn mảng [{"language": "vi", "text": "nhãn"}]
     private static Stream<String> labelValues(JsonNode labels) {
         Stream<String> raw = labels.isObject() ? labels.valueStream().map(JsonNode::textValue)
                 : labels.isArray() ? labels.valueStream().map(item -> item.path("text").textValue()) : Stream.empty();
         return raw.filter(text -> text != null && !text.isBlank()).map(String::strip);
     }
 
-    // Tìm nhãn khớp đúng mã ngôn ngữ cho cả dạng object lẫn dạng mảng.
+    // tìm nhãn đúng mã ngôn ngữ cho cả dạng object lẫn mảng
     private static String extractLabel(JsonNode labels, String language) {
         if (labels.isObject()) {
             String text = labels.path(language).textValue();

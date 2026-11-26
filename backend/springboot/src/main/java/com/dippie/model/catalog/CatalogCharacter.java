@@ -4,7 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 
-// Nhân vật thuộc các phim bộ trong catalog, kế thừa các cột id, JSON và phiên bản từ CatalogRecord.
+// nhân vật của các phim bộ trong catalog, kế thừa cột id, JSON với revision từ CatalogRecord
 @Entity
 @Table(name = "catalog_characters")
 public class CatalogCharacter extends CatalogRecord {
@@ -39,7 +39,7 @@ public class CatalogCharacter extends CatalogRecord {
     protected CatalogCharacter() {
     }
 
-    // Cập nhật mô tả, vai trò và quan hệ nhân vật khi import lại; voiceCreditsJson và artworksJson không ghi đè ở đây.
+    // re-import thì chép lại mô tả, vai trò với quan hệ nhân vật, giữ nguyên voiceCreditsJson với artworksJson
     public void applyImport(CatalogCharacter imported) {
         replaceRecordFrom(imported);
         seriesIdsJson = imported.seriesIdsJson;

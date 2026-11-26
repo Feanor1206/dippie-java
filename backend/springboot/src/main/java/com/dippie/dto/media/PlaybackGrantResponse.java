@@ -1,6 +1,6 @@
 package com.dippie.dto.media;
 
-// DTO trả về sau khi cấp vé phát tạm thời, giữ cả cặp tên trường grant/token và expiresIn/expiresInSeconds cho tương thích frontend.
+// trả vé phát tạm, giữ cả cặp grant/token với expiresIn/expiresInSeconds cho hợp frontend
 public record PlaybackGrantResponse(
         String assetId,
         String grant,

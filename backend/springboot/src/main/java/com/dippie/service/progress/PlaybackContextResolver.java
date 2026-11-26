@@ -23,12 +23,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
-// Kiểm tra tập phim và nguồn phát (YouTube hoặc file nội bộ) có đủ điều kiện mở cho người dùng hiện tại không.
-// Mình cố tình tách bước đọc DB (loadCandidate/validateRow) khỏi bước kiểm tra file trên đĩa (verifyPlayable) để không giữ giao dịch DB khi chạm ổ cứng.
+// check tập phim với nguồn phát (YouTube hay file nội bộ) có đủ điều kiện mở cho user hiện tại không
+// tách đọc DB (loadCandidate/validateRow) khỏi check file (verifyPlayable) để khỏi ngâm transaction lúc đụng ổ cứng
 @Component
 public class PlaybackContextResolver {
-
-    private static final String VIDEO_MIME_PREFIX = "video/";
 
     private final CatalogEpisodeRepository episodeRepository;
     private final CatalogSeriesRepository seriesRepository;
@@ -48,24 +46,24 @@ public class PlaybackContextResolver {
         this.mediaFiles = mediaFiles;
     }
 
-    // Dùng sealed interface của Java 21 để ép mọi chỗ xử lý assetId phải rẽ đủ hai nhánh YouTube và file nội bộ.
+    // xài sealed interface của Java 21 để ép chỗ nào xử lý assetId cũng phải rẽ đủ 2 nhánh YouTube với file nội bộ
     public sealed interface PlaybackAssetId permits PlaybackAssetId.Youtube, PlaybackAssetId.File {
 
         static PlaybackAssetId parse(String assetId) {
             return assetId.startsWith(YoutubeSource.PROGRESS_PREFIX) ? new Youtube(assetId) : new File(assetId);
         }
 
-        // Mã nguồn phát dạng youtube:<videoId>.
+        // mã nguồn YouTube dạng youtube:<videoId>
         record Youtube(String rawId) implements PlaybackAssetId {}
 
-        // File video cục bộ trỏ theo ID trong bảng media_assets.
+        // file video nội bộ trỏ theo ID ở bảng media_assets
         record File(String rawId) implements PlaybackAssetId {}
     }
 
-    // Kết quả sau bước kiểm tra DB, giữ kèm fileToVerify để bước gọi ngoài giao dịch xác minh tệp trên đĩa nếu cần.
+    // kết quả sau bước check DB, kẹp thêm fileToVerify để ra ngoài transaction check file trên đĩa nếu cần
     public record PendingPlayback(PlaybackContext context, MediaAsset fileToVerify) {}
 
-    // Tải đủ tập, bộ, mùa và nguồn video từ DB rồi kiểm tra quyền truy cập của người xem.
+    // kéo đủ tập, bộ, mùa với nguồn video từ DB rồi check quyền xem
     public Optional<PendingPlayback> loadCandidate(String episodeId, String assetId, Viewer viewer) {
         CatalogEpisode episode = episodeRepository.findById(episodeId).orElse(null);
         CatalogSeries series = episode == null ? null : seriesRepository.findById(episode.getSeriesId()).orElse(null);
@@ -79,13 +77,13 @@ public class PlaybackContextResolver {
         return validateMetadata(episode, series, season, catalogAsset, mediaAsset, parsed, viewer);
     }
 
-    // Dùng lại dữ liệu đã join sẵn trong ContextRow của listRecent để đỡ tốn thêm câu query lẻ cho từng dòng.
+    // xài lại dữ liệu đã join sẵn trong ContextRow của listRecent cho đỡ tốn query lẻ từng dòng
     public Optional<PendingPlayback> validateRow(WatchProgressRepository.ContextRow row, Viewer viewer) {
         return validateMetadata(row.episode(), row.series(), row.season(), row.catalogAsset(), row.mediaAsset(),
                 PlaybackAssetId.parse(row.progress().getAssetId()), viewer);
     }
 
-    // Tìm các tệp video nội bộ mà user được xem của tập đó (dùng khi cần kiểm tra tập có file thay thế YouTube hay không).
+    // tìm mấy file video nội bộ của tập mà user được xem, dùng lúc cần biết tập có file dự phòng thay YouTube không
     public List<MediaAsset> findCandidateVideoFiles(String episodeId, String assetId, Viewer viewer) {
         if (!(PlaybackAssetId.parse(assetId) instanceof PlaybackAssetId.Youtube)) {
             return List.of();
@@ -102,7 +100,7 @@ public class PlaybackContextResolver {
                 .toList();
     }
 
-    // Chạy ngoài giao dịch DB: nếu tập không cho nhúng YouTube và dựa vào file nội bộ thì kiểm tra file còn nằm trên đĩa.
+    // chạy ngoài transaction DB, tập nào tắt nhúng YouTube mà dựa vào file nội bộ thì check file còn trên đĩa không
     public Optional<PlaybackContext> verifyPlayable(PendingPlayback pending) {
         if (pending.fileToVerify() != null && mediaFiles.resolve(pending.fileToVerify()).isEmpty()) {
             return Optional.empty();
@@ -110,12 +108,12 @@ public class PlaybackContextResolver {
         return Optional.of(pending.context());
     }
 
-    // Kiểm tra xem có ít nhất một tệp ứng viên thực sự tồn tại trên ổ đĩa hay không.
+    // check xem có ít nhất 1 file ứng viên thật sự còn trên đĩa không
     public boolean anyFileExists(List<MediaAsset> candidates) {
         return candidates.stream().anyMatch(asset -> mediaFiles.resolve(asset).isPresent());
     }
 
-    // Kiểm tra cả chuỗi tập, bộ và mùa đều đã xuất bản, sau đó rẽ nhánh bằng switch pattern matching theo loại nguồn phát.
+    // check đủ tập, bộ với mùa đã xuất bản, rồi rẽ nhánh bằng switch pattern matching theo loại nguồn phát
     private Optional<PendingPlayback> validateMetadata(
             CatalogEpisode episode,
             CatalogSeries series,
@@ -125,7 +123,7 @@ public class PlaybackContextResolver {
             PlaybackAssetId assetId,
             Viewer viewer
     ) {
-        // Chỉ cần một mắt xích (tập, bộ hoặc mùa) đang là nháp thì coi như không phát được
+        // chỉ cần 1 mắt xích (tập, bộ hay mùa) còn là nháp thì coi như không phát được
         if (episode == null || !PublicationStatus.of(episode.getRecordJson()).isPublished()) {
             return Optional.empty();
         }
@@ -138,7 +136,7 @@ public class PlaybackContextResolver {
                 return Optional.empty();
             }
         }
-        // Khớp nguồn phát theo nhánh YouTube hoặc file nội bộ; chỉ cần kiểm tra file trên đĩa khi tập đã tắt nhúng YouTube
+        // khớp nguồn phát theo nhánh YouTube hay file nội bộ, chỉ cần check file trên đĩa khi tập đã tắt nhúng YouTube
         return switch (assetId) {
             case PlaybackAssetId.Youtube youtube -> YoutubeSource.matchesProgressAsset(episode.getRawJson(), youtube.rawId())
                     ? Optional.of(new PendingPlayback(new PlaybackContext(episode, series, season, youtube.rawId(), null), null))
@@ -155,7 +153,7 @@ public class PlaybackContextResolver {
         };
     }
 
-    // File nội bộ hợp lệ khi đúng quyền truy cập của viewer, có vai trò video tập phim và phủ trọn tập (không tính bản cắt partial).
+    // file nội bộ chỉ hợp lệ khi đúng quyền của viewer, là video tập phim và phủ trọn tập (bỏ qua mấy bản cắt partial)
     private static boolean canPlayFile(CatalogMediaAsset asset, String episodeId, Viewer viewer) {
         return asset != null && asset.isAccessibleBy(viewer != null, viewer != null && viewer.isAdmin())
                 && asset.isEpisodeVideo() && asset.coversFullEpisode(episodeId);
@@ -163,6 +161,6 @@ public class PlaybackContextResolver {
 
     private static boolean isVideo(MediaAsset asset) {
         return asset != null && asset.isAvailable() && asset.getMimeType() != null
-                && asset.getMimeType().toLowerCase(Locale.ROOT).startsWith(VIDEO_MIME_PREFIX);
+                && asset.getMimeType().toLowerCase(Locale.ROOT).startsWith("video/");
     }
 }

@@ -14,8 +14,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-// Adapter nối MediaFileResolver và MediaAssetRepository sang cổng MediaFileAvailability của gói catalog.
-// Mình bọc lại thế này để gói catalog không cần biết video đang nằm ở ổ đĩa nào hay bảng media_assets ra sao.
+// kiểu Adapter nối MediaFileResolver với MediaAssetRepository sang cổng MediaFileAvailability của gói catalog
+// bọc thế này để bên catalog khỏi phải quan tâm video nằm ổ nào hay bảng media_assets ra sao
 @Component
 public class MediaFileAvailabilityAdapter implements MediaFileAvailability {
 
@@ -30,7 +30,7 @@ public class MediaFileAvailabilityAdapter implements MediaFileAvailability {
         this.entities = entities;
     }
 
-    // Lọc ra các mã media thực sự tìm thấy tệp trên đĩa qua MediaFileResolver.
+    // lọc mấy mã media thật sự còn file trên đĩa qua MediaFileResolver
     @Override
     public Set<String> availableAssetIds(Collection<String> assetIds) {
         if (assetIds == null || assetIds.isEmpty()) {
@@ -45,7 +45,7 @@ public class MediaFileAvailabilityAdapter implements MediaFileAvailability {
         return Set.copyOf(available);
     }
 
-    // Trả bản đồ id sang cờ công khai cho các video khả dụng có mặt ở cả media_assets lẫn catalog.
+    // trả map id sang cờ public cho mấy video đang sẵn sàng có mặt ở cả media_assets lẫn catalog
     @Override
     @Transactional(readOnly = true)
     public Map<String, Boolean> availableVideoAssets() {

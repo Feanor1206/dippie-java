@@ -16,8 +16,8 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-// Bộ lọc dùng chung cho cả in-memory (Predicate<Movie>) lẫn câu SQL (Specification<Movie>).
-// Phần SQL tự loại bỏ hiddenIds để phim nháp hoặc bị ẩn không bao giờ lọt ra ngoài.
+// bộ lọc dùng chung cho cả lọc trong RAM (Predicate<Movie>) lẫn SQL (Specification<Movie>)
+// phía SQL tự loại hiddenIds để phim nháp hay bị ẩn không lọt ra ngoài
 public final class MovieFilter implements java.util.function.Predicate<Movie> {
 
     private static final String TOKEN_WHITESPACE = "[\\x{9}-\\x{D}\\x{1C}-\\x{20}\\x{1680}\\x{2000}-\\x{2006}"
@@ -42,13 +42,13 @@ public final class MovieFilter implements java.util.function.Predicate<Movie> {
         return new MovieFilter(rawQuery, tokens);
     }
 
-    // Sinh JPA Specification lọc theo năm, bỏ phim ẩn, khớp từ khóa và khớp thể loại ngay dưới DB.
-    // Mình dùng regexp_like kèm Pattern.quote thay vì LIKE để mấy ký tự như "100%" không biến thành wildcard SQL.
+    // dựng Specification lọc năm, bỏ phim ẩn, khớp từ khóa với thể loại ngay dưới DB
+    // dùng regexp_like kèm Pattern.quote thay vì LIKE kẻo mấy chuỗi kiểu "100%" thành wildcard SQL
     public Specification<Movie> specification(Integer yearMin, Integer yearMax, Set<String> hiddenIds,
             Function<String, Set<String>> genreNames) {
         return (movie, query, builder) -> {
             List<Predicate> filters = new ArrayList<>();
-            // Chặn theo khoảng năm phát hành và loại hết phim ẩn/bản nháp
+            // lọc theo khoảng năm rồi gạt hết phim ẩn với bản nháp
             if (yearMin != null) {
                 filters.add(builder.ge(movie.get("releaseYear"), yearMin));
             }
@@ -58,7 +58,7 @@ public final class MovieFilter implements java.util.function.Predicate<Movie> {
             if (!hiddenIds.isEmpty()) {
                 filters.add(builder.not(movie.get("id").in(hiddenIds)));
             }
-            // So khớp từ khóa theo chuỗi nguyên văn trên tiêu đề hoặc mô tả
+            // khớp nguyên văn từ khóa trên tiêu đề hay mô tả
             if (searchTerm != null) {
                 String literal = Pattern.quote(searchTerm);
                 filters.add(builder.or(matchesPattern(builder, movie.get("title"), literal),
@@ -71,7 +71,7 @@ public final class MovieFilter implements java.util.function.Predicate<Movie> {
         };
     }
 
-    // Việt để ý nhánh dự phòng chỗ này: nếu phim đã có dòng trong bảng movie_genres thì chỉ tin bảng liên kết, chỉ rơi về cột CSV movies.genres khi phim chưa được tách bảng.
+    // Việt để ý nhánh dự phòng chỗ này nha: phim đã có dòng bên movie_genres thì chỉ tin bảng nối, chưa tách bảng mới rơi về cột CSV movies.genres
     private Predicate genres(Root<Movie> movie, CriteriaQuery<?> query, CriteriaBuilder builder,
             Function<String, Set<String>> genreNames) {
         List<Predicate> linked = new ArrayList<>();
@@ -102,7 +102,7 @@ public final class MovieFilter implements java.util.function.Predicate<Movie> {
         return builder.exists(linkQuery);
     }
 
-    // Truyền cờ "c" sau khi đã lower() để tránh H2/MySQL tự bỏ dấu tiếng Việt làm sai kết quả lọc.
+    // lower() xong phải truyền thêm cờ "c" kẻo H2/MySQL tự bỏ dấu tiếng Việt làm lọc sai
     private static Predicate matchesPattern(CriteriaBuilder builder, Expression<String> column, String pattern) {
         return builder.isTrue(builder.function("regexp_like", Boolean.class, builder.lower(column),
                 ((HibernateCriteriaBuilder) builder).value(pattern), builder.literal("c")));
@@ -116,7 +116,7 @@ public final class MovieFilter implements java.util.function.Predicate<Movie> {
         return matches(movie.getTitle(), movie.getDescription(), movie.getGenres());
     }
 
-    // So khớp phim trên bộ nhớ theo đủ mọi thể loại yêu cầu và từ khóa hiện tại.
+    // check khớp trên RAM theo đủ hết thể loại yêu cầu với từ khóa
     public boolean matches(String title, String description, String genres) {
         for (String token : genreTokens) {
             if (!matchesGenreToken(genres, token)) {
@@ -126,7 +126,7 @@ public final class MovieFilter implements java.util.function.Predicate<Movie> {
         return matchesSearch(title, description, searchTerm);
     }
 
-    // Tách theo dấu phẩy rồi so khớp nguyên token (không nhận chuỗi con như "AnimationExtra" cho "animation").
+    // tách theo dấu phẩy rồi so nguyên token, không cho "AnimationExtra" ăn ké "animation"
     public static boolean matchesGenreToken(String genresText, String rawToken) {
         String token = normalizeTerm(rawToken);
         if (token == null) {
@@ -143,7 +143,7 @@ public final class MovieFilter implements java.util.function.Predicate<Movie> {
         return false;
     }
 
-    // Kiểm tra từ khóa có nằm trong tiêu đề hoặc mô tả không (không phân biệt hoa thường, giữ nguyên dấu).
+    // tìm từ khóa trong tiêu đề hay mô tả, bỏ qua hoa thường nhưng vẫn giữ dấu
     public static boolean matchesSearch(String title, String description, String rawQuery) {
         String term = normalizeTerm(rawQuery);
         if (term == null) {

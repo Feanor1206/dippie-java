@@ -27,7 +27,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-// Kiểm tra gợi ý theo tâm trạng: thứ tự kết quả tìm kiếm, biên thời lượng của preset và nhánh lùi về gợi ý theo sở thích.
+// test Strategy gợi ý theo tâm trạng: thứ tự tìm kiếm, biên thời lượng preset với nhánh rớt về sở thích
 class MoodRecommendationStrategyTest {
 
     private final CatalogSearch search = mock(CatalogSearch.class);

@@ -24,14 +24,12 @@ import java.util.Date;
 import java.util.Optional;
 import javax.crypto.SecretKey;
 
-// Xử lý ký và kiểm tra JWT (HS256) cho cả phiên đăng nhập lẫn vé phát video ngắn hạn.
+// ký và verify JWT (HS256) cho cả phiên đăng nhập lẫn vé phát video ngắn hạn
 @Service
 public class JwtService {
 
     private static final Logger log = LoggerFactory.getLogger(JwtService.class);
     private static final int MIN_SECRET_BYTES = 32;
-    private static final int MAX_SUBJECT_LENGTH = 50;
-    private static final String ALGORITHM_HS256 = "HS256";
     private static final String CLAIM_TYPE = "type";
     private static final String CLAIM_PURPOSE = "purpose";
     private static final String CLAIM_ASSET_ID = "assetId";
@@ -66,7 +64,7 @@ public class JwtService {
                 .build();
     }
 
-    // Dữ liệu rút ra sau khi xác minh token đăng nhập hợp lệ.
+    // dữ liệu lấy ra sau khi verify token đăng nhập hợp lệ
     public record LoginToken(String username, long tokenVersion) {
     }
 
@@ -74,7 +72,7 @@ public class JwtService {
         return issueLoginToken(username, 0L);
     }
 
-    // Ký token đăng nhập kèm tokenVersion để đổi mật khẩu hoặc đăng xuất là thu hồi được ngay.
+    // ký token đăng nhập kèm tokenVersion để đổi mật khẩu hay đăng xuất là thu hồi được liền
     public String issueLoginToken(String username, long tokenVersion) {
         Instant now = clock.instant();
         Instant expiresAt = now.plus(expiration);
@@ -87,23 +85,23 @@ public class JwtService {
                 .compact();
     }
 
-    // Xác minh JWT đăng nhập; từ chối vé phát video và token thiếu hoặc sai kiểu claim ver.
+    // verify JWT đăng nhập, loại luôn vé phát video và mấy token thiếu hoặc sai kiểu claim ver
     public Optional<LoginToken> parseLoginToken(String token) {
         Optional<Claims> parsed = parseVerifiedClaims(token);
         if (parsed.isEmpty()) {
             return Optional.empty();
         }
         Claims claims = parsed.get();
-        // Chặn tuyệt đối không cho mang vé phát video ra dùng như token đăng nhập.
+        // chặn cứng không cho lấy vé phát video giả làm token đăng nhập
         if (TYPE_PLAYBACK_GRANT.equals(claims.get(CLAIM_TYPE))
                 || PURPOSE_PLAYBACK.equals(claims.get(CLAIM_PURPOSE))) {
             return Optional.empty();
         }
         String subject = claims.getSubject();
-        if (subject == null || subject.isEmpty() || subject.length() > MAX_SUBJECT_LENGTH) {
+        if (subject == null || subject.isEmpty() || subject.length() > 50) {
             return Optional.empty();
         }
-        // Claim ver phải là số nguyên không âm để loại các token cũ thiếu phiên bản.
+        // claim ver phải là số nguyên không âm để loại mấy token cũ thiếu phiên bản
         Object rawVersion = claims.get(CLAIM_VERSION);
         if (!(rawVersion instanceof Integer || rawVersion instanceof Long)) {
             return Optional.empty();
@@ -119,11 +117,11 @@ public class JwtService {
         return parseLoginToken(token).map(LoginToken::username);
     }
 
-    // Kết quả xác minh vé phát video, kèm userId và tokenVersion khi người xem đã đăng nhập.
+    // kết quả verify vé phát video, kèm userId và tokenVersion nếu người xem đã đăng nhập
     public record VerifiedPlaybackGrant(PlaybackPrincipal principal, Long userId, Long tokenVersion) {
     }
 
-    // Cấp vé phát video ngắn hạn gắn với một assetId cụ thể (bản cũ theo username).
+    // cấp vé phát video ngắn hạn gắn với 1 assetId cụ thể (bản cũ theo username)
     public String issuePlaybackGrant(String assetId, String username, Role role) {
         Instant now = clock.instant();
         Instant expiresAt = now.plus(playbackGrantValidity);
@@ -141,7 +139,7 @@ public class JwtService {
                 .compact();
     }
 
-    // Cấp vé phát video gắn userId và tokenVersion thay vì username, để đăng xuất hoặc khóa tài khoản là thu hồi được liền.
+    // cấp vé phát video gắn userId và tokenVersion thay vì username để đăng xuất hay khóa nick là thu hồi được liền
     public String issuePlaybackGrant(String assetId, Long userId, long tokenVersion, Role role) {
         Instant now = clock.instant();
         Instant expiresAt = now.plus(playbackGrantValidity);
@@ -165,7 +163,7 @@ public class JwtService {
         return parsePlaybackGrant(token, assetId).map(VerifiedPlaybackGrant::principal);
     }
 
-    // Kiểm tra vé phát video có đúng loại và khớp assetId hay không, rồi ánh xạ sang PlaybackPrincipal.
+    // check vé phát video có đúng loại và khớp assetId không rồi đổi sang PlaybackPrincipal
     public Optional<VerifiedPlaybackGrant> parsePlaybackGrant(String token, String assetId) {
         if (assetId == null || assetId.isEmpty()) {
             return Optional.empty();
@@ -175,14 +173,14 @@ public class JwtService {
             return Optional.empty();
         }
         Claims claims = parsed.get();
-        // Vé phải mang đúng loại playback_grant và đúng mã assetId đang yêu cầu.
+        // vé phải đúng loại playback_grant và đúng assetId đang gọi
         if (!TYPE_PLAYBACK_GRANT.equals(claims.get(CLAIM_TYPE))
                 || !assetId.equals(claims.get(CLAIM_ASSET_ID))) {
             return Optional.empty();
         }
         Long userId = readNonNegativeLong(claims.get(CLAIM_USER_ID));
         Long version = readNonNegativeLong(claims.get(CLAIM_VERSION));
-        // Đổi claim role sang nhánh tương ứng của PlaybackPrincipal.
+        // đổi claim role sang nhánh tương ứng của PlaybackPrincipal
         Object rawRole = claims.get(CLAIM_ROLE);
         String roleName = rawRole == null ? "" : rawRole.toString();
         if (Role.ROLE_ADMIN.name().equals(roleName)) {
@@ -202,14 +200,14 @@ public class JwtService {
         return null;
     }
 
-    // Kiểm tra chữ ký HS256, hạn dùng và các trường bắt buộc trước khi đọc claim.
+    // check chữ ký HS256, hạn dùng và mấy trường bắt buộc trước khi đọc claim
     private Optional<Claims> parseVerifiedClaims(String token) {
         if (token == null || token.isBlank()) {
             return Optional.empty();
         }
         try {
             Jws<Claims> jws = jwtParser.parseSignedClaims(token);
-            if (!ALGORITHM_HS256.equals(jws.getHeader().getAlgorithm())) {
+            if (!"HS256".equals(jws.getHeader().getAlgorithm())) {
                 return Optional.empty();
             }
             Claims claims = jws.getPayload();
@@ -222,8 +220,8 @@ public class JwtService {
         }
     }
 
-    // Đọc khóa ký HS256 từ APP_JWT_SECRET. Việt nhớ là chỉ profile demo/test thuần mới được sinh khóa tạm,
-    // hễ có mysql hay prod là bắt buộc cấu hình khóa riêng.
+    // đọc khóa ký HS256 từ APP_JWT_SECRET, Việt nhớ là chỉ profile demo/test thuần mới được sinh khóa tạm nha
+    // hễ có mysql hay prod là bắt buộc cấu hình khóa riêng
     private static SecretKey resolveSigningKey(String configuredSecret, Environment environment) {
         if (configuredSecret == null || configuredSecret.isBlank()) {
             if (environment.acceptsProfiles(Profiles.of("(demo | test) & !mysql & !prod"))) {
@@ -236,7 +234,7 @@ public class JwtService {
                     "APP_JWT_SECRET phải là khóa riêng dài ít nhất 32 byte, không dùng lại khóa mặc định cũ."
             );
         }
-        // Giải mã Base64 rồi chặn các khóa quá ngắn dưới 32 byte hoặc khóa mẫu cũ từng nằm trong repo.
+        // giải mã Base64 rồi chặn mấy khóa dưới 32 byte hoặc khóa mẫu cũ từng nằm trong repo
         byte[] decoded;
         try {
             decoded = Base64.getDecoder().decode(configuredSecret);

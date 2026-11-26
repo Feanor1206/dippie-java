@@ -10,7 +10,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-// Test chọn cấu hình H2 mặc định và đọc tệp desktop.properties mà không cần mở DB thật.
+// test chọn H2 mặc định và đọc file desktop.properties mà không cần mở DB thật
 class DatabaseFactoryTest {
     @TempDir
     Path directory;

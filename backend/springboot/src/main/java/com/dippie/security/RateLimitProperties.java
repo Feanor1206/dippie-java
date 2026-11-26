@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 import java.time.Duration;
 
-// Cấu hình ngưỡng và cửa sổ giới hạn tần suất theo IP và theo tài khoản, đọc từ dippie.auth.rate-limit.
+// cấu hình ngưỡng và cửa sổ rate limit theo IP với tài khoản, đọc từ dippie.auth.rate-limit
 @ConfigurationProperties("dippie.auth.rate-limit")
 public record RateLimitProperties(
         int maxAttempts,
@@ -15,13 +15,7 @@ public record RateLimitProperties(
         Duration accountWindow
 ) {
 
-    private static final int DEFAULT_IP_MAX_ATTEMPTS = 30;
-    private static final Duration DEFAULT_IP_WINDOW = Duration.ofMinutes(1);
-    private static final int DEFAULT_MAX_CLIENTS = 4096;
-    private static final int DEFAULT_ACCOUNT_MAX_ATTEMPTS = 10;
-    private static final Duration DEFAULT_ACCOUNT_WINDOW = Duration.ofMinutes(15);
-
-    // Hàm tạo rút gọn cho test khi muốn dùng chung ngưỡng và cửa sổ cho cả IP lẫn tài khoản.
+    // constructor gọn cho test khi muốn dùng chung ngưỡng và cửa sổ cho cả IP lẫn tài khoản
     public RateLimitProperties(int maxAttempts, Duration window, int maxClients) {
         this(maxAttempts, window, maxClients, maxAttempts, window);
     }
@@ -29,19 +23,19 @@ public record RateLimitProperties(
     @ConstructorBinding
     public RateLimitProperties {
         if (maxAttempts <= 0) {
-            maxAttempts = DEFAULT_IP_MAX_ATTEMPTS;
+            maxAttempts = 30;
         }
         if (window == null || window.isNegative() || window.isZero()) {
-            window = DEFAULT_IP_WINDOW;
+            window = Duration.ofMinutes(1);
         }
         if (maxClients <= 0) {
-            maxClients = DEFAULT_MAX_CLIENTS;
+            maxClients = 4096;
         }
         if (accountMaxAttempts <= 0) {
-            accountMaxAttempts = DEFAULT_ACCOUNT_MAX_ATTEMPTS;
+            accountMaxAttempts = 10;
         }
         if (accountWindow == null || accountWindow.isNegative() || accountWindow.isZero()) {
-            accountWindow = DEFAULT_ACCOUNT_WINDOW;
+            accountWindow = Duration.ofMinutes(15);
         }
     }
 }

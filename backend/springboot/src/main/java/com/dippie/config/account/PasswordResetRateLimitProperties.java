@@ -4,7 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
 
-// Cấu hình giới hạn tần suất yêu cầu đặt lại mật khẩu theo IP, mặc định 5 lần trong 15 phút.
+// cấu hình rate limit quên mật khẩu theo IP, mặc định 5 lần trong 15 phút
 @ConfigurationProperties("dippie.password-reset.rate-limit")
 public record PasswordResetRateLimitProperties(int maxAttempts, Duration window, int maxClients) {
 

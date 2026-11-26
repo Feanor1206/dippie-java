@@ -21,12 +21,11 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Test đơn vị cho JwtService: ký và đọc token đăng nhập, vé phát video và kiểm tra quy tắc khóa bí mật.
+// test JwtService ký và đọc token login, vé phát video với check luật khóa bí mật
 class JwtServiceTest {
 
     private static final String VALID_SECRET = Base64.getEncoder().encodeToString(sequentialBytes(32));
     private static final String LEGACY_HEX_SECRET = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970";
-    private static final String LEGACY_TEXT_SECRET = "dippieSecretKeyForJwtAuthentication2026MustBeLongEnoughForHmacSha256";
 
     @Test
     void issuesAndParsesLoginToken() {
@@ -133,7 +132,7 @@ class JwtServiceTest {
             LEGACY_HEX_SECRET,
             "invalid!",
             "c2hvcnQ=",
-            LEGACY_TEXT_SECRET
+            "dippieSecretKeyForJwtAuthentication2026MustBeLongEnoughForHmacSha256"
     })
     void rejectsMissingKnownShortOrInvalidSecretOutsideDemoAndTest(String secret) {
         MutableClock clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
@@ -167,7 +166,7 @@ class JwtServiceTest {
         return bytes;
     }
 
-    // Đồng hồ giả cho phép tua thời gian tới trước để test token hết hạn mà không cần chờ thật.
+    // đồng hồ giả để tua giờ tới trước test token hết hạn cho nhanh, khỏi ngồi chờ thật
     static final class MutableClock extends Clock {
 
         private Instant current;

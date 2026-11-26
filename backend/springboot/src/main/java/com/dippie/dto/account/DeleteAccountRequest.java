@@ -1,6 +1,6 @@
 package com.dippie.dto.account;
 
-// Mật khẩu xác nhận gửi kèm khi người dùng yêu cầu xóa tài khoản của chính mình.
+// mật khẩu xác nhận lúc user tự xóa chính tài khoản đó
 public record DeleteAccountRequest(String password) {
 
     public String rawPassword() {

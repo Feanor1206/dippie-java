@@ -15,15 +15,11 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-// Kiểm tra cấu trúc JSON, giới hạn số lượng, trùng mã và đường dẫn tệp an toàn trước khi cho gói đi vào bước ghi CSDL.
+// check cấu trúc JSON, giới hạn số lượng, trùng mã với đường dẫn file an toàn trước khi cho gói xuống bước ghi DB
 @Component
 public class CatalogPackageValidator {
 
     private static final int MAX_ID_LENGTH = 100;
-    private static final int MAX_ASSET_ID_LENGTH = 64;
-    private static final int MAX_RELATIVE_PATH_LENGTH = 500;
-    private static final int MAX_ITEMS_PER_COLLECTION = 50_000;
-    private static final int MAX_TOTAL_PACKAGE_ITEMS = 100_000;
     private static final Pattern STORAGE_KEY = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}");
     private static final Pattern SHA256 = Pattern.compile("[a-fA-F0-9]{64}");
     private static final Pattern PARENT_PATH = Pattern.compile("\\.\\. *");
@@ -34,7 +30,7 @@ public class CatalogPackageValidator {
         return validate(document.readOnlyJson());
     }
 
-    // Kiểm tra thông tin gói chính và chặn tổng số mục vượt trần 100.000 để tránh payload khổng lồ làm nghẽn bộ nhớ.
+    // check thông tin gói chính rồi chặn tổng số mục quá 100.000 kẻo payload khủng làm nghẽn RAM
     public PackageIdentity validate(JsonNode document) {
         JsonNode packageNode = document.path("package");
         if (!packageNode.isObject() || !JsonText.isTruthy(packageNode.path("id"))) {
@@ -47,7 +43,7 @@ public class CatalogPackageValidator {
             JsonNode items = collection.items(document);
             if (!CatalogJson.absent(items) && items.isArray()) {
                 totalItems += items.size();
-                if (totalItems > MAX_TOTAL_PACKAGE_ITEMS) {
+                if (totalItems > 100_000) {
                     throw new CatalogInputException("package", "Gói danh mục vượt quá số lượng mục tối đa cho phép.");
                 }
             }
@@ -63,13 +59,13 @@ public class CatalogPackageValidator {
         if (!items.isArray()) {
             throw new CatalogInputException(collection.field(), "Trường này phải là một danh sách.");
         }
-        if (items.size() > MAX_ITEMS_PER_COLLECTION) {
+        if (items.size() > 50_000) {
             throw new CatalogInputException(collection.field(), "Danh sách vượt quá số lượng tối đa cho phép.");
         }
         Set<String> ids = new HashSet<>();
         Set<SegmentPosition> positions = new HashSet<>();
-        int idLimit = collection == CatalogCollection.MEDIA_ASSETS ? MAX_ASSET_ID_LENGTH : MAX_ID_LENGTH;
-        // Dùng Unicode caseFold lúc kiểm tra trùng mã (ví dụ Straße và STRASSE) để tránh vỡ khóa chính ở collation không phân biệt hoa thường.
+        int idLimit = collection == CatalogCollection.MEDIA_ASSETS ? 64 : MAX_ID_LENGTH;
+        // dùng Unicode caseFold lúc check trùng mã (kiểu Straße với STRASSE) kẻo vỡ khóa chính ở collation không phân biệt hoa thường
         for (int index = 0; index < items.size(); index++) {
             JsonNode item = items.get(index);
             String path = collection.field() + "[" + index + "]";
@@ -150,12 +146,12 @@ public class CatalogPackageValidator {
             checkId(item.path("episode_id"), path + ".episode_id", 100);
             checkId(item.path("source_id"), path + ".source_id", 100);
         }
-        // Chặn kind nằm ngoài tập giá trị ràng buộc CHECK của bảng text_tracks.
+        // chặn kind nằm ngoài tập ràng buộc CHECK của bảng text_tracks
         JsonNode kind = item.path("kind");
         if (!CatalogJson.absent(kind) && (!kind.isTextual() || !TEXT_TRACK_KINDS.contains(kind.textValue()))) {
             throw new CatalogInputException(path + ".kind", "Loại phụ đề hoặc văn bản không hợp lệ.");
         }
-        // Kiểm tra đủ 3 trường của tệp phụ đề ngoài và chặn đường dẫn vượt ra khỏi thư mục lưu trữ.
+        // check đủ 3 trường của file phụ đề ngoài và chặn đường dẫn nhảy khỏi thư mục lưu trữ
         JsonNode file = item.path("external_file");
         if (CatalogJson.absent(file)) {
             return;
@@ -176,7 +172,7 @@ public class CatalogPackageValidator {
     }
 
     private void validateAsset(JsonNode item, String id, String path) {
-        // Kiểm tra danh sách tập trong trường coverage nếu có khai báo.
+        // check danh sách tập trong coverage nếu gói có khai báo
         JsonNode coverage = item.path("coverage");
         if (!CatalogJson.absent(coverage)) {
             if (!coverage.isArray()) {
@@ -191,7 +187,7 @@ public class CatalogPackageValidator {
                 checkId(part.path("episode_id"), partPath + ".episode_id", 100);
             }
         }
-        // Xác minh loại tệp, đường dẫn lưu trữ tương đối an toàn và quyền truy cập hợp lệ.
+        // check loại file, đường dẫn tương đối an toàn với quyền truy cập hợp lệ
         JsonNode type = item.path("content_type");
         String contentType = type.isMissingNode() ? "video" : type.textValue();
         if (!"audio".equals(contentType) && !"video".equals(contentType)) {
@@ -203,7 +199,7 @@ public class CatalogPackageValidator {
         }
         JsonNode relativePathNode = storage.path("relative_path");
         String relativePath = relativePathNode.isMissingNode() ? "media/" + id + ".mp4" : relativePathNode.textValue();
-        if (!isRelativeMediaPath(relativePath) || relativePath.codePointCount(0, relativePath.length()) > MAX_RELATIVE_PATH_LENGTH) {
+        if (!isRelativeMediaPath(relativePath) || relativePath.codePointCount(0, relativePath.length()) > 500) {
             throw new CatalogInputException(path + ".storage.relative_path", "Đường dẫn tệp phải nằm trong thư mục lưu trữ.");
         }
         JsonNode policy = item.path("access_policy");
@@ -213,7 +209,7 @@ public class CatalogPackageValidator {
         }
     }
 
-    // Chặn đường dẫn tuyệt đối, backslash, dấu hai chấm, ký tự điều khiển và mọi đoạn ".." (kể cả kèm khoảng trắng) để ngừa path traversal.
+    // chặn path tuyệt đối, backslash, dấu hai chấm, ký tự điều khiển với mọi đoạn ".." (kể cả dính khoảng trắng) để ngừa path traversal
     private static boolean isRelativeMediaPath(String path) {
         if (path == null || UnicodeText.strip(path).isEmpty() || path.startsWith("/")
                 || path.chars().anyMatch(ch -> ch == '\\' || ch == ':' || ch < 32 || ch == 127)) {
@@ -253,11 +249,11 @@ public class CatalogPackageValidator {
         return node.isTextual() && pattern.matcher(node.textValue()).matches();
     }
 
-    // Mã gói và số phiên bản đã qua bước kiểm tra hợp lệ.
+    // mã gói với số phiên bản sau khi qua bước kiểm tra
     public record PackageIdentity(String id, int revision) {
     }
 
-    // Cặp episodeId và position dùng để bắt trùng thứ tự phân đoạn ngay trong cùng gói nhập.
+    // cặp episodeId với position để bắt trùng thứ tự phân đoạn ngay trong cùng gói nhập
     private record SegmentPosition(String episodeId, int position) {
     }
 }

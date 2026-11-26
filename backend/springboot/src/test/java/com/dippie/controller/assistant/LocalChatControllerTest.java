@@ -46,7 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Test tích hợp HTTP cho POST /api/chat: thứ tự khung SSE, kiểm tra JSON đầu vào, giới hạn dung lượng, 503 và ngắt kết nối giữa chừng.
+// test POST /api/chat: thứ tự SSE, validate JSON, trần dung lượng, 503 với rớt kết nối giữa chừng
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -290,6 +290,7 @@ class LocalChatControllerTest {
     }
 
     @Test
+    @SuppressWarnings("resource") // luồng giả trong RAM, khỏi close
     void flushesPerEventAndStopsWritingWhenClientDisconnects() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/chat");
         request.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -365,11 +366,11 @@ class LocalChatControllerTest {
         return events;
     }
 
-    // Một khung sự kiện SSE đã tách type và JSON payload để kiểm tra trong test.
+    // gói 1 event SSE đã tách sẵn type với JSON cho dễ assert
     private record ParsedSseEvent(String type, JsonNode data) {
     }
 
-    // Đăng ký FakeCatalogSearch thay cho chỉ mục thật khi chạy SpringBootTest.
+    // thế FakeCatalogSearch vào chỗ chỉ mục thật lúc chạy test
     @TestConfiguration
     static class FakeSearchConfig {
 
@@ -380,7 +381,7 @@ class LocalChatControllerTest {
         }
     }
 
-    // Bản giả lập CatalogSearch ghi lại truy vấn gần nhất và cho phép bật/tắt trạng thái sẵn sàng.
+    // mock CatalogSearch để lưu query gần nhất với bật tắt cờ ready theo ý
     static final class FakeCatalogSearch implements CatalogSearch {
 
         private final AtomicBoolean ready = new AtomicBoolean(true);

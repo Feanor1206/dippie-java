@@ -34,12 +34,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-// Facade gom toàn bộ luồng tìm kiếm, lọc phân trang, đọc thể loại và ghép thêm thông tin danh mục cùng điểm cộng đồng cho phim.
+// kiểu Facade gom tìm kiếm, lọc phân trang, đọc thể loại rồi ghép thêm thông tin danh mục với điểm cộng đồng
 @Service
 public class MovieQueryService {
-
-    private static final int DEFAULT_LIST_LIMIT = 200;
-    private static final int MAX_LIST_LIMIT = 500;
 
     private final MovieRepository movieRepository;
     private final MovieVisibility movieVisibility;
@@ -72,7 +69,7 @@ public class MovieQueryService {
         return listMovies(search, query, q, genre, null);
     }
 
-    // Trả danh sách phim khớp từ khóa và thể loại, chặn cứng số bản ghi ngay ở SQL (mặc định 200, tối đa 500) để không kéo cả bảng lên RAM.
+    // trả phim khớp từ khóa với thể loại, chặn cứng limit ngay dưới SQL (mặc định 200, tối đa 500) kẻo kéo cả bảng lên RAM
     public List<MovieView> listMovies(String search, String query, String q, String genre, Integer limit) {
         int effectiveLimit = normalizeLimit(limit);
         String effectiveSearch = MovieBrowseQuery.firstNonBlank(search, query, q);
@@ -89,12 +86,12 @@ public class MovieQueryService {
 
     private static int normalizeLimit(Integer limit) {
         if (limit == null || limit <= 0) {
-            return DEFAULT_LIST_LIMIT;
+            return 200;
         }
-        return Math.min(limit, MAX_LIST_LIMIT);
+        return Math.min(limit, 500);
     }
 
-    // Nếu không có từ khóa thì phân trang thẳng dưới DB; có từ khóa thì đi qua nhánh tìm kiếm bỏ dấu tiếng Việt và xếp hạng của CatalogReadModel.
+    // không có từ khóa thì phân trang thẳng dưới DB, có thì qua nhánh search bỏ dấu tiếng Việt với xếp hạng của CatalogReadModel
     public MovieBrowsePage browseMovies(MovieBrowseQuery query) {
         CatalogReadModel model = catalog.current();
         return reads.execute(status -> {
@@ -122,18 +119,18 @@ public class MovieQueryService {
     }
 
     private MovieBrowsePage searchPage(MovieBrowseQuery query, Specification<Movie> filters, CatalogReadModel model) {
-        // Lấy thứ hạng tìm kiếm từ danh mục; nếu người dùng chọn kiểu sắp xếp riêng thì gom các mã khớp mờ để đẩy xuống sau kết quả khớp chính xác
+        // lấy hạng tìm kiếm từ danh mục, nếu user tự chọn kiểu sort riêng thì gom mấy mã khớp mờ đẩy xuống sau khớp chính xác
         var ranks = model.movieSearchRanks(query.searchQuery());
         String term = folded(query.searchQuery());
         Set<String> fuzzyIds = query.explicitSort() ? ranks.entrySet().stream()
                 .filter(entry -> entry.getValue().fuzzy()).map(Map.Entry::getKey).collect(Collectors.toSet()) : Set.of();
         var ordered = orderedMovies(filters, query.sortField(), query.sortDirection(), true, fuzzyIds);
-        // Lọc các phim có trong chỉ mục danh mục hoặc chứa từ khóa đã bỏ dấu trong tiêu đề, mô tả
+        // giữ mấy phim có trong index danh mục hoặc chứa từ khóa bỏ dấu ở tiêu đề, mô tả
         var matches = entities.createQuery(ordered).getResultList().stream()
                 .filter(movie -> ranks.containsKey(movie.getId())
                         || (!term.isEmpty() && (folded(movie.getTitle()).contains(term)
                                 || folded(movie.getDescription()).contains(term))));
-        // Nếu không chỉ định sort thì sắp theo độ liên quan SearchRank rồi mới cắt trang và gắn điểm đánh giá
+        // không chỉ định sort thì xếp theo SearchRank rồi mới cắt trang với gắn điểm đánh giá
         List<Movie> matching = (query.explicitSort() ? matches
                 : matches.sorted(Comparator.comparing(movie -> ranks.getOrDefault(movie.getId(), SearchRank.EXACT))))
                 .toList();
@@ -147,8 +144,8 @@ public class MovieQueryService {
         return TextFolding.foldNormalized(text);
     }
 
-    // Dựng truy vấn sắp xếp bằng Criteria API.
-    // Mình ép title và id sang byte[] để thứ tự tie-break chạy giống nhau giữa H2 test và MySQL, không bị phụ thuộc collation của từng DB.
+    // dựng query sắp xếp bằng Criteria API
+    // ép title với id sang byte[] để tie-break chạy y hệt nhau giữa H2 test và MySQL, khỏi lệ thuộc collation từng DB
     private JpaCriteriaQuery<Movie> orderedMovies(Specification<Movie> filters, MovieBrowseQuery.SortField field,
             MovieBrowseQuery.SortDirection direction, boolean communityRating, Set<String> fuzzyIds) {
         var builder = (HibernateCriteriaBuilder) entities.getCriteriaBuilder();
@@ -159,7 +156,7 @@ public class MovieQueryService {
             case YEAR -> movie.get("releaseYear");
             case TITLE -> movie.get("title").cast(byte[].class);
         };
-        // Đẩy bản ghi thiếu năm hoặc chưa có đánh giá xuống cuối, sau đó phá hòa bằng id nhị phân
+        // đẩy phim thiếu năm hay chưa có điểm xuống cuối, rồi phá hòa bằng id dạng byte[]
         query.where(filters.toPredicate(movie, query, builder));
         var order = direction == MovieBrowseQuery.SortDirection.DESC ? builder.desc(sort) : builder.asc(sort);
         if (field == MovieBrowseQuery.SortField.YEAR || (field == MovieBrowseQuery.SortField.RATING && communityRating)) {
@@ -175,7 +172,7 @@ public class MovieQueryService {
         return query;
     }
 
-    // Trả chi tiết một phim đang hiển thị kèm thông tin loạt phim/tập phim và điểm cộng đồng, ẩn thì báo 404.
+    // trả chi tiết phim đang mở kèm thông tin bộ/tập với điểm cộng đồng, đang ẩn thì 404
     public MovieView getMovieById(String movieId) {
         CatalogReadModel model = catalog.current();
         return reads.execute(status -> {

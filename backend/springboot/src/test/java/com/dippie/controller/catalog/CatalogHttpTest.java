@@ -55,11 +55,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Bộ test tích hợp HTTP chạy trọn luồng kiểm tra, nhập gói, phân quyền, ẩn hiện bản nháp, xuất danh mục và lưu tiến độ xem.
+// test trọn luồng HTTP catalog: validate, import, phân quyền, ẩn hiện nháp, export với lưu tiến độ
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-// Lớp này cần CSDL và chỉ mục tìm kiếm trống lúc bắt đầu, nên dùng context riêng để không dính dữ liệu của test chạy trước.
+// Việt để ý chỗ này cần DB với chỉ mục trắng tinh lúc đầu, tách context riêng kẻo dính rác test trước nha
 @TestPropertySource(properties = "dippie.test.context=CatalogHttpTest")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @RecordApplicationEvents
@@ -143,7 +143,7 @@ class CatalogHttpTest {
         String member = token("fallback-progress", Role.ROLE_USER);
         String progressPath = "/api/users/watch-progress/playback-jadoo";
         String body = progressBody("youtube:2ykw6ZxTb8o", 60_000, -1);
-        // Vẫn phải cho lưu tiến độ xem YouTube dự phòng ngay cả khi tệp cục bộ hoặc Drive đang có sẵn trên đĩa.
+        // có file local hay Drive sẵn trên đĩa rồi nhưng xem YouTube dự phòng vẫn phải lưu tiến độ được nha
         mvc.perform(auth(put(progressPath), member).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.durationMs").value(100_000))
@@ -330,6 +330,7 @@ class CatalogHttpTest {
     }
 
     @Test
+    @SuppressWarnings("resource") // SessionFactory là của Spring, đóng là sập context test
     void catalogVisibilityCascadesAndSearchPreservesHitOrder() throws Exception {
         String admin = token("catalog-visibility", Role.ROLE_ADMIN);
         String member = token("catalog-playback", Role.ROLE_USER);
@@ -681,6 +682,7 @@ class CatalogHttpTest {
         verifyProgressThumbnails();
     }
 
+    @SuppressWarnings("resource") // SessionFactory là của Spring, đóng là sập context test
     private void verifySeriesCards(String admin) throws Exception {
         var request = get(CATALOG + "series/cards");
         Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();

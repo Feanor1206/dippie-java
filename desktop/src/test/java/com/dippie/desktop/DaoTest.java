@@ -10,7 +10,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-// Test từng DAO chạy câu SQL thật trên H2 trong bộ nhớ.
+// test từng DAO chạy SQL thật trên H2 in-memory
 class DaoTest extends TestDatabase {
     @Test
     void usersLoadAccountsAndCredentialsSeparately() {

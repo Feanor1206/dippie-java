@@ -1351,8 +1351,8 @@ def build_report():
 
     rb.code_block(
         "Đoạn mã 1. Kế thừa (extends): exception/DomainException.java & exception/NotFoundException.java",
-        """// Lớp cha trừu tượng cho mọi lỗi nghiệp vụ trong Dippie. Các lớp con kế thừa và gán sẵn HTTP status cùng header riêng,
-// nhờ đó GlobalExceptionHandler chỉ cần bắt một chỗ là xử lý được hết.
+        """// lớp cha trừu tượng cho mọi lỗi nghiệp vụ trong Dippie, mỗi lớp con tự gắn sẵn HTTP status và header riêng
+// nhờ vậy GlobalExceptionHandler chỉ cần bắt đúng 1 chỗ là lo được hết
 public abstract class DomainException extends RuntimeException {
 
     private final HttpStatus status;
@@ -1367,7 +1367,7 @@ public abstract class DomainException extends RuntimeException {
     }
 }
 
-// Lỗi không tìm thấy dữ liệu được yêu cầu, trả HTTP 404.
+// không tìm thấy dữ liệu cần lấy, trả 404
 public class NotFoundException extends DomainException {
 
     public NotFoundException(String message) {
@@ -1379,13 +1379,13 @@ public class NotFoundException extends DomainException {
 
     rb.code_block(
         "Đoạn mã 2. Giao diện (interface): service/recommendation/RecommendationStrategy.java & desktop/dao/Dao.java",
-        """// Interface Strategy chung cho các cách gợi ý phim (theo sở thích hoặc theo tâm trạng).
+        """// kiểu Strategy cho các cách gợi ý phim, thêm kiểu gợi ý mới thì viết thêm 1 lớp là xong
 public interface RecommendationStrategy {
 
     RecommendationResult recommend(RecommendationContext context);
 }
 
-// Hợp đồng chung cho mọi DAO chỉ đọc theo thực thể T và kiểu khóa chính ID.
+// interface chung cho mọi DAO chỉ đọc theo thực thể T và kiểu khóa chính ID
 public interface Dao<T, ID> {
     Optional<T> findById(ID id);
 
@@ -1403,18 +1403,18 @@ public interface Dao<T, ID> {
 
     rb.code_block(
         "Đoạn mã 3. Lớp trừu tượng (abstract / Template Method): service/library/AbstractLibraryListService.java & service/library/FavoriteService.java",
-        """// Lớp dịch vụ gốc dùng Template Method và Factory Method qua newEntry() để FavoriteService với WatchlistService dùng chung luồng xem, thêm và xóa.
+        """// lớp cha dùng Template Method với Factory Method qua newEntry() cho FavoriteService và WatchlistService xài chung luồng xem, thêm, xóa
 public abstract class AbstractLibraryListService<E extends LibraryEntry> {
     ...
             entry = requiresNewTransaction.execute(status -> repository.saveAndFlush(
                     newEntry(viewer.userId(), movie.getId(), LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS))
             ));
     ...
-    // Factory Method để lớp con trả về đúng entity FavoriteItem hoặc WatchlistItem.
+    // chỗ Factory Method để lớp con trả đúng FavoriteItem hay WatchlistItem
     protected abstract E newEntry(Long userId, String movieId, LocalDateTime addedAt);
 }
 
-// Service quản lý danh sách phim yêu thích, chỉ cần cài newEntry() để tạo FavoriteItem cho luồng chung ở lớp cha.
+// danh sách yêu thích, chỉ cần cài newEntry() trả FavoriteItem còn luồng chung ăn sẵn ở lớp cha
 @Service
 public class FavoriteService extends AbstractLibraryListService<FavoriteItem> {
     ...
@@ -1428,7 +1428,7 @@ public class FavoriteService extends AbstractLibraryListService<FavoriteItem> {
 
     rb.code_block(
         "Đoạn mã 4. Đa hình (Polymorphism): service/recommendation/RecommendationService.java & controller/web/GlobalExceptionHandler.java",
-        """    // Request có mood hoặc moodPreset thì chạy MoodRecommendationStrategy, còn lại chạy AffinityRecommendationStrategy.
+        """    // có mood hay moodPreset thì chạy MoodRecommendationStrategy, không thì chạy AffinityRecommendationStrategy
     public RecommendationResult recommend(RecommendationRequest request) {
         ...
         boolean wantsMood = request.moodPreset() != null || (request.mood() != null && !request.mood().isBlank());
@@ -1437,7 +1437,7 @@ public class FavoriteService extends AbstractLibraryListService<FavoriteItem> {
         ...
     }
 
-    // Tận dụng đa hình: mỗi lớp con của DomainException tự mang sẵn HTTP status và header riêng (như Retry-After), ở đây chỉ việc đọc ra trả về.
+    // kiểu đa hình, mỗi lớp con DomainException tự mang sẵn HTTP status và header (như Retry-After) nên chỉ việc đọc ra trả
     @ExceptionHandler(DomainException.class)
     public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException exception) {
         HttpHeaders headers = new HttpHeaders();
@@ -1486,7 +1486,7 @@ public class CatalogReadModelCache {
 
     rb.code_block(
         "Đoạn mã 6. Đọc và ghi tệp từng khối 64 KB bằng FileChannel (model/media/ResolvedMediaStream.java)",
-        """    // Ghi đồng bộ từng khúc 64KB bằng FileChannel thay vì async stream để video dài không bị Spring cắt giữa chừng do async timeout.
+        """    // ghi đồng bộ từng khúc 64KB bằng FileChannel thay vì async stream, kẻo video dài bị Spring cắt ngang vì async timeout
     public void writeRange(long start, long length, OutputStream outputStream) throws IOException {
         if (length <= 0) {
             return;
@@ -1496,7 +1496,7 @@ public class CatalogReadModelCache {
         try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
             channel.position(start);
             long remaining = length;
-            // Giới hạn buffer theo số byte còn lại để không đọc lố sang phần ngoài Range được yêu cầu.
+            // chặn limit của buffer theo số byte còn lại kẻo đọc lố ra ngoài Range khách xin
             while (remaining > 0) {
                 byteBuffer.clear();
                 byteBuffer.limit((int) Math.min(CHUNK_SIZE, remaining));

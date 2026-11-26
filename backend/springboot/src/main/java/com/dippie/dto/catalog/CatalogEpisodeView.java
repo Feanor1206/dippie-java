@@ -9,7 +9,7 @@ import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-// DTO trả dữ liệu tập phim ra API, trải phẳng RatingSummary ở cùng cấp JSON nhờ @JsonUnwrapped.
+// view tập phim trả API, dùng @JsonUnwrapped để trải phẳng RatingSummary ra cùng cấp JSON
 public record CatalogEpisodeView(
         String id, String seriesId, String seasonId, Integer number, String title, String aliasesJson, String synopsis,
         String translationsJson, String kind, LocalDate releaseDate, Long durationMs, String genreIdsJson,
@@ -23,7 +23,7 @@ public record CatalogEpisodeView(
         return from(entity, RatingSummary.EMPTY);
     }
 
-    // Dựng view từ entity và lọc durationMs qua EpisodeRuntime.known để tập ngắn dưới 1 phút thành null thay vì hiện 0 phút.
+    // dựng từ entity, lọc durationMs qua EpisodeRuntime.known để tập dưới 1 phút thành null khỏi hiện 0 phút
     public static CatalogEpisodeView from(CatalogEpisode entity, RatingSummary summary) {
         return new CatalogEpisodeView(entity.getId(), entity.getSeriesId(), entity.getSeasonId(), entity.getNumber(),
                 entity.getTitle(), entity.getAliasesJson(), entity.getSynopsis(), entity.getTranslationsJson(),

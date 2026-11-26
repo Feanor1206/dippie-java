@@ -1,6 +1,6 @@
 package com.dippie.dto.user;
 
-// Dữ liệu đăng ký tài khoản mới gửi lên POST /api/auth/register, gồm thông tin tài khoản và cờ đồng ý điều khoản.
+// body đăng ký POST /api/auth/register, gồm thông tin tài khoản với cờ đồng ý điều khoản
 public record RegisterRequest(
         String username,
         String email,

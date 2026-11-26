@@ -12,11 +12,10 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Kiểm tra quy tắc phân quyền xem video theo danh mục, chuỗi bộ/mùa/tập đã xuất bản và vai trò người xem.
+// test luật phân quyền xem video theo catalog, chuỗi bộ/mùa/tập đã đăng với vai trò người xem
 class PlaybackAccessTest {
 
     private static final String READY = "{\"status\":\"ready\"}";
-    private static final String DRAFT = "{\"status\":\"draft\"}";
     private static final Viewer USER = new Viewer(1L, "user", Role.ROLE_USER);
     private static final Viewer ADMIN = new Viewer(2L, "admin", Role.ROLE_ADMIN);
     private static final PlaybackPrincipal GRANT_USER = new PlaybackPrincipal.Authenticated(Role.ROLE_USER);
@@ -37,7 +36,7 @@ class PlaybackAccessTest {
                 .isInstanceOf(NotFoundException.class)
                 .hasMessage("Không tìm thấy video: ast-1");
 
-        // Tệp không nằm trong catalog_media_assets (catalogAsset == null) bị chặn với mọi vai trò, kể cả admin.
+        // không có trong catalog_media_assets (catalogAsset == null) thì chặn hết, kể cả admin nha
         MediaAsset nonCatalogPublic = mediaAsset("ast-noncat", true, true);
         assertThatThrownBy(() -> playbackAccess.authorizeForGrant("ast-noncat", nonCatalogPublic, null, false, null))
                 .isInstanceOf(NotFoundException.class);
@@ -109,7 +108,7 @@ class PlaybackAccessTest {
         assertThat(playbackAccess.authorizeForGrant("ast-cat", asset, authOnly, true, USER)).isSameAs(asset);
         assertThat(playbackAccess.authorizeForStream("ast-cat", asset, authOnly, true, null, GRANT_USER)).isSameAs(asset);
 
-        CatalogMediaAsset draft = catalogAsset("ast-cat", "public", true, DRAFT);
+        CatalogMediaAsset draft = catalogAsset("ast-cat", "public", true, "{\"status\":\"draft\"}");
         assertThatThrownBy(() -> playbackAccess.authorizeForStream("ast-cat", asset, draft, true, USER, null))
                 .isInstanceOf(NotFoundException.class);
         assertThat(playbackAccess.authorizeForStream("ast-cat", asset, draft, true, null, GRANT_ADMIN)).isSameAs(asset);

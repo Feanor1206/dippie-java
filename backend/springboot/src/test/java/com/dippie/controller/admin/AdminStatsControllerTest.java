@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Test tích hợp màn hình thống kê admin, đối chiếu công thức JPQL với CompletionPolicy và WatchDuration.
+// test thống kê admin, so công thức JPQL cho khớp với CompletionPolicy và WatchDuration
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -45,7 +45,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminStatsControllerTest {
 
     private static final String READY_RECORD = "{\"status\":\"ready\"}";
-    private static final String DRAFT_RECORD = "{\"status\":\"draft\"}";
 
     private final MockMvc mockMvc;
     private final UserRepository userRepository;
@@ -96,7 +95,7 @@ class AdminStatsControllerTest {
         userRepository.deleteAll();
     }
 
-    // Dựng đủ dữ liệu người dùng, đánh giá phim, tập nháp và phiên xem sát ranh giới hoàn thành để đối chiếu kết quả thống kê.
+    // dựng đủ user, rating, tập nháp với phiên xem ngay mép hoàn thành để đối chiếu số liệu
     @Test
     void computesAggregatedStatsWithCompletionPolicyParity() throws Exception {
         LocalDateTime now = LocalDateTime.now(clock);
@@ -125,7 +124,7 @@ class AdminStatsControllerTest {
         CatalogEpisode longEpisode = saveEpisode("ep-1", "ser-1", 1, "Episode Long", 1_500_000L, READY_RECORD);
         CatalogEpisode shortEpisode = saveEpisode("ep-2", "ser-1", 2, "Episode Short", 100_000L, READY_RECORD);
         saveEpisode("ep-3", "ser-1", 3, "Episode with invalid duration", 5_000L, READY_RECORD);
-        saveEpisode("ep-4", "ser-1", 4, "Episode Draft", 100_000L, DRAFT_RECORD);
+        saveEpisode("ep-4", "ser-1", 4, "Episode Draft", 100_000L, "{\"status\":\"draft\"}");
 
         CatalogMediaAsset assetLong = saveAsset("asset-1", 1_500_000L);
         CatalogMediaAsset assetShort = saveAsset("asset-2", 90_000L);
@@ -177,7 +176,7 @@ class AdminStatsControllerTest {
                 .andExpect(jsonPath("$.data.topRatedMovies[2].ratingCount").value(3));
     }
 
-    // Khi chưa có phiên xem nào thì completionRate trả về 0.0 để tránh chia cho 0.
+    // chưa có lượt xem nào thì completionRate phải về 0.0 kẻo chia cho 0
     @Test
     void returnsZeroCompletionRateWhenNoWatchSessionsExist() throws Exception {
         User admin = saveUser("admin", "admin@dippie.com", Role.ROLE_ADMIN, LocalDateTime.now(clock), true);

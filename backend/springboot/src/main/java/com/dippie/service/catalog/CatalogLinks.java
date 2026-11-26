@@ -25,7 +25,7 @@ import static com.dippie.model.catalog.CatalogCollection.CHARACTERS;
 import static com.dippie.model.catalog.CatalogCollection.EPISODES;
 import static com.dippie.model.catalog.CatalogCollection.SERIES;
 
-// Đồng bộ các bảng nối nhiều-nhiều cho thể loại, nhân vật, bộ phim và liên kết tập với tệp media.
+// đồng bộ mấy bảng nối nhiều-nhiều cho thể loại, nhân vật, bộ phim với liên kết tập và file media
 @Repository
 public class CatalogLinks {
 
@@ -35,7 +35,7 @@ public class CatalogLinks {
         this.entities = entities;
     }
 
-    // Xóa rồi ghi lại toàn bộ bảng nối thể loại và nhân vật cho những mục có trong gói nhập.
+    // xóa rồi ghi lại hết bảng nối thể loại với nhân vật cho mấy mục có mặt trong gói nhập
     public void replaceTaxonomy(JsonNode document) {
         JsonNode episodes = EPISODES.items(document);
         replace(episodes, CatalogEpisodeCharacter.class, "episodeId", "character_ids", CatalogEpisodeCharacter::new);
@@ -46,12 +46,12 @@ public class CatalogLinks {
         replace(CHARACTERS.items(document), CatalogCharacterSeries.class, "characterId", "series_ids", CatalogCharacterSeries::new);
     }
 
-    // Đối chiếu danh sách tập mà mỗi tệp media bao phủ, chỉ xóa và chèn lại những tệp thực sự thay đổi.
+    // đối chiếu danh sách tập mà mỗi file media phủ, file nào đổi thật mới xóa rồi chèn lại
     public void syncEpisodeAssets(JsonNode assets) {
         if (assets.isEmpty()) {
             return;
         }
-        // Bỏ qua các tệp có tập liên kết giống hệt DB hiện tại để đỡ phải xóa rồi chèn lại.
+        // file nào có tập liên kết giống y DB hiện tại thì bỏ qua cho đỡ xóa rồi chèn lại
         Map<String, Set<String>> expected = new LinkedHashMap<>();
         for (JsonNode asset : assets) {
             Set<String> episodes = new HashSet<>();

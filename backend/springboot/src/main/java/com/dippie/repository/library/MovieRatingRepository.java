@@ -9,7 +9,7 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 
-// Repo cho bảng movie_ratings, dùng cho cả đánh giá cá nhân lẫn tổng hợp điểm trung bình cộng đồng.
+// repo bảng movie_ratings, vừa đọc điểm cá nhân vừa gom điểm trung bình cộng đồng
 public interface MovieRatingRepository extends JpaRepository<MovieRating, Long> {
 
     List<MovieRating> findByUserIdOrderByUpdatedAtDesc(Long userId);
@@ -21,17 +21,17 @@ public interface MovieRatingRepository extends JpaRepository<MovieRating, Long> 
 
     void deleteByUserIdAndMovieId(Long userId, String movieId);
 
-    // Gọi khi xóa tài khoản để dọn sạch đánh giá cũ của user.
+    // xóa tài khoản thì dọn sạch lượt chấm cũ của user
     void deleteByUserId(Long userId);
 
-    // Gom điểm trung bình và tổng lượt chấm cho một lô movieId trong một câu SQL.
+    // gom điểm trung bình với số lượt chấm cho cả lô movieId trong một câu SQL
     @Query("""
             select new com.dippie.repository.library.MovieRatingRepository$RatingRow(rating.movieId, avg(rating.rating), count(rating))
             from MovieRating rating where rating.movieId in :ids group by rating.movieId
             """)
     List<RatingRow> summarize(@Param("ids") List<String> ids);
 
-    // Kết quả chiếu cho từng phim khi gom điểm trung bình và số lượt đánh giá.
+    // projection hứng điểm trung bình với số lượt chấm của từng phim
     record RatingRow(String id, double average, long count) {
     }
 }

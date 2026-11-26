@@ -2,14 +2,14 @@ package com.dippie.security;
 
 import com.dippie.model.user.Role;
 
-// Dùng sealed interface của Java 21 để chốt đúng hai trạng thái người xem khi phát video: đã đăng nhập hoặc khách ẩn danh.
+// sealed interface Java 21 chốt đúng 2 trạng thái người xem khi phát video là đã đăng nhập hoặc khách ẩn danh
 public sealed interface PlaybackPrincipal permits PlaybackPrincipal.Authenticated, PlaybackPrincipal.Anonymous {
 
-    // Người xem đã đăng nhập kèm vai trò tương ứng.
+    // người xem đã đăng nhập kèm vai trò
     record Authenticated(Role role) implements PlaybackPrincipal {
     }
 
-    // Khách ẩn danh dùng chung một thể hiện INSTANCE để khỏi cấp phát thừa.
+    // khách ẩn danh dùng chung 1 instance INSTANCE cho khỏi cấp phát thừa
     record Anonymous() implements PlaybackPrincipal {
         public static final Anonymous INSTANCE = new Anonymous();
     }

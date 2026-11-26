@@ -10,7 +10,7 @@ import java.math.BigInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Test đơn vị cho bước chuẩn hóa tham số tìm kiếm, thể loại và kiểm tra lỗi đầu vào của MovieBrowseQuery.
+// test MovieBrowseQuery chuẩn hóa tham số tìm kiếm, thể loại với bắt lỗi đầu vào
 class MovieBrowseQueryTest {
 
     @Test

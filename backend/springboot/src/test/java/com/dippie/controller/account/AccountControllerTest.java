@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Test end-to-end cho sửa hồ sơ, đổi mật khẩu kèm thu hồi JWT cũ và hành vi khi tài khoản bị khóa.
+// test luồng sửa hồ sơ, đổi mật khẩu thu hồi JWT cũ với xử lý tài khoản bị khóa
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -55,7 +55,7 @@ class AccountControllerTest {
         userRepository.deleteAll();
     }
 
-    // Kiểm tra đổi họ tên/email, giữ nguyên email của chính mình và chặn trùng hoặc sai giới hạn dữ liệu.
+    // đổi tên, email kể cả giữ lại email cũ của chính user đó, trùng người khác hay sai độ dài là chặn
     @Test
     void updatesOwnProfileAndValidatesEmailUniquenessAndBounds() throws Exception {
         String aliceToken = register("alice", "alice@example.com", "secret123", "Alice One");
@@ -132,7 +132,7 @@ class AccountControllerTest {
                 .andExpect(jsonPath("$.message").value("Họ tên không quá 100 ký tự."));
     }
 
-    // Đổi mật khẩu thành công phải vô hiệu hóa token cũ ngay và cấp token mới dùng được liền.
+    // đổi mật khẩu xong là đá token cũ liền rồi trả token mới dùng được ngay
     @Test
     void changesPasswordRevokesOldTokenAndReturnsWorkingNewToken() throws Exception {
         String oldToken = register("alice", "alice@example.com", "secret123", "Alice");
@@ -203,7 +203,7 @@ class AccountControllerTest {
                 .andExpect(jsonPath("$.data.token").isNotEmpty());
     }
 
-    // Tài khoản bị khóa phải rớt JWT cũ, nhận 401 khi nhập sai mật khẩu (tránh lộ trạng thái khóa) và nhận 403 khi đúng mật khẩu.
+    // khóa nick là rớt JWT cũ, nhập sai mật khẩu vẫn trả 401 kẻo lộ trạng thái khóa, đúng mật khẩu mới trả 403
     @Test
     void disabledUserReceives403OnValidLogin401OnWrongPasswordAndExistingTokenIsRevoked() throws Exception {
         String existingToken = register("locked", "locked@example.com", "secret123", "Locked User");

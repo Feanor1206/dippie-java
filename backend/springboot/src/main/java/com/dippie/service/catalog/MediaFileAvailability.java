@@ -4,12 +4,12 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
-// Giao diện cổng Adapter (vai trò Target) để tầng catalog hỏi file media ngoài đĩa còn tồn tại không mà khỏi phụ thuộc trực tiếp vào gói media.
+// cổng Adapter (vai Target) để tầng catalog hỏi file media ngoài đĩa còn tồn tại không mà khỏi dính trực tiếp vào gói media
 public interface MediaFileAvailability {
 
-    // Lọc từ danh sách mã yêu cầu ra tập các asset đang có file vật lý sẵn sàng.
+    // lọc từ danh sách mã đưa vào ra mấy asset đang có file thật sẵn ngoài đĩa
     Set<String> availableAssetIds(Collection<String> assetIds);
 
-    // Trả về map đánh dấu trạng thái sẵn sàng của toàn bộ asset video.
+    // trả map đánh dấu xem từng asset video có sẵn file chưa
     Map<String, Boolean> availableVideoAssets();
 }

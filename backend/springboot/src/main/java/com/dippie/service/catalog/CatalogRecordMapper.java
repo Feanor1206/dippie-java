@@ -26,7 +26,7 @@ import java.util.Locale;
 import static com.dippie.common.json.CatalogJson.absent;
 import static com.dippie.common.json.CatalogJson.or;
 
-// Chuyển từng nút JSON trong gói danh mục sang entity JPA tương ứng, xử lý luôn các tên trường cũ và giá trị mặc định.
+// map từng cục JSON trong gói danh mục sang entity JPA tương ứng, lo luôn mấy tên field cũ với giá trị mặc định
 public final class CatalogRecordMapper {
 
     private static final JsonNodeFactory NODES = JsonNodeFactory.instance;
@@ -34,14 +34,14 @@ public final class CatalogRecordMapper {
     private CatalogRecordMapper() {
     }
 
-    // Tạo CatalogGenre; nếu thiếu labels thì tự dựng nhãn tiếng Việt từ name hoặc id.
+    // dựng CatalogGenre, thiếu labels thì tự tạo nhãn tiếng Việt từ name hay id
     public static CatalogGenre genre(Row row) {
         JsonNode labels = or(row.field("labels"), NODES.objectNode().set("vi", row.get("name", row.id())));
         return new CatalogGenre(row.id(), json(labels), row.json("aliases"), row.text("description"),
                 row.record(), row.raw(), row.revision());
     }
 
-    // Đọc thang thuộc tính với khoảng mặc định 0 đến 1 và version 1.0.0 khi không khai báo.
+    // đọc thang thuộc tính, không khai báo thì mặc định khoảng 0 tới 1 và version 1.0.0
     public static CatalogAttributeScale scale(Row row) {
         String levels = json(or(row.field("levels"), NODES.arrayNode()));
         return new CatalogAttributeScale(row.id(), row.text("name", row.id()), row.text("definition"),
@@ -49,7 +49,7 @@ public final class CatalogRecordMapper {
                 levels, row.text("version", "1.0.0"), row.json("source_ids"), row.record(), row.raw(), row.revision());
     }
 
-    // Chấp nhận cả tên trường cũ (source_type, name, uri, notes) cho nguồn dữ liệu.
+    // nhận luôn mấy tên field cũ (source_type, name, uri, notes) cho nguồn dữ liệu
     public static CatalogSource source(Row row) {
         return new CatalogSource(row.id(), text(or(row.prefer("kind", "source_type"), NODES.textNode("web"))),
                 text(or(row.prefer("title", "name"), row.field("id"))), text(row.prefer("url", "uri")),
@@ -57,7 +57,7 @@ public final class CatalogRecordMapper {
                 row.record(), row.raw(), row.revision());
     }
 
-    // Gộp các tên trường tương đương như tags, artworks, release_year khi dựng CatalogSeries.
+    // gom mấy tên field cũ tương đương kiểu tags, artworks, release_year lúc dựng CatalogSeries
     public static CatalogSeries series(Row row) {
         return new CatalogSeries(row.id(), row.text("title", row.id()), row.text("original_title"),
                 row.json("aliases"), row.text("synopsis"), row.json("translations"), row.json("genre_ids"),
@@ -69,7 +69,7 @@ public final class CatalogRecordMapper {
                 row.record(), row.raw(), row.revision());
     }
 
-    // Quy đổi kind "standard" về "regular" cho khớp giá trị chuẩn của bảng mùa phim.
+    // đổi kind "standard" về "regular" cho khớp chuẩn của bảng mùa phim
     public static CatalogSeason season(Row row) {
         String kind = row.text("kind", "regular");
         return new CatalogSeason(row.id(), row.text("series_id"), row.number("season_number"), row.text("title", row.id()),
@@ -78,7 +78,7 @@ public final class CatalogRecordMapper {
                 row.record(), row.raw(), row.revision());
     }
 
-    // Gom "standard" và "episode" về loại "regular", đồng thời đọc ngày phát hành kèm dự phòng air_date.
+    // gộp "standard" với "episode" về "regular", tiện đọc ngày phát hành kèm dự phòng air_date
     public static CatalogEpisode episode(Row row) {
         String kind = text(or(row.prefer("kind", "episode_type"), NODES.textNode("regular")));
         if (kind.equals("standard") || kind.equals("episode")) {
@@ -92,7 +92,7 @@ public final class CatalogRecordMapper {
                 json(row.prefer("artwork", "artworks")), null, row.record(), row.raw(), row.revision());
     }
 
-    // Đặt vị trí phân đoạn mặc định bằng 1 nếu JSON không truyền trường position.
+    // JSON không gửi position thì để mặc định là 1
     public static CatalogSegment segment(Row row) {
         return new CatalogSegment(row.id(), row.text("episode_id"), row.get("position", 1).intValue(),
                 row.text("title", row.id()), null, row.text("synopsis"), null, null, row.json("character_ids"),
@@ -101,14 +101,14 @@ public final class CatalogRecordMapper {
                 row.record(), row.raw(), row.revision());
     }
 
-    // Đọc thông tin nhân vật sang CatalogCharacter, dùng id làm tên dự phòng nếu thiếu name.
+    // map nhân vật sang CatalogCharacter, thiếu name thì lấy tạm id
     public static CatalogCharacter character(Row row) {
         return new CatalogCharacter(row.id(), row.json("series_ids"), row.text("name", row.id()), row.json("aliases"),
                 row.text("description"), row.text("role"), row.json("traits"), row.json("relationships"), null, null,
                 row.record(), row.raw(), row.revision());
     }
 
-    // Chuẩn hóa provider về "drive" hoặc "local", suy đường dẫn mặc định và bật enabled khi trường này không có mặt.
+    // gom provider về "drive" hay "local", tự suy đường dẫn mặc định rồi bật enabled nếu thiếu trường này
     public static CatalogMediaAsset asset(Row row) {
         JsonNode storage = row.field("storage");
         String providerName = storage.path("provider").asText("local").toLowerCase(Locale.ROOT);
@@ -132,7 +132,7 @@ public final class CatalogRecordMapper {
                 row.record(), row.raw(), row.revision());
     }
 
-    // Mặc định kind là "subtitle" và format "vtt" để thỏa mãn ràng buộc CHECK của bảng text_tracks.
+    // mặc định kind là "subtitle" với format "vtt" cho qua ràng buộc CHECK của bảng text_tracks
     public static CatalogTextTrack textTrack(Row row) {
         return new CatalogTextTrack(row.id(), row.text("media_asset_id"), row.text("episode_id"), row.text("source_id"),
                 row.text("language", "vi"), row.text("kind", "subtitle"), row.text("label"), row.text("format", "vtt"),
@@ -140,7 +140,7 @@ public final class CatalogRecordMapper {
                 row.record(), row.raw(), row.revision());
     }
 
-    // Dựng CatalogScene và chặn trường hợp thiếu episode_id trước khi ghi xuống CSDL.
+    // dựng CatalogScene, chặn luôn ca thiếu episode_id trước khi đẩy xuống DB
     public static CatalogScene scene(Row row) {
         if (row.field("episode_id").isMissingNode()) {
             throw new IllegalArgumentException("Missing scene episode_id");
@@ -185,7 +185,7 @@ public final class CatalogRecordMapper {
         return absent(node) ? null : decimal(node).toBigInteger().longValueExact();
     }
 
-    // Gói một mục JSON kèm packageRevision để các hàm ánh xạ đọc trường có fallback, chuỗi record và rawJson gọn hơn.
+    // bọc một cục JSON kèm packageRevision để mấy hàm map đọc field có fallback, chuỗi record với rawJson gọn tay hơn
     public record Row(JsonNode item, int packageRevision) {
 
         public String id() {

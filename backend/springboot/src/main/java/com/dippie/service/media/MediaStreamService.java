@@ -36,8 +36,8 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-// Facade điều phối khâu kiểm tra quyền, kiểm tra xuất bản danh mục và mở tệp video cho MediaStreamController.
-// Mình tách giao dịch CSDL chỉ đọc ra khỏi bước đụng ổ đĩa để kết nối CSDL không bị giữ trong lúc tìm tệp.
+// kiểu Facade lo check quyền, check xuất bản danh mục rồi mở file video cho MediaStreamController
+// tách transaction DB chỉ đọc khỏi bước chạm ổ đĩa để khỏi ngâm connection DB lúc đi tìm file
 @Service
 public class MediaStreamService {
 
@@ -73,7 +73,7 @@ public class MediaStreamService {
         this.reads.setReadOnly(true);
     }
 
-    // Xác thực người xem hoặc vé phát kèm đối chiếu tokenVersion trong CSDL, xong xuôi mới tìm tệp và đọc dung lượng.
+    // check người xem hay vé phát kèm đối chiếu tokenVersion dưới DB, xong xuôi mới tìm file và đọc dung lượng
     public ResolvedMediaStream resolveStream(String assetId, String grant, String token) {
         Viewer viewer = currentViewer.find().orElse(null);
         String effectiveToken = selectToken(grant, token);
@@ -92,7 +92,7 @@ public class MediaStreamService {
         return new ResolvedMediaStream(filePath, readFileSize(filePath), resolveMediaType(authorized.getMimeType()));
     }
 
-    // Việt để ý chỗ này: vé phát phải tra lại tokenVersion trực tiếp trong CSDL để tài khoản vừa bị khóa hoặc đăng xuất là mất quyền xem ngay, không đợi JWT hết hạn.
+    // Việt để ý chỗ này nha, phải soi lại tokenVersion trong DB để khóa hay logout là cắt quyền ngay, khỏi đợi JWT hết hạn
     private PlaybackPrincipal activeGrantPrincipal(JwtService.VerifiedPlaybackGrant grant) {
         if (grant == null) {
             return null;
@@ -105,7 +105,7 @@ public class MediaStreamService {
                 .orElse(null);
     }
 
-    // Lấy thông tin phim chính (có kiểm tra tệp tồn tại trên đĩa) và trailer công khai; thiếu trailer thì rơi về videoUrl cũ.
+    // lấy phim chính (check có file trên đĩa) với trailer công khai, thiếu trailer thì lùi về videoUrl cũ
     public MediaDescriptorView getMediaDescriptor(String movieId) {
         MovieMediaSnapshot snapshot = reads.execute(status -> loadMovieMedia(movieId));
         MediaAssetView feature = snapshot.allowedAssets().stream()
@@ -136,7 +136,7 @@ public class MediaStreamService {
                 : catalogMediaAssetRepository.findAllById(assetIds).stream()
                         .collect(Collectors.toMap(CatalogMediaAsset::getId, Function.identity()));
         Set<String> publishedIds = publishedAssetIds(assetIds);
-        // Chỉ trả ra những tệp thuộc danh mục công khai và có đủ bộ, mùa, tập đã xuất bản.
+        // chỉ giữ mấy file công khai mà đủ cả bộ, mùa, tập đã xuất bản
         List<MediaAsset> allowedAssets = publicAssets.stream()
                 .filter(asset -> {
                     CatalogMediaAsset catalogAsset = catalogAssetsById.get(asset.getId());
@@ -165,7 +165,7 @@ public class MediaStreamService {
         return published;
     }
 
-    // Giữ kết quả đọc từ CSDL để mang ra ngoài giao dịch trước khi kiểm tra tệp trên ổ đĩa.
+    // gói dữ liệu đọc từ DB mang ra ngoài transaction rồi mới check file trên đĩa
     private record MovieMediaSnapshot(String movieId, String legacyVideoUrl, List<MediaAsset> allowedAssets) {
     }
 

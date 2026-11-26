@@ -44,7 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Test tích hợp cho luồng báo lỗi phát video: khách và thành viên gửi báo lỗi, kiểm tra dữ liệu, giới hạn IP và admin xử lý kèm nhật ký.
+// test báo lỗi video: khách với member gửi lên, validate, rate limit IP rồi admin xử lý kèm audit
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -52,7 +52,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PlaybackReportControllerTest {
 
     private static final String READY = "{\"status\":\"ready\"}";
-    private static final String DRAFT = "{\"status\":\"draft\"}";
 
     private final MockMvc mockMvc;
     private final ObjectMapper objectMapper;
@@ -136,11 +135,11 @@ class PlaybackReportControllerTest {
         episodeRepository.saveAndFlush(new CatalogEpisode(
                 "ep_doraemon_draft", "ser_doraemon", "sea_doraemon_s05", 3, "Tập nháp", null, null, null,
                 "regular", null, 600_000L, null, null, null, null, null, null, null, null, null,
-                null, null, null, DRAFT, null, 1
+                null, null, null, "{\"status\":\"draft\"}", null, 1
         ));
     }
 
-    // Cả khách ẩn danh lẫn tài khoản đã đăng nhập đều gửi được báo lỗi, và danh sách admin nhận đủ tên bộ, tên tập cùng mốc UTC.
+    // khách hay nick đã đăng nhập đều gửi báo lỗi được, bảng admin nhận đủ tên bộ, tên tập với giờ UTC
     @Test
     void acceptsAnonymousAndAuthenticatedReportsAndEnrichesAdminListing() throws Exception {
         MvcResult anonResult = mockMvc.perform(post("/api/reports/playback")
@@ -174,7 +173,7 @@ class PlaybackReportControllerTest {
         assertThat(reportRepository.findById(authReportId).orElseThrow().getReporterUserId())
                 .isEqualTo(regularUser.getId());
 
-        // Admin lọc trạng thái open phải thấy đúng hai báo lỗi vừa gửi với thời gian ISO-8601 UTC.
+        // admin lọc open phải ra đúng 2 báo lỗi mới gửi kèm mốc ISO-8601 UTC
         MvcResult listResult = mockMvc.perform(get("/api/admin/reports?status=open")
                         .header(HttpHeaders.AUTHORIZATION, adminBearer))
                 .andExpect(status().isOk())
@@ -198,7 +197,7 @@ class PlaybackReportControllerTest {
         assertThat(Instant.parse(createdAtText)).isNotNull();
     }
 
-    // Từ chối lý do lạ, ghi chú quá 500 ký tự, episodeId sai kiểu hoặc tập chưa đăng bằng mã 400.
+    // lý do lạ, ghi chú quá 500 ký tự, episodeId sai kiểu hay tập chưa đăng là ăn 400 hết
     @Test
     void rejectsInvalidReasonOverlongNoteNumericAndUnpublishedEpisodeIdWith400() throws Exception {
         mockMvc.perform(post("/api/reports/playback")
@@ -252,7 +251,7 @@ class PlaybackReportControllerTest {
                 .andExpect(jsonPath("$.message").value(PlaybackReportService.EPISODE_NOT_PUBLISHED_MESSAGE));
     }
 
-    // Vượt 10 lần từ cùng một IP phải trả 429 kèm header Retry-After, trong khi IP khác vẫn gửi được.
+    // cùng 1 IP gửi quá 10 phát là dính 429 kèm Retry-After, IP khác không sao
     @Test
     void enforcesPerClientRateLimitOnPublicReportEndpoint() throws Exception {
         String body = """
@@ -282,7 +281,7 @@ class PlaybackReportControllerTest {
                 .andExpect(jsonPath("$.message")
                         .value("Bạn đã gửi quá nhiều báo cáo trong thời gian ngắn. Vui lòng đợi một lát rồi thử lại."));
 
-        // IP khác không bị ảnh hưởng bởi bộ đếm của IP đã vượt ngưỡng.
+        // IP khác vẫn gửi bình thường, không dính lây bộ đếm kia
         mockMvc.perform(post("/api/reports/playback")
                         .with(request -> {
                             request.setRemoteAddr("10.10.0.2");
@@ -293,7 +292,7 @@ class PlaybackReportControllerTest {
                 .andExpect(status().isCreated());
     }
 
-    // Chỉ admin mới xem và đổi trạng thái báo lỗi, mỗi lần xử lý đều phải ghi vào nhật ký quản trị.
+    // chỉ admin được xem và đổi trạng thái báo lỗi, đụng phát nào ghi audit phát đó
     @Test
     void enforcesAdminAuthorizationUpdatesStatusAndWritesAuditEvent() throws Exception {
         PlaybackReport openReport = reportRepository.saveAndFlush(new PlaybackReport(
@@ -301,7 +300,7 @@ class PlaybackReportControllerTest {
                 PlaybackReportReason.SAI_TAP, "Nhầm tập", LocalDateTime.of(2026, 3, 1, 9, 0)
         ));
 
-        // Khách và tài khoản thường phải bị chặn 403 trên cả GET lẫn PATCH quản trị.
+        // khách với user thường gọi GET hay PATCH admin đều ăn 403
         mockMvc.perform(get("/api/admin/reports?status=open"))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/admin/reports?status=open").header(HttpHeaders.AUTHORIZATION, userBearer))
@@ -312,7 +311,7 @@ class PlaybackReportControllerTest {
                         .content("{\"status\":\"resolved\"}"))
                 .andExpect(status().isForbidden());
 
-        // Bộ lọc hoặc trạng thái chuyển sai trả 400; báo cáo không tồn tại trả 404.
+        // filter hay trạng thái lạ thì 400, report không có thì 404
         mockMvc.perform(get("/api/admin/reports?status=unknown")
                         .header(HttpHeaders.AUTHORIZATION, adminBearer))
                 .andExpect(status().isBadRequest());
@@ -327,7 +326,7 @@ class PlaybackReportControllerTest {
                         .content("{\"status\":\"resolved\"}"))
                 .andExpect(status().isNotFound());
 
-        // Đổi trạng thái sang resolved rồi sang dismissed, xác nhận cả hai lần đều ghi nhật ký.
+        // chuyển sang resolved rồi dismissed, check cả 2 lần đều có dòng audit
         mockMvc.perform(patch("/api/admin/reports/" + openReport.getId())
                         .header(HttpHeaders.AUTHORIZATION, adminBearer)
                         .contentType(MediaType.APPLICATION_JSON)

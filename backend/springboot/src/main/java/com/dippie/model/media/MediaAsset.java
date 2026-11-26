@@ -23,7 +23,7 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 
-// Entity JPA ánh xạ bảng media_assets, lưu thông tin tệp video (phim chính, trailer, phụ lục) gắn với một bộ phim.
+// bảng media_assets lưu thông tin file video (phim chính, trailer, phụ lục) gắn với một phim
 @Entity
 @Table(name = "media_assets",
         uniqueConstraints = {
@@ -149,7 +149,7 @@ public class MediaAsset {
         return available;
     }
 
-    // Chép lại thông tin lưu trữ và quyền hiển thị khi nhập đè gói danh mục mới lên bản ghi cũ.
+    // nhập đè gói catalog mới thì chép lại thông tin lưu trữ với quyền hiển thị
     public void applyCatalogImport(MediaAsset imported) {
         movieId = imported.movieId;
         kind = imported.kind;

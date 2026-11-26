@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
-// Một Strategy của MediaFileResolver để tìm video trong thư mục media cục bộ trên máy chủ.
+// nhánh Strategy của MediaFileResolver tìm video trong thư mục media ngay trên máy
 @Component
 public class LocalMediaLocation implements MediaLocationStrategy {
 
@@ -27,7 +27,7 @@ public class LocalMediaLocation implements MediaLocationStrategy {
         return locateInRoots(asset, roots);
     }
 
-    // Thử lần lượt từng thư mục gốc ứng viên và dừng ngay ở tệp hợp lệ đầu tiên.
+    // dò từng thư mục gốc một, gặp file hợp lệ đầu tiên là dừng ngay
     public static Optional<Path> locateInRoots(MediaAsset asset, List<Path> candidateRoots) {
         if (asset == null) {
             return Optional.empty();
@@ -45,7 +45,7 @@ public class LocalMediaLocation implements MediaLocationStrategy {
         return Optional.empty();
     }
 
-    // Khi dùng cấu hình mặc định, mình tìm thêm cả ../../media để chạy trong backend/springboot vẫn thấy thư mục media ở gốc repo.
+    // chạy cấu hình mặc định thì dò thêm ../../media để chạy từ backend/springboot vẫn thấy thư mục media ở gốc repo
     public static List<Path> resolveRoots(MediaProperties properties, Path repositoryMediaRoot) {
         String configuredRoot = properties == null ? null : properties.root();
         if (configuredRoot == null || configuredRoot.isBlank() || DEFAULT_MEDIA_DIR.equals(configuredRoot.trim())) {

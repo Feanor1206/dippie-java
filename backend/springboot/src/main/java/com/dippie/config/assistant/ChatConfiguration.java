@@ -15,7 +15,7 @@ import org.springframework.context.annotation.Configuration;
 
 import java.time.Clock;
 
-// Factory của Spring lo ghép bộ phân tích ý định, Strategy sinh câu trả lời và ChatService.
+// factory bên Spring lo ghép bộ phân tích ý định, Strategy sinh câu trả lời và ChatService
 @Configuration
 public class ChatConfiguration {
 
@@ -24,7 +24,7 @@ public class ChatConfiguration {
         return new IntentParser();
     }
 
-    // Chỉ bật DeepSeekAnswerGenerator khi provider là "deepseek" và có sẵn apiKey, thiếu một trong hai thì chạy bản mẫu cho an toàn.
+    // chỉ bật DeepSeekAnswerGenerator khi provider là "deepseek" và có apiKey, thiếu 1 trong 2 thì chạy bản mẫu cho chắc
     @Bean
     @ConditionalOnMissingBean(AnswerGenerator.class)
     public AnswerGenerator answerGenerator(
@@ -41,7 +41,7 @@ public class ChatConfiguration {
         return template;
     }
 
-    // Dùng lại đúng TemplateAnswerGenerator bên trong DeepSeek làm nhánh trả lời mẫu cho các câu không cần gọi LLM.
+    // tái sử dụng luôn TemplateAnswerGenerator trong DeepSeek làm nhánh trả lời mẫu cho mấy câu không cần gọi LLM
     @Bean
     public ChatService chatService(
             CatalogSearch catalogSearch,

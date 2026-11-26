@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonUnwrapped;
 
 import java.time.LocalDateTime;
 
-// View phim bộ trả ra API, dùng @JsonUnwrapped để trải phẳng các trường điểm đánh giá của RatingSummary.
+// view phim bộ trả API, dùng @JsonUnwrapped trải phẳng mấy trường điểm của RatingSummary
 public record CatalogSeriesView(
         String id, String title, String originalTitle, String aliasesJson, String synopsis, String translationsJson,
         String genreIdsJson, String keywordsJson, String themesJson, String originCountriesJson,
@@ -29,7 +29,7 @@ public record CatalogSeriesView(
                 RatingSummary.EMPTY);
     }
 
-    // Tạo bản sao mới gắn thêm thống kê điểm đánh giá mà giữ nguyên phần metadata phim bộ.
+    // nhân bản view này để gắn thêm điểm đánh giá, giữ nguyên metadata phim bộ
     public CatalogSeriesView withRatings(RatingSummary summary) {
         return new CatalogSeriesView(id, title, originalTitle, aliasesJson, synopsis, translationsJson, genreIdsJson,
                 keywordsJson, themesJson, originCountriesJson, originalLanguagesJson, releaseYearStart, releaseYearEnd,

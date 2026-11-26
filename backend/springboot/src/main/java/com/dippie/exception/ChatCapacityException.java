@@ -1,14 +1,12 @@
 package com.dippie.exception;
 
-// Ném ra khi /api/chat chạm trần rate limit hoặc hết chỗ luồng SSE, controller bắt để trả HTTP 429 kèm Retry-After.
+// ném khi /api/chat chạm trần rate limit hoặc hết slot luồng SSE để controller trả 429 kèm Retry-After
 public class ChatCapacityException extends RuntimeException {
-
-    private static final long DEFAULT_RETRY_AFTER_SECONDS = 5L;
 
     private final long retryAfterSeconds;
 
     public ChatCapacityException(String message) {
-        this(message, DEFAULT_RETRY_AFTER_SECONDS);
+        this(message, 5L);
     }
 
     public ChatCapacityException(String message, long retryAfterSeconds) {

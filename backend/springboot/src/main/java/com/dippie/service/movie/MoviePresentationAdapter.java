@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.Map;
 
-// Adapter cài MoviePresentationLookup để bên catalog.domain lấy rating và ảnh từ bảng movies mà không phụ thuộc thẳng vào repo của gói movie.
+// kiểu Adapter cài MoviePresentationLookup cho bên catalog.domain lấy rating với ảnh từ bảng movies mà khỏi đụng thẳng repo gói movie
 @Component
 public class MoviePresentationAdapter implements MoviePresentationLookup {
 
@@ -21,7 +21,7 @@ public class MoviePresentationAdapter implements MoviePresentationLookup {
         this.entities = entities;
     }
 
-    // Join với CatalogEpisode để chỉ kéo thông tin hiển thị của các tập đã ở trạng thái READY.
+    // join CatalogEpisode để chỉ kéo ảnh với rating của mấy tập đã READY
     @Override
     @Transactional(readOnly = true)
     public Map<String, Presentation> findForReadyEpisodes() {

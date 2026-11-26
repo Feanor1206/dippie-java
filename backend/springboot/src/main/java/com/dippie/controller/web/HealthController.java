@@ -11,8 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// Endpoint kiểm tra sống cho backend và kết nối DB. Phần kiểm tra thật nằm ở HealthService,
-// ở đây chỉ switch trên sealed interface HealthStatus để chọn 200 hay 503.
+// endpoint check sống cho backend và kết nối DB, phần kiểm tra thật nằm bên HealthService
+// ở đây chỉ switch trên sealed interface HealthStatus để chọn 200 hay 503
 @RestController
 public class HealthController {
 
@@ -22,7 +22,7 @@ public class HealthController {
         this.healthService = healthService;
     }
 
-    // Trả 200 khi DB còn sống, trả 503 khi mất kết nối.
+    // DB sống thì 200, mất kết nối thì 503
     @GetMapping("/api/health")
     public ResponseEntity<ApiResponse<HealthStatus>> health() {
         HealthStatus status = healthService.check();

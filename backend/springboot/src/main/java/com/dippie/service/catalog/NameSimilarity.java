@@ -7,7 +7,7 @@ import java.util.function.Predicate;
 import java.util.regex.MatchResult;
 import java.util.regex.Pattern;
 
-// Bộ so khớp gần đúng tên và cụm từ tìm kiếm theo khoảng cách Damerau-Levenshtein (chịu lỗi gõ sai, thiếu, thừa và đảo hai chữ cạnh nhau).
+// bộ so khớp gần đúng tên với cụm tìm kiếm theo Damerau-Levenshtein, chịu được gõ sai, thiếu, thừa với đảo 2 chữ cạnh nhau
 public final class NameSimilarity {
 
     private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}]+");
@@ -15,18 +15,18 @@ public final class NameSimilarity {
     private NameSimilarity() {
     }
 
-    // Bỏ dấu rồi tách văn bản thành từng từ chỉ gồm chữ và số.
+    // bỏ dấu rồi cắt chuỗi ra từng từ chỉ gồm chữ với số
     public static List<String> words(String text) {
         return WORD.matcher(TextFolding.fold(text)).results().map(MatchResult::group).toList();
     }
 
-    // Trượt cửa sổ trên chuỗi từ dài hơn để tìm vị trí căn khớp có tổng khoảng cách sửa đổi nhỏ nhất; trả -1 nếu không đoạn nào đạt ngưỡng.
+    // trượt cửa sổ trên chuỗi dài hơn để tìm chỗ căn khớp có tổng khoảng cách nhỏ nhất, không đoạn nào đạt thì trả -1
     public static int phraseDistance(List<String> query, List<String> name, Predicate<String> allowShortFuzzy) {
         int size = Math.min(query.size(), name.size());
         if (size == 0) {
             return -1;
         }
-        // Dò lần lượt từng vị trí trượt; gặp đoạn khớp y hệt (distance == 0) thì thoát sớm luôn.
+        // dò từng vị trí trượt, đụng đoạn khớp y hệt (distance == 0) là thoát sớm luôn cho nhanh
         int best = Integer.MAX_VALUE;
         int span = Math.abs(query.size() - name.size());
         for (int offset = 0; offset <= span; offset++) {
@@ -43,7 +43,7 @@ public final class NameSimilarity {
         return best == Integer.MAX_VALUE ? -1 : best;
     }
 
-    // Khác phraseDistance ở chỗ cụm chủ đề phải nằm gọn trong danh sách từ đích và có ít nhất một từ từ 4 ký tự trở lên để tránh khớp bừa.
+    // khác phraseDistance ở chỗ cụm chủ đề phải nằm gọn trong danh sách từ đích và có ít nhất 1 từ từ 4 ký tự trở lên kẻo khớp bừa
     public static int topicPhraseDistance(List<String> query, List<String> target, Predicate<String> allowShortFuzzy) {
         if (query.isEmpty() || target.size() < query.size()
                 || query.stream().noneMatch(word -> word.codePointCount(0, word.length()) >= 4)) {
@@ -63,7 +63,7 @@ public final class NameSimilarity {
         return best == Integer.MAX_VALUE ? -1 : best;
     }
 
-    // Cộng dồn khoảng cách từng cặp từ trong một vị trí cửa sổ; chỉ cần một từ vượt ngưỡng là loại cả cửa sổ đó.
+    // cộng dồn khoảng cách từng cặp từ trong 1 cửa sổ, hễ 1 từ vượt ngưỡng là loại cả cửa sổ luôn
     private static int windowDistance(List<String> query, int queryStart, List<String> name, int nameStart, int size,
             Predicate<String> allowShortFuzzy, boolean topic) {
         int total = 0;
@@ -82,7 +82,7 @@ public final class NameSimilarity {
         return total;
     }
 
-    // Tính khoảng cách giữa hai từ lẻ: từ 3 ký tự chỉ cho đảo hai chữ cạnh nhau khi allowShortFuzzy đồng ý, từ 4 đến 7 ký tự lệch tối đa 1, từ 8 ký tự trở lên tối đa 2.
+    // đo khoảng cách 2 từ lẻ, từ 3 chữ chỉ đảo 2 chữ cạnh khi allowShortFuzzy đồng ý, 4 tới 7 chữ lệch tối đa 1, từ 8 trở lên tối đa 2
     public static int wordDistance(String query, String name, Predicate<String> allowShortFuzzy) {
         if (query.equals(name)) {
             return 0;
@@ -102,7 +102,7 @@ public final class NameSimilarity {
         return editDistance(query.codePoints().toArray(), name.codePoints().toArray(), limit);
     }
 
-    // Siết chặt hơn wordDistance cho từ khóa chủ đề để đỡ nhận nhầm các từ ngắn gần giống nhau.
+    // siết chặt hơn wordDistance cho từ khóa chủ đề kẻo bắt nhầm mấy từ ngắn na ná nhau
     public static int topicWordDistance(String query, String target, boolean allowShortDeletion,
             Predicate<String> allowShortFuzzy) {
         if (query.equals(target)) {
@@ -110,7 +110,7 @@ public final class NameSimilarity {
         }
         int queryLength = query.codePointCount(0, query.length());
         int targetLength = target.codePointCount(0, target.length());
-        // Từ 3 ký tự: hoặc đảo hai chữ cạnh nhau, hoặc thiếu 1 ký tự so với từ 4 ký tự khi trùng chữ cái đầu.
+        // từ 3 ký tự thì hoặc đảo 2 chữ cạnh nhau, hoặc thiếu 1 chữ so với từ 4 ký tự khi trùng chữ cái đầu
         if (queryLength == 3) {
             if (!allowShortFuzzy.test(query)) {
                 return -1;
@@ -123,12 +123,12 @@ public final class NameSimilarity {
             }
             return -1;
         }
-        // Hai từ cùng 4 ký tự phải trùng chữ cái đầu và lệch không quá 1 thao tác.
+        // hai từ đều 4 ký tự thì phải trùng chữ cái đầu và lệch tối đa 1 phép sửa
         if (queryLength == 4 && targetLength == 4) {
             return query.codePointAt(0) == target.codePointAt(0)
                     ? editDistance(query.codePoints().toArray(), target.codePoints().toArray(), 1) : -1;
         }
-        // Từ dài hơn dùng ngưỡng sai số 1 (tới 7 ký tự) hoặc 2 (từ 8 ký tự trở lên).
+        // từ dài hơn thì lấy ngưỡng 1 (tới 7 ký tự) hoặc 2 (từ 8 ký tự trở lên)
         int limit = queryLength <= 7 ? 1 : 2;
         if (queryLength < 4 || targetLength < 4 || Math.abs(queryLength - targetLength) > limit) {
             return -1;
@@ -136,7 +136,7 @@ public final class NameSimilarity {
         return editDistance(query.codePoints().toArray(), target.codePoints().toArray(), limit);
     }
 
-    // Kiểm tra hai từ cùng độ dài có khác nhau đúng một cặp ký tự liền kề bị đổi chỗ hay không.
+    // check xem 2 từ cùng độ dài có chỉ khác nhau đúng 1 cặp chữ đứng cạnh bị đảo chỗ không
     private static boolean isAdjacentTransposition(int[] first, int[] second) {
         if (first.length != second.length) {
             return false;
@@ -155,7 +155,7 @@ public final class NameSimilarity {
         return mismatch >= 0;
     }
 
-    // Quy hoạch động Damerau-Levenshtein chỉ giữ 3 hàng để tiết kiệm bộ nhớ; trả -1 nếu vượt quá limit.
+    // quy hoạch động Damerau-Levenshtein chỉ giữ 3 hàng cho nhẹ RAM, quá limit thì trả -1
     private static int editDistance(int[] query, int[] name, int limit) {
         int[] beforePrevious = new int[name.length + 1];
         int[] previous = new int[name.length + 1];
@@ -163,7 +163,7 @@ public final class NameSimilarity {
         for (int column = 0; column < previous.length; column++) {
             previous[column] = column;
         }
-        // Tính 4 phép sửa: thay thế, xóa, thêm và đảo hai ký tự đứng liền nhau.
+        // tính đủ 4 phép sửa gồm thay, xóa, thêm với đảo 2 chữ cạnh nhau
         for (int row = 1; row <= query.length; row++) {
             current[0] = row;
             int minimum = row;
@@ -178,11 +178,11 @@ public final class NameSimilarity {
                 current[column] = best;
                 minimum = Math.min(minimum, best);
             }
-            // Cả hàng đều lớn hơn limit thì dừng luôn khỏi tính mấy hàng sau.
+            // cả hàng đều vượt limit thì cắt sớm luôn khỏi tính mấy hàng sau
             if (minimum > limit) {
                 return -1;
             }
-            // Xoay vòng 3 mảng hàng thay vì cấp phát mảng mới ở mỗi vòng lặp.
+            // xoay vòng 3 mảng hàng cho đỡ cấp phát mảng mới ở mỗi vòng lặp
             int[] recycled = beforePrevious;
             beforePrevious = previous;
             previous = current;

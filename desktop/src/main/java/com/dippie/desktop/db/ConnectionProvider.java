@@ -5,11 +5,11 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.SQLTimeoutException;
 
-// Singleton dạng enum để mở kết nối JDBC qua DriverManager, mỗi thao tác tự mở rồi đóng kết nối riêng.
+// singleton dạng enum mở kết nối JDBC qua DriverManager, mỗi việc tự mở rồi tự đóng kết nối riêng
 public enum ConnectionProvider {
     INSTANCE;
 
-    // Bọc lỗi JDBC thành câu tiếng Việt gọn gàng; mã 90146 của H2 là báo chưa có tệp DB demo.
+    // bọc lỗi JDBC thành câu tiếng Việt cho gọn, mã 90146 của H2 là báo chưa có file DB demo
     public Connection open(DatabaseConfig config) {
         try {
             return DriverManager.getConnection(config.url(), config.user(), config.password());

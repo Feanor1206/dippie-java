@@ -9,7 +9,7 @@ import com.dippie.model.progress.WatchProgress;
 
 import java.time.LocalDateTime;
 
-// DTO trả tiến độ xem của một tập phim ra frontend kèm cờ completed và số version để gửi lại ở lần lưu sau.
+// tiến độ xem của một tập trả frontend kèm cờ completed với version để lần sau gửi lại
 public record WatchProgressView(
         String episodeId,
         String seriesId,

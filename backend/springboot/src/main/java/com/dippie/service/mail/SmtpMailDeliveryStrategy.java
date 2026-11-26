@@ -11,7 +11,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 
 import java.nio.charset.StandardCharsets;
 
-// Cài đặt Strategy gửi email thật qua máy chủ SMTP bằng JavaMailSender của Spring.
+// nhánh Strategy gửi mail thật qua SMTP bằng JavaMailSender của Spring
 public class SmtpMailDeliveryStrategy implements MailDeliveryStrategy {
 
     private final JavaMailSender mailSender;
@@ -22,7 +22,7 @@ public class SmtpMailDeliveryStrategy implements MailDeliveryStrategy {
         this.properties = properties;
     }
 
-    // Đóng gói MimeMessage dùng UTF-8 để giữ nguyên dấu tiếng Việt rồi gửi qua SMTP.
+    // đóng gói MimeMessage dùng UTF-8 cho nguyên dấu tiếng Việt rồi đẩy qua SMTP
     @Override
     public void deliver(EmailMessage message) {
         try {

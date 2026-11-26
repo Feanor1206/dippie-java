@@ -12,9 +12,8 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.List;
 
-// Tập hợp các truy vấn JPQL gom số liệu cho bảng điều khiển admin.
-// Việt mà sửa ngưỡng hoàn thành bên CompletionPolicy thì nhớ cập nhật COMPLETED_PREDICATE ở đây,
-// vì mình phải viết lại đúng công thức đó bằng JPQL để đếm thẳng trong DB.
+// gom mấy câu JPQL thống kê cho dashboard admin
+// Việt sửa ngưỡng hoàn thành bên CompletionPolicy thì nhớ sửa cả COMPLETED_PREDICATE ở đây, vì phải viết lại bằng JPQL để đếm thẳng trong DB
 @Repository
 public class AdminStatsQuery {
 
@@ -54,7 +53,7 @@ public class AdminStatsQuery {
         this.entityManager = entityManager;
     }
 
-    // Đếm tổng tài khoản, số đang mở và số đăng ký mới từ mốc since trong một câu query.
+    // đếm tổng user, số đang bật với số đăng ký mới từ mốc since trong một câu query
     public UserCounts countUsers(LocalDateTime since) {
         Object[] row = entityManager.createQuery("""
                         select count(u),
@@ -71,20 +70,20 @@ public class AdminStatsQuery {
         );
     }
 
-    // Bộ ba số đếm tài khoản gồm tổng số, đang hoạt động và mới đăng ký.
+    // bộ ba số user gồm tổng, đang mở với mới đăng ký
     public record UserCounts(long total, long active, long recent) {
     }
 
-    // Tổng số phiên xem kèm số phiên đạt ngưỡng hoàn thành.
+    // tổng phiên xem với số phiên đã xem xong
     public record WatchSessionCounts(long total, long completed) {
     }
 
-    // Đếm tất cả đầu phim hiện có trong bảng movies.
+    // đếm hết đầu phim trong bảng movies
     public long countTotalMovies() {
         return entityManager.createQuery("select count(m) from Movie m", Long.class).getSingleResult();
     }
 
-    // Chỉ tính tập đã đăng khi cả bộ lẫn mùa cha (nếu có) đều đang ready; trạng thái bộ và mùa nằm trong JSON nên phải lọc thêm ở Java.
+    // chỉ đếm tập đã đăng khi cả bộ lẫn mùa cha (nếu có) đều ready, trạng thái bộ với mùa nằm trong JSON nên phải lọc tiếp ở Java
     public long countPublishedEpisodes() {
         List<Object[]> rows = entityManager.createQuery("""
                         select e.seasonId, s.recordJson, sea.recordJson
@@ -107,13 +106,13 @@ public class AdminStatsQuery {
         return count;
     }
 
-    // Đếm số phiên xem và số phiên hoàn thành theo thời lượng hiệu lực của tập và tệp phát.
+    // đếm phiên xem với phiên hoàn thành theo thời lượng hiệu dụng của tập và file phát
     public WatchSessionCounts countWatchSessions() {
         Object[] row = entityManager.createQuery(WATCH_SESSION_COUNTS_JPQL, Object[].class).getSingleResult();
         return new WatchSessionCounts(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
     }
 
-    // Lấy dư gấp 3 lần limit từ DB rồi mới lọc chuỗi bộ và mùa đã đăng ở Java để sau khi loại tập ẩn vẫn đủ số lượng cần hiển thị.
+    // kéo dư gấp 3 lần limit từ DB rồi lọc bộ với mùa đã đăng bên Java để loại tập ẩn xong vẫn đủ số
     public List<TopWatchedEpisodeView> findTopWatchedEpisodes(int limit) {
         List<Object[]> rows = entityManager.createQuery("""
                         select wp.episodeId, ep.title, count(wp.userId), ep.seasonId, s.recordJson, sea.recordJson
@@ -138,7 +137,7 @@ public class AdminStatsQuery {
                 .toList();
     }
 
-    // Xếp hạng phim theo điểm trung bình rồi tới số lượt đánh giá; bỏ qua phim nào có bản ghi danh mục đang để nháp hoặc ẩn.
+    // xếp top theo điểm trung bình rồi tới số lượt chấm, bỏ qua phim nào bên catalog đang nháp hay ẩn
     public List<TopRatedMovieView> findTopRatedMovies(int limit) {
         List<Object[]> rows = entityManager.createQuery("""
                         select r.movieId, m.title, avg(r.rating * 1.0), count(r.id), s.id, s.recordJson
@@ -162,7 +161,7 @@ public class AdminStatsQuery {
                 .toList();
     }
 
-    // Kiểm tra bộ phim cha và mùa phim cha (khi tập có gắn mùa) đều đang xuất bản.
+    // check bộ cha với mùa cha (nếu tập có gắn mùa) đều đang xuất bản
     private static boolean isParentChainPublished(String seasonId, String seriesRecord, String seasonRecord) {
         if (!PublicationStatus.of(seriesRecord).isPublished()) {
             return false;

@@ -4,8 +4,8 @@ import com.dippie.desktop.model.SearchText;
 
 import java.util.List;
 
-// Giao diện gốc cho cây danh mục theo mẫu Composite (sealed interface chỉ cho phép 3 cấp: bộ, mùa, tập).
-// Nhờ nó mà cây giao diện và bộ lọc duyệt cả 3 loại nút theo cùng một kiểu.
+// interface gốc của cây danh mục kiểu Composite (sealed interface chốt đúng 3 cấp bộ, mùa, tập)
+// nhờ vậy cây giao diện với bộ lọc duyệt cả 3 loại nút theo cùng 1 kiểu
 public sealed interface CatalogNode permits SeriesNode, SeasonNode, EpisodeNode {
     String id();
 

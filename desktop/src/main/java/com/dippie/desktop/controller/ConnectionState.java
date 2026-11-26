@@ -1,7 +1,7 @@
 package com.dippie.desktop.controller;
 
-// Trạng thái kết nối DB để thanh trạng thái đổi chữ và màu chấm tròn.
-// CONNECTED ghi đè onRequest() theo đa hình enum để thanh trạng thái khỏi nhấp nháy lại về đang kết nối mỗi lần truy vấn.
+// trạng thái kết nối DB để thanh trạng thái đổi chữ và màu chấm tròn
+// CONNECTED ghi đè onRequest() theo kiểu đa hình enum cho thanh trạng thái khỏi nhấp nháy về đang kết nối mỗi lần truy vấn
 public enum ConnectionState {
     NOT_CHECKED("Chưa kiểm tra kết nối", "status-idle"),
     CHECKING("Đang kết nối...", "status-idle"),
@@ -29,7 +29,7 @@ public enum ConnectionState {
         return style;
     }
 
-    // Khi chưa rõ kết nối còn sống hay không thì lượt gọi DB mới sẽ chuyển sang trạng thái đang kết nối.
+    // chưa rõ DB còn sống không thì lượt gọi mới cứ chuyển sang đang kết nối
     ConnectionState onRequest() {
         return CHECKING;
     }

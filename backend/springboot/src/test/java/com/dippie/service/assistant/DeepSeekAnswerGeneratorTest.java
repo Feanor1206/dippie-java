@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -26,7 +27,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Dựng HttpServer nội bộ để kiểm tra DeepSeekAnswerGenerator đọc SSE, chặn bịa chi tiết, giới hạn quota ngày và fallback về Template.
+// dựng HttpServer giả để test DeepSeekAnswerGenerator đọc SSE, chặn bịa chi tiết, trần quota ngày với rớt về Template
 class DeepSeekAnswerGeneratorTest {
 
     private static HttpServer server;
@@ -40,7 +41,7 @@ class DeepSeekAnswerGeneratorTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final IntentParser intentParser = new IntentParser();
 
-    // Các kịch bản phản hồi giả lập từ upstream DeepSeek cho từng ca test.
+    // mấy kiểu response giả của upstream DeepSeek cho từng ca test
     enum HandlerMode {
         VALID_SSE,
         STATUS_503,
@@ -64,7 +65,9 @@ class DeepSeekAnswerGeneratorTest {
         server.createContext("/chat/completions", exchange -> {
             callCount.incrementAndGet();
             lastAuthHeader.set(exchange.getRequestHeaders().getFirst("Authorization"));
-            lastRequestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            try (InputStream requestBody = exchange.getRequestBody()) {
+                lastRequestBody.set(new String(requestBody.readAllBytes(), StandardCharsets.UTF_8));
+            }
 
             HandlerMode current = mode.get();
             if (current == HandlerMode.STATUS_503) {
@@ -148,124 +151,129 @@ class DeepSeekAnswerGeneratorTest {
 
     @Test
     void streamsGroundedSummaryFromDeepSeekSseAndSetsCloudStage() throws Exception {
-        DeepSeekAnswerGenerator generator = new DeepSeekAnswerGenerator(
+        try (DeepSeekAnswerGenerator generator = new DeepSeekAnswerGenerator(
                 new AssistantProperties.Llm("deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "secret-key-123", Duration.ofSeconds(5)),
                 objectMapper
-        );
-        ChatIntent intent = intentParser.parse("cảnh Chi làm vỡ bình hoa");
-        SearchHit hit = sampleHit();
+        )) {
+            ChatIntent intent = intentParser.parse("cảnh Chi làm vỡ bình hoa");
+            SearchHit hit = sampleHit();
 
-        AtomicReference<String> stage = new AtomicReference<>();
-        List<String> tokens = generator.answer(intent, List.of(hit), stage::set).toList();
+            AtomicReference<String> stage = new AtomicReference<>();
+            List<String> tokens = generator.answer(intent, List.of(hit), stage::set).toList();
 
-        assertThat(callCount.get()).isEqualTo(1);
-        assertThat(stage.get()).isEqualTo("cloud");
-        assertThat(tokens).containsExactly(
-                "Có vẻ bạn đang tìm Tập 22, khoảng 08:40. ",
-                "Trong cảnh phim này, Chi làm vỡ bình hoa rất thú vị."
-        );
-        assertThat(lastAuthHeader.get()).isEqualTo("Bearer secret-key-123");
-        assertThat(lastRequestBody.get()).doesNotContain("secret-key-123");
+            assertThat(callCount.get()).isEqualTo(1);
+            assertThat(stage.get()).isEqualTo("cloud");
+            assertThat(tokens).containsExactly(
+                    "Có vẻ bạn đang tìm Tập 22, khoảng 08:40. ",
+                    "Trong cảnh phim này, Chi làm vỡ bình hoa rất thú vị."
+            );
+            assertThat(lastAuthHeader.get()).isEqualTo("Bearer secret-key-123");
+            assertThat(lastRequestBody.get()).doesNotContain("secret-key-123");
 
-        JsonNode sent = objectMapper.readTree(lastRequestBody.get());
-        assertThat(sent.get("model").asText()).isEqualTo("deepseek-chat");
-        assertThat(sent.get("stream").asBoolean()).isTrue();
-        assertThat(sent.get("messages").get(0).get("role").asText()).isEqualTo("system");
-        assertThat(sent.get("messages").get(0).get("content").asText()).contains("Bạn là CineBot");
-        JsonNode userContext = objectMapper.readTree(sent.get("messages").get(1).get("content").asText());
-        assertThat(userContext.get("intent").get("scope").asText()).isEqualTo("scene");
-        assertThat(userContext.get("sources").get(0).get("evidence").get(0).asText())
-                .isEqualTo("Chi làm vỡ bình hoa.");
+            JsonNode sent = objectMapper.readTree(lastRequestBody.get());
+            assertThat(sent.get("model").asText()).isEqualTo("deepseek-chat");
+            assertThat(sent.get("stream").asBoolean()).isTrue();
+            assertThat(sent.get("messages").get(0).get("role").asText()).isEqualTo("system");
+            assertThat(sent.get("messages").get(0).get("content").asText()).contains("Bạn là CineBot");
+            JsonNode userContext = objectMapper.readTree(sent.get("messages").get(1).get("content").asText());
+            assertThat(userContext.get("intent").get("scope").asText()).isEqualTo("scene");
+            assertThat(userContext.get("sources").get(0).get("evidence").get(0).asText())
+                    .isEqualTo("Chi làm vỡ bình hoa.");
+        }
     }
 
     @Test
     void fallsBackToUnavailableMessageWhenProviderReturns503OrMissingApiKey() {
         mode.set(HandlerMode.STATUS_503);
-        DeepSeekAnswerGenerator generator = new DeepSeekAnswerGenerator(
+        try (DeepSeekAnswerGenerator generator = new DeepSeekAnswerGenerator(
                 new AssistantProperties.Llm("deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "secret-key-123", Duration.ofSeconds(5)),
                 objectMapper
-        );
-        ChatIntent intent = intentParser.parse("cảnh Chi làm vỡ bình hoa");
+        )) {
+            ChatIntent intent = intentParser.parse("cảnh Chi làm vỡ bình hoa");
 
-        AtomicReference<String> stage = new AtomicReference<>();
-        String answer = String.join("", generator.answer(intent, List.of(sampleHit()), stage::set).toList());
+            AtomicReference<String> stage = new AtomicReference<>();
+            String answer = String.join("", generator.answer(intent, List.of(sampleHit()), stage::set).toList());
 
-        assertThat(stage.get()).isEqualTo("template");
-        assertThat(answer).isEqualTo(
-                "Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Phần trả lời AI đang tạm bận, gửi bạn đoạn trích gốc nhé. Chi làm vỡ bình hoa."
-        );
+            assertThat(stage.get()).isEqualTo("template");
+            assertThat(answer).isEqualTo(
+                    "Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Phần trả lời AI đang tạm bận, gửi bạn đoạn trích gốc nhé. Chi làm vỡ bình hoa."
+            );
 
-        DeepSeekAnswerGenerator noKey = new DeepSeekAnswerGenerator(
-                new AssistantProperties.Llm("deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "", Duration.ofSeconds(5)),
-                objectMapper
-        );
-        AtomicReference<String> noKeyStage = new AtomicReference<>();
-        String noKeyAnswer = String.join("", noKey.answer(intent, List.of(sampleHit()), noKeyStage::set).toList());
-        assertThat(noKeyStage.get()).isEqualTo("template");
-        assertThat(noKeyAnswer).contains("Phần trả lời AI đang tạm bận, gửi bạn đoạn trích gốc nhé. Chi làm vỡ bình hoa.");
-        assertThat(callCount.get()).isEqualTo(1);
+            try (DeepSeekAnswerGenerator noKey = new DeepSeekAnswerGenerator(
+                    new AssistantProperties.Llm("deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "", Duration.ofSeconds(5)),
+                    objectMapper
+            )) {
+                AtomicReference<String> noKeyStage = new AtomicReference<>();
+                String noKeyAnswer = String.join("", noKey.answer(intent, List.of(sampleHit()), noKeyStage::set).toList());
+                assertThat(noKeyStage.get()).isEqualTo("template");
+                assertThat(noKeyAnswer).contains("Phần trả lời AI đang tạm bận, gửi bạn đoạn trích gốc nhé. Chi làm vỡ bình hoa.");
+                assertThat(callCount.get()).isEqualTo(1);
+            }
+        }
     }
 
     @Test
     void fallsBackToPlainEvidenceOnProtocolAndGroundingViolations() {
-        DeepSeekAnswerGenerator generator = new DeepSeekAnswerGenerator(
+        try (DeepSeekAnswerGenerator generator = new DeepSeekAnswerGenerator(
                 new AssistantProperties.Llm("deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "secret-key-123", Duration.ofSeconds(5)),
                 objectMapper
-        );
-        ChatIntent intent = intentParser.parse("cảnh Chi làm vỡ bình hoa");
-        String expectedFallback = "Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Chi làm vỡ bình hoa.";
+        )) {
+            ChatIntent intent = intentParser.parse("cảnh Chi làm vỡ bình hoa");
+            String expectedFallback = "Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Chi làm vỡ bình hoa.";
 
-        List<HandlerMode> protocolModes = List.of(
-                HandlerMode.WRONG_CONTENT_TYPE,
-                HandlerMode.TRUNCATED_LENGTH,
-                HandlerMode.UNGROUNDED_WORDS,
-                HandlerMode.UNSUPPORTED_DIGIT,
-                HandlerMode.LEAKED_SECRET,
-                HandlerMode.MALFORMED_JSON,
-                HandlerMode.OVER_1200_CHARS
-        );
+            List<HandlerMode> protocolModes = List.of(
+                    HandlerMode.WRONG_CONTENT_TYPE,
+                    HandlerMode.TRUNCATED_LENGTH,
+                    HandlerMode.UNGROUNDED_WORDS,
+                    HandlerMode.UNSUPPORTED_DIGIT,
+                    HandlerMode.LEAKED_SECRET,
+                    HandlerMode.MALFORMED_JSON,
+                    HandlerMode.OVER_1200_CHARS
+            );
 
-        for (HandlerMode protocolMode : protocolModes) {
-            mode.set(protocolMode);
-            AtomicReference<String> stage = new AtomicReference<>();
-            String text = String.join("", generator.answer(intent, List.of(sampleHit()), stage::set).toList());
-            assertThat(stage.get()).as("stage for %s", protocolMode).isEqualTo("template");
-            assertThat(text).as("fallback for %s", protocolMode).isEqualTo(expectedFallback);
+            for (HandlerMode protocolMode : protocolModes) {
+                mode.set(protocolMode);
+                AtomicReference<String> stage = new AtomicReference<>();
+                String text = String.join("", generator.answer(intent, List.of(sampleHit()), stage::set).toList());
+                assertThat(stage.get()).as("stage for %s", protocolMode).isEqualTo("template");
+                assertThat(text).as("fallback for %s", protocolMode).isEqualTo(expectedFallback);
+            }
         }
     }
 
     @Test
     void delegatesChitchatMoodSeriesAndNoEvidenceToTemplateWithoutHttpCall() {
-        DeepSeekAnswerGenerator generator = new DeepSeekAnswerGenerator(
+        try (DeepSeekAnswerGenerator generator = new DeepSeekAnswerGenerator(
                 new AssistantProperties.Llm("deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "secret-key-123", Duration.ofSeconds(5)),
                 objectMapper
-        );
+        )) {
 
-        ChatIntent chitchat = intentParser.parse("Xin chào!");
-        assertThat(String.join("", generator.answer(chitchat, List.of()).toList()))
-                .isEqualTo("Mình là CineBot. Bạn cứ kể lại cảnh phim, nhân vật hoặc tập muốn tìm nhé.");
+            ChatIntent chitchat = intentParser.parse("Xin chào!");
+            assertThat(String.join("", generator.answer(chitchat, List.of()).toList()))
+                    .isEqualTo("Mình là CineBot. Bạn cứ kể lại cảnh phim, nhân vật hoặc tập muốn tìm nhé.");
 
-        ChatIntent mood = intentParser.parse("hôm nay stress quá");
-        assertThat(String.join("", generator.answer(mood, List.of(sampleHit())).toList()))
-                .isEqualTo("Bạn có thể xem tập \"Tập 22\".");
+            ChatIntent mood = intentParser.parse("hôm nay stress quá");
+            assertThat(String.join("", generator.answer(mood, List.of(sampleHit())).toList()))
+                    .isEqualTo("Bạn có thể xem tập \"Tập 22\".");
 
-        ChatIntent noEvidence = intentParser.parse("tìm tập 22");
-        SearchHit emptyEvidenceHit = SearchHitFixture.builder().title("Tập 22").build();
-        assertThat(String.join("", generator.answer(noEvidence, List.of(emptyEvidenceHit)).toList()))
-                .isEqualTo("Có vẻ bạn đang tìm Tập 22.");
+            ChatIntent noEvidence = intentParser.parse("tìm tập 22");
+            SearchHit emptyEvidenceHit = SearchHitFixture.builder().title("Tập 22").build();
+            assertThat(String.join("", generator.answer(noEvidence, List.of(emptyEvidenceHit)).toList()))
+                    .isEqualTo("Có vẻ bạn đang tìm Tập 22.");
 
-        assertThat(callCount.get()).isZero();
+            assertThat(callCount.get()).isZero();
+        }
     }
 
     @Test
     void enforcesDailyCallBudgetAndFallsBackOnStalledSseBodyReadTimeout() {
-        // Đặt ngân sách ngày bằng 1: lượt đầu gọi được DeepSeek, lượt hai phải rớt về bản mẫu mà không bắn thêm HTTP.
+        // đặt quota ngày bằng 1 thì phát đầu gọi DeepSeek, phát hai rớt về bản mẫu luôn chứ đừng bắn thêm HTTP
         try (DeepSeekAnswerGenerator budgeted = new DeepSeekAnswerGenerator(
-                new AssistantProperties.Llm(
-                        "deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "secret-key-123",
-                        Duration.ofSeconds(5), Duration.ofSeconds(2), 2, 1
-                ),
-                objectMapper
+            new AssistantProperties.Llm(
+                    "deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "secret-key-123",
+                    Duration.ofSeconds(5), Duration.ofSeconds(2), 2, 1
+            ),
+            objectMapper
         )) {
             ChatIntent intent = intentParser.parse("cảnh Chi làm vỡ bình hoa");
             AtomicReference<String> firstStage = new AtomicReference<>();
@@ -280,14 +288,14 @@ class DeepSeekAnswerGeneratorTest {
             assertThat(callCount.get()).isEqualTo(1);
         }
 
-        // Giả lập upstream trả 200 OK rồi đứng im 3 giây để kiểm tra watchdog cắt stream trước 2 giây.
+        // cho upstream trả 200 OK rồi đứng hình 3 giây để check watchdog cắt stream trước 2 giây
         mode.set(HandlerMode.STALLED_SSE);
         try (DeepSeekAnswerGenerator timed = new DeepSeekAnswerGenerator(
-                new AssistantProperties.Llm(
-                        "deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "secret-key-123",
-                        Duration.ofMillis(350), Duration.ofSeconds(2), 2, 10
-                ),
-                objectMapper
+            new AssistantProperties.Llm(
+                    "deepseek", "http://127.0.0.1:" + port, "deepseek-chat", "secret-key-123",
+                    Duration.ofMillis(350), Duration.ofSeconds(2), 2, 10
+            ),
+            objectMapper
         )) {
             ChatIntent intent = intentParser.parse("cảnh Chi làm vỡ bình hoa");
             AtomicReference<String> stage = new AtomicReference<>();

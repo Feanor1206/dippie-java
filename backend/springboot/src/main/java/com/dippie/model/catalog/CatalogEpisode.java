@@ -19,7 +19,7 @@ import org.hibernate.annotations.OnDeleteAction;
 import java.time.LocalDate;
 import java.util.Locale;
 
-// Tập phim trong phân cấp phim bộ, mùa và tập (kế thừa CatalogRecord). Khóa ngoại kép (series_id, season_id) để DB tự chặn gắn nhầm tập vào mùa của bộ khác.
+// tập phim trong cây bộ/mùa/tập (kế thừa CatalogRecord), khóa ngoại kép (series_id, season_id) chặn gắn nhầm tập sang mùa của bộ khác
 @Entity
 @Table(name = "catalog_episodes",
         indexes = {
@@ -122,7 +122,7 @@ public class CatalogEpisode extends CatalogRecord {
     protected CatalogEpisode() {
     }
 
-    // Nạp lại metadata tập phim khi import đè rồi đồng bộ lại cột publication_status theo recordJson mới (orders, links, ratings và credits giữ nguyên).
+    // import đè thì chép lại metadata rồi đồng bộ publication_status theo recordJson mới, giữ nguyên orders, links, ratings với credits
     public void applyImport(CatalogEpisode imported) {
         replaceRecordFrom(imported);
         seriesId = imported.seriesId;
@@ -214,7 +214,7 @@ public class CatalogEpisode extends CatalogRecord {
         return releaseDate;
     }
 
-    // Lấy năm phát hành theo thứ tự ưu tiên: ngày chiếu riêng của tập, năm đầu mùa, rồi mới rơi về năm của phim bộ.
+    // lấy năm phát hành ưu tiên ngày chiếu tập, tới năm đầu mùa rồi mới rơi về năm của phim bộ
     public Integer releaseYear(CatalogSeason season, CatalogSeries series) {
         if (releaseDate != null) {
             return releaseDate.getYear();
@@ -279,13 +279,13 @@ public class CatalogEpisode extends CatalogRecord {
         return publicationStatus;
     }
 
-    // Việt nhớ đổi recordJson của tập thì đi qua hàm này để cột publication_status cập nhật theo, đừng sửa trực tiếp kẻo lệch với JSON.
+    // Việt nhớ sửa recordJson thì đi qua hàm này cho publication_status cập nhật theo, sửa thẳng là lệch với JSON ngay
     public void updateRecordJson(String recordJson) {
         replaceRecordJson(recordJson);
         syncPublicationStatus();
     }
 
-    // Cột publication_status là bản sao rút từ recordJson để SQL lọc tập ready qua index thay vì parse JSON mỗi lần query.
+    // publication_status là bản rút sẵn từ recordJson để SQL lọc tập ready bằng index, khỏi parse JSON mỗi query
     @PrePersist
     @PreUpdate
     private void syncPublicationStatus() {

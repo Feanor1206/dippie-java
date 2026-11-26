@@ -44,7 +44,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Test tích hợp cho tủ phim cá nhân (xem sau, yêu thích, chấm điểm), gồm cả tình huống bấm thêm trùng lúc hai luồng chạy song song.
+// test tủ phim cá nhân gồm xem sau, yêu thích, chấm điểm, có cả ca hai luồng bấm thêm trùng cùng lúc
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

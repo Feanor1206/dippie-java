@@ -12,7 +12,7 @@ import org.hibernate.annotations.Check;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
-// Phân đoạn nhỏ nằm trong một tập phim theo số thứ tự position (kế thừa CatalogRecord), có ràng buộc duy nhất (episode_id, position).
+// phân đoạn nhỏ trong tập theo thứ tự position (kế thừa CatalogRecord), unique theo (episode_id, position)
 @Entity
 @Table(name = "catalog_segments",
         uniqueConstraints = {
@@ -74,7 +74,7 @@ public class CatalogSegment extends CatalogRecord {
     protected CatalogSegment() {
     }
 
-    // Cập nhật nội dung và khoảng thời gian phân đoạn khi import lại (aliases, translations, primaryLanguage, themes giữ nguyên).
+    // re-import thì chép lại nội dung với mốc giờ phân đoạn, giữ nguyên aliases, translations, primaryLanguage và themes
     public void applyImport(CatalogSegment imported) {
         replaceRecordFrom(imported);
         episodeId = imported.episodeId;
@@ -89,7 +89,7 @@ public class CatalogSegment extends CatalogRecord {
         plotFactsJson = imported.plotFactsJson;
     }
 
-    // Việt nhớ khi đổi thứ tự segment lúc import phải đẩy sang position tạm trước rồi mới gán số mới, không là dính trùng khóa uq_cat_segment_position ngay.
+    // Việt để ý lúc đổi thứ tự segment khi import phải đẩy qua position tạm trước rồi mới gán số mới, không là đụng uq_cat_segment_position ngay
     public void moveToTemporaryPosition(int position) {
         this.position = position;
     }

@@ -36,8 +36,8 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-// Nạp sẵn lịch sử xem, xem sau, yêu thích và đánh giá cho tài khoản demo khi bật dippie.seed-demo-data.
-// Mình đặt @Order(20) để chạy sau DemoAccountSeeder (@Order(10)) và dùng mẫu Observer nghe CatalogImportedEvent.
+// nạp sẵn lịch sử xem, xem sau, yêu thích với đánh giá cho tài khoản demo khi bật dippie.seed-demo-data
+// @Order(20) để chạy sau DemoAccountSeeder, nghe CatalogImportedEvent kiểu Observer
 @Component
 @Order(20)
 @Profile("(demo | test) & !mysql & !prod")
@@ -72,14 +72,14 @@ public class DemoHistorySeeder implements ApplicationRunner {
         this.clock = clock;
     }
 
-    // Chạy lúc khởi động nếu dữ liệu phim đã có sẵn trong DB.
+    // chạy lúc mở app nếu dữ liệu phim đã có sẵn trong DB
     @Override
     @Transactional
     public void run(ApplicationArguments arguments) {
         seedHistory();
     }
 
-    // Bắt CatalogImportedEvent để nạp bù lịch sử mẫu khi danh mục phim được import sau lúc khởi động.
+    // nghe CatalogImportedEvent để nạp bù lịch sử mẫu lúc danh mục được import sau khi mở app
     @EventListener(CatalogImportedEvent.class)
     @Transactional
     public void afterCatalogImport() {
@@ -87,7 +87,7 @@ public class DemoHistorySeeder implements ApplicationRunner {
     }
 
     private void seedHistory() {
-        // Khóa dòng user demo bằng findByIdForUpdate để startup và catalog import chạy chồng lên nhau không chèn trùng.
+        // khóa dòng user demo bằng findByIdForUpdate kẻo lúc khởi động với catalog import đè nhau rồi chèn trùng
         var demoUser = users.findByUsernameAndEmailAndRole(
                         DemoAccountSeeder.DEMO_USERNAME, DemoAccountSeeder.DEMO_EMAIL, Role.ROLE_USER)
                 .flatMap(user -> users.findByIdForUpdate(user.getId())).filter(User::isEnabled).orElse(null);
@@ -95,7 +95,7 @@ public class DemoHistorySeeder implements ApplicationRunner {
             return;
         }
         Long userId = demoUser.getId();
-        // Chỉ lấy các tập mẫu đã tồn tại và đang ở trạng thái công khai.
+        // chỉ lấy mấy tập mẫu có sẵn và đang mở công khai
         var publishedEpisodes = episodes.findReadyWithParentsAndMovieByIdIn(SAMPLES.stream().map(Sample::episodeId).toList())
                 .stream().filter(CatalogEpisodeRepository.EpisodeWithParents::isPublished)
                 .map(CatalogEpisodeRepository.EpisodeWithParents::episode)
@@ -103,7 +103,7 @@ public class DemoHistorySeeder implements ApplicationRunner {
         if (publishedEpisodes.isEmpty()) {
             return;
         }
-        // Đọc trước các mục demo user đã có để chạy lại seeder sẽ không ghi đè dữ liệu người test vừa sửa.
+        // đọc trước mấy mục demo user đã có để chạy lại seeder khỏi ghi đè dữ liệu vừa test sửa
         Set<String> existingProgress = new HashSet<>(progress.findEpisodeIdsByUserId(userId));
         Set<String> existingWatchlist = new HashSet<>(watchlist.findMovieIdsByUserId(userId));
         Set<String> existingFavorites = new HashSet<>(favorites.findMovieIdsByUserId(userId));
@@ -114,7 +114,7 @@ public class DemoHistorySeeder implements ApplicationRunner {
         List<FavoriteItem> newFavorites = new ArrayList<>();
         List<MovieRating> newRatings = new ArrayList<>();
         var now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
-        // Dựng các bản ghi còn thiếu; tiến độ xem chỉ thêm khi tập có nguồn YouTube nhúng được và mốc thời gian hợp lệ.
+        // tạo mấy dòng còn thiếu, riêng tiến độ xem chỉ thêm khi tập có nguồn YouTube nhúng được với mốc xem hợp lệ
         for (Sample sample : SAMPLES) {
             CatalogEpisode episode = publishedEpisodes.get(sample.episodeId());
             if (episode == null) {
@@ -154,7 +154,7 @@ public class DemoHistorySeeder implements ApplicationRunner {
         }
     }
 
-    // Một dòng cấu hình cố định cho tập phim mẫu cần nạp vào tài khoản demo.
+    // 1 dòng cấu hình cố định cho tập mẫu cần nạp vào tài khoản demo
     private record Sample(String episodeId, long daysAgo, Long positionMs, boolean watchLater, boolean favorite,
             Integer rating) {
     }

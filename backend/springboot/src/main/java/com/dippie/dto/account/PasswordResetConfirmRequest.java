@@ -1,6 +1,6 @@
 package com.dippie.dto.account;
 
-// Payload nhận token và mật khẩu mới ở bước xác nhận đặt lại mật khẩu.
+// body nhận token với mật khẩu mới ở bước chốt đặt lại mật khẩu
 public record PasswordResetConfirmRequest(String token, String newPassword) {
 
     public String rawToken() {

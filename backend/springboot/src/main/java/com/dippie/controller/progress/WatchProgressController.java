@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-// API đọc danh sách xem gần đây, lấy, lưu và xóa tiến độ xem từng tập của người đang đăng nhập.
+// API đọc danh sách xem gần đây, lấy, lưu và xóa tiến độ từng tập của user đang đăng nhập
 @RestController
 @RequestMapping("/api/users/watch-progress")
 public class WatchProgressController {

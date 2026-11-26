@@ -2,13 +2,13 @@ package com.dippie.service.catalog;
 
 import java.util.List;
 
-// Bổ sung vài tên gọi tắt hay cách viết quen thuộc mà người xem hay gõ khi tìm phim bộ.
+// thêm mấy tên gọi tắt hay cách gõ quen mà người xem hay đánh khi tìm phim bộ
 public final class SeriesSearchAliases {
 
     private SeriesSearchAliases() {
     }
 
-    // Trả về danh sách biệt danh tìm kiếm theo mã seriesId, chưa khai báo thì trả list rỗng.
+    // trả danh sách biệt danh tìm kiếm theo seriesId, chưa khai báo thì trả list rỗng
     public static List<String> forSeries(String seriesId) {
         return switch (seriesId) {
             case "ser_peppa_pig" -> List.of("Peppa");

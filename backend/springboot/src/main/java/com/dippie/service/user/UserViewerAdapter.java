@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
-// Adapter chuyển entity User sang Viewer của tầng security (ActiveViewerLookup) để tầng bảo mật khỏi phụ thuộc JPA.
+// kiểu Adapter đổi entity User sang Viewer của ActiveViewerLookup để tầng security khỏi phụ thuộc JPA
 @Component
 public class UserViewerAdapter implements ActiveViewerLookup {
 
@@ -20,7 +20,7 @@ public class UserViewerAdapter implements ActiveViewerLookup {
         this.userRepository = userRepository;
     }
 
-    // Chỉ chấp nhận JWT khi tài khoản còn mở và tokenVersion trùng khớp hoàn toàn với DB.
+    // chỉ nhận JWT khi tài khoản còn bật và tokenVersion khớp y chang DB
     @Override
     @Transactional(readOnly = true)
     public Optional<Viewer> findActiveViewer(String username, long tokenVersion) {
@@ -29,7 +29,7 @@ public class UserViewerAdapter implements ActiveViewerLookup {
                 .map(user -> new Viewer(user.getId(), user.getUsername(), user.getRole()));
     }
 
-    // Bản tra theo userId dùng khi xác minh vé phát video, vẫn đối chiếu enabled và tokenVersion để thu hồi kịp thời.
+    // bản tra theo userId cho lúc check vé phát video, vẫn soi enabled với tokenVersion để cắt quyền kịp
     @Override
     @Transactional(readOnly = true)
     public Optional<Viewer> findActiveViewerById(Long userId, long tokenVersion) {
@@ -41,7 +41,7 @@ public class UserViewerAdapter implements ActiveViewerLookup {
                 .map(user -> new Viewer(user.getId(), user.getUsername(), user.getRole()));
     }
 
-    // Lấy tokenVersion hiện tại của tài khoản đang bật để nhúng vào vé phát video mới cấp.
+    // lấy tokenVersion hiện tại của tài khoản đang bật để nhét vào vé phát mới cấp
     @Override
     @Transactional(readOnly = true)
     public Optional<Long> findActiveTokenVersion(Long userId) {

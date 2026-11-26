@@ -7,7 +7,7 @@ import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
 
-// Khung phản hồi phân trang dùng chung cho các API quản trị bằng kiểu tổng quát <T>.
+// khung phân trang dùng chung kiểu generics <T> cho mấy API admin
 public record AdminPageResponse<T>(
         List<T> items,
         int page,
@@ -18,21 +18,19 @@ public record AdminPageResponse<T>(
         boolean hasPrevious
 ) {
 
-    private static final int MAX_PAGE_SIZE = 100;
-
     public AdminPageResponse {
         items = items == null ? List.of() : List.copyOf(items);
     }
 
-    // Chặn size ngoài khoảng 1 đến 100 để tránh truy vấn quá nặng khi client truyền số lớn.
+    // chặn size ngoài 1 đến 100 kẻo client gửi số to làm DB gồng
     public static PageRequest pageRequest(int page, int size) {
-        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+        if (page < 0 || size < 1 || size > 100) {
             throw new InvalidRequestException("Số trang hoặc số mục mỗi trang không hợp lệ.");
         }
         return PageRequest.of(page, size);
     }
 
-    // Chuyển kết quả Page của Spring Data sang cấu trúc phân trang của ứng dụng.
+    // đổi Page của Spring Data sang format phân trang của app
     public static <T> AdminPageResponse<T> of(Page<T> page) {
         return new AdminPageResponse<>(
                 page.getContent(),

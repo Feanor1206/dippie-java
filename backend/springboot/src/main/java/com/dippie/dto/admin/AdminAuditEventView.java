@@ -5,8 +5,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// Dữ liệu từng dòng nhật ký trả cho giao diện admin sau khi đã đọc detailsJson thành Map.
-// Compact constructor sao chép Map thành dạng chỉ đọc để bên gọi không lỡ sửa trực tiếp.
+// mỗi dòng log cho trang admin sau khi đọc detailsJson thành Map
+// compact constructor copy Map sang chỉ đọc kẻo bên gọi lỡ sửa thẳng vào
 public record AdminAuditEventView(
         Long id,
         String actorUsername,

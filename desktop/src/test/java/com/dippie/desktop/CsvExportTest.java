@@ -12,7 +12,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-// Test xuất CSV: kiểm tra BOM UTF-8, thoát dấu phẩy, ngoặc kép, xuống dòng và chặn công thức Excel.
+// test xuất CSV gồm BOM UTF-8, thoát dấu phẩy, ngoặc kép, xuống dòng và chặn công thức Excel
 class CsvExportTest {
     @TempDir
     Path directory;

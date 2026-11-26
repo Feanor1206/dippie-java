@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Xác minh TemplateAnswerGenerator tách token kèm khoảng trắng và chọn đúng mẫu cho câu hỏi bộ phim, tâm trạng.
+// test TemplateAnswerGenerator tách token giữ khoảng trắng rồi chọn đúng mẫu cho câu hỏi bộ phim với tâm trạng
 class TemplateAnswerGeneratorTest {
 
     private final IntentParser intentParser = new IntentParser();

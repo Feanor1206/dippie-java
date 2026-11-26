@@ -44,7 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Test tích hợp luồng đặt lại mật khẩu qua hộp thư .eml: phản hồi 202 trung lập, token dùng một lần, hết hạn, thu hồi JWT cũ và ghi nhật ký.
+// test luồng quên mật khẩu qua hộp thư .eml: trả 202 trung lập, token 1 lần, hết hạn, đá JWT cũ với audit
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -109,7 +109,7 @@ class PasswordResetControllerTest {
         cleanOutbox();
     }
 
-    // Chạy trọn quy trình ghi tệp .eml tiếng Việt, băm token trong DB, đổi mật khẩu, vô hiệu hóa JWT cũ và chặn dùng lại token.
+    // chạy trọn vòng xuất file .eml tiếng Việt, lưu hash token, đổi mật khẩu, đá JWT cũ rồi cấm dùng lại token
     @Test
     void completesEndToEndPasswordResetViaEmlOutboxRevokesSessionsAndPreventsReuse() throws Exception {
         User alice = saveUser("alice_reset", "alice.reset@example.com", true);
@@ -122,7 +122,7 @@ class PasswordResetControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value(PasswordResetService.REQUEST_ACCEPTED_MESSAGE));
 
-        // Tệp .eml xuất ra phải mang tên <timestamp>-<recipient>.eml kèm nội dung tiếng Việt và đường dẫn đặt lại.
+        // file .eml phải đúng tên <timestamp>-<recipient>.eml, có tiếng Việt với link reset
         List<Path> emlFiles = listOutboxFiles();
         assertThat(emlFiles).hasSize(1);
         Path emlFile = emlFiles.getFirst();
@@ -137,7 +137,7 @@ class PasswordResetControllerTest {
         assertThat(matcher.find()).isTrue();
         String rawToken = matcher.group(1);
 
-        // Bảng token chỉ chứa mã băm SHA-256 của token, tuyệt đối không lưu nguyên bản rawToken.
+        // DB chỉ được lưu mã băm SHA-256 thôi, đừng lưu rawToken kẻo lộ
         List<PasswordResetToken> storedTokens = tokenRepository.findByUserId(alice.getId());
         assertThat(storedTokens).hasSize(1);
         assertThat(storedTokens.getFirst().getTokenHash()).isEqualTo(tokenCodec.hash(rawToken));
@@ -145,7 +145,7 @@ class PasswordResetControllerTest {
         assertThat(storedTokens.getFirst().getExpiresAt())
                 .isEqualTo(storedTokens.getFirst().getCreatedAt().plusMinutes(30));
 
-        // Xác nhận đổi mật khẩu lần đầu trả 204.
+        // xác nhận đổi lần đầu ăn 204
         mockMvc.perform(post("/api/auth/password-reset/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -154,7 +154,7 @@ class PasswordResetControllerTest {
                         ))))
                 .andExpect(status().isNoContent());
 
-        // Dùng lại cùng token đó lần thứ hai phải bị từ chối với mã 400.
+        // xài lại đúng token đó lần hai là ăn 400 ngay
         mockMvc.perform(post("/api/auth/password-reset/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -164,7 +164,7 @@ class PasswordResetControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(PasswordResetService.INVALID_OR_EXPIRED_TOKEN_MESSAGE));
 
-        // token_version tăng nên JWT cũ mất hiệu lực; chỉ đăng nhập được bằng mật khẩu mới.
+        // token_version nhảy lên nên JWT cũ hết xài được, chỉ vào bằng mật khẩu mới thôi
         User reloaded = userRepository.findById(alice.getId()).orElseThrow();
         assertThat(reloaded.getTokenVersion()).isEqualTo(1L);
 
@@ -188,14 +188,14 @@ class PasswordResetControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.token").isNotEmpty());
 
-        // Kiểm tra dòng nhật ký PASSWORD_RESET_COMPLETED đã được lưu.
+        // check có ghi dòng audit PASSWORD_RESET_COMPLETED chưa
         List<AdminAuditEvent> audits = auditEventRepository.findAll();
         assertThat(audits).hasSize(1);
         assertThat(audits.getFirst().getAction()).isEqualTo(PasswordResetService.ACTION_PASSWORD_RESET_COMPLETED);
         assertThat(audits.getFirst().getTargetId()).isEqualTo(String.valueOf(alice.getId()));
     }
 
-    // Email chưa đăng ký hoặc tài khoản đang bị khóa vẫn trả đúng 202 như bình thường nhưng không tạo token hay ghi tệp .eml.
+    // email lạ hay nick bị khóa vẫn trả 202 cho khỏi bị dò, nhưng không tạo token hay ghi .eml
     @Test
     void returnsNeutral202WithoutSendingEmailForUnknownOrDisabledAccounts() throws Exception {
         saveUser("locked_reset", "locked.reset@example.com", false);
@@ -216,7 +216,7 @@ class PasswordResetControllerTest {
         assertThat(tokenRepository.count()).isZero();
     }
 
-    // Kiểm tra các nhánh lỗi 400 gồm email sai định dạng, token hết hạn, token lạ và mật khẩu mới quá ngắn.
+    // test mấy nhánh 400: email sai format, token quá hạn, token lạ với mật khẩu mới ngắn quá
     @Test
     void rejectsInvalidEmailExpiredTokenUnknownTokenAndWeakNewPassword() throws Exception {
         User bob = saveUser("bob_reset", "bob.reset@example.com", true);
@@ -227,7 +227,7 @@ class PasswordResetControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Địa chỉ email chưa đúng định dạng."));
 
-        // Tạo sẵn một token đã quá hạn từ trước để xác nhận hệ thống từ chối.
+        // cài sẵn một token hết hạn từ trước để check bị từ chối
         String expiredRaw = tokenCodec.generateRawToken();
         LocalDateTime past = LocalDateTime.of(2020, 1, 1, 0, 0);
         tokenRepository.saveAndFlush(new PasswordResetToken(
@@ -262,7 +262,7 @@ class PasswordResetControllerTest {
                 .andExpect(jsonPath("$.message").value("Mật khẩu cần ít nhất 6 ký tự."));
     }
 
-    // Chặn IP gửi quá 5 yêu cầu quên mật khẩu liên tiếp bằng mã 429 kèm Retry-After.
+    // một IP spam quá 5 phát quên mật khẩu là ăn 429 kèm Retry-After
     @Test
     void enforcesRateLimitOnPasswordResetRequest() throws Exception {
         for (int attempt = 0; attempt < 5; attempt++) {
@@ -288,7 +288,7 @@ class PasswordResetControllerTest {
                 .andExpect(jsonPath("$.message")
                         .value("Bạn vừa gửi quá nhiều yêu cầu đặt lại mật khẩu. Vui lòng đợi một lát rồi thử lại."));
 
-        // IP khác vẫn gửi yêu cầu bình thường.
+        // IP khác vẫn gửi vô tư nha
         mockMvc.perform(post("/api/auth/password-reset/request")
                         .with(request -> {
                             request.setRemoteAddr("10.20.0.2");

@@ -12,7 +12,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Kiểm tra cách chấm điểm sở thích, làm tròn HALF_EVEN, lọc tập đã xem và chuẩn hóa tên thể loại của AffinityRecommendationStrategy.
+// test Strategy gợi ý theo sở thích: chấm điểm, làm tròn HALF_EVEN, lọc tập xem rồi với chuẩn hóa tên thể loại
 class AffinityRecommendationStrategyTest {
 
     private final AffinityRecommendationStrategy strategy = new AffinityRecommendationStrategy();

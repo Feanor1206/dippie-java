@@ -1,5 +1,5 @@
 package com.dippie.dto.admin;
 
-// Payload nhận vai trò mới khi admin đổi quyền một tài khoản.
+// body nhận role mới khi admin đổi quyền user
 public record UpdateUserRoleRequest(String role) {
 }

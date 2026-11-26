@@ -13,7 +13,8 @@ import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
-// Lưu rãnh văn bản (phụ đề, lời thoại hoặc OCR) thuộc media asset hay tập phim, kế thừa CatalogRecord. DB ép có media_asset_id, hoặc nếu gắn thẳng vào episode_id thì phải đi kèm source_id.
+// track chữ (phụ đề, lời thoại hay OCR) thuộc media asset hay tập phim, kế thừa CatalogRecord
+// DB ép phải có media_asset_id, còn nếu gắn thẳng vào episode_id thì bắt buộc kèm source_id
 @Entity
 @Table(name = "catalog_text_tracks",
         indexes = {
@@ -79,7 +80,7 @@ public class CatalogTextTrack extends CatalogRecord {
     protected CatalogTextTrack() {
     }
 
-    // Nạp lại thông tin ngôn ngữ, định dạng và nội dung cues khi re-import; cờ defaultTrack không bị ghi đè.
+    // re-import thì chép lại ngôn ngữ, định dạng với nội dung cues, không đè cờ defaultTrack
     public void applyImport(CatalogTextTrack imported) {
         replaceRecordFrom(imported);
         mediaAssetId = imported.mediaAssetId;

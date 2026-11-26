@@ -11,8 +11,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// Kết quả tìm kiếm trả chung cho CineBot và API khám phá.
-// Phải giữ song song cặp trường camelCase (episodeId, startMs) và snake_case (episode_id, start_ms) để tương thích payload frontend cũ.
+// một kết quả tìm kiếm dùng chung cho CineBot với API khám phá
+// giữ song song cả camelCase (episodeId, startMs) với snake_case (episode_id, start_ms) kẻo gãy frontend cũ
 public record SearchHit(
         String id,
         String title,
@@ -73,7 +73,7 @@ public record SearchHit(
         evidence = evidence == null ? List.of() : List.copyOf(evidence);
     }
 
-    // Ưu tiên mốc trên dòng thời gian tập phim, chỉ dùng mốc tệp nguồn khi tập chưa có offset riêng.
+    // ưu tiên mốc trên dòng thời gian của tập, chưa có offset riêng mới lấy mốc file gốc
     public Long effectiveStartMs() {
         return startMs != null ? startMs : startMsSnake;
     }

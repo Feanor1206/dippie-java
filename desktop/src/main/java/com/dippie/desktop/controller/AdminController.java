@@ -17,8 +17,8 @@ import javafx.beans.property.ReadOnlyLongWrapper;
 import java.util.List;
 import java.util.function.Consumer;
 
-// Controller chính cho 4 tab quản trị (MVC). Mình dùng JavaFX property làm Observer
-// để báo các tab liên quan tự tải lại sau khi giao dịch sửa dữ liệu thành công.
+// controller chính của 4 tab quản trị (MVC), dùng JavaFX property làm Observer
+// để sửa dữ liệu xong là báo mấy tab liên quan tự tải lại
 public final class AdminController {
     private final AdminServices services;
     private final UiTasks tasks;
@@ -50,7 +50,7 @@ public final class AdminController {
         return ratingsChanged.getReadOnlyProperty();
     }
 
-    // Lấy thông tin quản trị viên đang đăng nhập để hiện tên trên thanh tiêu đề.
+    // lấy thông tin admin đang đăng nhập để hiện tên lên thanh trên cùng
     public void currentAdmin(Consumer<UserAccount> onSuccess) {
         tasks.database(() -> services.currentAdmin(session), onSuccess);
     }
@@ -73,7 +73,7 @@ public final class AdminController {
         tasks.database(() -> services.catalog(session), onSuccess, onComplete);
     }
 
-    // Lọc cây danh mục đi qua controller để CatalogPane khỏi gọi thẳng sang CatalogService.
+    // lọc cây danh mục đi qua controller để CatalogPane khỏi gọi thẳng CatalogService
     public List<SeriesNode> filterCatalog(List<SeriesNode> catalog, String query) {
         return CatalogService.filter(catalog, query);
     }
@@ -96,7 +96,7 @@ public final class AdminController {
         tasks.database(() -> services.ratings(session), onSuccess, onComplete);
     }
 
-    // Lưu lệnh vào CommandHistory chỉ khi giao dịch thành công; nếu lỗi thì lịch sử hoàn tác cũ không bị ghi đè.
+    // chỉ lưu lệnh vào CommandHistory khi transaction chạy xong, lỡ lỗi thì lịch sử hoàn tác cũ vẫn còn nguyên
     public void changeAccount(UserAccount target, Role role, boolean enabled) {
         tasks.database(() -> {
             history.execute(services.accountCommand(session, target, role, enabled));
@@ -104,7 +104,7 @@ public final class AdminController {
         }, this::accountChanged);
     }
 
-    // Chạy hoàn tác trên cùng hàng đợi nền để không bị lệch thứ tự với thao tác sửa tài khoản ngay trước đó.
+    // chạy hoàn tác trên cùng hàng đợi nền kẻo lệch thứ tự với lệnh sửa tài khoản ngay trước đó
     public void undo() {
         tasks.database(() -> {
             history.undo();

@@ -4,7 +4,7 @@ import java.text.Normalizer;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-// Bỏ dấu tiếng Việt, hạ chữ thường và gom khoảng trắng để tìm kiếm không phân biệt dấu.
+// bỏ dấu tiếng Việt, hạ chữ thường và gom khoảng trắng để tìm kiếm không phân biệt dấu
 public final class TextFolding {
 
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
@@ -12,7 +12,7 @@ public final class TextFolding {
     private TextFolding() {
     }
 
-    // Đổi sang chữ thường, thay riêng chữ đ thành d (vì NFKD không tách chữ đ) rồi lọc hết dấu thanh.
+    // hạ chữ thường, tự đổi riêng chữ đ sang d (vì NFKD không tách đ) rồi lọc hết dấu thanh
     public static String fold(String text) {
         if (text == null || text.isEmpty()) {
             return "";
@@ -26,7 +26,7 @@ public final class TextFolding {
         return result.toString();
     }
 
-    // Cắt khoảng trắng hai đầu và gộp nhiều khoảng trắng liên tiếp thành một dấu cách.
+    // cắt khoảng trắng 2 đầu rồi gộp nhiều dấu cách liền nhau thành 1
     public static String collapseWhitespace(String text) {
         if (text == null || text.isBlank()) {
             return "";

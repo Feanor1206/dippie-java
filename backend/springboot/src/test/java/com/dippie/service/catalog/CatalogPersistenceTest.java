@@ -38,7 +38,7 @@ import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Chạy @DataJpaTest với profile test để kiểm tra lưu cây catalog, khóa ngoại kép series/season, đồng bộ publication_status và độ chính xác JSON/DATETIME.
+// @DataJpaTest profile test check lưu cây catalog, khóa ngoại kép series/season, đồng bộ publication_status với JSON/DATETIME
 @DataJpaTest(showSql = false)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
@@ -74,7 +74,7 @@ class CatalogPersistenceTest {
 
     @Test
     void savesAndReloadsPublishedCatalogAndSynchronizesPublicationOnUpdate() {
-        // Tạo đủ cây series, season, episode, media asset, bảng nối và phân cảnh rồi xóa cache EntityManager để ép đọc lại từ DB.
+        // lưu đủ cây series, season, episode, asset, bảng nối với phân cảnh rồi xóa cache EntityManager cho nó đọc lại từ DB thật
         CatalogSeries savedSeries = series.saveAndFlush(series("series-1"));
         seasons.saveAndFlush(season("season-1", savedSeries.getId()));
         episodes.saveAndFlush(episode(savedSeries.getId(), "season-1", READY));
@@ -110,7 +110,7 @@ class CatalogPersistenceTest {
         assertThat(view.path("synopsis").isNull()).isTrue();
         assertThat(view.has("publicationStatus")).isFalse();
 
-        // Đổi recordJson sang archived rồi kiểm tra cột publication_status cùng optLockVersion tự cập nhật sau khi flush.
+        // đổi recordJson sang archived rồi flush xem publication_status với optLockVersion có tự nhảy theo không
         reloaded.updateRecordJson("{\"status\":\"archived\"}");
         assertThat(reloaded.getPublicationStatus()).isEqualTo("archived");
         entities.flush();
@@ -122,7 +122,7 @@ class CatalogPersistenceTest {
         assertThat(episodes.findBySeriesIdAndPublicationStatusOrderByNumberAsc("series-1", "ready")).isEmpty();
     }
 
-    // Tập thuộc series-1 mà gắn vào season của series-2 phải bị khóa ngoại kép dưới DB chặn lại.
+    // tập của series-1 mà cắm nhầm season bên series-2 thì khóa ngoại kép dưới DB phải chặn liền
     @Test
     void rejectsAnEpisodeLinkedToAnotherSeriesSeason() {
         series.saveAndFlush(series("series-1"));
@@ -156,7 +156,7 @@ class CatalogPersistenceTest {
         assertThat(mediaView.path("durationSeconds").isNull()).isTrue();
     }
 
-    // Giữ nguyên cấu trúc JSON của AuditLog và độ chính xác microsecond của retrievedAt trên CatalogSource.
+    // giữ nguyên cấu trúc JSON của AuditLog với độ chính xác microsecond của retrievedAt bên CatalogSource
     @Test
     void preservesAuditJsonAndSourceDateTimePrecision() throws Exception {
         JsonNode oldValues = json.readTree("{\"title\":\"Original\"}");

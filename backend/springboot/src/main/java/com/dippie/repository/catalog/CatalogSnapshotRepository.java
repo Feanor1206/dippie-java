@@ -9,18 +9,18 @@ import org.springframework.data.jpa.repository.Lock;
 import java.util.List;
 import java.util.Optional;
 
-// Quản lý các bản ghi snapshot catalog theo phiên bản tăng dần và mã băm nội dung.
+// repo quản lý snapshot catalog theo version với mã băm nội dung
 public interface CatalogSnapshotRepository extends JpaRepository<CatalogSnapshot, String> {
 
     List<CatalogSnapshot> findAllByOrderBySnapshotVersionDesc();
 
     Optional<CatalogSnapshot> findFirstByOrderBySnapshotVersionDesc();
 
-    // Khóa ghi bi quan (PESSIMISTIC_WRITE) bản ghi mới nhất để hai luồng import chạy song song không cấp trùng snapshotVersion.
+    // khóa PESSIMISTIC_WRITE bản mới nhất kẻo hai luồng import song song cấp trùng snapshotVersion
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<CatalogSnapshot> findTopByOrderBySnapshotVersionDesc();
 
-    // Khóa ghi bi quan snapshot mới nhất trùng contentHash để chặn hai request import giống hệt nhau chạy đè lên nhau.
+    // khóa PESSIMISTIC_WRITE snapshot mới nhất trùng contentHash chặn hai request import giống hệt chạy đè nhau
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<CatalogSnapshot> findFirstByContentHashOrderBySnapshotVersionDesc(String hash);
 }

@@ -20,7 +20,7 @@ import com.dippie.desktop.model.catalog.SeriesNode;
 
 import java.util.List;
 
-// Facade gom toàn bộ chức năng quản trị vào một đầu mối và tự lắp sẵn các DAO, để controller không phải tự khởi tạo từng lớp.
+// facade gom hết chức năng quản trị vào 1 đầu mối và lắp sẵn DAO để controller khỏi phải tự khởi tạo từng lớp
 public final class AdminServices {
     private final UserDao userDao;
     private final AuthService authService;
@@ -29,7 +29,7 @@ public final class AdminServices {
     private final CatalogService catalogService;
     private final DashboardService dashboardService;
 
-    // Khởi tạo một lần rồi dùng chung các DAO trên cùng JdbcDatabase cho mọi service.
+    // tạo 1 lần rồi dùng chung mấy DAO trên cùng JdbcDatabase cho mọi service
     public AdminServices(JdbcDatabase database) {
         userDao = new UserDao(database);
         var auditDao = new AuditDao(database);
@@ -49,7 +49,7 @@ public final class AdminServices {
         return authService.login(identifier, password);
     }
 
-    // Xác minh phiên rồi trả về thông tin quản trị viên đang đăng nhập.
+    // check phiên còn hợp lệ rồi trả về thông tin admin đang đăng nhập
     public UserAccount currentAdmin(AdminSession session) {
         return AdminQuery.requireCurrent(session, userDao.findById(session.userId()).orElse(null));
     }

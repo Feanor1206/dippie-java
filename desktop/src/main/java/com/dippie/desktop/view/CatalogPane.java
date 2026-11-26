@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-// Tab Danh mục (kế thừa DataPane). Lớp này làm Adapter chuyển cây Composite chỉ đọc thành TreeItem của JavaFX rồi hiện chi tiết ở khung bên phải.
+// tab Danh mục (kế thừa DataPane), đóng vai Adapter chuyển cây Composite sang TreeItem của JavaFX rồi hiện chi tiết bên phải
 public final class CatalogPane extends DataPane {
     private final AdminController controller;
     private final TreeView<CatalogNode> tree = new TreeView<>();
@@ -51,7 +51,7 @@ public final class CatalogPane extends DataPane {
         super(tasks);
         this.controller = controller;
 
-        // Thanh tìm kiếm bên trên kèm nút xóa lọc và bộ đếm số bộ phim đang khớp.
+        // thanh tìm kiếm phía trên kèm nút xóa lọc và bộ đếm số bộ phim đang khớp
         search.setPromptText("Tìm tên hoặc mã bộ, mùa, tập... (Ctrl+F)");
         search.getStyleClass().add("search-field");
         search.setTooltip(new Tooltip("Tìm theo tên phim, tên gốc hoặc mã (Ctrl+F)"));
@@ -73,7 +73,7 @@ public final class CatalogPane extends DataPane {
         searchGroup.setAlignment(Pos.CENTER_LEFT);
         setTop(splitToolbar(searchGroup, refreshButton()));
 
-        // Tùy biến cell để gắn nhãn Bộ, Mùa, Tập ngay trên cây và cập nhật khung chi tiết khi đổi mục chọn.
+        // tùy biến cell để gắn nhãn Bộ, Mùa, Tập ngay trên cây và cập nhật khung chi tiết khi đổi dòng chọn
         tree.setShowRoot(false);
         tree.setCellFactory(view -> new TreeCell<>() {
             @Override
@@ -105,7 +105,7 @@ public final class CatalogPane extends DataPane {
         emptyTreeState.setManaged(false);
         StackPane treeContainer = new StackPane(tree, emptyTreeState);
 
-        // Khung chi tiết bên phải dùng TextArea chỉ đọc để vẫn bôi đen sao chép tóm tắt hay đường dẫn phát được.
+        // khung chi tiết bên phải dùng TextArea chỉ đọc để vẫn bôi đen copy tóm tắt hay link phát được
         title.getStyleClass().add("section-title");
         title.setWrapText(true);
         originalTitle.getStyleClass().add("muted-text");
@@ -155,7 +155,7 @@ public final class CatalogPane extends DataPane {
         }, () -> setLoading(false));
     }
 
-    // Lọc lại cây theo từ khóa và giữ nguyên trạng thái đóng mở cùng mục đang chọn nếu nó vẫn còn khớp.
+    // lọc lại cây theo từ khóa, giữ nguyên trạng thái đóng mở và mục đang chọn nếu còn khớp
     private void showTree() {
         String term = SearchText.normalize(search.getText());
         var matches = controller.filterCatalog(catalog, search.getText());
@@ -185,7 +185,7 @@ public final class CatalogPane extends DataPane {
         }
     }
 
-    // Chuyển đệ quy từng nút Composite sang TreeItem; lúc đang tìm kiếm thì tự bung nhánh dẫn tới kết quả.
+    // đổi đệ quy từng nút Composite sang TreeItem, đang tìm kiếm thì tự bung nhánh tới kết quả
     private static TreeItem<CatalogNode> toItem(CatalogNode node, TreeItem<CatalogNode> parent,
                                                 boolean searching, Set<Key> expanded) {
         var item = new TreeItem<>(node);
@@ -203,7 +203,7 @@ public final class CatalogPane extends DataPane {
         }
     }
 
-    // Chọn lại đúng mục cũ nếu nó vẫn nằm trên nhánh đang mở sau khi lọc hoặc làm mới.
+    // chọn lại đúng mục cũ nếu nó vẫn nằm trên nhánh đang mở sau khi lọc hay làm mới
     private void restoreSelection(TreeItem<CatalogNode> item, Key selected) {
         if (selected.equals(keyOf(item))) {
             tree.getSelectionModel().select(item);
@@ -216,13 +216,13 @@ public final class CatalogPane extends DataPane {
         return item == null || item.getValue() == null ? null : keyOf(item.getValue(), item.getParent());
     }
 
-    // Nhóm Chưa xếp mùa có id là null nên mình mượn id của bộ phim cha để phân biệt giữa các bộ khi giữ trạng thái mở cây.
+    // nhóm Chưa xếp mùa có id là null nên mượn id bộ phim cha để phân biệt giữa các bộ lúc giữ trạng thái mở cây
     private static Key keyOf(CatalogNode node, TreeItem<CatalogNode> parent) {
         String id = node.id() == null ? parent.getValue().id() : node.id();
         return new Key(node.getClass(), id);
     }
 
-    // Đổi nhãn, thẻ thông tin và nguồn phát tùy theo nút đang chọn là bộ, mùa hay tập (pattern matching trên sealed interface).
+    // đổi nhãn, thẻ thông tin và nguồn phát theo nút đang chọn là bộ, mùa hay tập (pattern matching trên sealed interface)
     private void showDetails(CatalogNode node) {
         boolean hasNode = node != null;
         emptyDetail.setVisible(!hasNode);
@@ -294,7 +294,7 @@ public final class CatalogPane extends DataPane {
         return area;
     }
 
-    // Khóa nhận diện một nút trên cây để giữ nguyên lựa chọn và nhánh đang mở sau khi làm mới.
+    // khóa nhận diện 1 nút trên cây để giữ nguyên lựa chọn và nhánh đang mở sau khi làm mới
     private record Key(Class<? extends CatalogNode> type, String id) {
     }
 }

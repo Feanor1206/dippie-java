@@ -8,7 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Test đơn vị cho PasswordPolicy: cấm khoảng trắng, kiểm tra độ dài tối thiểu, trần 72 byte UTF-8 và chuẩn mật khẩu admin.
+// test PasswordPolicy cấm mật khẩu toàn dấu cách, check độ dài tối thiểu, trần 72 byte UTF-8 với chuẩn admin
 class PasswordPolicyTest {
 
     @Test

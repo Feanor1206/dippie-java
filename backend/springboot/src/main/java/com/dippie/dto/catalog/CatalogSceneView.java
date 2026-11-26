@@ -4,7 +4,7 @@ import com.dippie.model.catalog.CatalogScene;
 
 import java.time.LocalDateTime;
 
-// Record bất biến mang chi tiết phân cảnh ra API, khởi tạo từ CatalogScene qua hàm tĩnh from.
+// view phân cảnh trả ra API, dựng từ CatalogScene qua from
 public record CatalogSceneView(
         String id, String mediaAssetId, String episodeId, String segmentId, long startMs, long endMs, String title,
         String summary, String visualDescription, String visualTagsJson, String soundEventsJson,

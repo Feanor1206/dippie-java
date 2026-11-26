@@ -10,8 +10,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 
-// Strategy tìm bản video đã kéo sẵn về thư mục cache Drive cục bộ.
-// Phải khớp đúng kích thước byteLength thì mới dùng, tránh phát nhầm bản đang tải dở.
+// nhánh Strategy tìm video đã kéo sẵn trong thư mục cache Drive dưới máy
+// phải khớp đúng byteLength mới lấy kẻo phát nhầm file đang tải dở
 @Component
 public class DriveCacheLocation implements MediaLocationStrategy {
 
@@ -22,7 +22,7 @@ public class DriveCacheLocation implements MediaLocationStrategy {
         this.cacheRoot = configured == null || configured.isBlank() ? null : Path.of(configured.trim());
     }
 
-    // Nếu thiếu byteLength hoặc dung lượng tệp trên đĩa lệch thì bỏ qua để rơi xuống ổ Drive gắn kết.
+    // thiếu byteLength hay dung lượng trên đĩa bị lệch thì bỏ qua cho rơi xuống ổ Drive gắn kết
     @Override
     public Optional<Path> locate(MediaAsset asset) {
         if (cacheRoot == null || asset == null || asset.getByteLength() <= 0) {

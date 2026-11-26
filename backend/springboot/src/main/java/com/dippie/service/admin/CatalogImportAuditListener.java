@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// Observer lắng nghe CatalogImportedEvent qua @EventListener để ghi nhật ký quản trị,
-// giúp luồng nhập danh mục bên gói catalog không phải phụ thuộc ngược vào gói admin.
+// kiểu Observer nghe CatalogImportedEvent qua @EventListener để ghi log quản trị
+// nhờ vậy luồng import bên gói catalog khỏi phải phụ thuộc ngược vào gói admin
 @Component
 public class CatalogImportAuditListener {
 
@@ -23,10 +23,10 @@ public class CatalogImportAuditListener {
         this.adminAuditService = adminAuditService;
     }
 
-    // Khi danh mục nhập xong, tra lại id người thực hiện nếu có rồi lưu thông tin gói và snapshot vào nhật ký.
+    // import xong thì tra lại id người chạy nếu có rồi lưu thông tin gói với snapshot vào audit
     @EventListener
     public void onCatalogImported(CatalogImportedEvent event) {
-        // Sự kiện không có tên người nhập thì gán về system; có tên thì tra thêm userId nếu tài khoản còn tồn tại.
+        // không có tên người import thì gán system, có thì tra thêm userId nếu tài khoản còn đó
         String username = (event.importedBy() == null || event.importedBy().isBlank())
                 ? AdminAuditService.SYSTEM_ACTOR
                 : event.importedBy().trim();
@@ -34,7 +34,7 @@ public class CatalogImportAuditListener {
                 ? null
                 : userRepository.findByUsername(username).map(User::getId).orElse(null);
 
-        // Gom mã gói, revision và thông tin snapshot vào details JSON của dòng nhật ký.
+        // gom packageId, revision với thông tin snapshot vô details JSON của dòng log
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("packageId", event.packageId());
         details.put("revision", event.revision());

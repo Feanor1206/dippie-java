@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 
-// Theo dõi từng phiên bản snapshot catalog và vòng đời đồng bộ chỉ mục (kiểu State qua enum Status và các hàm chuyển trạng thái).
+// theo dõi từng bản snapshot catalog với vòng đời đồng bộ index, viết kiểu State qua enum Status và mấy hàm đổi trạng thái
 @Entity
 @Table(name = "catalog_snapshots",
         indexes = {
@@ -119,7 +119,8 @@ public class CatalogSnapshot {
         updatedAt = time;
     }
 
-    // Các trạng thái vòng đời dựng chỉ mục của snapshot. Hằng CACHE_REQUIRED giữ lại cho dữ liệu cũ và giao diện admin còn kiểm tra tiền tố này nên Việt đừng đổi hay xóa nhé.
+    // mấy trạng thái lúc dựng index của snapshot
+    // CACHE_REQUIRED vẫn còn trong dữ liệu cũ với chỗ check tiền tố bên admin nên Việt đừng đổi hay xóa nha
     public enum Status {
         PENDING, BUILDING, READY, BLOCKED, SYNC_FAILED;
 
@@ -130,30 +131,30 @@ public class CatalogSnapshot {
         }
     }
 
-    // Ghi nhận kết quả sau khi chạy đồng bộ chỉ mục; chỉ gán completedAt khi đạt READY, trạng thái khác xóa trắng completedAt.
+    // lưu kết quả đồng bộ index, chỉ gán completedAt khi lên READY còn trạng thái khác thì xóa trắng
     public void completeIndexSync(String outcome, LocalDateTime time) {
         status = outcome;
         completedAt = Status.READY.name().equals(outcome) ? time : null;
         updatedAt = time;
     }
 
-    // Tăng số lần thử lại lên 1 rồi cập nhật trạng thái đồng bộ mới nhất.
+    // cộng retryCount thêm 1 rồi cập nhật trạng thái đồng bộ mới nhất
     public void recordRetry(String outcome, LocalDateTime time) {
         retryCount = retryCount == null ? 1 : retryCount + 1;
         completeIndexSync(outcome, time);
     }
 
-    // Trả true khi snapshot vẫn đang ở PENDING hoặc BUILDING.
+    // còn ở PENDING hay BUILDING thì trả true
     public boolean isAwaitingIndex() {
         return Status.isAwaitingIndex(status);
     }
 
-    // Khi có snapshot mới hơn chèn lên, snapshot cũ đang dở dang bị đánh dấu SYNC_FAILED.
+    // có snapshot mới chèn lên thì đẩy snapshot cũ đang dở về SYNC_FAILED
     public void supersede(LocalDateTime time) {
         completeIndexSync(Status.SYNC_FAILED.name(), time);
     }
 
-    // Quy đổi bản ghi cũ còn mang trạng thái CACHE_REQUIRED sang BLOCKED theo quy ước hiện tại.
+    // đổi mấy bản ghi cũ đang mang CACHE_REQUIRED sang BLOCKED theo quy ước mới
     public void normalizeLegacyStatus(LocalDateTime time) {
         if (Status.LEGACY_CACHE_REQUIRED.equals(status)) {
             status = Status.BLOCKED.name();
@@ -161,7 +162,7 @@ public class CatalogSnapshot {
         }
     }
 
-    // Tự điền createdAt và updatedAt theo giờ UTC (cắt đến giây) nếu bên ngoài chưa gọi recordCreation trước khi lưu.
+    // chưa gọi recordCreation trước lúc lưu thì tự điền createdAt với updatedAt theo UTC cắt xuống giây
     @PrePersist
     private void initTimestamps() {
         if (createdAt == null) {

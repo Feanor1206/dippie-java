@@ -1,5 +1,5 @@
 package com.dippie.dto.movie;
 
-// DTO trả mã thể loại, nhãn tiếng Việt và số phim đang hiển thị của từng thể loại.
+// view thể loại gồm mã, nhãn tiếng Việt với số phim đang hiện
 public record MovieGenreView(String id, String label, long count) {
 }

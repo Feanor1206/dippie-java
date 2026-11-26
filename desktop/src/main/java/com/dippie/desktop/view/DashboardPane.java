@@ -31,7 +31,7 @@ import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
 
-// Tab Tổng quan (kế thừa DataPane), gom 5 thẻ số liệu, 2 bảng xếp hạng, biểu đồ cột và tự làm mới mỗi 30 giây bằng Timeline.
+// tab Tổng quan (kế thừa DataPane), gom 5 thẻ số liệu, 2 bảng xếp hạng, biểu đồ cột và tự làm mới mỗi 30 giây bằng Timeline
 public final class DashboardPane extends DataPane {
     private static final Locale VIETNAMESE = Locale.forLanguageTag("vi-VN");
     private final AdminController controller;
@@ -50,7 +50,7 @@ public final class DashboardPane extends DataPane {
         super(tasks);
         this.controller = controller;
 
-        // 5 thẻ số liệu tổng nằm ở hàng trên cùng.
+        // 5 thẻ số liệu tổng ở hàng trên cùng
         var totals = new HBox(14,
                 metricCard("Bộ phim", "trong danh mục", seriesCountLabel, "metric-accent-sage"),
                 metricCard("Tập phim", "tổng số tập", episodeCountLabel, "metric-accent-leaf"),
@@ -58,7 +58,7 @@ public final class DashboardPane extends DataPane {
                 metricCard("Đánh giá", "lượt chấm điểm", ratingCountLabel, "metric-accent-honey"),
                 metricCard("Tiến độ xem", "lượt lưu tiến độ", progressCountLabel, "metric-accent-teal"));
 
-        // Bảng top 10 tập điểm cao nhất, tắt sắp xếp cột để giữ đúng thứ tự xếp hạng từ DB.
+        // bảng top 10 tập điểm cao nhất, tắt sort cột để giữ nguyên thứ tự xếp hạng từ DB
         var top = table(topRows, "Chưa có tập nào được chấm điểm",
                 "Khi có người chấm điểm tập phim, bảng xếp hạng sẽ hiện ở đây.");
         top.getColumns().add(column("Tập phim", 190, TopRated::title));
@@ -80,7 +80,7 @@ public final class DashboardPane extends DataPane {
         top.getColumns().add(numericColumn("Lượt", 68, TopRated::count));
         top.getColumns().forEach(column -> column.setSortable(false));
 
-        // Bảng các bộ phim có nhiều người xem nhất.
+        // bảng mấy bộ phim nhiều người xem nhất
         var watched = table(watchedRows, "Chưa có ai xem phim",
                 "Chỉ tính những tài khoản đã bắt đầu xem ít nhất một tập.");
         watched.getColumns().add(column("Bộ phim", 220, MostWatched::title));
@@ -88,7 +88,7 @@ public final class DashboardPane extends DataPane {
         watched.getColumns().forEach(column -> column.setSortable(false));
         watched.setPrefHeight(165);
 
-        // Chia hai cột bằng SplitPane: bên trái là top 10 tập, bên phải là biểu đồ điểm và phim xem nhiều.
+        // chia 2 cột bằng SplitPane, trái là top 10 tập còn phải là biểu đồ điểm và phim xem nhiều
         var leftCard = sectionCard("10 tập điểm cao nhất",
                 "Xếp theo điểm trung bình và số lượt chấm", top);
         VBox.setVgrow(top, Priority.ALWAYS);
@@ -111,7 +111,7 @@ public final class DashboardPane extends DataPane {
         var body = new VBox(16, totals, rankings);
         setContent(body);
 
-        // Thanh công cụ gồm dòng báo tự làm mới, nút Làm mới và nút Xuất CSV.
+        // thanh công cụ gồm dòng báo tự làm mới, nút Làm mới và nút Xuất CSV
         var strategy = new CsvStrategy<TopRated>(List.of("Tập phim", "Bộ phim", "Điểm TB", "Lượt"),
                 row -> List.of(row.title(), row.seriesTitle(), Math.round(row.average() * 100) / 100.0, row.count()));
         Label autoNote = new Label("Tự cập nhật mỗi 30 giây");
@@ -123,7 +123,7 @@ public final class DashboardPane extends DataPane {
         actions.setAlignment(Pos.CENTER_RIGHT);
         setTop(splitToolbar(autoNote, actions));
 
-        // Cứ 30 giây tự tải lại một lần; nếu luồng nền đang bận việc khác thì nhường lượt cho khỏi xếp hàng.
+        // cứ 30 giây tự tải lại 1 lần, luồng nền đang bận việc khác thì nhường lượt cho khỏi xếp hàng
         refreshTimer = new Timeline(new KeyFrame(Duration.seconds(30), event -> {
             if (!tasks.busyProperty().get()) {
                 load(false);
@@ -138,7 +138,7 @@ public final class DashboardPane extends DataPane {
         load(true);
     }
 
-    // Chỉ bật lớp phủ đang tải khi người dùng tự bấm Làm mới hoặc ở lần vào đầu tiên, còn lượt tự làm mới thì chạy êm.
+    // chỉ bật lớp phủ đang tải khi bấm Làm mới hoặc lúc mới vào, còn lượt tự làm mới thì chạy êm
     private void load(boolean showIndicator) {
         if (showIndicator) {
             setLoading(true);
@@ -150,7 +150,7 @@ public final class DashboardPane extends DataPane {
         refreshTimer.stop();
     }
 
-    // Cập nhật 5 thẻ tổng, hai bảng xếp hạng và vẽ lại biểu đồ cột sau mỗi lần đọc.
+    // cập nhật 5 thẻ tổng, 2 bảng xếp hạng và vẽ lại biểu đồ cột sau mỗi lần đọc
     private void display(DashboardSnapshot snapshot) {
         var counts = snapshot.counts();
         var numbers = NumberFormat.getIntegerInstance(VIETNAMESE);
@@ -163,7 +163,7 @@ public final class DashboardPane extends DataPane {
         topRows.setAll(snapshot.topRated());
         watchedRows.setAll(snapshot.mostWatched());
 
-        // Khi cột cao nhất từ 8 trở xuống thì khóa bước nhảy trục tung là 1 để JavaFX không hiện số lẻ kiểu 0.5 hay 1.5.
+        // cột cao nhất từ 8 trở xuống thì khóa bước nhảy trục tung là 1 kẻo JavaFX hiện số lẻ kiểu 0.5 hay 1.5
         long peak = snapshot.ratingCounts().values().stream().mapToLong(Long::longValue).max().orElse(0L);
         if (peak <= 8) {
             countAxis.setAutoRanging(false);
@@ -188,7 +188,7 @@ public final class DashboardPane extends DataPane {
         }
     }
 
-    // Dựng biểu đồ cột phân bố điểm từ 1 đến 10 và tắt animation để mỗi lần cập nhật đỡ giật.
+    // dựng biểu đồ cột phân bố điểm từ 1 đến 10, tắt animation cho mỗi lần cập nhật đỡ giật
     private BarChart<String, Number> ratingChart() {
         var scores = new CategoryAxis();
         scores.setLabel("Điểm");
@@ -228,7 +228,7 @@ public final class DashboardPane extends DataPane {
         return label;
     }
 
-    // Tạo một thẻ chỉ số kèm vạch màu phía trên và dòng chú thích nhỏ.
+    // tạo thẻ chỉ số kèm vạch màu phía trên và dòng chú thích nhỏ
     private static VBox metricCard(String title, String hint, Label value, String accentClass) {
         Region stripe = new Region();
         stripe.getStyleClass().addAll("metric-accent", accentClass);
@@ -244,7 +244,7 @@ public final class DashboardPane extends DataPane {
         return card;
     }
 
-    // Bọc bảng hoặc biểu đồ vào khung nền sáng có tiêu đề và mô tả phụ.
+    // bọc bảng hoặc biểu đồ vào khung sáng có tiêu đề và mô tả phụ
     private static VBox sectionCard(String title, String subtitle, javafx.scene.Node content) {
         Label heading = new Label(title);
         heading.getStyleClass().add("section-title");

@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-// Test đơn vị cho JwtAuthenticationFilter: khớp tokenVersion, từ chối token cũ, tài khoản bị khóa và token thiếu claim ver.
+// test JwtAuthenticationFilter khớp tokenVersion, đá token cũ, nick bị khóa với token thiếu claim ver
 class JwtAuthenticationFilterTest {
 
     private static final String VALID_SECRET = Base64.getEncoder().encodeToString(sequentialBytes(32));

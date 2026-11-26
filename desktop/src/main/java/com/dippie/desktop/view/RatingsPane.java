@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.IntStream;
 
-// Tab Đánh giá (kế thừa DataPane), lọc theo từ khóa, bộ phim và mức điểm, rồi xóa đánh giá sau khi xác nhận.
+// tab Đánh giá (kế thừa DataPane), lọc theo từ khóa, bộ phim, mức điểm và xóa đánh giá sau khi xác nhận
 public final class RatingsPane extends DataPane {
     private static final SeriesChoice ALL = new SeriesChoice(null, "Tất cả bộ phim");
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
@@ -46,7 +46,7 @@ public final class RatingsPane extends DataPane {
                 "Khi người dùng chấm điểm phim, danh sách sẽ hiện ở đây.");
         sorted.comparatorProperty().bind(table.comparatorProperty());
 
-        // Dựng bảng đánh giá kèm nhãn màu cho mức điểm và cột thời gian định dạng dd/MM/yyyy HH:mm.
+        // dựng bảng đánh giá kèm nhãn màu cho điểm và cột giờ format dd/MM/yyyy HH:mm
         table.getColumns().add(numericColumn("Mã", 64, RatingRow::id));
         table.getColumns().add(column("Người dùng", 130, RatingRow::username));
         table.getColumns().add(column("Nội dung", 250, RatingRow::title));
@@ -80,7 +80,7 @@ public final class RatingsPane extends DataPane {
         });
         table.getColumns().add(updatedColumn);
 
-        // Bộ lọc nhanh theo từ khóa, bộ phim và mức điểm từ 1 đến 10.
+        // bộ lọc nhanh theo từ khóa, bộ phim và mức điểm từ 1 đến 10
         search.setPromptText("Tìm người dùng, phim... (Ctrl+F)");
         search.getStyleClass().add("search-field");
         search.setPrefWidth(220);
@@ -132,8 +132,8 @@ public final class RatingsPane extends DataPane {
         search.selectAll();
     }
 
-    // Nếu vừa xóa đánh giá cuối cùng của bộ phim đang lọc thì vẫn giữ bộ đó trong hộp chọn,
-    // để người dùng thấy bảng trống thay vì bộ lọc tự nhảy sang Tất cả bộ phim.
+    // lỡ vừa xóa đánh giá cuối cùng của bộ phim đang lọc thì vẫn giữ bộ đó trong hộp chọn
+    // để người dùng thấy bảng trống chứ bộ lọc không tự nhảy sang Tất cả bộ phim
     @Override
     public void refresh() {
         setLoading(true);
@@ -153,7 +153,7 @@ public final class RatingsPane extends DataPane {
         }, () -> setLoading(false));
     }
 
-    // Kết hợp cả 3 điều kiện lọc rồi cập nhật số lượng và câu báo khi danh sách rỗng.
+    // ghép cả 3 điều kiện lọc rồi cập nhật bộ đếm với câu báo lúc bảng trống
     private void applyFilter() {
         String term = SearchText.normalize(search.getText());
         var selectedSeries = series.getValue();
@@ -177,7 +177,7 @@ public final class RatingsPane extends DataPane {
                 : emptyPlaceholder("Chưa có đánh giá nào", "Khi người dùng chấm điểm phim, danh sách sẽ hiện ở đây."));
     }
 
-    // Hỏi xác nhận có ghi rõ điểm, người chấm và tên phim trước khi gọi controller xóa.
+    // hỏi xác nhận ghi rõ điểm, người chấm và tên phim trước khi gọi controller xóa
     private Button deleteButton() {
         var button = new Button("Xóa đánh giá");
         button.getStyleClass().add("danger-button");
@@ -195,7 +195,7 @@ public final class RatingsPane extends DataPane {
         return button;
     }
 
-    // Gói riêng seriesId với tên hiển thị cho ComboBox bộ phim.
+    // gói seriesId với tên hiển thị cho ComboBox chọn bộ phim
     private record SeriesChoice(String id, String title) {
         @Override
         public String toString() {

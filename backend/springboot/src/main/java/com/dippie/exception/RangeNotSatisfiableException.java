@@ -1,6 +1,6 @@
 package com.dippie.exception;
 
-// Ném ra khi header HTTP Range nằm ngoài kích thước tệp, kèm totalLength để trả header 416 đúng chuẩn.
+// ném khi header HTTP Range vượt kích thước file, mang kèm totalLength để trả header 416 đúng chuẩn
 public class RangeNotSatisfiableException extends RuntimeException {
 
     private final long totalLength;

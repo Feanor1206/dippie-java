@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-// API gợi ý tập tiếp theo nên phát trong một bộ phim cho tài khoản đang đăng nhập.
+// API gợi ý tập tiếp theo nên phát trong 1 bộ phim cho user đang đăng nhập
 @RestController
 public class NextEpisodeController {
 
@@ -18,7 +18,7 @@ public class NextEpisodeController {
         this.nextEpisode = nextEpisode;
     }
 
-    // Nếu người dùng đã xem hết mọi tập hợp lệ thì vẫn trả 200 với data là null kèm thông báo thay vì báo 404.
+    // xem hết mọi tập hợp lệ rồi thì vẫn trả 200 với data null kèm thông báo chứ không báo 404
     @GetMapping("/api/users/next-episode")
     public ApiResponse<NextEpisodeView> find(@RequestParam String seriesId) {
         return nextEpisode.find(seriesId).map(ApiResponse::ok)

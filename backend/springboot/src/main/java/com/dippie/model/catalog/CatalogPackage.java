@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 
-// Ghi nhận lịch sử và metadata (phiên bản, mã băm nội dung, trạng thái COMMITTED) của từng gói catalog đã import.
+// lưu lịch sử với metadata (version, contentHash, trạng thái COMMITTED) của từng gói catalog đã import
 @Entity
 @Table(name = "catalog_packages", indexes = @Index(name = "idx_cat_pkg_imported", columnList = "imported_at"))
 @Check(name = "ck_catalog_package_status", constraints = "status IN ('COMMITTED')")
@@ -142,7 +142,7 @@ public class CatalogPackage {
         importedAt = time;
     }
 
-    // Cập nhật phiên bản, mã băm và giờ nhập từ lần import mới hơn (giữ nguyên name, description và errorMessage cũ).
+    // cập nhật version, hash với giờ nhập từ lần import mới hơn, giữ nguyên name, description với errorMessage cũ
     public void applyImport(CatalogPackage imported) {
         version = imported.version;
         revision = imported.revision;
@@ -154,7 +154,7 @@ public class CatalogPackage {
         importedAt = imported.importedAt;
     }
 
-    // Nếu đã gán sẵn importedAt trước khi lưu thì lấy mốc đó làm createdAt luôn, chưa có mới lấy giờ UTC cắt tròn đến giây.
+    // đã gán sẵn importedAt thì lấy luôn làm createdAt, chưa có mới lấy giờ UTC cắt tròn đến giây
     @PrePersist
     private void initTimestamps() {
         createdAt = importedAt == null ? LocalDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS) : importedAt;

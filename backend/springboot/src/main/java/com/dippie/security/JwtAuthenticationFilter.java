@@ -14,7 +14,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
 
-// Filter đọc Bearer JWT một lần mỗi request rồi nạp Viewer vào SecurityContext nếu tài khoản còn hoạt động.
+// filter đọc Bearer JWT 1 lần mỗi request rồi nạp Viewer vào SecurityContext nếu tài khoản còn bật
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -28,7 +28,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         this.viewerLookup = viewerLookup;
     }
 
-    // Tách token từ header Authorization, kiểm tra chữ ký và tokenVersion trong DB trước khi cho đi tiếp.
+    // tách token từ header Authorization, check chữ ký và tokenVersion trong DB xong mới cho đi tiếp
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,

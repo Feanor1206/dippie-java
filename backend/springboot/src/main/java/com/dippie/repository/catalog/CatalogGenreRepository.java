@@ -4,6 +4,6 @@ import com.dippie.model.catalog.CatalogGenre;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-// Truy xuất CRUD cho bảng thể loại catalog_genres (mẫu Repository của Spring Data).
+// CRUD bảng catalog_genres kiểu Repository của Spring Data
 public interface CatalogGenreRepository extends JpaRepository<CatalogGenre, String> {
 }

@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Test tích hợp cho DELETE /api/users/watch-progress: chỉ xóa lịch sử của tài khoản đang đăng nhập và giữ nguyên dữ liệu người khác.
+// test DELETE /api/users/watch-progress chỉ dọn lịch sử người đang đăng nhập, không đụng người khác
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -104,7 +104,7 @@ class WatchHistoryClearControllerTest {
                 .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
     }
 
-    // Xóa toàn bộ lịch sử của Alice phải giữ nguyên dữ liệu của Bob, và gọi DELETE lần hai khi đã trống vẫn trả 204.
+    // xóa hết lịch sử của Alice nhưng đồ của Bob phải còn nguyên, bấm xóa thêm phát nữa vẫn 204
     @Test
     void clearsOnlyCurrentUserProgressAndRemainsIdempotent() throws Exception {
         LocalDateTime now = LocalDateTime.of(2026, 1, 2, 10, 0);
@@ -131,7 +131,7 @@ class WatchHistoryClearControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(0));
 
-        // Bấm xóa lần hai lúc danh sách đã trống vẫn trả 204 và không đụng tới lịch sử của Bob
+        // danh sách trống rồi mà xóa tiếp vẫn trả 204, lịch sử Bob vẫn y nguyên
         mockMvc.perform(delete("/api/users/watch-progress")
                         .header(HttpHeaders.AUTHORIZATION, aliceAuth))
                 .andExpect(status().isNoContent());

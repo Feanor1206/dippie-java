@@ -38,14 +38,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Bộ test MockMvc cho đăng ký, đăng nhập, /api/auth/me, giới hạn tần suất và đăng ký trùng song song.
+// test MockMvc cho đăng ký, đăng nhập, /api/auth/me, rate limit với ca đăng ký trùng cùng lúc
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 class AuthControllerTest {
-
-    private static final String LEGACY_HEX_SECRET = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970";
 
     private final MockMvc mockMvc;
     private final ObjectMapper objectMapper;
@@ -73,7 +71,7 @@ class AuthControllerTest {
         userRepository.deleteAll();
     }
 
-    // Đăng ký phải giữ nguyên khoảng trắng đầu/cuối trong mật khẩu, và đăng nhập được bằng cả username lẫn email.
+    // đăng ký nhớ giữ nguyên dấu cách đầu đuôi của mật khẩu, đăng nhập bằng username hay email đều vào được
     @Test
     void registersUserPreservingRawPasswordAndAllowsLoginByUsernameAndEmail() throws Exception {
         Map<String, Object> registerPayload = Map.of(
@@ -139,7 +137,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.username").value("viewer"));
     }
 
-    // Trùng username hay trùng email đều trả chung một câu lỗi để tránh dò tài khoản, đồng thời cấm @ trong username.
+    // trùng username hay email trả chung 1 câu lỗi cho khỏi bị dò nick, cấm luôn dấu @ trong username
     @Test
     void rejectsDuplicateUsernameAndEmail() throws Exception {
         registerUser("alice", "alice@example.com", "secret123");
@@ -168,7 +166,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value(AuthService.DUPLICATE_ACCOUNT_MESSAGE));
 
-        // Cấm @ trong username để lúc đăng nhập không bị nhầm với email của người khác.
+        // cấm @ trong username kẻo lúc đăng nhập đụng nhầm email người khác
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -181,7 +179,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.success").value(false));
     }
 
-    // Kiểm tra các mốc biên độ dài của username, mật khẩu (kể cả giới hạn 72 byte UTF-8), email và họ tên.
+    // test mấy mốc biên độ dài của username, mật khẩu (tính cả trần 72 byte UTF-8), email với họ tên
     @Test
     void rejectsInvalidRegistrationBoundaries() throws Exception {
         mockMvc.perform(post("/api/auth/register")
@@ -239,7 +237,7 @@ class AuthControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
-    // Nhập sai mật khẩu hoặc gửi mật khẩu vượt 72 byte UTF-8 lúc đăng nhập đều trả 401.
+    // sai mật khẩu hay gửi quá 72 byte UTF-8 lúc login đều ăn 401
     @Test
     void rejectsWrongPasswordAndOverlongPasswordOnLoginWith401() throws Exception {
         registerUser("alice", "alice@example.com", "secret123");
@@ -264,7 +262,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.message").value("Tên đăng nhập hoặc mật khẩu chưa đúng."));
     }
 
-    // /api/auth/me phải từ chối request không token, vé phát video, token ký bằng khóa cũ và token của user đã bị xóa.
+    // /api/auth/me phải đá văng request thiếu token, vé phát video, token khóa cũ với token nick đã xóa
     @Test
     void rejectsUnauthenticatedForgedPlaybackGrantAndDeletedUserOnMe() throws Exception {
         String token = registerUser("alice", "alice@example.com", "secret123");
@@ -283,7 +281,7 @@ class AuthControllerTest {
                 .subject("alice")
                 .issuedAt(Date.from(Instant.now()))
                 .expiration(Date.from(Instant.now().plusSeconds(3600)))
-                .signWith(Keys.hmacShaKeyFor(Base64.getDecoder().decode(LEGACY_HEX_SECRET)), Jwts.SIG.HS256)
+                .signWith(Keys.hmacShaKeyFor(Base64.getDecoder().decode("404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970")), Jwts.SIG.HS256)
                 .compact();
         mockMvc.perform(get("/api/auth/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + forged))
@@ -297,7 +295,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.message").value("Bạn cần đăng nhập để tiếp tục."));
     }
 
-    // Vượt ngưỡng 30 lần thử sẽ nhận 429 kèm Retry-After, trong khi /api/health vẫn mở để probe hoạt động.
+    // quá 30 phát là ăn 429 kèm Retry-After, nhưng /api/health vẫn mở để probe sống
     @Test
     void enforcesRateLimitWithRetryAfterWhileHealthStaysAvailable() throws Exception {
         for (int attempt = 0; attempt < 30; attempt++) {
@@ -328,7 +326,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.message").value("Hệ thống đang hoạt động."));
     }
 
-    // Hai request đăng ký cùng username/email bắn song song phải cho đúng một 201 và một 400 (không văng 500).
+    // hai request đăng ký trùng bắn song song phải ra đúng 1 cái 201 với 1 cái 400, đừng văng 500 là được
     @Test
     void concurrentDuplicateRegistrationReturnsOne201AndOne400() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of(

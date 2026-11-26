@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// Endpoint /api/users/me cho người dùng đang đăng nhập tự sửa hồ sơ và đổi mật khẩu.
+// /api/users/me cho user đang đăng nhập tự sửa hồ sơ và đổi mật khẩu
 @RestController
 @RequestMapping("/api/users/me")
 public class AccountController {
@@ -38,7 +38,7 @@ public class AccountController {
         return ResponseEntity.ok(ApiResponse.ok(profile, "Cập nhật thông tin tài khoản thành công"));
     }
 
-    // Đổi mật khẩu xong sẽ trả về JWT mới ngay, vì mọi token cũ đã bị thu hồi theo tokenVersion mới.
+    // đổi mật khẩu xong trả luôn JWT mới vì tokenVersion tăng là mấy token cũ hết xài được
     @PostMapping("/password")
     public ResponseEntity<ApiResponse<AuthResponse>> changePassword(
             @RequestBody(required = false) ChangePasswordRequest request,

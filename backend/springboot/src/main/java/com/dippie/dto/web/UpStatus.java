@@ -1,5 +1,5 @@
 package com.dippie.dto.web;
 
-// Phản hồi khi hệ thống và DB đều sẵn sàng.
+// app với DB đều ổn thì trả cái này
 public record UpStatus(String status, String service, String version) implements HealthStatus {
 }

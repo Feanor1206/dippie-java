@@ -4,8 +4,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-// Tập từ khóa đã lọc sạch cụm hỏi khuôn mẫu và từ dừng để chấm điểm BM25.
-// Cờ requiresAllWords bật lên với câu hỏi có/không tên phim hoặc câu hỏi ngoài lề để tránh khớp nhầm lác đác một hai từ.
+// bộ từ khóa đã lọc sạch cụm hỏi mẫu với stopword để đưa vào BM25
+// câu hỏi có/không tên phim hay hỏi ngoài lề thì bật requiresAllWords kẻo khớp nhầm lác đác 1 2 từ
 public record LexicalQuery(List<String> words, Set<String> distinctWords, boolean requiresAllWords) {
 
     private static final Set<String> STOPWORDS = Set.of(
@@ -29,7 +29,7 @@ public record LexicalQuery(List<String> words, Set<String> distinctWords, boolea
                     + "|\\bnhu the nao[.!? ]*$"
                     + "|\\b(?:thu do|dan so|dien tich|tong thong|thu tuong|ty gia|chung khoan|bitcoin|may gio roi|bay gio la may gio|hom nay(?: la)? thu may)\\b");
 
-    // Bóc bỏ câu dẫn và từ dừng tiếng Việt; giữ lại từ "ban" khi câu đang hỏi về tình bạn để không mất ý chính.
+    // lọc câu dẫn với stopword tiếng Việt, riêng câu hỏi về tình bạn thì giữ lại chữ "ban" kẻo mất ý chính
     public static LexicalQuery from(String source) {
         String folded = LexicalIndex.normalize(source);
         boolean friendship = folded.contains("tinh ban") || folded.contains("ban than") || folded.contains("ban be");
@@ -45,7 +45,7 @@ public record LexicalQuery(List<String> words, Set<String> distinctWords, boolea
         return distinctWords.isEmpty();
     }
 
-    // Yêu cầu đạt tối thiểu 3/5 số từ (hoặc đủ 100% khi requiresAllWords bật); riêng truy vấn 2 từ phải khớp cụm hoặc tên phim mới nhận.
+    // phải khớp ít nhất 3/5 số từ (hoặc đủ 100% khi bật requiresAllWords), riêng truy vấn 2 từ bắt buộc khớp cụm hay tên phim
     public boolean relevant(int matches, float score, boolean hasPhraseOrName) {
         int size = distinctWords.size();
         int minimum = requiresAllWords ? size : Math.ceilDiv(size * 3, 5);

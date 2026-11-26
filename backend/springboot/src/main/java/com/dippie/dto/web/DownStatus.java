@@ -1,5 +1,5 @@
 package com.dippie.dto.web;
 
-// Phản hồi khi DB không kết nối được.
+// DB mất kết nối thì trả cái này
 public record DownStatus(String status) implements HealthStatus {
 }

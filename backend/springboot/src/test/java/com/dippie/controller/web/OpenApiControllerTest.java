@@ -14,7 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Test tích hợp kiểm tra /v3/api-docs và Swagger UI hoạt động đúng khi được bật rõ trong cấu hình.
+// test /v3/api-docs với Swagger UI chạy ngon khi bật rõ trong config
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
