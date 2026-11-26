@@ -15,6 +15,8 @@ Dippie là trang web xem phim hoạt hình gom backend Java (Spring Boot) và gi
 - Duyệt phim và bộ hoạt hình theo danh mục, bộ phim, mùa và tập; có lọc theo thể loại, năm phát hành và tìm kiếm toàn văn.
 - Phát video qua HTTP Byte Range hoặc nguồn YouTube đã lưu, ghi tiến độ xem bằng khóa lạc quan và gợi ý tập xem tiếp theo.
 - Lưu danh sách xem sau, phim yêu thích, chấm điểm từ 1 đến 10 và gợi ý phim theo sở thích hoặc tâm trạng.
+- Hồ sơ trẻ em tùy chọn bật trong trang Cài đặt tài khoản: đặt mã PIN phụ huynh (4–6 số, khóa tạm 5 phút sau 5 lần nhập sai), tạo tối đa 6 hồ sơ riêng tách biệt lịch sử xem/thư viện/đánh giá, chuyển hồ sơ nhanh và chế độ trẻ em ẩn menu tài khoản, quản trị cùng các liên kết mở ra YouTube bên ngoài.
+- Giới hạn thời gian xem mỗi ngày và giải toán thưởng phút cho riêng từng hồ sơ trẻ em (đặt lại vào 0h00 giờ `Asia/Ho_Chi_Minh`): phụ huynh tùy chỉnh hạn mức ngày (0–600 phút), cấp độ toán (4 mức), phút thưởng mỗi câu đúng, trần thưởng ngày và có thể tặng nhanh thêm phút bằng mã PIN; khi hết giờ, máy chủ khóa phát video và lưu tiến độ bằng mã `423`, còn giao diện trẻ em tạm dừng trình phát và mở màn hình giải toán để nhận thêm thời gian (hồ sơ chính và tài khoản không bật chế độ phụ huynh không bao giờ bị giới hạn).
 - Trợ lý CineBot chạy trực tiếp trên Java qua SSE (`/api/chat`) dựa trên chỉ mục từ vựng BM25 trong bộ nhớ. Mặc định CineBot dựng câu trả lời tiếng Việt từ danh mục có sẵn; nếu muốn dùng DeepSeek, bạn đặt biến môi trường `DIPPIE_LLM_PROVIDER=deepseek` và `DEEPSEEK_API_KEY`.
 - Khu vực quản trị để kiểm tra và nhập/xuất gói danh mục chuẩn `dippie.catalog.v1`, quản lý tài khoản, phân quyền, xem thống kê và nhật ký kiểm toán.
 

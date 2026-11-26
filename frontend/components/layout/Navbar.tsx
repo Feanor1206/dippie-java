@@ -3,10 +3,15 @@ import { Link, useLocation } from 'react-router';
 import { getUserInitials } from '@/lib/labels';
 import { useWatchlist } from '@/lib/context/WatchlistContext';
 import { useAuth } from '@/lib/context/AuthContext';
+import { useOptionalScreenTime } from '@/lib/context/ScreenTimeContext';
+import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
+import { ExitKidModeDialog } from '@/features/profiles/components/ExitKidModeDialog';
+import { ScreenTimeChip } from '@/features/profiles/components/ScreenTimeChip';
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [exitDialogOpen, setExitDialogOpen] = useState(false);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -14,7 +19,19 @@ export function Navbar() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const { watchlist, openChat } = useWatchlist();
-  const { user, isAuthenticated, openAuthModal, logout } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    openAuthModal,
+    logout,
+    isKidMode,
+    activeProfile,
+    parentModeEnabled,
+    openProfilePicker,
+  } = useAuth();
+  const kidMode = Boolean(isKidMode);
+  const screenTime = typeof useOptionalScreenTime === 'function' ? useOptionalScreenTime() : null;
+  const showAdmin = user?.role === 'ROLE_ADMIN' && !kidMode;
 
   const primaryNavLinks = [
     { name: 'Trang chủ', href: '/' },
@@ -22,7 +39,7 @@ export function Navbar() {
     { name: 'Kho phim', href: '/search' },
     { name: 'Thư viện', href: '/profile', count: watchlist.length },
   ];
-  const adminLinks = user?.role === 'ROLE_ADMIN'
+  const adminLinks = showAdmin
     ? [
         { name: 'Báo lỗi video', href: '/admin/reports' },
         { name: 'Nhập dữ liệu', href: '/admin/import' },
@@ -31,7 +48,7 @@ export function Navbar() {
         { name: 'Nhật ký', href: '/admin/audit' },
       ]
     : [];
-  const desktopNavLinks = user?.role === 'ROLE_ADMIN'
+  const desktopNavLinks = showAdmin
     ? [...primaryNavLinks, { name: 'Quản trị', href: '/admin/reports' }]
     : primaryNavLinks;
 
@@ -75,7 +92,7 @@ export function Navbar() {
     || (href === '/search' && pathname.startsWith('/movies/'))
     || (href === '/admin/reports' && pathname.startsWith('/admin'));
 
-  const userDisplayName = user?.fullName || user?.username;
+  const userDisplayName = kidMode && activeProfile ? activeProfile.name : (user?.fullName || user?.username);
   const userInitials = getUserInitials(userDisplayName, 'U');
 
   return (
@@ -150,9 +167,13 @@ export function Navbar() {
                 }}
                 className="flex min-h-[44px] items-center gap-2 rounded-lg border border-surface-border bg-surface px-2.5 py-1 text-xs text-ink hover:border-ink transition-colors cursor-pointer"
               >
-                <div className="grid h-6 w-6 place-items-center rounded bg-brand text-[11px] font-bold text-ink border border-ink/30">
-                  {userInitials}
-                </div>
+                {kidMode && activeProfile ? (
+                  <ChildAvatarBadge avatarKey={activeProfile.avatarKey} size="sm" />
+                ) : (
+                  <div className="grid h-6 w-6 place-items-center rounded bg-brand text-[11px] font-bold text-ink border border-ink/30">
+                    {userInitials}
+                  </div>
+                )}
                 <span className="font-medium max-w-[110px] truncate">{userDisplayName}</span>
               </button>
 
@@ -167,7 +188,9 @@ export function Navbar() {
                 >
                   <div className="px-2.5 py-2 border-b border-surface-border/40">
                     <p className="text-xs font-bold text-ink truncate">{userDisplayName}</p>
-                    <p className="text-[11px] text-muted truncate">{user.email}</p>
+                    <p className="text-[11px] text-muted truncate">
+                      {kidMode ? 'Hồ sơ trẻ em' : user.email}
+                    </p>
                   </div>
 
                   <div className="mt-1.5 space-y-0.5">
@@ -180,15 +203,17 @@ export function Navbar() {
                     >
                       Thư viện
                     </Link>
-                    <Link
-                      to="/account"
-                      role="menuitem"
-                      tabIndex={-1}
-                      onClick={() => setUserDropdownOpen(false)}
-                      className="flex min-h-[44px] items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-mint/60 transition-colors"
-                    >
-                      Cài đặt tài khoản
-                    </Link>
+                    {!kidMode && (
+                      <Link
+                        to="/account"
+                        role="menuitem"
+                        tabIndex={-1}
+                        onClick={() => setUserDropdownOpen(false)}
+                        className="flex min-h-[44px] items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-mint/60 transition-colors"
+                      >
+                        Cài đặt tài khoản
+                      </Link>
+                    )}
                     <Link
                       to="/lich-su"
                       role="menuitem"
@@ -198,21 +223,52 @@ export function Navbar() {
                     >
                       Lịch sử xem
                     </Link>
+                    {!kidMode && parentModeEnabled && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        tabIndex={-1}
+                        data-testid="nav-switch-profile-button"
+                        onClick={() => {
+                          setUserDropdownOpen(false);
+                          openProfilePicker?.();
+                        }}
+                        className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-mint/60 transition-colors cursor-pointer"
+                      >
+                        Đổi hồ sơ
+                      </button>
+                    )}
                   </div>
 
                   <div className="mt-1.5 pt-1.5 border-t border-surface-border/40">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      tabIndex={-1}
-                      onClick={() => {
-                        setUserDropdownOpen(false);
-                        logout();
-                      }}
-                      className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-500/10 transition-colors cursor-pointer"
-                    >
-                      Đăng xuất
-                    </button>
+                    {kidMode ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        tabIndex={-1}
+                        data-testid="nav-exit-kid-mode-menu-item"
+                        onClick={() => {
+                          setUserDropdownOpen(false);
+                          setExitDialogOpen(true);
+                        }}
+                        className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-semibold text-brand-dark hover:bg-mint/60 transition-colors cursor-pointer"
+                      >
+                        Thoát hồ sơ trẻ em
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        tabIndex={-1}
+                        onClick={() => {
+                          setUserDropdownOpen(false);
+                          logout();
+                        }}
+                        className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-500/10 transition-colors cursor-pointer"
+                      >
+                        Đăng xuất
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -246,7 +302,11 @@ export function Navbar() {
               aria-label="Mở Thư viện"
               className="grid h-11 w-11 place-items-center rounded-lg border border-ink/40 bg-brand text-xs font-bold text-ink shadow-sm"
             >
-              {userInitials}
+              {kidMode && activeProfile ? (
+                <ChildAvatarBadge avatarKey={activeProfile.avatarKey} size="sm" />
+              ) : (
+                userInitials
+              )}
             </Link>
           ) : (
             <button
@@ -343,14 +403,29 @@ export function Navbar() {
               </button>
               {isAuthenticated && (
                 <>
-                  <Link
-                    to="/account"
-                    data-testid="mobile-account-link"
-                    onClick={() => setOpen(false)}
-                    className="btn-secondary min-h-[44px] w-full justify-center text-xs"
-                  >
-                    Cài đặt tài khoản
-                  </Link>
+                  {!kidMode && parentModeEnabled && (
+                    <button
+                      type="button"
+                      data-testid="mobile-switch-profile"
+                      onClick={() => {
+                        setOpen(false);
+                        openProfilePicker?.();
+                      }}
+                      className="btn-secondary min-h-[44px] w-full justify-center text-xs"
+                    >
+                      Đổi hồ sơ
+                    </button>
+                  )}
+                  {!kidMode && (
+                    <Link
+                      to="/account"
+                      data-testid="mobile-account-link"
+                      onClick={() => setOpen(false)}
+                      className="btn-secondary min-h-[44px] w-full justify-center text-xs"
+                    >
+                      Cài đặt tài khoản
+                    </Link>
+                  )}
                   <Link
                     to="/lich-su"
                     onClick={() => setOpen(false)}
@@ -358,22 +433,74 @@ export function Navbar() {
                   >
                     Lịch sử xem
                   </Link>
-                  <button
-                    type="button"
-                    data-testid="mobile-logout"
-                    onClick={() => {
-                      setOpen(false);
-                      logout();
-                    }}
-                    className="btn-secondary min-h-[44px] w-full justify-center text-xs text-red-800 hover:text-red-800"
-                  >
-                    Đăng xuất
-                  </button>
+                  {kidMode ? (
+                    <button
+                      type="button"
+                      data-testid="mobile-exit-kid-mode"
+                      onClick={() => {
+                        setOpen(false);
+                        setExitDialogOpen(true);
+                      }}
+                      className="btn-secondary min-h-[44px] w-full justify-center text-xs font-bold text-brand-dark"
+                    >
+                      Thoát hồ sơ trẻ em
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid="mobile-logout"
+                      onClick={() => {
+                        setOpen(false);
+                        logout();
+                      }}
+                      className="btn-secondary min-h-[44px] w-full justify-center text-xs text-red-800 hover:text-red-800"
+                    >
+                      Đăng xuất
+                    </button>
+                  )}
                 </>
               )}
             </div>
           </div>
         </div>
+      )}
+
+      {isAuthenticated && kidMode && (
+        <div data-testid="kid-mode-banner" className="border-t border-ink/20 bg-[#f2d18c]/45">
+          <div className="page-shell flex flex-wrap items-center justify-between gap-2 py-2">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <ChildAvatarBadge avatarKey={activeProfile?.avatarKey} size="sm" />
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="inline-flex items-center rounded-full border border-ink/30 bg-paper-white px-2 py-0.5 text-[10px] font-bold text-brand-dark">
+                  Hồ sơ trẻ em
+                </span>
+                <span className="truncate text-xs sm:text-sm font-bold text-ink">
+                  {activeProfile?.name || 'Chế độ trẻ em'}
+                </span>
+                {screenTime?.isLimited && (
+                  <ScreenTimeChip
+                    data-testid="profile-bar-screen-time-chip"
+                    remainingSeconds={screenTime.remainingSeconds}
+                    locked={screenTime.isLocked}
+                    variant="bar"
+                  />
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              data-testid="exit-kid-mode-button"
+              onClick={() => setExitDialogOpen(true)}
+              className="btn-secondary min-h-[44px] px-3 py-1.5 text-xs font-bold"
+            >
+              Thoát hồ sơ trẻ em
+            </button>
+          </div>
+        </div>
+      )}
+
+      {exitDialogOpen && (
+        <ExitKidModeDialog open={exitDialogOpen} onClose={() => setExitDialogOpen(false)} />
       )}
     </header>
   );

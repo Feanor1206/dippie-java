@@ -1,4 +1,5 @@
 import { YouTubeLink } from '@/components/ui/YouTubeLink';
+import { useOptionalAuth } from '@/lib/context/AuthContext';
 import React from 'react';
 import { cleanMediaTitle, formatDurationMs } from '@/lib/labels';
 import { foldVietnamese } from '@/features/series/seriesBrowseUtils';
@@ -41,6 +42,8 @@ export function EpisodeSidebar({
   knownExternalEpisodeIds,
   posterUrl,
 }: EpisodeSidebarProps) {
+  const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
+  const isKidMode = Boolean(auth?.isKidMode);
   const trimmedQuery = episodeQuery.trim();
   const foldedQuery = trimmedQuery ? foldVietnamese(trimmedQuery) : '';
   const filteredEpisodes = foldedQuery
@@ -163,7 +166,7 @@ export function EpisodeSidebar({
                             </span>
                           )}
                         </div>
-                        {isExternalOnly && (
+                        {isExternalOnly && !isKidMode && (
                           <span
                             data-testid="episode-external-badge"
                             className="mt-1 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"
@@ -194,7 +197,7 @@ export function EpisodeSidebar({
                     </div>
                   </div>
 
-                  {isExternalOnly && externalUrl && (
+                  {isExternalOnly && !isKidMode && externalUrl && (
                     <div className="mt-1.5 flex items-center justify-end border-t border-surface-border/60 pt-1.5">
                       <YouTubeLink
                         url={externalUrl}

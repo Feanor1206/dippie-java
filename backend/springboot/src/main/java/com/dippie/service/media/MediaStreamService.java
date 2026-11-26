@@ -19,6 +19,7 @@ import com.dippie.security.JwtService;
 import com.dippie.security.PlaybackPrincipal;
 import com.dippie.security.Viewer;
 import com.dippie.service.movie.MovieVisibility;
+import com.dippie.service.profile.ScreenTimeService;
 
 import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
@@ -52,6 +53,7 @@ public class MediaStreamService {
     private final ActiveViewerLookup activeViewerLookup;
     private final JwtService jwtService;
     private final MediaFileResolver mediaFileResolver;
+    private final ScreenTimeService screenTimeService;
     private final TransactionTemplate reads;
 
     public MediaStreamService(MediaAssetRepository mediaAssetRepository,
@@ -59,7 +61,8 @@ public class MediaStreamService {
             CatalogEpisodeRepository catalogEpisodeRepository,
             MovieVisibility movieVisibility,
             PlaybackAccess playbackAccess, CurrentViewer currentViewer, ActiveViewerLookup activeViewerLookup,
-            JwtService jwtService, MediaFileResolver mediaFileResolver, PlatformTransactionManager transactions) {
+            JwtService jwtService, MediaFileResolver mediaFileResolver, ScreenTimeService screenTimeService,
+            PlatformTransactionManager transactions) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.catalogMediaAssetRepository = catalogMediaAssetRepository;
         this.catalogEpisodeRepository = catalogEpisodeRepository;
@@ -69,6 +72,7 @@ public class MediaStreamService {
         this.activeViewerLookup = activeViewerLookup;
         this.jwtService = jwtService;
         this.mediaFileResolver = mediaFileResolver;
+        this.screenTimeService = screenTimeService;
         this.reads = new TransactionTemplate(transactions);
         this.reads.setReadOnly(true);
     }
@@ -86,7 +90,14 @@ public class MediaStreamService {
             boolean hasPublishedParent = catalogAsset != null
                     && catalogEpisodeRepository.findWithParentsByMediaAssetId(assetId).stream()
                             .anyMatch(CatalogEpisodeRepository.EpisodeWithParents::isPublished);
-            return playbackAccess.authorizeForStream(assetId, asset, catalogAsset, hasPublishedParent, viewer, grantPrincipal);
+            MediaAsset allowed = playbackAccess.authorizeForStream(assetId, asset, catalogAsset, hasPublishedParent, viewer, grantPrincipal);
+            // hồ sơ trẻ em đã hết giờ thì cắt luôn cả luồng stream dù cầm vé phát cũ
+            if (viewer != null && viewer.isChildProfile()) {
+                screenTimeService.requireUnlockedForPlayback(viewer);
+            } else if (grantPrincipal != null && verifiedGrant != null && verifiedGrant.profileId() != null) {
+                screenTimeService.requireUnlockedForProfile(verifiedGrant.userId(), verifiedGrant.profileId());
+            }
+            return allowed;
         });
         Path filePath = mediaFileResolver.requireFile(authorized);
         return new ResolvedMediaStream(filePath, readFileSize(filePath), resolveMediaType(authorized.getMimeType()));

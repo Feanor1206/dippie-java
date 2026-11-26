@@ -1,6 +1,8 @@
 import React, { useEffect, useId, useRef } from 'react';
+import { useOptionalAuth } from '@/lib/context/AuthContext';
 
 const YOUTUBE_IFRAME_API_SRC = 'https://www.youtube.com/iframe_api';
+const KID_MODE_SANDBOX = 'allow-scripts allow-same-origin allow-presentation';
 const PROGRESS_REPORT_INTERVAL_MS = 15_000;
 const TICK_INTERVAL_MS = 1000;
 const MIN_REPORT_SECONDS = 1;
@@ -22,6 +24,7 @@ type YouTubeNamespace = {
   Player: new (
     element: HTMLElement | string,
     config: {
+      playerVars?: Record<string, string | number>;
       events?: {
         onReady?: (event: { target: YouTubePlayerInstance }) => void;
         onStateChange?: (event: { data: number; target: YouTubePlayerInstance }) => void;
@@ -97,14 +100,19 @@ export function loadYouTubeIframeApi(): Promise<YouTubeNamespace | null> {
   return apiLoadPromise;
 }
 
-function withOriginParam(embedUrl: string): string {
-  if (typeof window === 'undefined' || !window.location?.origin) return embedUrl;
-  const { origin } = window.location;
-  if (!/^https?:\/\//i.test(origin)) return embedUrl;
+function withEmbedParams(embedUrl: string, kidMode: boolean): string {
   try {
     const parsed = new URL(embedUrl);
     if (!parsed.searchParams.has('enablejsapi')) parsed.searchParams.set('enablejsapi', '1');
-    if (!parsed.searchParams.has('origin')) parsed.searchParams.set('origin', origin);
+    if (typeof window !== 'undefined' && window.location?.origin && /^https?:\/\//i.test(window.location.origin)) {
+      if (!parsed.searchParams.has('origin')) parsed.searchParams.set('origin', window.location.origin);
+    }
+    if (kidMode) {
+      parsed.searchParams.set('rel', '0');
+      parsed.searchParams.set('modestbranding', '1');
+      parsed.searchParams.set('iv_load_policy', '3');
+      parsed.searchParams.set('playsinline', '1');
+    }
     return parsed.toString();
   } catch {
     return embedUrl;
@@ -139,6 +147,8 @@ export type YouTubePlayerProps = {
   title: string;
   seekRequest?: YouTubeSeekRequest | null;
   autoPlay?: boolean;
+  kidMode?: boolean;
+  paused?: boolean;
   onProgress?: (snapshot: YouTubeProgressSnapshot, reason: YouTubeProgressReason) => void;
   onEnded?: () => void;
   onPlayingChange?: (playing: boolean) => void;
@@ -152,12 +162,16 @@ export function YouTubePlayer({
   title,
   seekRequest = null,
   autoPlay = false,
+  kidMode,
+  paused = false,
   onProgress,
   onEnded,
   onPlayingChange,
   onTimeTick,
   'data-testid': testId = 'series-youtube-player',
 }: YouTubePlayerProps) {
+  const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
+  const effectiveKidMode = typeof kidMode === 'boolean' ? kidMode : Boolean(auth?.isKidMode);
   const reactId = useId();
   const iframeId = `dippie-yt-${videoId}-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -165,9 +179,17 @@ export function YouTubePlayer({
   const readyRef = useRef(false);
   const playingRef = useRef(false);
   const hasStartedPlaybackRef = useRef(false);
-  const initialSrcRef = useRef<{ videoId: string; url: string }>({ videoId, url: withOriginParam(src) });
-  if (initialSrcRef.current.videoId !== videoId) {
-    initialSrcRef.current = { videoId, url: withOriginParam(src) };
+  const initialSrcRef = useRef<{ videoId: string; kidMode: boolean; url: string }>({
+    videoId,
+    kidMode: effectiveKidMode,
+    url: withEmbedParams(src, effectiveKidMode),
+  });
+  if (initialSrcRef.current.videoId !== videoId || initialSrcRef.current.kidMode !== effectiveKidMode) {
+    initialSrcRef.current = {
+      videoId,
+      kidMode: effectiveKidMode,
+      url: withEmbedParams(src, effectiveKidMode),
+    };
   }
 
   const pendingSeekRef = useRef<YouTubeSeekRequest | null>(null);
@@ -177,6 +199,19 @@ export function YouTubePlayer({
   callbacksRef.current = { onProgress, onEnded, onPlayingChange, onTimeTick };
   const autoPlayRef = useRef(autoPlay);
   autoPlayRef.current = autoPlay;
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
+
+  useEffect(() => {
+    if (!paused) return;
+    playingRef.current = false;
+    if (playerRef.current && typeof playerRef.current.pauseVideo === 'function') {
+      try {
+        playerRef.current.pauseVideo();
+      } catch {}
+    }
+    callbacksRef.current.onPlayingChange?.(false);
+  }, [paused]);
 
   const readSnapshot = (instance?: YouTubePlayerInstance | null): YouTubeProgressSnapshot => {
     const target = instance || playerRef.current;
@@ -250,6 +285,16 @@ export function YouTubePlayer({
 
       try {
         playerRef.current = new YT.Player(iframeRef.current, {
+          ...(effectiveKidMode
+            ? {
+                playerVars: {
+                  rel: 0,
+                  modestbranding: 1,
+                  iv_load_policy: 3,
+                  playsinline: 1,
+                },
+              }
+            : {}),
           events: {
             onReady: (event) => {
               if (!active) return;
@@ -257,7 +302,7 @@ export function YouTubePlayer({
               readyRef.current = true;
               const pending = pendingSeekRef.current;
               if (pending) {
-                applySeekAndPlay(event.target, pending.seconds, pending.autoPlay);
+                applySeekAndPlay(event.target, pending.seconds, pending.autoPlay && !pausedRef.current);
                 const snapshot = readSnapshot(event.target);
                 const syncedSnapshot: YouTubeProgressSnapshot = {
                   currentTimeSec: pending.seconds,
@@ -267,7 +312,7 @@ export function YouTubePlayer({
                 pendingSeekRef.current = null;
                 callbacksRef.current.onTimeTick?.(syncedSnapshot);
               } else {
-                if (autoPlayRef.current && typeof event.target.playVideo === 'function') {
+                if (autoPlayRef.current && !pausedRef.current && typeof event.target.playVideo === 'function') {
                   event.target.playVideo();
                 }
                 callbacksRef.current.onTimeTick?.(readSnapshot(event.target));
@@ -358,6 +403,7 @@ export function YouTubePlayer({
       src={initialSrcRef.current.url}
       allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share"
       referrerPolicy="strict-origin-when-cross-origin"
+      sandbox={effectiveKidMode ? KID_MODE_SANDBOX : undefined}
       allowFullScreen
     />
   );

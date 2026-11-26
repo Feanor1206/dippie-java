@@ -19,10 +19,10 @@ public class WatchHistoryClearService {
         this.watchProgressRepository = watchProgressRepository;
     }
 
-    // bọc @Transactional để xóa gọn hết dòng watch_progress của đúng user đó trong 1 lượt
+    // bọc @Transactional để chỉ xóa sạch watch_progress của đúng hồ sơ đang mở trong 1 lượt
     @Transactional
     public void clearAll() {
         Viewer viewer = currentViewer.require();
-        watchProgressRepository.deleteByUserId(viewer.userId());
+        watchProgressRepository.deleteByUserIdAndProfileScopeId(viewer.userId(), viewer.profileScopeId());
     }
 }

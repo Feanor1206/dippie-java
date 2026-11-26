@@ -1,5 +1,7 @@
 package com.dippie.security;
 
+import com.dippie.model.user.Role;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -41,18 +43,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (!token.isEmpty()) {
                 jwtService.parseLoginToken(token)
                         .flatMap(loginToken -> viewerLookup.findActiveViewer(
-                                loginToken.username(), loginToken.tokenVersion()))
+                                loginToken.username(), loginToken.tokenVersion(), loginToken.profileId()))
                         .ifPresent(this::authenticate);
             }
         }
         filterChain.doFilter(request, response);
     }
 
+    // đang ở hồ sơ trẻ em thì hạ authority xuống ROLE_USER để Security chặn luôn mọi route /api/admin/**
     private void authenticate(Viewer viewer) {
+        Role effectiveRole = viewer.isChildProfile() ? Role.ROLE_USER : viewer.role();
         UsernamePasswordAuthenticationToken authentication = UsernamePasswordAuthenticationToken.authenticated(
                 viewer,
                 null,
-                List.of(new SimpleGrantedAuthority(viewer.role().name()))
+                List.of(new SimpleGrantedAuthority(effectiveRole.name()))
         );
         SecurityContextHolder.getContext().setAuthentication(authentication);
     }

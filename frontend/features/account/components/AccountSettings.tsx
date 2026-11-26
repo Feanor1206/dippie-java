@@ -1,8 +1,11 @@
+import { ChildProfilesSection } from './ChildProfilesSection';
 import { DeleteAccountSection } from './DeleteAccountSection';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { AlertCircle, CheckCircle2, KeyRound, Loader2, RefreshCw, User } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
+import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
+import { ExitKidModeDialog } from '@/features/profiles/components/ExitKidModeDialog';
 import {
   AccountApiError,
   changeAccountPassword,
@@ -30,11 +33,15 @@ export function AccountSettings() {
     status,
     isAuthenticated,
     isLoading,
+    isKidMode,
+    activeProfile,
     openAuthModal,
     retryVerify,
     applySession,
     updateUser,
   } = useAuth();
+  const kidMode = Boolean(isKidMode);
+  const [exitDialogOpen, setExitDialogOpen] = useState(false);
 
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -241,6 +248,41 @@ export function AccountSettings() {
               Tạo tài khoản
             </button>
           </div>
+        </section>
+      ) : kidMode ? (
+        <section
+          data-testid="account-kid-mode-blocked"
+          aria-labelledby="account-kid-mode-heading"
+          className="mx-auto max-w-2xl rounded-xl border-2 border-ink bg-paper-white p-6 shadow-brand sm:p-8"
+        >
+          <div className="flex items-center gap-4">
+            <ChildAvatarBadge avatarKey={activeProfile?.avatarKey} size="md" />
+            <div>
+              <span className="text-xs font-bold text-brand-dark">Hồ sơ trẻ em</span>
+              <h1 id="account-kid-mode-heading" className="mt-0.5 text-xl sm:text-2xl font-bold text-ink">
+                Cài đặt tài khoản đang được khóa
+              </h1>
+            </div>
+          </div>
+          <p className="mt-4 text-sm text-muted leading-relaxed">
+            Hồ sơ trẻ em không thể mở cài đặt tài khoản. Ba mẹ nhập mã PIN để thoát hồ sơ trẻ em rồi quay lại nhé.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              data-testid="account-exit-kid-mode-button"
+              onClick={() => setExitDialogOpen(true)}
+              className="btn-primary text-xs sm:text-sm"
+            >
+              Thoát hồ sơ trẻ em
+            </button>
+            <Link to="/" className="btn-secondary text-xs sm:text-sm">
+              Về trang chủ
+            </Link>
+          </div>
+          {exitDialogOpen && (
+            <ExitKidModeDialog open={exitDialogOpen} onClose={() => setExitDialogOpen(false)} />
+          )}
         </section>
       ) : (
         <div className="mx-auto max-w-4xl space-y-8">
@@ -477,6 +519,7 @@ export function AccountSettings() {
               </form>
             </section>
           </div>
+          <ChildProfilesSection />
           <DeleteAccountSection />
         </div>
       )}

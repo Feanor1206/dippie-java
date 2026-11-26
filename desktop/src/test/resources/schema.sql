@@ -8,8 +8,32 @@ CREATE TABLE users (
     role VARCHAR(20) NOT NULL DEFAULT 'ROLE_USER' CHECK (role IN ('ROLE_USER', 'ROLE_ADMIN')),
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     token_version BIGINT NOT NULL DEFAULT 0,
+    parent_mode_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    parent_pin_hash VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE child_profiles (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(50) NOT NULL,
+    avatar_key VARCHAR(32) NOT NULL,
+    daily_minutes INT NOT NULL DEFAULT 60 CHECK (daily_minutes BETWEEN 0 AND 600),
+    math_level INT NOT NULL DEFAULT 1 CHECK (math_level BETWEEN 1 AND 4),
+    reward_minutes INT NOT NULL DEFAULT 5 CHECK (reward_minutes BETWEEN 1 AND 30),
+    max_bonus_minutes INT NOT NULL DEFAULT 30 CHECK (max_bonus_minutes BETWEEN 0 AND 120),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE screen_time_ledger (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+    usage_day DATE NOT NULL,
+    kind VARCHAR(20) NOT NULL CHECK (kind IN ('WATCH', 'REWARD', 'PARENT_GRANT')),
+    seconds INT NOT NULL CHECK (seconds > 0),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE movies (
@@ -21,11 +45,13 @@ CREATE TABLE movies (
 CREATE TABLE movie_ratings (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    profile_id BIGINT REFERENCES child_profiles(id) ON DELETE CASCADE,
+    profile_scope_id BIGINT NOT NULL DEFAULT 0,
     movie_id VARCHAR(100) NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
     rating INT NOT NULL CHECK (rating BETWEEN 1 AND 10),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE (user_id, movie_id)
+    UNIQUE (user_id, profile_scope_id, movie_id)
 );
 
 CREATE TABLE catalog_series (
@@ -78,12 +104,14 @@ CREATE TABLE catalog_episode_assets (
 CREATE TABLE watch_progress (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    profile_id BIGINT REFERENCES child_profiles(id) ON DELETE CASCADE,
+    profile_scope_id BIGINT NOT NULL DEFAULT 0,
     episode_id VARCHAR(100) NOT NULL REFERENCES catalog_episodes(id) ON DELETE CASCADE,
     asset_id VARCHAR(100) NOT NULL,
     position_ms BIGINT NOT NULL CHECK (position_ms >= 0),
     opt_lock_version BIGINT NOT NULL DEFAULT 0,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE (user_id, episode_id)
+    UNIQUE (user_id, profile_scope_id, episode_id)
 );
 
 CREATE TABLE admin_audit_events (

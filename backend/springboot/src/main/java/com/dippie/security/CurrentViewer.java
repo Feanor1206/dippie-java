@@ -12,4 +12,7 @@ public interface CurrentViewer {
 
     // bắt buộc là admin, không đúng thì ném 403
     Viewer requireAdmin();
+
+    // bắt buộc đang ở hồ sơ chính, hồ sơ trẻ em gọi vào thì đá 403
+    Viewer requireMainProfile(String forbiddenMessage);
 }

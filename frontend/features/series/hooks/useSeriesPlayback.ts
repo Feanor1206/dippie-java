@@ -28,6 +28,9 @@ import {
   type PlaybackRuntimeFailure,
 } from '@/lib/services/playbackSource';
 import { cleanMediaTitle } from '@/lib/labels';
+import { useOptionalAuth } from '@/lib/context/AuthContext';
+import { useOptionalScreenTime } from '@/lib/context/ScreenTimeContext';
+import { useScreenTimeHeartbeat } from '@/features/profiles/hooks/useScreenTimeHeartbeat';
 import { RATING_CHANGED_EVENT } from '@/lib/context/WatchlistContext';
 import { useWatchProgress, type WatchProgressSaveReason } from '@/lib/hooks/useWatchProgress';
 import {
@@ -287,6 +290,31 @@ export function useSeriesPlayback(
   const episodeRatingAbortRef = useRef<AbortController | null>(null);
 
   const progress = useWatchProgress();
+  const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
+  const screenTime = typeof useOptionalScreenTime === 'function' ? useOptionalScreenTime() : null;
+  const isKidMode = Boolean(auth?.isKidMode);
+  const isScreenTimeLocked = Boolean(isKidMode && screenTime?.isLocked);
+  const [isMediaPlaying, setIsMediaPlaying] = useState(false);
+  const wasScreenTimeLockedRef = useRef(isScreenTimeLocked);
+
+  useScreenTimeHeartbeat({
+    enabled: Boolean(isKidMode && !isScreenTimeLocked && screenTime),
+    isPlaying: isMediaPlaying,
+    onHeartbeat: (seconds) => screenTime?.reportWatchHeartbeat(seconds),
+  });
+
+  useEffect(() => {
+    if (isScreenTimeLocked) {
+      setIsMediaPlaying(false);
+      setNextCountdown(null);
+      try {
+        videoRef.current?.pause();
+      } catch {}
+    } else if (wasScreenTimeLockedRef.current && selectedAsset?.id && !streamUrl) {
+      setFileRetryCount((value) => value + 1);
+    }
+    wasScreenTimeLockedRef.current = isScreenTimeLocked;
+  }, [isScreenTimeLocked]);
 
   const youtubeTargetMs =
     targetEpisodeId === selectedEpisode?.id
@@ -872,6 +900,7 @@ export function useSeriesPlayback(
     setHasLoadedMetadata(false);
     setStreamUrl('');
     setIsResolvingStream(false);
+    setIsMediaPlaying(false);
     setCurrentTime(0);
     setYoutubeSeekMs(null);
     setYoutubeSeekRequest(null);
@@ -1063,6 +1092,10 @@ export function useSeriesPlayback(
         if (result.ok && result.grant?.streamUrl) {
           setPlaybackWarning(null);
           setStreamUrl(result.grant.streamUrl);
+        } else if (result.status === 423) {
+          setStreamUrl('');
+          setIsMediaPlaying(false);
+          screenTime?.markLockedFromServer();
         } else {
           setStreamUrl('');
           handleFilePlaybackFailure(currentAssetId, classifyGrantFailureReason(result.status));
@@ -1210,7 +1243,15 @@ export function useSeriesPlayback(
   };
 
   const handleYoutubePlayingChange = (playing: boolean) => {
-    if (!playing) return;
+    if (!playing) {
+      setIsMediaPlaying(false);
+      return;
+    }
+    if (isScreenTimeLocked) {
+      setIsMediaPlaying(false);
+      return;
+    }
+    setIsMediaPlaying(true);
     if (selectedEpisode?.id) playbackTrackerRef.current?.markStarted(selectedEpisode.id);
     setNextCountdown(null);
     if (autoPlayEpisodeRef.current === selectedEpisode?.id) autoPlayEpisodeRef.current = null;
@@ -1273,17 +1314,38 @@ export function useSeriesPlayback(
     onLoadedData: handleVideoLoadedMetadata,
     onCanPlay: handleVideoLoadedMetadata,
     onError: () => {
+      setIsMediaPlaying(false);
       if (selectedAsset) handleFilePlaybackFailure(selectedAsset.id, 'file_unreachable');
     },
     onTimeUpdate: handleVideoTimeUpdate,
     onPlay: () => {
+      if (isScreenTimeLocked) {
+        try {
+          videoRef.current?.pause();
+        } catch {}
+        return;
+      }
+      setIsMediaPlaying(true);
       setNextCountdown(null);
       markEpisodeStarted();
     },
-    onPlaying: markEpisodeStarted,
-    onPause: () => saveCurrentProgress('pause'),
+    onPlaying: () => {
+      if (isScreenTimeLocked) {
+        try {
+          videoRef.current?.pause();
+        } catch {}
+        return;
+      }
+      setIsMediaPlaying(true);
+      markEpisodeStarted();
+    },
+    onPause: () => {
+      setIsMediaPlaying(false);
+      saveCurrentProgress('pause');
+    },
     onSeeking: () => setNextCountdown(null),
     onEnded: () => {
+      setIsMediaPlaying(false);
       saveCurrentProgress('ended');
       triggerAutoNextIfEnabled();
     },

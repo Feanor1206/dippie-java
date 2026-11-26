@@ -17,8 +17,8 @@ import { formatCount, formatPercentage, formatRating } from '@/features/admin/ad
 import { AdminNav } from '@/features/admin/components/AdminNav';
 
 export default function AdminStatsPage() {
-  const { status, user, token, openAuthModal, retryVerify } = useAuth();
-  const isAdmin = status === 'authenticated' && user?.role === 'ROLE_ADMIN' && !!token;
+  const { status, user, token, isKidMode, openAuthModal, retryVerify } = useAuth();
+  const isAdmin = status === 'authenticated' && user?.role === 'ROLE_ADMIN' && !isKidMode && !!token;
 
   const [stats, setStats] = useState<AdminStatsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);

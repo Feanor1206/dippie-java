@@ -1,6 +1,10 @@
 import { PlaybackReportButton } from '@/features/series/components/PlaybackReportButton';
 import { YouTubeLink } from '@/components/ui/YouTubeLink';
-import React from 'react';
+import { useOptionalAuth } from '@/lib/context/AuthContext';
+import { useOptionalScreenTime } from '@/lib/context/ScreenTimeContext';
+import { ScreenTimeChip } from '@/features/profiles/components/ScreenTimeChip';
+import { ScreenTimeLockOverlay } from '@/features/profiles/components/ScreenTimeLockOverlay';
+import React, { useEffect, useState } from 'react';
 import { cleanMediaTitle, formatDurationMs } from '@/lib/labels';
 import {
   getUnavailableReasonMessage,
@@ -94,6 +98,22 @@ export function EpisodePlayerPanel({
   onCancelNextCountdown,
   progressError,
 }: EpisodePlayerPanelProps) {
+  const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
+  const screenTime = typeof useOptionalScreenTime === 'function' ? useOptionalScreenTime() : null;
+  const isKidMode = Boolean(auth?.isKidMode);
+  const isScreenTimeLocked = Boolean(isKidMode && screenTime?.isLocked);
+  const [holdSolvedOverlay, setHoldSolvedOverlay] = useState(false);
+
+  useEffect(() => {
+    if (!isScreenTimeLocked) return;
+    try {
+      videoRef.current?.pause();
+    } catch {}
+  }, [isScreenTimeLocked, videoRef]);
+
+  const showLockOverlay = Boolean(
+    isKidMode && (isScreenTimeLocked || holdSolvedOverlay) && screenTime?.screenTime && auth?.token
+  );
   const youtubeEmbed = playbackSource.kind === 'youtube';
   const youtubeUrl =
     playbackSource.kind === 'youtube'
@@ -148,6 +168,17 @@ export function EpisodePlayerPanel({
           </div>
         ))}
 
+      {isKidMode && screenTime?.isLimited && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <ScreenTimeChip
+            data-testid="player-screen-time-chip"
+            remainingSeconds={screenTime.remainingSeconds}
+            locked={screenTime.isLocked}
+            variant="player"
+          />
+        </div>
+      )}
+
       <div
         className={`relative overflow-hidden rounded-xl border border-surface-border shadow-2xl aspect-video flex items-center justify-center ${
           !isLoadingEpisode && !isResolvingStream && !episodeError && playbackSource.kind === 'unavailable'
@@ -174,7 +205,9 @@ export function EpisodePlayerPanel({
             src={playbackSource.embedUrl}
             title={cleanMediaTitle(selectedEpisode?.title) || 'Tập trên YouTube'}
             seekRequest={youtubeSeekRequest}
-            autoPlay={shouldAutoPlayYoutube}
+            autoPlay={shouldAutoPlayYoutube && !isScreenTimeLocked}
+            kidMode={isKidMode}
+            paused={isScreenTimeLocked}
             {...youtubeHandlers}
           />
         ) : playbackSource.kind === 'file' && streamUrl ? (
@@ -188,6 +221,8 @@ export function EpisodePlayerPanel({
             {...videoHandlers}
             className="h-full w-full object-contain"
           />
+        ) : showLockOverlay ? (
+          <div className="h-full w-full bg-ink" />
         ) : (
           <div
             role="alert"
@@ -195,7 +230,7 @@ export function EpisodePlayerPanel({
             data-testid="playback-unavailable-card"
             className="flex h-full w-full flex-col items-center justify-center p-6 text-center text-ink"
           >
-            {playbackSource.kind === 'unavailable' && playbackSource.youtubeWatchUrl && (
+            {!isKidMode && playbackSource.kind === 'unavailable' && playbackSource.youtubeWatchUrl && (
               <span
                 data-testid="player-external-badge"
                 className="mb-2 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-900"
@@ -208,12 +243,17 @@ export function EpisodePlayerPanel({
             </p>
             <h3 className="mt-1 text-base font-bold text-ink sm:text-lg">Chưa phát được tập này</h3>
             <p className="mt-2 max-w-md text-xs leading-relaxed text-muted">
-              {getUnavailableReasonMessage(
-                playbackSource.kind === 'unavailable' ? playbackSource.reason : 'file_unreachable'
-              )}
+              {isKidMode &&
+              playbackSource.kind === 'unavailable' &&
+              (playbackSource.reason === 'youtube_embed_disabled' ||
+                playbackSource.reason === 'file_unreachable_youtube_external')
+                ? 'Tập này tạm chưa xem được trong hồ sơ trẻ em.'
+                : getUnavailableReasonMessage(
+                    playbackSource.kind === 'unavailable' ? playbackSource.reason : 'file_unreachable'
+                  )}
             </p>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-              {playbackSource.kind === 'unavailable' && playbackSource.youtubeWatchUrl && (
+              {!isKidMode && playbackSource.kind === 'unavailable' && playbackSource.youtubeWatchUrl && (
                 <YouTubeLink
                   url={playbackSource.youtubeWatchUrl}
                   testId="open-on-youtube-link"
@@ -236,9 +276,22 @@ export function EpisodePlayerPanel({
             </div>
           </div>
         )}
+        {showLockOverlay && screenTime?.screenTime && auth?.token && (
+          <ScreenTimeLockOverlay
+            status={screenTime.screenTime}
+            token={auth.token}
+            onStatusUpdated={(next) => {
+              if (!next.locked) {
+                setHoldSolvedOverlay(true);
+              }
+              screenTime.applyScreenTimeStatus(next);
+            }}
+            onContinueWatching={() => setHoldSolvedOverlay(false)}
+          />
+        )}
       </div>
 
-      {youtubeEmbed && youtubeUrl && (
+      {!isKidMode && youtubeEmbed && youtubeUrl && (
         <YouTubeLink
           url={youtubeUrl}
           testId="youtube-external-link"

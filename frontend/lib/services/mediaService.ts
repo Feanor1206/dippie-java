@@ -1,6 +1,7 @@
 import { resolveStreamUrl } from '@/lib/safeUrl';
 import { getStoredAuthToken } from '@/lib/services/sessionStorage';
 import { apiFetch, RequestTimeoutError, withRequestTimeout } from '@/lib/services/apiRequest';
+import { notifyScreenTimeLocked } from '@/lib/services/screenTimeService';
 export interface MediaAssetInfo {
   assetId: string;
   kind: 'feature' | 'trailer';
@@ -113,7 +114,12 @@ export async function requestPlaybackGrantResult(
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         signal: requestSignal,
       });
-      if (!res.ok) return { ok: false, status: res.status, grant: null };
+      if (!res.ok) {
+        if (res.status === 423) {
+          notifyScreenTimeLocked();
+        }
+        return { ok: false, status: res.status, grant: null };
+      }
       const grantData = await res.json();
       const resolvedUrl = resolveStreamUrl(grantData?.streamUrl || '');
       if (!resolvedUrl) return { ok: false, status: 502, grant: null };

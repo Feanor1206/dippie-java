@@ -20,6 +20,13 @@ public abstract class LibraryEntry {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @Column(name = "profile_id")
+    private Long profileId;
+
+    @Column(name = "profile_scope_id", nullable = false)
+    @ColumnDefault("0")
+    private long profileScopeId;
+
     @Column(name = "movie_id", length = 100, nullable = false)
     private String movieId;
 
@@ -31,7 +38,13 @@ public abstract class LibraryEntry {
     }
 
     protected LibraryEntry(Long userId, String movieId, LocalDateTime addedAt) {
+        this(userId, null, movieId, addedAt);
+    }
+
+    protected LibraryEntry(Long userId, Long profileId, String movieId, LocalDateTime addedAt) {
         this.userId = userId;
+        this.profileId = profileId;
+        this.profileScopeId = profileId == null ? 0L : profileId;
         this.movieId = movieId;
         this.addedAt = addedAt;
     }
@@ -42,6 +55,14 @@ public abstract class LibraryEntry {
 
     public Long getUserId() {
         return userId;
+    }
+
+    public Long getProfileId() {
+        return profileId;
+    }
+
+    public long getProfileScopeId() {
+        return profileScopeId;
     }
 
     public String getMovieId() {

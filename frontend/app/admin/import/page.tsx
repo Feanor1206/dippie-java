@@ -26,8 +26,8 @@ import {
 } from '@/lib/services/catalogService';
 
 export default function AdminImportPage() {
-  const { status, user, token, openAuthModal, retryVerify } = useAuth();
-  const isAdmin = status === 'authenticated' && user?.role === 'ROLE_ADMIN' && !!token;
+  const { status, user, token, isKidMode, openAuthModal, retryVerify } = useAuth();
+  const isAdmin = status === 'authenticated' && user?.role === 'ROLE_ADMIN' && !isKidMode && !!token;
   const [seriesList, setSeriesList] = useState<CatalogSeriesSummary[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [snapshots, setSnapshots] = useState<CatalogSnapshot[]>([]);

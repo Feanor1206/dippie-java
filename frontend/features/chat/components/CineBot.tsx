@@ -37,11 +37,13 @@ function ChatMovieCard({
   inWatchlist,
   onToggleWatchlist,
   onClose,
+  isKidMode = false,
 }: {
   movie: Movie;
   inWatchlist: boolean;
   onToggleWatchlist: () => void;
   onClose: () => void;
+  isKidMode?: boolean;
 }) {
   const mediaHref = buildMediaItemHref(movie);
   const hasPoster = Boolean(movie.poster && movie.poster.trim());
@@ -86,7 +88,7 @@ function ChatMovieCard({
               {cleanMediaTitle(movie.title)}
             </Link>
           </div>
-          {externalOnly && (
+          {externalOnly && !isKidMode && (
             <span
               data-testid="cinebot-external-badge"
               className="mt-1 inline-flex w-fit items-center rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-900"
@@ -98,7 +100,7 @@ function ChatMovieCard({
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          {externalOnly && externalYoutubeUrl ? (
+          {externalOnly && !isKidMode && externalYoutubeUrl ? (
             <YouTubeLink
               url={externalYoutubeUrl}
               testId="cinebot-open-youtube-link"
@@ -131,12 +133,20 @@ function ChatMovieCard({
 }
 
 export function CineBot({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { status, user, token } = useAuth();
+  const { status, user, token, isKidMode } = useAuth();
   const actorKey = status === 'authenticated' && user && token ? `user:${user.id}:${token}` : `status:${status}`;
-  return <CineBotConversation key={actorKey} isOpen={isOpen} onClose={onClose} />;
+  return <CineBotConversation key={actorKey} isOpen={isOpen} onClose={onClose} isKidMode={Boolean(isKidMode)} />;
 }
 
-function CineBotConversation({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+function CineBotConversation({
+  isOpen,
+  onClose,
+  isKidMode = false,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  isKidMode?: boolean;
+}) {
   const { isWatchlisted, toggleWatchlist } = useWatchlist();
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     createWelcomeMessage('welcome', 'Hôm nay nhà mình muốn xem gì? Nhập tên phim, nhân vật hoặc cảnh bé nhớ nhé.'),
@@ -372,6 +382,7 @@ function CineBotConversation({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                       inWatchlist={isWatchlisted(movie.id)}
                       onToggleWatchlist={() => void toggleWatchlist(movie.id, movie.title)}
                       onClose={onClose}
+                      isKidMode={isKidMode}
                     />
                   ))}
                 </div>

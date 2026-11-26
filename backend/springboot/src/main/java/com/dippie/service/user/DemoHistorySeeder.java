@@ -103,11 +103,11 @@ public class DemoHistorySeeder implements ApplicationRunner {
         if (publishedEpisodes.isEmpty()) {
             return;
         }
-        // đọc trước mấy mục demo user đã có để chạy lại seeder khỏi ghi đè dữ liệu vừa test sửa
-        Set<String> existingProgress = new HashSet<>(progress.findEpisodeIdsByUserId(userId));
-        Set<String> existingWatchlist = new HashSet<>(watchlist.findMovieIdsByUserId(userId));
-        Set<String> existingFavorites = new HashSet<>(favorites.findMovieIdsByUserId(userId));
-        Set<String> existingRatings = new HashSet<>(ratings.findMovieIdsByUserId(userId));
+        // đọc trước mấy mục ở hồ sơ chính của demo user để chạy lại seeder khỏi ghi đè dữ liệu vừa test sửa
+        Set<String> existingProgress = new HashSet<>(progress.findEpisodeIdsByUserIdAndProfileScopeId(userId, 0L));
+        Set<String> existingWatchlist = new HashSet<>(watchlist.findMovieIdsByUserIdAndProfileScopeId(userId, 0L));
+        Set<String> existingFavorites = new HashSet<>(favorites.findMovieIdsByUserIdAndProfileScopeId(userId, 0L));
+        Set<String> existingRatings = new HashSet<>(ratings.findMovieIdsByUserIdAndProfileScopeId(userId, 0L));
 
         List<WatchProgress> newProgress = new ArrayList<>();
         List<WatchlistItem> newWatchlist = new ArrayList<>();

@@ -1,4 +1,5 @@
 import { YouTubeLink } from '@/components/ui/YouTubeLink';
+import { useOptionalAuth } from '@/lib/context/AuthContext';
 import { Link } from 'react-router';
 import { cleanMediaTitle, formatYear, movieSynopsis, normalizeGenreLabels, resolveRatingSummary } from '@/lib/labels';
 import { buildMediaItemHref } from '@/lib/services/mediaRouting';
@@ -32,6 +33,8 @@ export function FilmGrid({
   search?: boolean;
   loading?: boolean;
 }) {
+  const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
+  const isKidMode = Boolean(auth?.isKidMode);
   const Title = search ? 'h2' : 'h3';
   return (
     <div data-testid={search ? 'catalog-results' : undefined} className="film-grid" aria-busy={loading}>
@@ -95,7 +98,7 @@ export function FilmGrid({
                   </span>
                 )}
                 <Title>{title}</Title>
-                {externalOnly && (
+                {externalOnly && !isKidMode && (
                   <span
                     data-testid="film-external-badge"
                     className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-900"
@@ -122,7 +125,7 @@ export function FilmGrid({
               </div>
             </Link>
 
-            {externalOnly && externalYoutubeUrl && (
+            {externalOnly && !isKidMode && externalYoutubeUrl && (
               <div className="border-t border-surface-border px-4 py-1.5">
                 <YouTubeLink
                   url={externalYoutubeUrl}

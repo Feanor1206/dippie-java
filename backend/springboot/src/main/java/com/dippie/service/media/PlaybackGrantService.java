@@ -11,6 +11,7 @@ import com.dippie.security.CurrentViewer;
 import com.dippie.security.JwtProperties;
 import com.dippie.security.JwtService;
 import com.dippie.security.Viewer;
+import com.dippie.service.profile.ScreenTimeService;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -29,6 +30,7 @@ public class PlaybackGrantService {
     private final ActiveViewerLookup activeViewerLookup;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
+    private final ScreenTimeService screenTimeService;
     private final TransactionTemplate reads;
 
     public PlaybackGrantService(MediaAssetRepository mediaAssetRepository,
@@ -36,7 +38,8 @@ public class PlaybackGrantService {
             CatalogEpisodeRepository catalogEpisodeRepository,
             PlaybackAccess playbackAccess,
             MediaFileResolver mediaFiles, CurrentViewer currentViewer, ActiveViewerLookup activeViewerLookup,
-            JwtService jwtService, JwtProperties jwtProperties, PlatformTransactionManager transactions) {
+            JwtService jwtService, JwtProperties jwtProperties, ScreenTimeService screenTimeService,
+            PlatformTransactionManager transactions) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.catalogMediaAssetRepository = catalogMediaAssetRepository;
         this.catalogEpisodeRepository = catalogEpisodeRepository;
@@ -46,6 +49,7 @@ public class PlaybackGrantService {
         this.activeViewerLookup = activeViewerLookup;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
+        this.screenTimeService = screenTimeService;
         this.reads = new TransactionTemplate(transactions);
         this.reads.setReadOnly(true);
     }
@@ -60,6 +64,8 @@ public class PlaybackGrantService {
                     && catalogEpisodeRepository.findWithParentsByMediaAssetId(assetId).stream()
                             .anyMatch(CatalogEpisodeRepository.EpisodeWithParents::isPublished);
             MediaAsset allowed = playbackAccess.authorizeForGrant(assetId, asset, catalogAsset, hasPublishedParent, viewer);
+            // hồ sơ trẻ em hết giờ xem trong ngày thì khóa 423 trước khi cấp vé phát
+            screenTimeService.requireUnlockedForPlayback(viewer);
             long tokenVersion = viewer == null
                     ? 0L
                     : activeViewerLookup.findActiveTokenVersion(viewer.userId()).orElse(0L);
@@ -67,12 +73,16 @@ public class PlaybackGrantService {
         });
         mediaFiles.requireFile(authorized.asset());
 
-        // nhét userId với tokenVersion vào vé phát (khỏi nhét username) để user logout hay bị khóa là hết xem ngay
+        // nhét userId, tokenVersion và profileId (nếu là bé) vào vé phát để hết giờ hay logout là cắt ngay
+        com.dippie.model.user.Role grantRole = viewer == null
+                ? null
+                : (viewer.isChildProfile() ? com.dippie.model.user.Role.ROLE_USER : viewer.role());
         String token = jwtService.issuePlaybackGrant(
                 assetId,
                 viewer == null ? null : viewer.userId(),
                 authorized.tokenVersion(),
-                viewer == null ? null : viewer.role()
+                grantRole,
+                viewer == null ? null : viewer.profileId()
         );
         long expiresIn = jwtProperties.playbackGrantValidity().toSeconds();
         return new PlaybackGrantResponse(assetId, token, token,

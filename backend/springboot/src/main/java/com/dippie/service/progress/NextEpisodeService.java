@@ -56,7 +56,8 @@ public class NextEpisodeService {
             return Optional.empty();
         }
         List<LoadedProgress> loaded = readTransaction.execute(status -> {
-            List<WatchProgressRepository.ContextRow> rows = progress.findForSeriesWithContext(viewer.userId(), seriesId);
+            List<WatchProgressRepository.ContextRow> rows = progress.findForSeriesWithContext(
+                    viewer.userId(), viewer.profileScopeId(), seriesId);
             List<LoadedProgress> candidates = new ArrayList<>(rows.size());
             for (WatchProgressRepository.ContextRow row : rows) {
                 contextResolver.validateRow(row, viewer)

@@ -7,6 +7,8 @@ spring:
       schema-locations:
         - classpath:watch-progress-h2.sql
         - classpath:catalog-year-h2.sql
+        - classpath:child-profiles-h2.sql
+        - classpath:screen-time-h2.sql
 
 springdoc:
   api-docs:
