@@ -49,6 +49,31 @@ public interface ScreenTimeLedgerRepository extends JpaRepository<ScreenTimeLedg
             """)
     void deleteByUserId(@Param("userId") Long userId);
 
+    @Query("""
+            select e.usageDay as usageDay, e.kind as kind, sum(e.seconds) as totalSeconds, count(e.id) as entryCount
+            from ScreenTimeLedgerEntry e
+            where e.profileId = :profileId and e.usageDay >= :startDay and e.usageDay <= :endDay
+            group by e.usageDay, e.kind
+            """)
+    List<DayKindStats> summarizeByProfileIdAndUsageDayBetween(
+            @Param("profileId") Long profileId,
+            @Param("startDay") LocalDate startDay,
+            @Param("endDay") LocalDate endDay
+    );
+
+    @Query("""
+            select e.profileId as profileId, e.usageDay as usageDay, e.kind as kind,
+                   sum(e.seconds) as totalSeconds, count(e.id) as entryCount
+            from ScreenTimeLedgerEntry e
+            where e.profileId in :profileIds and e.usageDay >= :startDay and e.usageDay <= :endDay
+            group by e.profileId, e.usageDay, e.kind
+            """)
+    List<ProfileDayKindStats> summarizeByProfileIdsAndUsageDayBetween(
+            @Param("profileIds") Collection<Long> profileIds,
+            @Param("startDay") LocalDate startDay,
+            @Param("endDay") LocalDate endDay
+    );
+
     interface KindTotal {
         ScreenTimeLedgerKind getKind();
         Long getTotalSeconds();
@@ -58,5 +83,20 @@ public interface ScreenTimeLedgerRepository extends JpaRepository<ScreenTimeLedg
         Long getProfileId();
         ScreenTimeLedgerKind getKind();
         Long getTotalSeconds();
+    }
+
+    interface DayKindStats {
+        LocalDate getUsageDay();
+        ScreenTimeLedgerKind getKind();
+        Long getTotalSeconds();
+        Long getEntryCount();
+    }
+
+    interface ProfileDayKindStats {
+        Long getProfileId();
+        LocalDate getUsageDay();
+        ScreenTimeLedgerKind getKind();
+        Long getTotalSeconds();
+        Long getEntryCount();
     }
 }

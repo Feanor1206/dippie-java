@@ -12,7 +12,10 @@ import com.dippie.security.CurrentViewer;
 import com.dippie.security.Viewer;
 import com.dippie.service.catalog.CatalogReadModel;
 import com.dippie.service.catalog.CatalogReadModelCache;
+import com.dippie.service.play.PlayPlaybackGuard;
+import com.dippie.service.play.RecapQuizService;
 import com.dippie.service.profile.ScreenTimeService;
+import com.dippie.service.vip.VipTitleService;
 import com.dippie.service.progress.PlaybackContextResolver.PendingPlayback;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -41,18 +44,25 @@ public class WatchProgressService {
     private final CatalogReadModelCache catalog;
     private final CurrentViewer currentViewer;
     private final ScreenTimeService screenTimeService;
+    private final VipTitleService vipTitleService;
+    private final PlayPlaybackGuard playPlaybackGuard;
+    private final RecapQuizService recapQuizService;
     private final TransactionTemplate requiresNewTransaction;
     private final TransactionTemplate readTransaction;
     private final Clock clock;
 
     public WatchProgressService(WatchProgressRepository repository, PlaybackContextResolver contextResolver,
             CatalogReadModelCache catalog, CurrentViewer currentViewer, ScreenTimeService screenTimeService,
+            VipTitleService vipTitleService, PlayPlaybackGuard playPlaybackGuard, RecapQuizService recapQuizService,
             PlatformTransactionManager transactionManager, Clock clock) {
         this.repository = repository;
         this.contextResolver = contextResolver;
         this.catalog = catalog;
         this.currentViewer = currentViewer;
         this.screenTimeService = screenTimeService;
+        this.vipTitleService = vipTitleService;
+        this.playPlaybackGuard = playPlaybackGuard;
+        this.recapQuizService = recapQuizService;
         this.requiresNewTransaction = new TransactionTemplate(transactionManager);
         this.requiresNewTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.readTransaction = new TransactionTemplate(transactionManager);
@@ -123,8 +133,13 @@ public class WatchProgressService {
         // check file trên đĩa ngoài transaction rồi chặn mốc xem vượt quá thời lượng thật của video
         PlaybackContext context = contextResolver.verifyPlayable(pending)
                 .orElseThrow(() -> notPlayable(episodeId));
-        // hồ sơ trẻ em hết giờ xem hôm nay thì khóa 423 không cho ghi thêm tiến độ
-        screenTimeService.requireUnlockedForPlayback(viewer);
+        // kiểm tra khóa theo thứ tự: hạn mức ngày, tập VIP, thú ảo nghỉ mắt rồi ôn tập qua tập
+        screenTimeService.requireBudgetUnlockedForPlayback(viewer);
+        vipTitleService.requireEpisodeUnlocked(viewer, context.series().getId(), episodeId);
+        if (viewer.isChildProfile()) {
+            playPlaybackGuard.requireWatchPetUnlocked(viewer.userId(), viewer.profileId());
+            playPlaybackGuard.requireEpisodesUnlocked(viewer, List.of(episodeId));
+        }
         if (context.duration().isExceededBy(command.positionMs())) {
             throw new InvalidRequestException("Thời điểm xem không thể vượt quá thời lượng video.");
         }
@@ -133,6 +148,9 @@ public class WatchProgressService {
         WatchProgress saved = command.isCreate()
                 ? createProgress(viewer.userId(), viewer.profileId(), viewer.profileScopeId(), episodeId, context.assetId(), command.positionMs())
                 : updateProgress(viewer.userId(), viewer.profileScopeId(), episodeId, context.assetId(), command);
+        if (viewer.isChildProfile() && context.duration().isCompletedAt(saved.getPositionMs())) {
+            recapQuizService.onEpisodeCompleted(viewer.profileId(), context.series().getId(), episodeId);
+        }
         return WatchProgressView.of(saved, context, thumbnail);
     }
 

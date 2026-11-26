@@ -30,7 +30,9 @@ import {
 import { cleanMediaTitle } from '@/lib/labels';
 import { useOptionalAuth } from '@/lib/context/AuthContext';
 import { useOptionalScreenTime } from '@/lib/context/ScreenTimeContext';
+import { usePlayFeatures } from '@/features/profiles/hooks/usePlayFeatures';
 import { useScreenTimeHeartbeat } from '@/features/profiles/hooks/useScreenTimeHeartbeat';
+import { fetchKidVipStatus, type KidVipStatus } from '@/lib/services/vipService';
 import { RATING_CHANGED_EVENT } from '@/lib/context/WatchlistContext';
 import { useWatchProgress, type WatchProgressSaveReason } from '@/lib/hooks/useWatchProgress';
 import {
@@ -294,27 +296,77 @@ export function useSeriesPlayback(
   const screenTime = typeof useOptionalScreenTime === 'function' ? useOptionalScreenTime() : null;
   const isKidMode = Boolean(auth?.isKidMode);
   const isScreenTimeLocked = Boolean(isKidMode && screenTime?.isLocked);
+  const [vipStatus, setVipStatus] = useState<KidVipStatus | null>(null);
+  const [vipRefreshNonce, setVipRefreshNonce] = useState(0);
+  const isVipSeries = Boolean(isKidMode && vipStatus && vipStatus.vipSeriesIds.includes(seriesId));
+  const unlockedVipEpisodeIds = vipStatus?.unlockedEpisodeIds ?? [];
+  const isSelectedEpisodeVipLocked = Boolean(
+    isVipSeries && selectedEpisode?.id && !unlockedVipEpisodeIds.includes(selectedEpisode.id)
+  );
+  const vipMathLevel = vipStatus?.vipMathLevel || 2;
   const [isMediaPlaying, setIsMediaPlaying] = useState(false);
-  const wasScreenTimeLockedRef = useRef(isScreenTimeLocked);
+  const [activeRecapEpisodeId, setActiveRecapEpisodeId] = useState<string | null>(null);
+  const playFeatures = usePlayFeatures({
+    enabled: isKidMode,
+    token: auth?.token ?? null,
+    seriesId,
+    isPlaying: isMediaPlaying,
+    isScreenTimeLocked,
+    onScreenTimeUpdated: (next) => screenTime?.applyScreenTimeStatus(next),
+  });
+  const isPetLocked = Boolean(isKidMode && playFeatures.isPetLocked);
+  const isPlaybackBlocked =
+    isScreenTimeLocked || isSelectedEpisodeVipLocked || isPetLocked || activeRecapEpisodeId !== null;
+  const wasPlaybackBlockedRef = useRef(isPlaybackBlocked);
+
+  useEffect(() => {
+    if (!isKidMode || !auth?.token) {
+      setVipStatus(null);
+      return;
+    }
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    fetchKidVipStatus(auth.token, { signal: controller?.signal })
+      .then((next) => {
+        if (!controller?.signal.aborted) {
+          setVipStatus(next);
+        }
+      })
+      .catch(() => {
+        if (!controller?.signal.aborted) setVipStatus(null);
+      });
+    return () => controller?.abort();
+  }, [isKidMode, auth?.token, auth?.activeProfile?.id, vipRefreshNonce]);
+
+  const markVipEpisodeUnlocked = (episodeId: string) => {
+    setVipStatus((prev) => {
+      if (!prev) return prev;
+      if (prev.unlockedEpisodeIds.includes(episodeId)) return prev;
+      return {
+        ...prev,
+        unlockedEpisodeIds: [...prev.unlockedEpisodeIds, episodeId],
+      };
+    });
+    setFileRetryCount((value) => value + 1);
+  };
 
   useScreenTimeHeartbeat({
-    enabled: Boolean(isKidMode && !isScreenTimeLocked && screenTime),
+    enabled: Boolean(isKidMode && !isPlaybackBlocked && screenTime),
     isPlaying: isMediaPlaying,
     onHeartbeat: (seconds) => screenTime?.reportWatchHeartbeat(seconds),
   });
 
   useEffect(() => {
-    if (isScreenTimeLocked) {
+    if (isPlaybackBlocked) {
       setIsMediaPlaying(false);
       setNextCountdown(null);
       try {
         videoRef.current?.pause();
       } catch {}
-    } else if (wasScreenTimeLockedRef.current && selectedAsset?.id && !streamUrl) {
+    } else if (wasPlaybackBlockedRef.current && selectedAsset?.id && !streamUrl) {
       setFileRetryCount((value) => value + 1);
     }
-    wasScreenTimeLockedRef.current = isScreenTimeLocked;
-  }, [isScreenTimeLocked]);
+    wasPlaybackBlockedRef.current = isPlaybackBlocked;
+  }, [isPlaybackBlocked]);
 
   const youtubeTargetMs =
     targetEpisodeId === selectedEpisode?.id
@@ -679,7 +731,20 @@ export function useSeriesPlayback(
     };
   }, []);
 
+  const findPendingRecapSource = (episodeId: string | null | undefined): string | null => {
+    if (!isKidMode || !episodeId || !playFeatures.status?.recap.enabled) return null;
+    const gate = playFeatures.status.recap.pendingGates.find((item) => item.targetEpisodeId === episodeId);
+    return gate ? gate.sourceEpisodeId : null;
+  };
+
   const handleSelectEpisode = (episode: CatalogEpisode) => {
+    const blockingRecapSource = findPendingRecapSource(episode.id);
+    if (blockingRecapSource) {
+      setNextCountdown(null);
+      setActiveRecapEpisodeId(blockingRecapSource);
+      return;
+    }
+    setActiveRecapEpisodeId(null);
     if (episode.id !== selectedEpisode?.id) saveCurrentProgress('episode-change');
     pendingResumeRef.current = null;
     setNextCountdown(null);
@@ -694,6 +759,13 @@ export function useSeriesPlayback(
   const handlePlayNextEpisode = (recommendation: NextEpisodeRecommendation) => {
     const targetEpisode = seriesData?.episodes?.find((episode) => episode.id === recommendation.episodeId);
     if (!targetEpisode) return;
+    const blockingRecapSource = findPendingRecapSource(targetEpisode.id);
+    if (blockingRecapSource) {
+      setNextCountdown(null);
+      setActiveRecapEpisodeId(blockingRecapSource);
+      return;
+    }
+    setActiveRecapEpisodeId(null);
 
     const matchingProgress = progress.records.find((record) => record.episodeId === recommendation.episodeId);
     const nextAssetId =
@@ -1058,7 +1130,7 @@ export function useSeriesPlayback(
 
   useEffect(() => {
     setHasLoadedMetadata(false);
-    if (!selectedAsset?.id) {
+    if (!selectedAsset?.id || isSelectedEpisodeVipLocked) {
       setStreamUrl('');
       setIsResolvingStream(false);
       return;
@@ -1095,7 +1167,19 @@ export function useSeriesPlayback(
         } else if (result.status === 423) {
           setStreamUrl('');
           setIsMediaPlaying(false);
-          screenTime?.markLockedFromServer();
+          if (result.lockReason === 'VIP_EPISODE') {
+            setVipRefreshNonce((value) => value + 1);
+          } else if (result.lockReason === 'WEEKEND_VAULT') {
+            setPlaybackWarning(result.message || 'Két sắt phim cuối tuần đang khóa.');
+          } else if (result.lockReason === 'RECAP_REQUIRED') {
+            const sourceId = findPendingRecapSource(selectedEpisode?.id) ?? previousEpisode?.id ?? null;
+            if (sourceId) setActiveRecapEpisodeId(sourceId);
+            void playFeatures.refreshStatus();
+          } else if (result.lockReason === 'WATCH_PET_REST' || result.lockReason === 'WATCH_PET_FAINT') {
+            void playFeatures.refreshStatus();
+          } else {
+            screenTime?.markLockedFromServer();
+          }
         } else {
           setStreamUrl('');
           handleFilePlaybackFailure(currentAssetId, classifyGrantFailureReason(result.status));
@@ -1111,7 +1195,7 @@ export function useSeriesPlayback(
       });
 
     return () => controller.abort();
-  }, [selectedAsset?.id, selectedAsset?.accessPolicy, fileRetryCount]);
+  }, [selectedAsset?.id, selectedAsset?.accessPolicy, fileRetryCount, isSelectedEpisodeVipLocked]);
 
   useEffect(() => {
     if (
@@ -1247,7 +1331,7 @@ export function useSeriesPlayback(
       setIsMediaPlaying(false);
       return;
     }
-    if (isScreenTimeLocked) {
+    if (isPlaybackBlocked) {
       setIsMediaPlaying(false);
       return;
     }
@@ -1258,8 +1342,53 @@ export function useSeriesPlayback(
   };
 
   const triggerAutoNextIfEnabled = () => {
+    if (
+      isKidMode &&
+      playFeatures.status?.recap.enabled &&
+      selectedEpisode &&
+      nextEpisode &&
+      !playFeatures.status.recap.unlockedEpisodeIds.includes(nextEpisode.id)
+    ) {
+      playFeatures.markRecapPendingLocally(selectedEpisode.id, nextEpisode.id);
+      setNextCountdown(null);
+      setActiveRecapEpisodeId(selectedEpisode.id);
+      return;
+    }
     if (autoNext && nextEpisode && !document.hidden) {
       setNextCountdown(AUTO_NEXT_COUNTDOWN_SEC);
+    }
+  };
+
+  const handleRecapUnlocked = (targetEpisodeId: string | null) => {
+    playFeatures.markRecapUnlocked(targetEpisodeId);
+    setActiveRecapEpisodeId(null);
+    if (!targetEpisodeId) return;
+    if (targetEpisodeId === selectedEpisode?.id) {
+      setFileRetryCount((value) => value + 1);
+      return;
+    }
+    const targetEpisode = seriesData?.episodes?.find((episode) => episode.id === targetEpisodeId);
+    if (!targetEpisode) return;
+    autoPlayEpisodeRef.current = targetEpisode.id;
+    pendingResumeRef.current = null;
+    setNextCountdown(null);
+    setSelectedSeasonId(targetEpisode.seasonId || null);
+    setEpisodeQuery('');
+    setSelectedEpisode(targetEpisode);
+    replaceEpisodeUrl(targetEpisode.id);
+    previousUrlEpisodeIdRef.current = targetEpisode.id;
+  };
+
+  const handleRecapRewatch = () => {
+    setActiveRecapEpisodeId(null);
+    if (playbackSource.kind === 'youtube') {
+      requestYoutubeSeek(0, true);
+      return;
+    }
+    if (selectedAsset) {
+      queueOrSeekVideo(0, { assetId: selectedAsset.id });
+    } else if (videoRef.current) {
+      seekVideoNow(videoRef.current, 0);
     }
   };
 
@@ -1319,7 +1448,7 @@ export function useSeriesPlayback(
     },
     onTimeUpdate: handleVideoTimeUpdate,
     onPlay: () => {
-      if (isScreenTimeLocked) {
+      if (isPlaybackBlocked) {
         try {
           videoRef.current?.pause();
         } catch {}
@@ -1330,7 +1459,7 @@ export function useSeriesPlayback(
       markEpisodeStarted();
     },
     onPlaying: () => {
-      if (isScreenTimeLocked) {
+      if (isPlaybackBlocked) {
         try {
           videoRef.current?.pause();
         } catch {}
@@ -1399,6 +1528,11 @@ export function useSeriesPlayback(
     progressError: progress.error,
     seriesProgressRevision,
     isUnmountedDriveFallback: isUnmountedDriveFallbackSource,
+    isVipSeries,
+    unlockedVipEpisodeIds,
+    isSelectedEpisodeVipLocked,
+    vipMathLevel,
+    markVipEpisodeUnlocked,
     retrySeries: () => setSeriesRetry((v) => v + 1),
     retryEpisode: () => setEpisodeRetry((v) => v + 1),
     handleSelectEpisode,
@@ -1412,5 +1546,10 @@ export function useSeriesPlayback(
     handleAutoNextToggle,
     videoHandlers,
     youtubeHandlers,
+    playFeatures,
+    isPetLocked,
+    activeRecapEpisodeId,
+    handleRecapUnlocked,
+    handleRecapRewatch,
   };
 }

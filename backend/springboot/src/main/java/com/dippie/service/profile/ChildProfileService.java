@@ -10,6 +10,8 @@ import com.dippie.exception.NotFoundException;
 import com.dippie.exception.UnauthorizedException;
 import com.dippie.model.profile.ChildProfile;
 import com.dippie.model.user.User;
+import com.dippie.repository.bounty.BountySubmissionRepository;
+import com.dippie.repository.bounty.BountyTaskProfileRepository;
 import com.dippie.repository.library.FavoriteItemRepository;
 import com.dippie.repository.library.MovieRatingRepository;
 import com.dippie.repository.library.WatchlistItemRepository;
@@ -17,9 +19,13 @@ import com.dippie.repository.profile.ChildProfileRepository;
 import com.dippie.repository.profile.ScreenTimeLedgerRepository;
 import com.dippie.repository.progress.WatchProgressRepository;
 import com.dippie.repository.user.UserRepository;
+import com.dippie.repository.vault.WeekendVaultOverrideRepository;
+import com.dippie.repository.vip.ChildVipEpisodeUnlockRepository;
+import com.dippie.repository.vip.ChildVipSeriesRepository;
 import com.dippie.security.CurrentViewer;
 import com.dippie.security.JwtService;
 import com.dippie.security.Viewer;
+import com.dippie.service.play.PlaySettingsService;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,11 +48,17 @@ public class ChildProfileService {
     private final UserRepository userRepository;
     private final ChildProfileRepository childProfileRepository;
     private final ScreenTimeLedgerRepository screenTimeLedgerRepository;
+    private final BountySubmissionRepository bountySubmissionRepository;
+    private final BountyTaskProfileRepository bountyTaskProfileRepository;
+    private final WeekendVaultOverrideRepository weekendVaultOverrideRepository;
+    private final ChildVipEpisodeUnlockRepository childVipEpisodeUnlockRepository;
+    private final ChildVipSeriesRepository childVipSeriesRepository;
     private final WatchProgressRepository watchProgressRepository;
     private final WatchlistItemRepository watchlistItemRepository;
     private final FavoriteItemRepository favoriteItemRepository;
     private final MovieRatingRepository movieRatingRepository;
     private final ParentModeService parentModeService;
+    private final PlaySettingsService playSettingsService;
     private final JwtService jwtService;
     private final Clock clock;
 
@@ -55,11 +67,17 @@ public class ChildProfileService {
             UserRepository userRepository,
             ChildProfileRepository childProfileRepository,
             ScreenTimeLedgerRepository screenTimeLedgerRepository,
+            BountySubmissionRepository bountySubmissionRepository,
+            BountyTaskProfileRepository bountyTaskProfileRepository,
+            WeekendVaultOverrideRepository weekendVaultOverrideRepository,
+            ChildVipEpisodeUnlockRepository childVipEpisodeUnlockRepository,
+            ChildVipSeriesRepository childVipSeriesRepository,
             WatchProgressRepository watchProgressRepository,
             WatchlistItemRepository watchlistItemRepository,
             FavoriteItemRepository favoriteItemRepository,
             MovieRatingRepository movieRatingRepository,
             ParentModeService parentModeService,
+            PlaySettingsService playSettingsService,
             JwtService jwtService,
             Clock clock
     ) {
@@ -67,11 +85,17 @@ public class ChildProfileService {
         this.userRepository = userRepository;
         this.childProfileRepository = childProfileRepository;
         this.screenTimeLedgerRepository = screenTimeLedgerRepository;
+        this.bountySubmissionRepository = bountySubmissionRepository;
+        this.bountyTaskProfileRepository = bountyTaskProfileRepository;
+        this.weekendVaultOverrideRepository = weekendVaultOverrideRepository;
+        this.childVipEpisodeUnlockRepository = childVipEpisodeUnlockRepository;
+        this.childVipSeriesRepository = childVipSeriesRepository;
         this.watchProgressRepository = watchProgressRepository;
         this.watchlistItemRepository = watchlistItemRepository;
         this.favoriteItemRepository = favoriteItemRepository;
         this.movieRatingRepository = movieRatingRepository;
         this.parentModeService = parentModeService;
+        this.playSettingsService = playSettingsService;
         this.jwtService = jwtService;
         this.clock = clock;
     }
@@ -122,12 +146,14 @@ public class ChildProfileService {
                 user.getId(),
                 request == null ? null : request.name(),
                 request == null ? null : request.avatarKey(),
+                request == null ? null : request.dailyMinutes(),
+                request == null ? null : request.unlimited(),
                 now
         );
         return ChildProfileView.from(childProfileRepository.saveAndFlush(created));
     }
 
-    // sửa tên và ảnh đại diện của hồ sơ bé, bắt buộc gửi kèm mã PIN phụ huynh
+    // sửa tên, ảnh đại diện (và tùy chọn hạn mức ngày) của hồ sơ bé, bắt buộc gửi kèm mã PIN phụ huynh
     @Transactional
     public ChildProfileView update(Long profileId, ChildProfileMutationRequest request) {
         Viewer viewer = currentViewer.requireMainProfile(CHILD_MANAGE_FORBIDDEN);
@@ -143,12 +169,14 @@ public class ChildProfileService {
         profile.updateDetails(
                 request == null ? null : request.name(),
                 request == null ? null : request.avatarKey(),
+                request == null ? null : request.dailyMinutes(),
+                request == null ? null : request.unlimited(),
                 now
         );
         return ChildProfileView.from(childProfileRepository.saveAndFlush(profile));
     }
 
-    // xóa hồ sơ trẻ em kèm dọn sạch lịch sử xem, xem sau, yêu thích và đánh giá riêng của bé
+    // xóa hồ sơ trẻ em kèm dọn sạch lịch sử xem, xem sau, yêu thích, đánh giá và các dữ liệu phụ huynh riêng của bé
     @Transactional
     public void delete(Long profileId, PinRequest request) {
         Viewer viewer = currentViewer.requireMainProfile(CHILD_MANAGE_FORBIDDEN);
@@ -165,7 +193,13 @@ public class ChildProfileService {
         watchlistItemRepository.deleteByUserIdAndProfileScopeId(userId, profile.getId());
         favoriteItemRepository.deleteByUserIdAndProfileScopeId(userId, profile.getId());
         movieRatingRepository.deleteByUserIdAndProfileScopeId(userId, profile.getId());
+        bountySubmissionRepository.deleteByProfileId(profile.getId());
+        bountyTaskProfileRepository.deleteByProfileId(profile.getId());
+        weekendVaultOverrideRepository.deleteByProfileId(profile.getId());
+        childVipEpisodeUnlockRepository.deleteByProfileId(profile.getId());
+        childVipSeriesRepository.deleteByProfileId(profile.getId());
         screenTimeLedgerRepository.deleteByProfileId(profile.getId());
+        playSettingsService.deleteForProfile(profile.getId());
         childProfileRepository.delete(profile);
         childProfileRepository.flush();
     }

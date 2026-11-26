@@ -4,7 +4,10 @@ const API = '/api';
 const DEFAULT_TIMEOUT_MS = 8000;
 
 export const SCREEN_TIME_LOCKED_EVENT = 'dippie:screen-time-locked';
+export const SCREEN_TIME_UPDATED_EVENT = 'dippie:screen-time-updated';
+export const SCREEN_TIME_UPDATED_STORAGE_KEY = 'dippie:screen-time-updated';
 export const HEARTBEAT_INTERVAL_MS = 15_000;
+export const DAILY_MINUTE_PRESETS = [30, 60, 90, 120] as const;
 
 export type MathLevelOption = {
   level: 1 | 2 | 3 | 4;
@@ -21,9 +24,10 @@ export const MATH_LEVEL_OPTIONS: readonly MathLevelOption[] = [
 
 export type ScreenTimeStatus = {
   limited: boolean;
+  unlimited: boolean;
   profileId: number | null;
   day: string;
-  dailyMinutes: number;
+  dailyMinutes: number | null;
   mathLevel: number;
   rewardMinutes: number;
   maxBonusMinutes: number;
@@ -31,6 +35,7 @@ export type ScreenTimeStatus = {
   watchedSeconds: number;
   rewardSeconds: number;
   grantSeconds: number;
+  bountySeconds: number;
   remainingSeconds: number | null;
   locked: boolean;
   bonusCapSeconds: number;
@@ -75,10 +80,11 @@ export type ChildProfileScreenTime = {
 
 export type ScreenTimeSettingsPayload = {
   pin: string;
-  dailyMinutes: number;
-  mathLevel: number;
-  rewardMinutes: number;
-  maxBonusMinutes: number;
+  dailyMinutes: number | null;
+  unlimited?: boolean;
+  mathLevel?: number;
+  rewardMinutes?: number;
+  maxBonusMinutes?: number;
 };
 
 export type ScreenTimeRequestOptions = {
@@ -104,6 +110,27 @@ export function notifyScreenTimeLocked(): void {
     return;
   }
   window.dispatchEvent(new Event(SCREEN_TIME_LOCKED_EVENT));
+}
+
+export function broadcastScreenTimeUpdated(profileId?: number): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage?.setItem(
+      SCREEN_TIME_UPDATED_STORAGE_KEY,
+      `${profileId ?? 'all'}:${Date.now()}`
+    );
+  } catch {}
+  if (typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+    window.dispatchEvent(new Event(SCREEN_TIME_UPDATED_EVENT));
+  }
+}
+
+export function formatDailyLimitLabel(dailyMinutes: number | null | undefined, unlimited = false): string {
+  if (unlimited || dailyMinutes === null) {
+    return 'Không giới hạn';
+  }
+  const safe = typeof dailyMinutes === 'number' && Number.isFinite(dailyMinutes) ? dailyMinutes : 60;
+  return `${safe} phút`;
 }
 
 export function getMathLevelLabel(level: number): string {
@@ -149,21 +176,35 @@ export function formatUsageDuration(seconds: number): string {
 }
 
 export function validateScreenTimeSettings(input: {
-  dailyMinutes: number;
-  mathLevel: number;
-  rewardMinutes: number;
-  maxBonusMinutes: number;
+  dailyMinutes: number | null;
+  unlimited?: boolean;
+  mathLevel?: number;
+  rewardMinutes?: number;
+  maxBonusMinutes?: number;
 }): string | null {
-  if (!Number.isInteger(input.dailyMinutes) || input.dailyMinutes < 0 || input.dailyMinutes > 600) {
-    return 'Giới hạn thời gian mỗi ngày cần từ 0 đến 600 phút.';
+  if (!input.unlimited) {
+    if (
+      input.dailyMinutes === null ||
+      !Number.isInteger(input.dailyMinutes) ||
+      input.dailyMinutes < 0 ||
+      input.dailyMinutes > 600
+    ) {
+      return 'Giới hạn thời gian mỗi ngày cần từ 0 đến 600 phút.';
+    }
   }
-  if (!Number.isInteger(input.mathLevel) || input.mathLevel < 1 || input.mathLevel > 4) {
+  if (input.mathLevel !== undefined && (!Number.isInteger(input.mathLevel) || input.mathLevel < 1 || input.mathLevel > 4)) {
     return 'Cấp độ bài toán cần từ 1 đến 4.';
   }
-  if (!Number.isInteger(input.rewardMinutes) || input.rewardMinutes < 1 || input.rewardMinutes > 30) {
+  if (
+    input.rewardMinutes !== undefined &&
+    (!Number.isInteger(input.rewardMinutes) || input.rewardMinutes < 1 || input.rewardMinutes > 30)
+  ) {
     return 'Số phút thưởng mỗi câu đúng cần từ 1 đến 30 phút.';
   }
-  if (!Number.isInteger(input.maxBonusMinutes) || input.maxBonusMinutes < 0 || input.maxBonusMinutes > 120) {
+  if (
+    input.maxBonusMinutes !== undefined &&
+    (!Number.isInteger(input.maxBonusMinutes) || input.maxBonusMinutes < 0 || input.maxBonusMinutes > 120)
+  ) {
     return 'Tổng phút thưởng tối đa mỗi ngày cần từ 0 đến 120 phút.';
   }
   return null;
@@ -193,7 +234,8 @@ function toNonNegativeNumber(value: unknown, fallback = 0): number {
 }
 
 function normalizeStatus(raw: any): ScreenTimeStatus {
-  const limited = Boolean(raw?.limited);
+  const unlimited = raw?.unlimited === true || (raw?.dailyMinutes === null && raw?.limited === false);
+  const limited = !unlimited && Boolean(raw?.limited);
   const rawProfileId = raw?.profileId;
   const profileId =
     typeof rawProfileId === 'number' && Number.isSafeInteger(rawProfileId) && rawProfileId > 0
@@ -205,11 +247,14 @@ function normalizeStatus(raw: any): ScreenTimeStatus {
       : null;
   const bonusRemainingSeconds = toNonNegativeNumber(raw?.bonusRemainingSeconds, 0);
   const locked = limited && (Boolean(raw?.locked) || (remainingSeconds !== null && remainingSeconds <= 0));
+  const dailyMinutes =
+    unlimited || raw?.dailyMinutes === null ? null : toNonNegativeNumber(raw?.dailyMinutes, 60);
   return {
     limited,
+    unlimited,
     profileId,
     day: typeof raw?.day === 'string' ? raw.day : '',
-    dailyMinutes: toNonNegativeNumber(raw?.dailyMinutes, 60),
+    dailyMinutes,
     mathLevel: Math.min(4, Math.max(1, toNonNegativeNumber(raw?.mathLevel, 1))) || 1,
     rewardMinutes: toNonNegativeNumber(raw?.rewardMinutes, 5),
     maxBonusMinutes: toNonNegativeNumber(raw?.maxBonusMinutes, 30),
@@ -217,6 +262,7 @@ function normalizeStatus(raw: any): ScreenTimeStatus {
     watchedSeconds: toNonNegativeNumber(raw?.watchedSeconds, 0),
     rewardSeconds: toNonNegativeNumber(raw?.rewardSeconds, 0),
     grantSeconds: toNonNegativeNumber(raw?.grantSeconds, 0),
+    bountySeconds: toNonNegativeNumber(raw?.bountySeconds, 0),
     remainingSeconds,
     locked,
     bonusCapSeconds: toNonNegativeNumber(raw?.bonusCapSeconds, 0),

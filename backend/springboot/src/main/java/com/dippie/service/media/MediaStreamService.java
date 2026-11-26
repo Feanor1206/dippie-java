@@ -19,7 +19,10 @@ import com.dippie.security.JwtService;
 import com.dippie.security.PlaybackPrincipal;
 import com.dippie.security.Viewer;
 import com.dippie.service.movie.MovieVisibility;
+import com.dippie.service.play.PlayPlaybackGuard;
 import com.dippie.service.profile.ScreenTimeService;
+import com.dippie.service.vault.WeekendVaultService;
+import com.dippie.service.vip.VipTitleService;
 
 import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
@@ -54,6 +57,9 @@ public class MediaStreamService {
     private final JwtService jwtService;
     private final MediaFileResolver mediaFileResolver;
     private final ScreenTimeService screenTimeService;
+    private final WeekendVaultService weekendVaultService;
+    private final VipTitleService vipTitleService;
+    private final PlayPlaybackGuard playPlaybackGuard;
     private final TransactionTemplate reads;
 
     public MediaStreamService(MediaAssetRepository mediaAssetRepository,
@@ -62,6 +68,8 @@ public class MediaStreamService {
             MovieVisibility movieVisibility,
             PlaybackAccess playbackAccess, CurrentViewer currentViewer, ActiveViewerLookup activeViewerLookup,
             JwtService jwtService, MediaFileResolver mediaFileResolver, ScreenTimeService screenTimeService,
+            WeekendVaultService weekendVaultService, VipTitleService vipTitleService,
+            PlayPlaybackGuard playPlaybackGuard,
             PlatformTransactionManager transactions) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.catalogMediaAssetRepository = catalogMediaAssetRepository;
@@ -73,6 +81,9 @@ public class MediaStreamService {
         this.jwtService = jwtService;
         this.mediaFileResolver = mediaFileResolver;
         this.screenTimeService = screenTimeService;
+        this.weekendVaultService = weekendVaultService;
+        this.vipTitleService = vipTitleService;
+        this.playPlaybackGuard = playPlaybackGuard;
         this.reads = new TransactionTemplate(transactions);
         this.reads.setReadOnly(true);
     }
@@ -87,15 +98,32 @@ public class MediaStreamService {
             PlaybackPrincipal grantPrincipal = activeGrantPrincipal(verifiedGrant);
             MediaAsset asset = mediaAssetRepository.findById(assetId).orElse(null);
             CatalogMediaAsset catalogAsset = catalogMediaAssetRepository.findById(assetId).orElse(null);
-            boolean hasPublishedParent = catalogAsset != null
-                    && catalogEpisodeRepository.findWithParentsByMediaAssetId(assetId).stream()
-                            .anyMatch(CatalogEpisodeRepository.EpisodeWithParents::isPublished);
+            List<CatalogEpisodeRepository.EpisodeWithParents> linkedEpisodes = catalogAsset == null
+                    ? List.of()
+                    : catalogEpisodeRepository.findWithParentsByMediaAssetId(assetId);
+            boolean hasPublishedParent = linkedEpisodes.stream()
+                    .anyMatch(CatalogEpisodeRepository.EpisodeWithParents::isPublished);
             MediaAsset allowed = playbackAccess.authorizeForStream(assetId, asset, catalogAsset, hasPublishedParent, viewer, grantPrincipal);
-            // hồ sơ trẻ em đã hết giờ thì cắt luôn cả luồng stream dù cầm vé phát cũ
+            // hồ sơ trẻ em bị khóa hạn mức, két sắt cuối tuần, tập VIP, thú ảo hay ôn tập thì cắt luồng kể cả khi cầm vé cũ
+            Long childUserId = null;
+            Long childProfileId = null;
             if (viewer != null && viewer.isChildProfile()) {
-                screenTimeService.requireUnlockedForPlayback(viewer);
+                childUserId = viewer.userId();
+                childProfileId = viewer.profileId();
             } else if (grantPrincipal != null && verifiedGrant != null && verifiedGrant.profileId() != null) {
-                screenTimeService.requireUnlockedForProfile(verifiedGrant.userId(), verifiedGrant.profileId());
+                childUserId = verifiedGrant.userId();
+                childProfileId = verifiedGrant.profileId();
+            }
+            if (childUserId != null && childProfileId != null) {
+                List<String> publishedEpisodeIds = linkedEpisodes.stream()
+                        .filter(CatalogEpisodeRepository.EpisodeWithParents::isPublished)
+                        .map(row -> row.episode().getId())
+                        .toList();
+                screenTimeService.requireBudgetUnlockedForProfile(childUserId, childProfileId);
+                weekendVaultService.requireFilmUnlockedForAsset(childUserId, childProfileId, allowed, linkedEpisodes);
+                vipTitleService.requireAssetUnlockedForProfile(childUserId, childProfileId, linkedEpisodes);
+                playPlaybackGuard.requireWatchPetUnlocked(childUserId, childProfileId);
+                playPlaybackGuard.requireEpisodesUnlocked(childUserId, childProfileId, publishedEpisodeIds);
             }
             return allowed;
         });

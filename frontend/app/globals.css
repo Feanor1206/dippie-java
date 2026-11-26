@@ -459,3 +459,36 @@ h1, h2, h3, h4 { font-family: var(--font-display); }
 #main-content {
   scroll-margin-top: 4.5rem;
 }
+
+@keyframes watch-pet-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes watch-pet-wobble {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-4deg); }
+  75% { transform: rotate(4deg); }
+}
+
+@keyframes watch-pet-sway {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  25% { transform: translateX(-2px) rotate(-6deg); }
+  75% { transform: translateX(2px) rotate(6deg); }
+}
+
+@keyframes watch-pet-zzz {
+  0%, 100% { opacity: 0.35; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-3px); }
+}
+
+@keyframes loot-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.watch-pet-bob { animation: watch-pet-bob 2.2s ease-in-out infinite; }
+.watch-pet-wobble { animation: watch-pet-wobble 1.2s ease-in-out infinite; }
+.watch-pet-sway { animation: watch-pet-sway 1.4s ease-in-out infinite; }
+.watch-pet-zzz { animation: watch-pet-zzz 1.8s ease-in-out infinite; }
+.loot-float { animation: loot-float 2s ease-in-out infinite; }

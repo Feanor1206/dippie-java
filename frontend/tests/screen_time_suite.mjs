@@ -763,6 +763,7 @@ test('ChildProfilesSection shows today usage summary, edits screen-time settings
   assert.deepEqual(settingsReq?.body, {
     pin: '2468',
     dailyMinutes: 45,
+    unlimited: false,
     mathLevel: 3,
     rewardMinutes: 10,
     maxBonusMinutes: 40,
@@ -781,5 +782,230 @@ test('ChildProfilesSection shows today usage summary, edits screen-time settings
   const grantReq = requests.find((r) => r.method === 'POST' && r.url === '/api/users/profiles/10/screen-time/grant');
   assert.deepEqual(grantReq?.body, { pin: '2468', minutes: 15 });
   assert.match(collectText(tree), /Đã cộng thêm 15 phút xem phim cho Bé Bông/);
+  harness.unmount();
+});
+
+test('ChildProfilesSection supports daily minutes on create, shows card presets, and saves unlimited immediately', async () => {
+  const requests = [];
+  const storageValues = new Map();
+  const fakeWindow = {
+    localStorage: {
+      setItem: (key, value) => storageValues.set(key, value),
+      getItem: (key) => storageValues.get(key) ?? null,
+    },
+    dispatchEvent: () => true,
+  };
+
+  const fetchMock = async (url, init = {}) => {
+    const method = init.method || 'GET';
+    const body = init.body ? JSON.parse(init.body) : null;
+    requests.push({ url, method, body });
+
+    if (url === '/api/users/profiles/screen-time' && method === 'GET') {
+      return jsonResponse({
+        success: true,
+        message: 'Thành công',
+        data: [
+          {
+            profileId: 10,
+            name: 'Bé Bông',
+            avatarKey: 'bunny',
+            status: sampleStatus({ dailyMinutes: 60, unlimited: false, remainingSeconds: 3600 }),
+          },
+        ],
+      });
+    }
+    if (url === '/api/users/profiles' && method === 'POST') {
+      return jsonResponse(
+        {
+          success: true,
+          message: 'Đã tạo hồ sơ trẻ em.',
+          data: {
+            id: 11,
+            name: body.name,
+            avatarKey: body.avatarKey,
+            dailyMinutes: body.unlimited ? null : body.dailyMinutes,
+            unlimited: Boolean(body.unlimited),
+            createdAt: '2026-11-26T10:00:00Z',
+          },
+        },
+        201
+      );
+    }
+    if (url === '/api/users/profiles/10/screen-time' && method === 'PUT') {
+      return jsonResponse({
+        success: true,
+        message: 'Đã lưu cài đặt thời gian xem.',
+        data: {
+          profileId: 10,
+          name: 'Bé Bông',
+          avatarKey: 'bunny',
+          status: sampleStatus({
+            limited: !body.unlimited,
+            unlimited: Boolean(body.unlimited),
+            dailyMinutes: body.unlimited ? null : body.dailyMinutes,
+            remainingSeconds: body.unlimited ? null : body.dailyMinutes * 60,
+            locked: false,
+          }),
+        },
+      });
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const harness = createComponentHarness(
+    '../features/account/components/ChildProfilesSection.tsx',
+    'ChildProfilesSection',
+    {
+      'react-router': { useNavigate: () => () => {} },
+      '@/lib/context/AuthContext': {
+        useAuth: () => ({
+          token: 'parent-jwt',
+          parentModeEnabled: true,
+          childProfiles: [{ id: 10, name: 'Bé Bông', avatarKey: 'bunny', dailyMinutes: 60, unlimited: false, createdAt: '' }],
+          refreshProfiles: async () => null,
+          selectChildProfile: async () => ({ success: true }),
+        }),
+      },
+    },
+    { fetch: fetchMock, window: fakeWindow },
+    new Set(['SiteDialog'])
+  );
+
+  let tree = harness.render();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  tree = harness.render();
+
+  const limitLabel = collectNodes(tree, (n) => n.props?.['data-testid'] === 'child-daily-limit-10')[0];
+  assert.match(collectText(limitLabel).replace(/\s+/g, ' '), /Thời gian xem mỗi ngày: 60 phút/);
+  assert.equal(collectNodes(tree, (n) => n.props?.['data-testid'] === 'preset-daily-10-30').length, 1);
+  assert.equal(collectNodes(tree, (n) => n.props?.['data-testid'] === 'preset-daily-10-90').length, 1);
+  assert.equal(collectNodes(tree, (n) => n.props?.['data-testid'] === 'preset-daily-10-120').length, 1);
+
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'add-child-profile-button')[0].props.onClick();
+  tree = harness.render();
+  collectNodes(tree, (n) => n.props?.id === 'child-profile-name')[0].props.onChange({ target: { value: 'Bé Na' } });
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'create-daily-preset-90')[0].props.onClick();
+  collectNodes(tree, (n) => n.props?.id === 'child-profile-pin')[0].props.onChange({ target: { value: '1234' } });
+  tree = harness.render();
+  await collectNodes(tree, (n) => n.type === 'form')[0].props.onSubmit({ preventDefault: () => {} });
+  tree = harness.render();
+
+  const createReq = requests.find((r) => r.method === 'POST' && r.url === '/api/users/profiles');
+  assert.deepEqual(createReq?.body, {
+    pin: '1234',
+    name: 'Bé Na',
+    avatarKey: 'bear',
+    dailyMinutes: 90,
+    unlimited: false,
+  });
+
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'preset-unlimited-10')[0].props.onClick();
+  tree = harness.render();
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'screen-time-settings-pin-input')[0].props.onChange({ target: { value: '1234' } });
+  tree = harness.render();
+  await collectNodes(tree, (n) => n.type === 'form')[0].props.onSubmit({ preventDefault: () => {} });
+  tree = harness.render();
+
+  const unlimitedReq = requests.find((r) => r.method === 'PUT' && r.url === '/api/users/profiles/10/screen-time');
+  assert.equal(unlimitedReq?.body.unlimited, true);
+  assert.equal(unlimitedReq?.body.dailyMinutes, null);
+  const updatedLabel = collectNodes(tree, (n) => n.props?.['data-testid'] === 'child-daily-limit-10')[0];
+  assert.match(collectText(updatedLabel).replace(/\s+/g, ' '), /Thời gian xem mỗi ngày: Không giới hạn/);
+  assert.ok(storageValues.has('dippie:screen-time-updated'));
+  harness.unmount();
+});
+
+test('ScreenTimeContext clears limited state on unlimited heartbeat and refreshes on cross-tab update', async () => {
+  const listeners = new Map();
+  const fakeWindow = {
+    addEventListener: (event, fn) => {
+      const list = listeners.get(event) || [];
+      list.push(fn);
+      listeners.set(event, list);
+    },
+    removeEventListener: (event, fn) => {
+      listeners.set(event, (listeners.get(event) || []).filter((item) => item !== fn));
+    },
+    dispatchEvent: () => true,
+  };
+  let statusCalls = 0;
+  let capturedCtx = null;
+  const fetchMock = async (url, init = {}) => {
+    if (url === '/api/users/screen-time') {
+      statusCalls += 1;
+      return jsonResponse({
+        success: true,
+        message: 'OK',
+        data: sampleStatus({
+          dailyMinutes: statusCalls === 1 ? 60 : 120,
+          remainingSeconds: statusCalls === 1 ? 3600 : 7200,
+        }),
+      });
+    }
+    if (url === '/api/users/screen-time/heartbeat' && init.method === 'POST') {
+      return jsonResponse({
+        success: true,
+        message: 'OK',
+        data: {
+          limited: false,
+          creditedSeconds: 0,
+          ignored: true,
+          remainingSeconds: null,
+          locked: false,
+          status: sampleStatus({
+            limited: false,
+            unlimited: true,
+            dailyMinutes: null,
+            remainingSeconds: null,
+            locked: false,
+          }),
+        },
+      });
+    }
+    throw new Error(`Unexpected ${url}`);
+  };
+
+  const harness = createComponentHarness(
+    '../lib/context/ScreenTimeContext.tsx',
+    'ScreenTimeProvider',
+    {
+      '@/lib/context/AuthContext': {
+        useOptionalAuth: () => ({
+          isAuthenticated: true,
+          isKidMode: true,
+          token: 'child-jwt',
+          activeProfile: { id: 10, name: 'Bé Bông', avatarKey: 'bunny' },
+        }),
+      },
+    },
+    { fetch: fetchMock, window: fakeWindow, document: { visibilityState: 'visible', addEventListener: () => {}, removeEventListener: () => {} } }
+  );
+
+  const readProvider = () => {
+    const tree = harness.render({ children: null });
+    capturedCtx = tree.props.value;
+    return capturedCtx;
+  };
+
+  readProvider();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  let ctx = readProvider();
+  assert.equal(ctx.isLimited, true);
+  assert.equal(ctx.remainingSeconds, 3600);
+
+  for (const fn of listeners.get('storage') || []) {
+    fn({ key: 'dippie:screen-time-updated' });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  ctx = readProvider();
+  assert.equal(ctx.remainingSeconds, 7200);
+
+  await ctx.reportWatchHeartbeat(15);
+  ctx = readProvider();
+  assert.equal(ctx.isLimited, false);
+  assert.equal(ctx.isUnlimited, true);
+  assert.equal(ctx.isLocked, false);
+  assert.equal(ctx.remainingSeconds, null);
   harness.unmount();
 });

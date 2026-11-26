@@ -59,6 +59,34 @@ class MathChallengeTokenCodecAndRateLimiterTest {
     }
 
     @Test
+    void isolatesScopedV2TokensFromRegularV1TokensAndRejectsWrongScope() {
+        MutableClock clock = new MutableClock(Instant.parse("2026-11-26T08:00:00Z"));
+        JwtService jwt = createJwtService(sequentialSecret(11), clock);
+        MathChallengeTokenCodec codec = new MathChallengeTokenCodec(jwt, clock);
+
+        MathChallengeTokenCodec.IssuedToken v1 = codec.issue(9L, 14, 2);
+        MathChallengeTokenCodec.IssuedToken v2 = codec.issueScoped(9L, 36, 3, "vip:ep_1");
+
+        // token v1 không mở được bằng decodeScoped và token v2 không mở được bằng decode v1
+        assertThat(codec.decodeScoped(v1.token())).isEmpty();
+        assertThat(codec.decode(v2.token())).isEmpty();
+
+        MathChallengeTokenCodec.DecodedScopedToken decoded = codec.decodeScoped(v2.token()).orElseThrow();
+        assertThat(decoded.tokenId()).isEqualTo(v2.tokenId());
+        assertThat(decoded.profileId()).isEqualTo(9L);
+        assertThat(decoded.answer()).isEqualTo(36);
+        assertThat(decoded.level()).isEqualTo(3);
+        assertThat(decoded.scope()).isEqualTo("vip:ep_1");
+        assertThat(decoded.expiresAt()).isEqualTo(Instant.parse("2026-11-26T08:02:00Z"));
+
+        // sửa 1 byte trên token v2 phải bị từ chối ngay
+        byte[] raw = Base64.getUrlDecoder().decode(v2.token());
+        raw[raw.length - 1] ^= 0x04;
+        String tampered = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
+        assertThat(codec.decodeScoped(tampered)).isEmpty();
+    }
+
+    @Test
     void locksWrongMathAnswersAfterTenFailuresForTenMinutesPerProfile() {
         MutableClock clock = new MutableClock(Instant.parse("2026-11-26T08:00:00Z"));
         MathChallengeRateLimiter limiter = new MathChallengeRateLimiter(

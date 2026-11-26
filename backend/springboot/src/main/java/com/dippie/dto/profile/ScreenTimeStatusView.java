@@ -4,12 +4,13 @@ import com.dippie.model.profile.ScreenTimeSummary;
 
 import java.time.LocalDate;
 
-// trạng thái hạn mức xem trong ngày của hồ sơ hiện tại (hồ sơ chính luôn limited = false)
+// trạng thái hạn mức xem trong ngày của hồ sơ hiện tại (hồ sơ chính và hồ sơ không giới hạn luôn limited = false)
 public record ScreenTimeStatusView(
         boolean limited,
+        boolean unlimited,
         Long profileId,
         LocalDate day,
-        int dailyMinutes,
+        Integer dailyMinutes,
         int mathLevel,
         int rewardMinutes,
         int maxBonusMinutes,
@@ -17,6 +18,7 @@ public record ScreenTimeStatusView(
         long watchedSeconds,
         long rewardSeconds,
         long grantSeconds,
+        long bountySeconds,
         Long remainingSeconds,
         boolean locked,
         long bonusCapSeconds,
@@ -26,7 +28,8 @@ public record ScreenTimeStatusView(
 
     public static ScreenTimeStatusView from(ScreenTimeSummary summary) {
         return new ScreenTimeStatusView(
-                true,
+                !summary.unlimited(),
+                summary.unlimited(),
                 summary.profileId(),
                 summary.day(),
                 summary.dailyMinutes(),
@@ -37,6 +40,7 @@ public record ScreenTimeStatusView(
                 summary.watchedSeconds(),
                 summary.rewardSeconds(),
                 summary.grantSeconds(),
+                summary.bountySeconds(),
                 summary.remainingSeconds(),
                 summary.locked(),
                 summary.bonusCapSeconds(),
@@ -48,12 +52,14 @@ public record ScreenTimeStatusView(
     public static ScreenTimeStatusView unlimited(LocalDate day) {
         return new ScreenTimeStatusView(
                 false,
+                true,
                 null,
                 day,
+                null,
                 0,
                 0,
                 0,
-                0,
+                0L,
                 0L,
                 0L,
                 0L,

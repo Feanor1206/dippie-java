@@ -1,6 +1,7 @@
 import { resolveStreamUrl } from '@/lib/safeUrl';
 import { getStoredAuthToken } from '@/lib/services/sessionStorage';
 import { apiFetch, RequestTimeoutError, withRequestTimeout } from '@/lib/services/apiRequest';
+import { LOCK_REASON_HEADER, notifyPlayFeaturesLocked } from '@/lib/services/playFeaturesService';
 import { notifyScreenTimeLocked } from '@/lib/services/screenTimeService';
 export interface MediaAssetInfo {
   assetId: string;
@@ -92,14 +93,39 @@ export interface PlaybackGrantResponse {
   expiresIn: number;
 }
 
+export type PlaybackLockReason =
+  | 'SCREEN_TIME'
+  | 'WEEKEND_VAULT'
+  | 'VIP_EPISODE'
+  | 'WATCH_PET_REST'
+  | 'WATCH_PET_FAINT'
+  | 'RECAP_REQUIRED';
+
 export interface PlaybackGrantResult {
   ok: boolean;
   status: number;
   grant: PlaybackGrantResponse | null;
   aborted?: boolean;
+  lockReason?: PlaybackLockReason;
+  message?: string;
 }
 
 export { getStoredAuthToken };
+
+function parseLockReason(value?: string | null): PlaybackLockReason | undefined {
+  const trimmed = value?.trim();
+  if (
+    trimmed === 'SCREEN_TIME' ||
+    trimmed === 'WEEKEND_VAULT' ||
+    trimmed === 'VIP_EPISODE' ||
+    trimmed === 'WATCH_PET_REST' ||
+    trimmed === 'WATCH_PET_FAINT' ||
+    trimmed === 'RECAP_REQUIRED'
+  ) {
+    return trimmed;
+  }
+  return undefined;
+}
 
 export async function requestPlaybackGrantResult(
   assetId: string,
@@ -115,10 +141,27 @@ export async function requestPlaybackGrantResult(
         signal: requestSignal,
       });
       if (!res.ok) {
+        const lockReason = parseLockReason(res.headers?.get?.(LOCK_REASON_HEADER));
         if (res.status === 423) {
-          notifyScreenTimeLocked();
+          let message: string | undefined;
+          try {
+            const body = await res.json();
+            if (typeof body?.message === 'string' && body.message.trim()) {
+              message = body.message.trim();
+            }
+          } catch {}
+          if (!lockReason || lockReason === 'SCREEN_TIME') {
+            notifyScreenTimeLocked();
+          } else if (
+            lockReason === 'WATCH_PET_REST' ||
+            lockReason === 'WATCH_PET_FAINT' ||
+            lockReason === 'RECAP_REQUIRED'
+          ) {
+            notifyPlayFeaturesLocked(lockReason);
+          }
+          return { ok: false, status: res.status, grant: null, lockReason, message };
         }
-        return { ok: false, status: res.status, grant: null };
+        return { ok: false, status: res.status, grant: null, ...(lockReason ? { lockReason } : {}) };
       }
       const grantData = await res.json();
       const resolvedUrl = resolveStreamUrl(grantData?.streamUrl || '');

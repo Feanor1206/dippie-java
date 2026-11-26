@@ -7,6 +7,9 @@ import com.dippie.exception.UnauthorizedException;
 import com.dippie.model.user.Role;
 import com.dippie.model.user.User;
 import com.dippie.repository.account.PasswordResetTokenRepository;
+import com.dippie.repository.bounty.BountySubmissionRepository;
+import com.dippie.repository.bounty.BountyTaskProfileRepository;
+import com.dippie.repository.bounty.BountyTaskRepository;
 import com.dippie.repository.library.FavoriteItemRepository;
 import com.dippie.repository.library.MovieRatingRepository;
 import com.dippie.repository.library.WatchlistItemRepository;
@@ -15,10 +18,14 @@ import com.dippie.repository.profile.ScreenTimeLedgerRepository;
 import com.dippie.repository.progress.WatchProgressRepository;
 import com.dippie.repository.report.PlaybackReportRepository;
 import com.dippie.repository.user.UserRepository;
+import com.dippie.repository.vault.WeekendVaultOverrideRepository;
+import com.dippie.repository.vip.ChildVipEpisodeUnlockRepository;
+import com.dippie.repository.vip.ChildVipSeriesRepository;
 import com.dippie.security.CurrentViewer;
 import com.dippie.security.PasswordPolicy;
 import com.dippie.security.Viewer;
 import com.dippie.service.admin.AuditTrailWriter;
+import com.dippie.service.play.PlaySettingsService;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -48,8 +55,15 @@ public class AccountErasureService {
     private final WatchProgressRepository watchProgressRepository;
     private final ChildProfileRepository childProfileRepository;
     private final ScreenTimeLedgerRepository screenTimeLedgerRepository;
+    private final BountySubmissionRepository bountySubmissionRepository;
+    private final BountyTaskProfileRepository bountyTaskProfileRepository;
+    private final BountyTaskRepository bountyTaskRepository;
+    private final WeekendVaultOverrideRepository weekendVaultOverrideRepository;
+    private final ChildVipEpisodeUnlockRepository childVipEpisodeUnlockRepository;
+    private final ChildVipSeriesRepository childVipSeriesRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PlaybackReportRepository playbackReportRepository;
+    private final PlaySettingsService playSettingsService;
     private final AuditTrailWriter auditTrailWriter;
 
     public AccountErasureService(
@@ -62,8 +76,15 @@ public class AccountErasureService {
             WatchProgressRepository watchProgressRepository,
             ChildProfileRepository childProfileRepository,
             ScreenTimeLedgerRepository screenTimeLedgerRepository,
+            BountySubmissionRepository bountySubmissionRepository,
+            BountyTaskProfileRepository bountyTaskProfileRepository,
+            BountyTaskRepository bountyTaskRepository,
+            WeekendVaultOverrideRepository weekendVaultOverrideRepository,
+            ChildVipEpisodeUnlockRepository childVipEpisodeUnlockRepository,
+            ChildVipSeriesRepository childVipSeriesRepository,
             PasswordResetTokenRepository passwordResetTokenRepository,
             PlaybackReportRepository playbackReportRepository,
+            PlaySettingsService playSettingsService,
             AuditTrailWriter auditTrailWriter
     ) {
         this.currentViewer = currentViewer;
@@ -75,8 +96,15 @@ public class AccountErasureService {
         this.watchProgressRepository = watchProgressRepository;
         this.childProfileRepository = childProfileRepository;
         this.screenTimeLedgerRepository = screenTimeLedgerRepository;
+        this.bountySubmissionRepository = bountySubmissionRepository;
+        this.bountyTaskProfileRepository = bountyTaskProfileRepository;
+        this.bountyTaskRepository = bountyTaskRepository;
+        this.weekendVaultOverrideRepository = weekendVaultOverrideRepository;
+        this.childVipEpisodeUnlockRepository = childVipEpisodeUnlockRepository;
+        this.childVipSeriesRepository = childVipSeriesRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.playbackReportRepository = playbackReportRepository;
+        this.playSettingsService = playSettingsService;
         this.auditTrailWriter = auditTrailWriter;
     }
 
@@ -113,7 +141,14 @@ public class AccountErasureService {
         watchlistItemRepository.deleteByUserId(userId);
         favoriteItemRepository.deleteByUserId(userId);
         watchProgressRepository.deleteByUserId(userId);
+        bountySubmissionRepository.deleteByUserId(userId);
+        bountyTaskProfileRepository.deleteByUserId(userId);
+        bountyTaskRepository.deleteByUserId(userId);
+        weekendVaultOverrideRepository.deleteByUserId(userId);
+        childVipEpisodeUnlockRepository.deleteByUserId(userId);
+        childVipSeriesRepository.deleteByUserId(userId);
         screenTimeLedgerRepository.deleteByUserId(userId);
+        playSettingsService.deleteForUser(userId);
         childProfileRepository.deleteByUserId(userId);
         passwordResetTokenRepository.deleteByUserId(userId);
         playbackReportRepository.clearReporterUser(userId);

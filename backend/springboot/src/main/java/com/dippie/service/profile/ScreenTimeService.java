@@ -20,6 +20,7 @@ import com.dippie.repository.profile.ScreenTimeLedgerRepository;
 import com.dippie.repository.user.UserRepository;
 import com.dippie.security.CurrentViewer;
 import com.dippie.security.Viewer;
+import com.dippie.service.play.PlayPlaybackGuard;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +49,7 @@ public class ScreenTimeService {
     private final ChildProfileRepository childProfileRepository;
     private final ScreenTimeLedgerRepository ledgerRepository;
     private final ParentModeService parentModeService;
+    private final PlayPlaybackGuard playPlaybackGuard;
     private final Clock clock;
 
     public ScreenTimeService(
@@ -56,6 +58,7 @@ public class ScreenTimeService {
             ChildProfileRepository childProfileRepository,
             ScreenTimeLedgerRepository ledgerRepository,
             ParentModeService parentModeService,
+            PlayPlaybackGuard playPlaybackGuard,
             Clock clock
     ) {
         this.currentViewer = currentViewer;
@@ -63,6 +66,7 @@ public class ScreenTimeService {
         this.childProfileRepository = childProfileRepository;
         this.ledgerRepository = ledgerRepository;
         this.parentModeService = parentModeService;
+        this.playPlaybackGuard = playPlaybackGuard;
         this.clock = clock;
     }
 
@@ -97,7 +101,14 @@ public class ScreenTimeService {
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
 
         ScreenTimeSummary before = summarize(profile, today);
-        if (rawSeconds == 0 || before.locked()) {
+        if (before.unlimited()) {
+            if (rawSeconds > 0 && !playPlaybackGuard.isWatchPetBlocking(profile.getId(), now)) {
+                playPlaybackGuard.onUnlimitedWatchHeartbeat(profile.getId(), Math.min(rawSeconds, 20), now);
+            }
+            ScreenTimeStatusView status = ScreenTimeStatusView.from(before);
+            return new ScreenTimeHeartbeatResponse(false, 0, true, null, false, status);
+        }
+        if (rawSeconds == 0 || before.locked() || playPlaybackGuard.isWatchPetBlocking(profile.getId(), now)) {
             ScreenTimeStatusView status = ScreenTimeStatusView.from(before);
             return new ScreenTimeHeartbeatResponse(true, 0, true, before.remainingSeconds(), before.locked(), status);
         }
@@ -126,6 +137,7 @@ public class ScreenTimeService {
                     credited,
                     now
             ));
+            playPlaybackGuard.onWatchHeartbeat(profile.getId(), credited, now);
         }
 
         ScreenTimeSummary after = summarize(profile, today);
@@ -133,7 +145,31 @@ public class ScreenTimeService {
         return new ScreenTimeHeartbeatResponse(true, credited, credited == 0, after.remainingSeconds(), after.locked(), status);
     }
 
-    // dùng trong PlaybackGrantService và WatchProgressService: hồ sơ chính luôn qua, hồ sơ bé hết giờ thì ném 423
+    // chỉ kiểm tra khóa hạn mức ngày (bỏ qua khi không giới hạn) để các service phát xếp đúng thứ tự khóa
+    @Transactional(readOnly = true)
+    public void requireBudgetUnlockedForPlayback(Viewer viewer) {
+        if (viewer == null || !viewer.isChildProfile()) {
+            return;
+        }
+        requireBudgetUnlockedForProfile(viewer.userId(), viewer.profileId());
+    }
+
+    @Transactional(readOnly = true)
+    public void requireBudgetUnlockedForProfile(Long userId, Long profileId) {
+        if (userId == null || profileId == null) {
+            return;
+        }
+        ChildProfile profile = childProfileRepository.findByIdAndUserId(profileId, userId).orElse(null);
+        if (profile == null) {
+            return;
+        }
+        ScreenTimeSummary summary = summarize(profile, ScreenTimeSummary.todayVietnam(clock));
+        if (summary.locked()) {
+            throw new ScreenTimeLockedException("Hết giờ xem hôm nay rồi.");
+        }
+    }
+
+    // kiểm tra cả khóa hạn mức ngày lẫn thú ảo (dùng cho nơi chỉ cần 1 lệnh chặn chung như phát rương)
     @Transactional(readOnly = true)
     public void requireUnlockedForPlayback(Viewer viewer) {
         if (viewer == null || !viewer.isChildProfile()) {
@@ -148,14 +184,8 @@ public class ScreenTimeService {
         if (userId == null || profileId == null) {
             return;
         }
-        ChildProfile profile = childProfileRepository.findByIdAndUserId(profileId, userId).orElse(null);
-        if (profile == null) {
-            return;
-        }
-        ScreenTimeSummary summary = summarize(profile, ScreenTimeSummary.todayVietnam(clock));
-        if (summary.locked()) {
-            throw new ScreenTimeLockedException("Hết giờ xem hôm nay rồi.");
-        }
+        requireBudgetUnlockedForProfile(userId, profileId);
+        playPlaybackGuard.requireWatchPetUnlocked(userId, profileId);
     }
 
     // trang cài đặt tài khoản của phụ huynh đọc tổng quan thời gian xem hôm nay của mọi hồ sơ bé
@@ -186,15 +216,17 @@ public class ScreenTimeService {
                             profile,
                             today,
                             totals.getOrDefault(ScreenTimeLedgerKind.WATCH, 0L),
-                            totals.getOrDefault(ScreenTimeLedgerKind.REWARD, 0L),
-                            totals.getOrDefault(ScreenTimeLedgerKind.PARENT_GRANT, 0L)
+                            totals.getOrDefault(ScreenTimeLedgerKind.REWARD, 0L)
+                                    + totals.getOrDefault(ScreenTimeLedgerKind.LOOT, 0L),
+                            totals.getOrDefault(ScreenTimeLedgerKind.PARENT_GRANT, 0L),
+                            totals.getOrDefault(ScreenTimeLedgerKind.BOUNTY, 0L)
                     );
                     return ChildProfileScreenTimeView.of(profile, summary);
                 })
                 .toList();
     }
 
-    // phụ huynh sửa hạn mức ngày, mức toán, phút thưởng mỗi câu và trần thưởng ngày cho 1 bé (cần PIN)
+    // phụ huynh sửa hạn mức ngày (hoặc không giới hạn), mức toán, phút thưởng mỗi câu và trần thưởng ngày cho 1 bé (cần PIN)
     @Transactional
     public ChildProfileScreenTimeView updateSettings(Long profileId, UpdateScreenTimeSettingsRequest request) {
         Viewer viewer = currentViewer.requireMainProfile(CHILD_MANAGE_FORBIDDEN);
@@ -209,6 +241,7 @@ public class ScreenTimeService {
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
         profile.updateScreenTimeSettings(
                 request == null ? null : request.dailyMinutes(),
+                request == null ? null : request.unlimited(),
                 request == null ? null : request.mathLevel(),
                 request == null ? null : request.rewardMinutes(),
                 request == null ? null : request.maxBonusMinutes(),
@@ -246,21 +279,24 @@ public class ScreenTimeService {
         return ChildProfileScreenTimeView.of(profile, summarize(profile, today));
     }
 
-    // gom tổng các dòng sổ cái trong ngày của 1 hồ sơ bé
-    ScreenTimeSummary summarize(ChildProfile profile, LocalDate day) {
+    // gom tổng các dòng sổ cái trong ngày của 1 hồ sơ bé (REWARD và LOOT đều tính vào trần thưởng ngày)
+    public ScreenTimeSummary summarize(ChildProfile profile, LocalDate day) {
         long watched = 0L;
         long reward = 0L;
         long grant = 0L;
+        long bounty = 0L;
         for (ScreenTimeLedgerRepository.KindTotal row : ledgerRepository.sumByProfileIdAndUsageDay(profile.getId(), day)) {
             long total = row.getTotalSeconds() == null ? 0L : row.getTotalSeconds();
             if (row.getKind() == ScreenTimeLedgerKind.WATCH) {
                 watched = total;
-            } else if (row.getKind() == ScreenTimeLedgerKind.REWARD) {
-                reward = total;
+            } else if (row.getKind() == ScreenTimeLedgerKind.REWARD || row.getKind() == ScreenTimeLedgerKind.LOOT) {
+                reward += total;
             } else if (row.getKind() == ScreenTimeLedgerKind.PARENT_GRANT) {
                 grant = total;
+            } else if (row.getKind() == ScreenTimeLedgerKind.BOUNTY) {
+                bounty = total;
             }
         }
-        return ScreenTimeSummary.of(profile, day, watched, reward, grant);
+        return ScreenTimeSummary.of(profile, day, watched, reward, grant, bounty);
     }
 }

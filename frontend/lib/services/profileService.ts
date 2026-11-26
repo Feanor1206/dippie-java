@@ -29,7 +29,8 @@ export type ChildProfile = {
   id: number;
   name: string;
   avatarKey: string;
-  dailyMinutes?: number;
+  dailyMinutes?: number | null;
+  unlimited?: boolean;
   mathLevel?: number;
   rewardMinutes?: number;
   maxBonusMinutes?: number;
@@ -138,11 +139,18 @@ function normalizeChildProfile(raw: any): ChildProfile | null {
   const name = typeof raw.name === 'string' ? raw.name.trim() : '';
   const avatarKey = typeof raw.avatarKey === 'string' ? raw.avatarKey.trim() : '';
   if (!name || !avatarKey) return null;
+  const unlimited = raw.unlimited === true || raw.dailyMinutes === null;
+  const dailyMinutes = unlimited
+    ? null
+    : typeof raw.dailyMinutes === 'number'
+    ? raw.dailyMinutes
+    : undefined;
   return {
     id,
     name,
     avatarKey,
-    ...(typeof raw.dailyMinutes === 'number' ? { dailyMinutes: raw.dailyMinutes } : {}),
+    ...(dailyMinutes !== undefined ? { dailyMinutes } : {}),
+    ...(unlimited || typeof raw.unlimited === 'boolean' ? { unlimited } : {}),
     ...(typeof raw.mathLevel === 'number' ? { mathLevel: raw.mathLevel } : {}),
     ...(typeof raw.rewardMinutes === 'number' ? { rewardMinutes: raw.rewardMinutes } : {}),
     ...(typeof raw.maxBonusMinutes === 'number' ? { maxBonusMinutes: raw.maxBonusMinutes } : {}),
@@ -284,7 +292,7 @@ export async function disableParentMode(
 
 export async function createChildProfile(
   token: string,
-  payload: { pin: string; name: string; avatarKey: string },
+  payload: { pin: string; name: string; avatarKey: string; dailyMinutes?: number | null; unlimited?: boolean },
   options: ProfileRequestOptions = {}
 ): Promise<ChildProfile> {
   const url = `${options.baseUrl || API}/users/profiles`;
@@ -308,7 +316,7 @@ export async function createChildProfile(
 export async function updateChildProfile(
   token: string,
   profileId: number,
-  payload: { pin: string; name: string; avatarKey: string },
+  payload: { pin: string; name: string; avatarKey: string; dailyMinutes?: number | null; unlimited?: boolean },
   options: ProfileRequestOptions = {}
 ): Promise<ChildProfile> {
   const url = `${options.baseUrl || API}/users/profiles/${encodeURIComponent(String(profileId))}`;

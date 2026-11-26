@@ -189,6 +189,7 @@ export default function SeriesDetailPage() {
         card={playback.seriesCard}
         seasonCount={seasons.length}
         episodeCount={episodes.length}
+        isVipSeries={playback.isVipSeries}
         nextEpisodeAction={
           <NextEpisodeAction
             seriesId={seriesId}
@@ -240,6 +241,28 @@ export default function SeriesDetailPage() {
             hasNextEpisode={Boolean(playback.nextEpisode)}
             onCancelNextCountdown={() => playback.setNextCountdown(null)}
             progressError={playback.progressError}
+            isVipLocked={playback.isSelectedEpisodeVipLocked}
+            vipMathLevel={playback.vipMathLevel}
+            onVipUnlocked={playback.markVipEpisodeUnlocked}
+            kidPlayOverlay={{
+              watchPet: playback.playFeatures.watchPet,
+              isPetLocked: playback.isPetLocked,
+              restCountdown: playback.playFeatures.restCountdown,
+              onStartRest: playback.playFeatures.handleStartRest,
+              onWatchPetUpdated: playback.playFeatures.applyWatchPetStatus,
+              activeDrop: playback.playFeatures.activeDrop,
+              dropSecondsLeft: playback.playFeatures.dropSecondsLeft,
+              activeLootQuiz: playback.playFeatures.activeLootQuiz,
+              lootQuizSecondsLeft: playback.playFeatures.lootQuizSecondsLeft,
+              lootFeedback: playback.playFeatures.lootFeedback,
+              lootOpening: playback.playFeatures.lootOpening,
+              lootSubmitting: playback.playFeatures.lootSubmitting,
+              onOpenLootChest: playback.playFeatures.handleOpenLootChest,
+              onSubmitLootAnswer: playback.playFeatures.handleSubmitLootAnswer,
+              activeRecapEpisodeId: playback.activeRecapEpisodeId,
+              onRecapUnlocked: playback.handleRecapUnlocked,
+              onRecapRewatch: playback.handleRecapRewatch,
+            }}
           />
 
           {selectedEpisode && (
@@ -342,6 +365,8 @@ export default function SeriesDetailPage() {
           onSelectEpisode={playback.handleSelectEpisode}
           knownExternalEpisodeIds={playback.knownExternalEpisodeIds}
           posterUrl={playback.seriesCard?.posterUrl || ''}
+          isVipSeries={playback.isVipSeries}
+          unlockedVipEpisodeIds={playback.unlockedVipEpisodeIds}
         />
       </div>
     </main>

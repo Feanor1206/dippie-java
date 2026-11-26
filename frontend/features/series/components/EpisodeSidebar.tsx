@@ -6,6 +6,7 @@ import { foldVietnamese } from '@/features/series/seriesBrowseUtils';
 import { isEpisodeExternalOnly, resolveExternalYoutubeWatchUrl } from '@/lib/services/playbackSource';
 import type { CatalogEpisode, CatalogSeason } from '@/lib/services/catalogService';
 import { QuickSaveButtons } from '@/features/library/components/LibraryControls';
+import { VipBadge } from '@/features/profiles/components/VipBadge';
 
 export type EpisodeSidebarProps = {
   orderedSeasons: CatalogSeason[];
@@ -23,6 +24,8 @@ export type EpisodeSidebarProps = {
   onSelectEpisode: (episode: CatalogEpisode) => void;
   knownExternalEpisodeIds: Record<string, boolean>;
   posterUrl: string;
+  isVipSeries?: boolean;
+  unlockedVipEpisodeIds?: string[];
 };
 
 export function EpisodeSidebar({
@@ -41,6 +44,8 @@ export function EpisodeSidebar({
   onSelectEpisode,
   knownExternalEpisodeIds,
   posterUrl,
+  isVipSeries = false,
+  unlockedVipEpisodeIds = [],
 }: EpisodeSidebarProps) {
   const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
   const isKidMode = Boolean(auth?.isKidMode);
@@ -160,6 +165,12 @@ export function EpisodeSidebar({
                             {episode.number ?? episode.episodeNumber}
                           </span>
                           <strong className="text-xs font-semibold break-words text-ink">{displayTitle}</strong>
+                          {isKidMode && isVipSeries && (
+                            <VipBadge
+                              unlocked={unlockedVipEpisodeIds.includes(episode.id)}
+                              data-testid={`episode-vip-badge-${episode.id}`}
+                            />
+                          )}
                           {isSelected && (
                             <span className="rounded bg-[#f2d18c] border border-ink/30 px-1.5 py-0.5 text-[10px] font-bold text-ink">
                               Đang xem

@@ -66,6 +66,10 @@ public class CatalogCharacter extends CatalogRecord {
         this.artworksJson = artworksJson;
     }
 
+    public String getSeriesIdsJson() {
+        return seriesIdsJson;
+    }
+
     public String getName() {
         return name;
     }

@@ -487,14 +487,23 @@ export function Navbar() {
                 )}
               </div>
             </div>
-            <button
-              type="button"
-              data-testid="exit-kid-mode-button"
-              onClick={() => setExitDialogOpen(true)}
-              className="btn-secondary min-h-[44px] px-3 py-1.5 text-xs font-bold"
-            >
-              Thoát hồ sơ trẻ em
-            </button>
+            <div className="flex items-center gap-2">
+              <Link
+                to="/#goc-cua-be"
+                data-testid="kid-mode-dashboard-link"
+                className="btn-secondary min-h-[44px] px-3 py-1.5 text-xs font-bold"
+              >
+                Nhiệm vụ &amp; Vé phim
+              </Link>
+              <button
+                type="button"
+                data-testid="exit-kid-mode-button"
+                onClick={() => setExitDialogOpen(true)}
+                className="btn-secondary min-h-[44px] px-3 py-1.5 text-xs font-bold"
+              >
+                Thoát hồ sơ trẻ em
+              </button>
+            </div>
           </div>
         </div>
       )}
