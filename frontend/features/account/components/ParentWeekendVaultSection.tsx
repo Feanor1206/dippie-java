@@ -18,12 +18,14 @@ type VaultDialog =
 export function ParentWeekendVaultSection({
   token,
   childProfiles,
+  activeProfileId = null,
   sessionPin = '',
   onPinVerified,
   onPinRejected,
 }: {
   token: string;
   childProfiles: ChildProfile[];
+  activeProfileId?: number | null;
   sessionPin?: string;
   onPinVerified?: (pin: string) => void;
   onPinRejected?: () => void;
@@ -45,7 +47,7 @@ export function ParentWeekendVaultSection({
       const data = await fetchParentWeekendVaultOverview(token);
       setItems(data);
     } catch (err: unknown) {
-      setLoadError(err instanceof Error ? err.message : 'Chưa tải được trạng thái két sắt phim cuối tuần.');
+      setLoadError(err instanceof Error ? err.message : 'Chưa tải được trạng thái phim lẻ cuối tuần.');
     } finally {
       setLoading(false);
     }
@@ -90,31 +92,36 @@ export function ParentWeekendVaultSection({
         type: 'success',
         text:
           actionKind === 'unlock'
-            ? `Đã mở khóa két sắt phim cuối tuần cho ${childName}.`
-            : `Đã khóa lại két sắt phim cuối tuần cho ${childName}.`,
+            ? `Đã mở khóa phim lẻ cuối tuần cho ${childName}.`
+            : `Đã khóa lại phim lẻ cuối tuần cho ${childName}.`,
       });
     } catch (err: unknown) {
       onPinRejected?.();
       setPin('');
-      setDialogError(err instanceof Error ? err.message : 'Chưa cập nhật được két sắt phim cuối tuần.');
+      setDialogError(err instanceof Error ? err.message : 'Chưa cập nhật được trạng thái phim lẻ cuối tuần.');
     } finally {
       setBusy(false);
     }
   };
+
+  const filteredItems = activeProfileId
+    ? items.filter((entry) => entry.profileId === activeProfileId)
+    : items;
+  const visibleItems = filteredItems.length > 0 ? filteredItems : items;
 
   return (
     <section
       id="parent-weekend-vault-section"
       aria-labelledby="parent-vault-heading"
       data-testid="parent-weekend-vault-section"
-      className="mt-6 scroll-mt-20 rounded-xl border border-surface-border bg-paper-white p-5 sm:p-6"
+      className="mt-4 scroll-mt-20 rounded-xl border border-surface-border bg-paper-white p-5 sm:p-6"
     >
       <div className="border-b border-surface-border pb-4">
         <h3 id="parent-vault-heading" className="text-base font-bold text-ink">
-          Két sắt phim cuối tuần
+          Cuối tuần này bé xem được phim lẻ chưa?
         </h3>
-        <p className="mt-1 text-xs text-muted">
-          Phim lẻ tự khóa từ thứ Hai đến thứ Sáu cho các bé. Thanh Vé xem phim tăng +20% mỗi ngày bé dừng xem trước khi hết giờ và +20% mỗi ngày bé giải đủ 3 câu thưởng toán; đạt 100% sẽ mở vào thứ Bảy &amp; Chủ Nhật.
+        <p className="mt-1 text-base leading-relaxed text-muted">
+          Phim lẻ tự khóa từ thứ Hai đến thứ Sáu cho các bé. Thanh Vé xem phim tăng +20% mỗi ngày bé dừng xem trước khi hết giờ và +20% mỗi ngày bé trả lời đúng đủ 3 câu hỏi thưởng giờ; đạt 100% sẽ tự mở vào thứ Bảy &amp; Chủ Nhật.
         </p>
       </div>
 
@@ -122,7 +129,7 @@ export function ParentWeekendVaultSection({
         <div
           role={feedback.type === 'error' ? 'alert' : 'status'}
           data-testid="parent-vault-feedback"
-          className={`mt-4 rounded-xl border p-3 text-xs ${
+          className={`motion-toast-enter mt-4 rounded-xl border p-3 text-xs ${
             feedback.type === 'error'
               ? 'border-red-500/40 bg-red-500/10 text-red-900'
               : 'border-brand/50 bg-brand/15 text-ink'
@@ -151,10 +158,18 @@ export function ParentWeekendVaultSection({
         <p role="status" className="mt-4 rounded-xl border border-surface-border bg-surface-muted p-4 text-center text-xs text-muted">
           Đang tải tiến độ Vé xem phim…
         </p>
-      ) : items.length > 0 && (
-        <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {items.map((item) => {
+      ) : visibleItems.length > 0 && (
+        <ul className={`mt-4 grid grid-cols-1 gap-3 ${visibleItems.length > 1 ? 'lg:grid-cols-2' : ''}`}>
+          {visibleItems.map((item) => {
             const { status } = item;
+            const remainingPercent = Math.max(0, 100 - status.progressPercent);
+            const answerLine = status.manualUnlocked
+              ? 'Xem được ngay — ba mẹ đã mở khóa phim lẻ cho tuần này.'
+              : !status.locked
+              ? 'Xem được ngay — bé đã mở được phim lẻ cuối tuần này.'
+              : status.progressPercent >= 100
+              ? 'Đã đủ 100% Vé xem phim — phim lẻ sẽ tự mở vào thứ Bảy & Chủ Nhật.'
+              : `Chưa mở — cần thêm ${remainingPercent}% Vé xem phim nữa để tự mở vào cuối tuần.`;
             return (
               <li
                 key={item.profileId}
@@ -168,7 +183,7 @@ export function ParentWeekendVaultSection({
                       <p className="truncate text-sm font-bold text-ink">{item.name}</p>
                     </div>
                     <span
-                      className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold ${
+                      className={`shrink-0 rounded-full border px-2 py-0.5 text-[0.6875rem] font-bold ${
                         status.locked
                           ? 'border-amber-700/40 bg-[#f2d18c]/60 text-ink'
                           : 'border-ink/40 bg-mint text-ink'
@@ -181,6 +196,8 @@ export function ParentWeekendVaultSection({
                         : 'Đã mở cuối tuần'}
                     </span>
                   </div>
+
+                  <p className="text-xs font-medium leading-relaxed text-ink/90">{answerLine}</p>
 
                   <div>
                     <div className="flex items-center justify-between text-xs font-semibold text-ink">
@@ -195,7 +212,7 @@ export function ParentWeekendVaultSection({
                       className="mt-1.5 h-3 w-full overflow-hidden rounded-full border border-ink/40 bg-paper-white"
                     >
                       <div
-                        className="h-full bg-brand transition-all"
+                        className="motion-progress-fill h-full bg-brand"
                         style={{ width: `${status.progressPercent}%` }}
                       />
                     </div>
@@ -206,7 +223,7 @@ export function ParentWeekendVaultSection({
                       {status.days.map((day) => (
                         <div
                           key={day.day || day.dayOfWeek}
-                          className={`rounded-lg border px-1 py-1.5 text-[10px] font-bold ${
+                          className={`rounded-lg border px-1 py-1.5 text-[0.625rem] font-bold ${
                             day.earnedPercent >= 40
                               ? 'border-ink bg-mint text-ink'
                               : day.earnedPercent >= 20
@@ -264,7 +281,7 @@ export function ParentWeekendVaultSection({
           title={
             dialog.kind === 'unlock'
               ? `Mở khóa phim lẻ · ${dialog.item.name}`
-              : `Khóa lại két sắt · ${dialog.item.name}`
+              : `Khóa lại phim lẻ · ${dialog.item.name}`
           }
           onClose={closeDialog}
           busy={busy}
@@ -297,7 +314,7 @@ export function ParentWeekendVaultSection({
                 className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
               {sessionPin && pin === sessionPin && (
-                <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-brand-dark">
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[0.6875rem] text-brand-dark">
                   <span>Đã tự điền mã PIN vừa xác nhận trong phiên này.</span>
                   <button
                     type="button"

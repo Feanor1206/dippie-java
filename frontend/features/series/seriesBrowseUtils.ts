@@ -1,5 +1,7 @@
-import { resolveGenreLabel } from '@/lib/labels';
+import { resolveGenreLabel, toCompactCardArtworkUrl } from '@/lib/labels';
 import type { SeriesCard, SeriesCardGenre } from '@/lib/services/seriesCardService';
+
+export { toCompactCardArtworkUrl };
 
 export type SeriesSortKey = 'title' | 'newest' | 'episodes';
 

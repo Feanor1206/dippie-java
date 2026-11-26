@@ -78,8 +78,9 @@ export function SeriesRow({
     const track = trackRef.current;
     if (!track) return;
     const prefersReduced =
-      typeof window !== 'undefined' &&
-      Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+      (typeof document !== 'undefined' && document.documentElement?.dataset?.motion === 'reduce') ||
+      (typeof window !== 'undefined' &&
+        Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
     const distance = Math.max(260, Math.round(track.clientWidth * 0.8));
     track.scrollBy({
       left: direction * distance,
@@ -88,7 +89,12 @@ export function SeriesRow({
   };
 
   return (
-    <section className="shelf-section" aria-labelledby="series-row-title" data-testid="series-row">
+    <section
+      className="shelf-section"
+      aria-labelledby="series-row-title"
+      data-testid="series-row"
+      data-reveal-group=""
+    >
       <div className="shelf-heading items-center">
         <h2 id="series-row-title" className="section-title">
           {title}
@@ -159,7 +165,7 @@ export function SeriesRow({
           data-testid="series-row-track"
         >
           {cards.map((card) => (
-            <div key={card.id} className="series-row-item">
+            <div key={card.id} data-reveal-item="" className="series-row-item">
               <SeriesCard card={card} headingLevel="h3" className="h-full" isVip={isKidMode && vipSeriesIds.includes(card.id)} />
             </div>
           ))}

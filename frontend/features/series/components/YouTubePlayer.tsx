@@ -201,16 +201,37 @@ export function YouTubePlayer({
   autoPlayRef.current = autoPlay;
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  const wasPlayingBeforePauseRef = useRef(false);
+  const prevPausedRef = useRef(paused);
 
   useEffect(() => {
-    if (!paused) return;
-    playingRef.current = false;
-    if (playerRef.current && typeof playerRef.current.pauseVideo === 'function') {
+    const wasPaused = prevPausedRef.current;
+    prevPausedRef.current = paused;
+    if (paused) {
+      if (!wasPaused) {
+        wasPlayingBeforePauseRef.current = playingRef.current;
+      }
+      playingRef.current = false;
+      if (playerRef.current && typeof playerRef.current.pauseVideo === 'function') {
+        try {
+          playerRef.current.pauseVideo();
+        } catch {}
+      }
+      callbacksRef.current.onPlayingChange?.(false);
+      return;
+    }
+    if (
+      wasPaused &&
+      wasPlayingBeforePauseRef.current &&
+      readyRef.current &&
+      playerRef.current &&
+      typeof playerRef.current.playVideo === 'function'
+    ) {
+      wasPlayingBeforePauseRef.current = false;
       try {
-        playerRef.current.pauseVideo();
+        playerRef.current.playVideo();
       } catch {}
     }
-    callbacksRef.current.onPlayingChange?.(false);
   }, [paused]);
 
   const readSnapshot = (instance?: YouTubePlayerInstance | null): YouTubeProgressSnapshot => {

@@ -19,7 +19,7 @@ public class SpaController {
     }
 
     @RequestMapping(
-            path = {"/", "/search", "/profile", "/account", "/admin/import", "/admin/users", "/admin/stats", "/admin/audit",
+            path = {"/", "/search", "/profile", "/account", "/gia-dinh", "/admin/import", "/admin/users", "/admin/stats", "/admin/audit",
                     "/movies/{id}", "/series", "/series/{id}", "/lich-su", "/admin/reports", "/dieu-khoan",
                     "/quyen-rieng-tu", "/dat-lai-mat-khau", "/quen-mat-khau"},
             method = {RequestMethod.GET, RequestMethod.HEAD}

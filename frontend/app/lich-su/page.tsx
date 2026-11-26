@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
+import * as motion from '@/lib/motion';
 import {
   AlertCircle,
   Clock,
@@ -140,6 +141,9 @@ function WatchHistory({ token, userId }: { token: string; userId: number | null 
 
   const dayGroups = useMemo(() => groupWatchHistoryByDay(visibleRecords), [visibleRecords]);
   const isBusy = removingId !== null || clearingAll || restoring;
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  motion.useScrollReveal?.(listRef, [loading, dayGroups.length]);
 
   const removeSingle = async (entry: WatchProgressRecord) => {
     if (requestRef.current) return;
@@ -227,7 +231,7 @@ function WatchHistory({ token, userId }: { token: string; userId: number | null 
   };
 
   return (
-    <div className="mt-6 space-y-5">
+    <div ref={listRef} className="mt-6 space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted">
           {loading
@@ -262,7 +266,7 @@ function WatchHistory({ token, userId }: { token: string; userId: number | null 
         <div
           role="status"
           data-testid="watch-history-undo-bar"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-ink bg-mint/60 px-4 py-3 text-sm text-ink shadow-brand-sm"
+          className="motion-toast-enter flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-ink bg-mint/60 px-4 py-3 text-sm text-ink shadow-brand-sm"
         >
           <span className="min-w-0 flex-1">
             Đã xóa <strong>{cleanMediaTitle(lastRemoved.episodeTitle)}</strong> khỏi lịch sử xem.
@@ -294,7 +298,7 @@ function WatchHistory({ token, userId }: { token: string; userId: number | null 
       {notice && (
         <div
           role="status"
-          className="flex items-center justify-between gap-3 rounded-xl border border-ink/30 bg-mint/45 px-4 py-3 text-xs sm:text-sm font-medium text-ink"
+          className="motion-toast-enter flex items-center justify-between gap-3 rounded-xl border border-ink/30 bg-mint/45 px-4 py-3 text-xs sm:text-sm font-medium text-ink"
         >
           <span>{notice}</span>
           <button
@@ -357,7 +361,7 @@ function WatchHistory({ token, userId }: { token: string; userId: number | null 
       ) : (
         <div className="space-y-8" data-testid="watch-history-groups">
           {dayGroups.map((group) => (
-            <section key={group.dayKey} aria-labelledby={`history-day-${group.dayKey}`} className="space-y-3">
+            <section key={group.dayKey} data-reveal-section="" aria-labelledby={`history-day-${group.dayKey}`} className="space-y-3">
               <div className="flex items-center justify-between gap-2 border-b border-surface-border/40 pb-2">
                 <h2
                   id={`history-day-${group.dayKey}`}
@@ -383,6 +387,7 @@ function WatchHistory({ token, userId }: { token: string; userId: number | null 
                   return (
                     <li
                       key={entry.episodeId}
+                      data-reveal-card=""
                       data-testid={`history-item-${entry.episodeId}`}
                       className="flex flex-col gap-4 rounded-xl border border-[#b7c1b1] bg-paper-white p-3.5 transition-colors hover:border-ink sm:flex-row sm:items-center sm:p-4"
                     >
@@ -414,7 +419,7 @@ function WatchHistory({ token, userId }: { token: string; userId: number | null 
                               aria-valuemin={0}
                               aria-valuemax={100}
                             >
-                              <div className="continue-progress-fill" style={{ width: `${percent}%` }} />
+                              <div className="continue-progress-fill motion-progress-fill" style={{ width: `${percent}%` }} />
                             </div>
                           )}
                         </ArtworkImage>

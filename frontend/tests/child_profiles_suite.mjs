@@ -513,6 +513,7 @@ test('ProfilePickerModal renders main and child profiles and navigates out of re
           activeProfile: null,
           showProfilePicker: true,
           closeProfilePicker: () => { closed += 1; },
+          exitKidMode: async (pin) => (pin === '1234' ? { success: true } : { success: false, message: 'Mã PIN phụ huynh chưa đúng.' }),
           selectChildProfile: async (id) => {
             switched.push(id);
             return { success: true };
@@ -522,21 +523,28 @@ test('ProfilePickerModal renders main and child profiles and navigates out of re
     }
   );
 
-  const tree = harness.render();
+  let tree = harness.render();
   assert.ok(collectNodes(tree, (n) => n.props?.['data-testid'] === 'profile-picker-modal').length === 1);
   const mainBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'picker-main-profile')[0];
   const kidBtn1 = collectNodes(tree, (n) => n.props?.['data-testid'] === 'picker-child-profile-10')[0];
   const kidBtn2 = collectNodes(tree, (n) => n.props?.['data-testid'] === 'picker-child-profile-11')[0];
   assert.ok(mainBtn && kidBtn1 && kidBtn2);
 
-  mainBtn.props.onClick();
-  assert.equal(closed, 1);
-
   kidBtn1.props.onClick();
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(switched, [10]);
   assert.equal(navigated.length, 1);
   assert.equal(navigated[0].to, '/');
+
+  mainBtn.props.onClick();
+  tree = harness.render();
+  assert.equal(closed, 0);
+  const pinInput = collectNodes(tree, (n) => n.props?.['data-testid'] === 'picker-parent-pin-input')[0];
+  assert.ok(pinInput);
+  pinInput.props.onChange({ target: { value: '1234' } });
+  tree = harness.render();
+  await collectNodes(tree, (n) => n.props?.['data-testid'] === 'picker-parent-pin-form')[0].props.onSubmit({ preventDefault() {} });
+  assert.equal(closed, 1);
   harness.unmount();
 });
 
@@ -626,7 +634,7 @@ test('Navbar in kid mode shows child indicator and exit button while hiding acco
   assert.equal(collectNodes(tree, (n) => n.props?.to === '/admin/reports').length, 0);
 
   collectNodes(tree, (n) => n.props?.['data-testid'] === 'nav-user-dropdown-button')[0].props.onClick();
-  collectNodes(tree, (n) => n.props?.['aria-label'] === 'Mở menu')[0].props.onClick();
+  collectNodes(tree, (n) => n.props?.['aria-label'] === 'Mở danh mục')[0].props.onClick();
   tree = harness.render();
 
   assert.equal(collectNodes(tree, (n) => n.props?.to === '/account').length, 0);

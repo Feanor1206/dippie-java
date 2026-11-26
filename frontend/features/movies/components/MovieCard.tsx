@@ -4,7 +4,14 @@ import { safeImageUrl } from '@/lib/safeUrl';
 import React, { useState } from 'react';
 import { Link } from 'react-router';
 import { Bookmark, Check, Film, Heart, Loader2, RefreshCw, Star } from 'lucide-react';
-import { cleanMediaTitle, formatGenreList, formatRuntime, formatYear, resolveRatingSummary } from '@/lib/labels';
+import {
+  cleanMediaTitle,
+  formatGenreList,
+  formatRuntime,
+  formatYear,
+  resolveRatingSummary,
+  toCompactCardArtworkUrl,
+} from '@/lib/labels';
 import { buildMediaItemHref } from '@/lib/services/mediaRouting';
 import { isMediaExternalOnly, resolveExternalYoutubeWatchUrl } from '@/lib/services/playbackSource';
 import type { Movie } from '@/types/movie';
@@ -68,7 +75,9 @@ export function MovieCard({ movie, fluid = false, actionMode = 'watchlist' }: Mo
       : 'Chưa bỏ được khỏi Xem sau, nhấn để thử lại'
     : undefined;
 
-  const hasPoster = Boolean(movie.poster && movie.poster.trim() && !posterError);
+  const compactPoster =
+    typeof toCompactCardArtworkUrl === 'function' ? toCompactCardArtworkUrl(movie.poster) : movie.poster;
+  const hasPoster = Boolean(compactPoster && compactPoster.trim() && !posterError);
   const ratingSummary = resolveRatingSummary(movie);
   const metaLine = [formatYear(movie.year), formatRuntime(movie.runtime)].filter(Boolean).join(' · ');
   const genresText = formatGenreList(movie.genres);
@@ -85,17 +94,19 @@ export function MovieCard({ movie, fluid = false, actionMode = 'watchlist' }: Mo
 
   return (
     <div
-      className={`group relative block outline-none transition-transform duration-200 hover:-translate-y-1 ${
+      data-reveal-item=""
+      className={`group relative block outline-none transition-transform duration-smooth ease-out-smooth hover:-translate-y-1 ${
         fluid ? 'w-full' : 'w-[155px] shrink-0 sm:w-[185px] md:w-[205px]'
       }`}
     >
-      <article className="comic-card overflow-hidden rounded-xl border border-surface-border bg-surface transition-all duration-200 hover:border-brand/40 group-hover:shadow-card-hover">
+      <article className="comic-card overflow-hidden rounded-xl border border-surface-border bg-surface transition-all duration-smooth ease-out-smooth hover:border-brand/40 group-hover:shadow-card-hover">
         <div className="relative aspect-[4/5] w-full overflow-hidden bg-surface-elevated">
           {hasPoster ? (
             <img
-              src={safeImageUrl(movie.poster)}
+              src={safeImageUrl(compactPoster || undefined)}
               alt={displayTitle}
               loading="lazy"
+              decoding="async"
               referrerPolicy="no-referrer"
               onError={() => setPosterError(true)}
               className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
@@ -103,13 +114,13 @@ export function MovieCard({ movie, fluid = false, actionMode = 'watchlist' }: Mo
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center p-3 text-center bg-surface-elevated text-muted">
               <Film size={28} className="mb-2 text-muted" />
-              <span className="text-[11px] font-medium leading-tight line-clamp-2 text-muted">{displayTitle}</span>
+              <span className="text-[0.6875rem] font-medium leading-tight line-clamp-2 text-muted">{displayTitle}</span>
             </div>
           )}
 
           <span
             data-testid="movie-rating-badge"
-            className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded bg-black/75 px-2 py-0.5 text-[11px] font-bold text-amber-300 border border-white/10 backdrop-blur-md"
+            className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded bg-black/75 px-2 py-0.5 text-[0.6875rem] font-bold text-amber-300 border border-white/10 backdrop-blur-md"
           >
             {ratingSummary.hasRating ? (
               <>
@@ -124,7 +135,7 @@ export function MovieCard({ movie, fluid = false, actionMode = 'watchlist' }: Mo
           {isUnconfirmed && (
             <span
               data-testid="unconfirmed-badge"
-              className="absolute bottom-2 left-2 z-10 flex items-center gap-1 rounded bg-amber-500/95 px-2 py-0.5 text-[10px] font-bold text-zinc-950 shadow-md border border-amber-300 backdrop-blur-md"
+              className="absolute bottom-2 left-2 z-10 flex items-center gap-1 rounded bg-amber-500/95 px-2 py-0.5 text-[0.625rem] font-bold text-zinc-950 shadow-md border border-amber-300 backdrop-blur-md"
             >
               <RefreshCw size={10} className="stroke-[2.5]" />
               {unconfirmedIntent === 'add' ? 'Chưa lưu' : 'Chưa bỏ'}
@@ -189,7 +200,7 @@ export function MovieCard({ movie, fluid = false, actionMode = 'watchlist' }: Mo
           {externalOnly && !isKidMode && (
             <span
               data-testid="movie-external-badge"
-              className="mt-1 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"
+              className="mt-1 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[0.625rem] font-semibold text-amber-900"
             >
               Chỉ mở trên YouTube
             </span>

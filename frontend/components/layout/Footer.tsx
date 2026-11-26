@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Link } from 'react-router';
 import { type CatalogGenreOption } from '@/lib/services/catalogService';
 import { useCatalogGenres } from '@/lib/hooks/useCatalogData';
+import * as motion from '@/lib/motion';
 
 const FALLBACK_FOOTER_GENRES: CatalogGenreOption[] = [
   { id: 'family', label: 'Gia đình', count: 1 },
@@ -12,6 +13,7 @@ const FOOTER_LINK_CLASS = 'inline-flex min-h-[44px] items-center hover:text-ink 
 
 export function Footer() {
   const fetchedGenres = useCatalogGenres();
+  const motionPref = typeof motion.useReducedMotion === 'function' ? motion.useReducedMotion() : { reduced: false, toggle: () => {} };
   const genreLinks = useMemo(() => {
     if (!fetchedGenres || fetchedGenres.length === 0) return FALLBACK_FOOTER_GENRES;
     const nonDefault = fetchedGenres.filter((g) => g.count > 0 && g.id.toLowerCase() !== 'animation');
@@ -45,6 +47,15 @@ export function Footer() {
           </Link>
           <Link to="/dieu-khoan" className={FOOTER_LINK_CLASS}>Điều khoản sử dụng</Link>
           <Link to="/quyen-rieng-tu" className={FOOTER_LINK_CLASS}>Chính sách quyền riêng tư</Link>
+          <button
+            type="button"
+            data-testid="motion-reduce-toggle"
+            aria-pressed={motionPref.reduced}
+            onClick={motionPref.toggle}
+            className={`${FOOTER_LINK_CLASS} cursor-pointer`}
+          >
+            {motionPref.reduced ? 'Đã giảm chuyển động' : 'Giảm chuyển động'}
+          </button>
         </nav>
         <span className="text-xs text-ink/85">© Dippie 2026</span>
       </div>

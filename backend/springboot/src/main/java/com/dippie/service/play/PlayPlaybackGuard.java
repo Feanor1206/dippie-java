@@ -129,7 +129,7 @@ public class PlayPlaybackGuard {
             long remaining = state.restRemainingSecondsAt(now);
             throw new PlayFeatureLockedException(
                     "WATCH_PET_REST",
-                    "Dieppie đang ngủ nghỉ mắt rồi, bé chờ hết giờ nghỉ nhé.",
+                    "Đang trong giờ nghỉ cùng Dieppie, bé chờ hết giờ nghỉ nhé.",
                     remaining
             );
         }
@@ -139,7 +139,7 @@ public class PlayPlaybackGuard {
         if (state.isPetFainted()) {
             throw new PlayFeatureLockedException(
                     "WATCH_PET_FAINT",
-                    "Dieppie mệt xỉu rồi! Bé cho Dieppie ngủ hoặc mua thuốc hồi sức để xem tiếp nhé."
+                    "Đến giờ nghỉ mắt rồi! Bé nghỉ cùng Dieppie ít phút hoặc trả lời 1 câu hỏi để xem tiếp nhé."
             );
         }
     }

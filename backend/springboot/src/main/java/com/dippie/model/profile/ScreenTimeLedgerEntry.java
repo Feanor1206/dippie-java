@@ -44,7 +44,7 @@ public class ScreenTimeLedgerEntry {
     private LocalDate usageDay;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "kind", nullable = false, length = 20)
+    @Column(name = "kind", columnDefinition = "VARCHAR(20)", nullable = false, length = 20)
     private ScreenTimeLedgerKind kind;
 
     @Column(name = "seconds", nullable = false)

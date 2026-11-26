@@ -5,6 +5,11 @@ import {
   isLikelyNetworkError,
   withRequestTimeout,
 } from '@/lib/services/apiRequest';
+import {
+  normalizeQuizOptions,
+  type QuizOption,
+  type QuizOptionKey,
+} from '@/features/quiz/quizService';
 
 const API = '/api';
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -13,16 +18,20 @@ export type ChildProfileVipSeries = {
   profileId: number;
   name: string;
   avatarKey: string;
-  mathLevel: number;
-  vipMathLevel: number;
+  quizGrade: string;
+  quizGradeLabel: string;
+  vipQuizGrade: string;
+  vipQuizGradeLabel: string;
   seriesIds: string[];
 };
 
 export type KidVipStatus = {
   profileId: number | null;
   day: string;
-  mathLevel: number;
-  vipMathLevel: number;
+  quizGrade: string | null;
+  quizGradeLabel: string | null;
+  vipQuizGrade: string | null;
+  vipQuizGradeLabel: string | null;
   vipSeriesIds: string[];
   unlockedEpisodeIds: string[];
 };
@@ -32,7 +41,12 @@ export type VipChallenge = {
   episodeId: string;
   seriesId: string;
   question: string;
-  mathLevel: number;
+  options: QuizOption[];
+  subject: string;
+  subjectLabel: string;
+  grade: string;
+  gradeLabel: string;
+  setName: string;
   expiresAt: string;
   expiresInSeconds: number;
 };
@@ -42,6 +56,9 @@ export type VipUnlockResult = {
   unlocked: boolean;
   episodeId: string;
   day: string;
+  correctOption: QuizOptionKey | null;
+  correctText: string | null;
+  explanation: string | null;
   message: string;
 };
 
@@ -61,6 +78,13 @@ export class VipApiError extends Error {
     this.status = status;
     this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+function normalizeOptionKey(raw: unknown): QuizOptionKey | null {
+  if (typeof raw !== 'string') return null;
+  const upper = raw.trim().toUpperCase();
+  if (upper === 'A' || upper === 'B' || upper === 'C' || upper === 'D') return upper;
+  return null;
 }
 
 function authHeaders(token: string, withBody = false): Record<string, string> {
@@ -122,14 +146,23 @@ function normalizeParentItem(raw: any): ChildProfileVipSeries | null {
   const seriesIds = Array.isArray(raw.seriesIds)
     ? raw.seriesIds.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
     : [];
-  const mathLevel = Math.min(4, Math.max(1, Number(raw.mathLevel) || 1));
-  const vipMathLevel = Math.min(4, Math.max(1, Number(raw.vipMathLevel) || Math.min(4, mathLevel + 1)));
+  const quizGrade = typeof raw.quizGrade === 'string' && raw.quizGrade.trim() ? raw.quizGrade.trim() : 'LOP_1';
+  const quizGradeLabel =
+    typeof raw.quizGradeLabel === 'string' && raw.quizGradeLabel.trim() ? raw.quizGradeLabel.trim() : 'Lớp 1';
+  const vipQuizGrade =
+    typeof raw.vipQuizGrade === 'string' && raw.vipQuizGrade.trim() ? raw.vipQuizGrade.trim() : 'LOP_2';
+  const vipQuizGradeLabel =
+    typeof raw.vipQuizGradeLabel === 'string' && raw.vipQuizGradeLabel.trim()
+      ? raw.vipQuizGradeLabel.trim()
+      : 'Lớp 2';
   return {
     profileId,
     name: typeof raw.name === 'string' ? raw.name.trim() : '',
     avatarKey: typeof raw.avatarKey === 'string' ? raw.avatarKey.trim() : 'bear',
-    mathLevel,
-    vipMathLevel,
+    quizGrade,
+    quizGradeLabel,
+    vipQuizGrade,
+    vipQuizGradeLabel,
     seriesIds,
   };
 }
@@ -142,7 +175,7 @@ export async function fetchParentVipSeriesOverview(
   return runVipRequest(
     async (signal) => {
       const response = await apiFetch(url, { method: 'GET', headers: authHeaders(token), signal });
-      const { data } = await parseEnvelope(response, 'Chưa tải được danh sách phim VIP.');
+      const { data } = await parseEnvelope(response, 'Chưa tải được danh sách phim cần trả lời câu hỏi.');
       if (!Array.isArray(data)) return [];
       return data
         .map(normalizeParentItem)
@@ -168,9 +201,9 @@ export async function updateChildVipSeries(
         body: JSON.stringify({ pin, seriesIds }),
         signal,
       });
-      const { data } = await parseEnvelope(response, 'Chưa lưu được danh sách phim VIP.');
+      const { data } = await parseEnvelope(response, 'Chưa lưu được danh sách phim cần trả lời câu hỏi.');
       const normalized = normalizeParentItem(data);
-      if (!normalized) throw new VipApiError('Dữ liệu phim VIP không hợp lệ.', 502);
+      if (!normalized) throw new VipApiError('Dữ liệu phim cần trả lời câu hỏi không hợp lệ.', 502);
       return normalized;
     },
     options
@@ -185,12 +218,19 @@ export async function fetchKidVipStatus(
   return runVipRequest(
     async (signal) => {
       const response = await apiFetch(url, { method: 'GET', headers: authHeaders(token), signal });
-      const { data } = await parseEnvelope(response, 'Chưa tải được trạng thái phim VIP.');
+      const { data } = await parseEnvelope(response, 'Chưa tải được trạng thái phim cần trả lời câu hỏi.');
       return {
         profileId: typeof data?.profileId === 'number' ? data.profileId : null,
         day: typeof data?.day === 'string' ? data.day : '',
-        mathLevel: Number(data?.mathLevel) || 0,
-        vipMathLevel: Number(data?.vipMathLevel) || 0,
+        quizGrade: typeof data?.quizGrade === 'string' && data.quizGrade.trim() ? data.quizGrade.trim() : null,
+        quizGradeLabel:
+          typeof data?.quizGradeLabel === 'string' && data.quizGradeLabel.trim() ? data.quizGradeLabel.trim() : null,
+        vipQuizGrade:
+          typeof data?.vipQuizGrade === 'string' && data.vipQuizGrade.trim() ? data.vipQuizGrade.trim() : null,
+        vipQuizGradeLabel:
+          typeof data?.vipQuizGradeLabel === 'string' && data.vipQuizGradeLabel.trim()
+            ? data.vipQuizGradeLabel.trim()
+            : null,
         vipSeriesIds: Array.isArray(data?.vipSeriesIds)
           ? data.vipSeriesIds.filter((item: unknown): item is string => typeof item === 'string')
           : [],
@@ -212,18 +252,24 @@ export async function fetchVipEpisodeChallenge(
   return runVipRequest(
     async (signal) => {
       const response = await apiFetch(url, { method: 'GET', headers: authHeaders(token), signal });
-      const { data } = await parseEnvelope(response, 'Chưa lấy được câu hỏi toán mở khóa tập VIP.');
+      const { data } = await parseEnvelope(response, 'Chưa lấy được câu hỏi mở khóa tập phim.');
       const challengeToken = typeof data?.token === 'string' ? data.token.trim() : '';
       const question = typeof data?.question === 'string' ? data.question.trim() : '';
-      if (!challengeToken || !question) {
-        throw new VipApiError('Dữ liệu câu hỏi toán VIP chưa hợp lệ.', 502);
+      const quizOptions = normalizeQuizOptions(data?.options);
+      if (!challengeToken || !question || quizOptions.length !== 4) {
+        throw new VipApiError('Dữ liệu câu hỏi mở khóa phim chưa hợp lệ.', 502);
       }
       return {
         token: challengeToken,
         episodeId: typeof data?.episodeId === 'string' ? data.episodeId : episodeId,
         seriesId: typeof data?.seriesId === 'string' ? data.seriesId : '',
         question,
-        mathLevel: Math.min(4, Math.max(1, Number(data?.mathLevel) || 2)),
+        options: quizOptions,
+        subject: typeof data?.subject === 'string' ? data.subject : 'TOAN',
+        subjectLabel: typeof data?.subjectLabel === 'string' ? data.subjectLabel : 'Toán',
+        grade: typeof data?.grade === 'string' ? data.grade : 'LOP_2',
+        gradeLabel: typeof data?.gradeLabel === 'string' ? data.gradeLabel : 'Lớp 2',
+        setName: typeof data?.setName === 'string' ? data.setName : '',
         expiresAt: typeof data?.expiresAt === 'string' ? data.expiresAt : '',
         expiresInSeconds: Number(data?.expiresInSeconds) || 120,
       };
@@ -236,7 +282,7 @@ export async function submitVipEpisodeUnlock(
   token: string,
   episodeId: string,
   challengeToken: string,
-  answer: number,
+  option: QuizOptionKey,
   options: VipRequestOptions = {}
 ): Promise<VipUnlockResult> {
   const url = `${options.baseUrl || API}/users/vip-series/episodes/${encodeURIComponent(episodeId)}/unlock`;
@@ -245,15 +291,18 @@ export async function submitVipEpisodeUnlock(
       const response = await apiFetch(url, {
         method: 'POST',
         headers: authHeaders(token, true),
-        body: JSON.stringify({ token: challengeToken, answer }),
+        body: JSON.stringify({ token: challengeToken, option }),
         signal,
       });
-      const { data, message } = await parseEnvelope(response, 'Chưa kiểm tra được đáp án mở khóa VIP.');
+      const { data, message } = await parseEnvelope(response, 'Chưa kiểm tra được đáp án mở khóa phim.');
       return {
         correct: Boolean(data?.correct),
         unlocked: Boolean(data?.unlocked),
         episodeId: typeof data?.episodeId === 'string' ? data.episodeId : episodeId,
         day: typeof data?.day === 'string' ? data.day : '',
+        correctOption: normalizeOptionKey(data?.correctOption),
+        correctText: typeof data?.correctText === 'string' ? data.correctText : null,
+        explanation: typeof data?.explanation === 'string' && data.explanation.trim() ? data.explanation : null,
         message,
       };
     },

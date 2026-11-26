@@ -233,9 +233,11 @@ const MIN_VALID_YEAR = 1800;
 const API = '/api';
 
 const genresCache = new Map<string, { expiresAt: number; data: CatalogGenreOption[] }>();
+const genresInFlight = new Map<string, Promise<CatalogGenreOption[]>>();
 
 export function clearCatalogGenresCache(): void {
   genresCache.clear();
+  genresInFlight.clear();
 }
 
 if (typeof window !== 'undefined') window.addEventListener?.(SESSION_RESET_EVENT, clearCatalogGenresCache);
@@ -444,10 +446,40 @@ export async function getCatalogGenres(
   options: { signal?: AbortSignal; timeoutMs?: number; forceRefresh?: boolean } = {},
   baseUrl = API
 ): Promise<CatalogGenreOption[]> {
+  if (options.signal?.aborted) {
+    throw new CatalogApiError('Yêu cầu đã được hủy.', 499, undefined, { isCanceled: true });
+  }
   const cached = genresCache.get(baseUrl);
   if (!options.forceRefresh && cached && cached.expiresAt > Date.now()) return cached.data;
 
-  const genres = await runCatalogRequest(async (signal) => {
+  const existingInFlight = !options.forceRefresh ? genresInFlight.get(baseUrl) : undefined;
+  if (existingInFlight) {
+    if (!options.signal) return existingInFlight;
+    return new Promise<CatalogGenreOption[]>((resolve, reject) => {
+      const onAbort = () => {
+        reject(new CatalogApiError('Yêu cầu đã được hủy.', 499, undefined, { isCanceled: true }));
+      };
+      if (options.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      options.signal?.addEventListener?.('abort', onAbort, { once: true });
+      existingInFlight.then(
+        (val) => {
+          options.signal?.removeEventListener?.('abort', onAbort);
+          if (options.signal?.aborted) onAbort();
+          else resolve(val);
+        },
+        (err) => {
+          options.signal?.removeEventListener?.('abort', onAbort);
+          if (options.signal?.aborted) onAbort();
+          else reject(err);
+        }
+      );
+    });
+  }
+
+  const sharedPromise = runCatalogRequest(async (signal) => {
     const res = await apiFetch(`${baseUrl}/movies/genres`, {
       method: 'GET',
       headers: { Accept: 'application/json' },
@@ -456,10 +488,44 @@ export async function getCatalogGenres(
     if (!res.ok) throw new CatalogApiError(`Chưa tải được danh sách thể loại (${res.status}).`, res.status);
     const body = await parseJsonOrThrow(res, 'Dữ liệu danh sách thể loại không hợp lệ.', 502);
     return normalizeCatalogGenres(body);
-  }, options);
+  }, { timeoutMs: options.timeoutMs })
+    .then((genres) => {
+      genresCache.set(baseUrl, { data: genres, expiresAt: Date.now() + GENRES_CACHE_TTL_MS });
+      return genres;
+    })
+    .finally(() => {
+      if (genresInFlight.get(baseUrl) === sharedPromise) {
+        genresInFlight.delete(baseUrl);
+      }
+    });
 
-  genresCache.set(baseUrl, { data: genres, expiresAt: Date.now() + GENRES_CACHE_TTL_MS });
-  return genres;
+  if (!options.forceRefresh) {
+    genresInFlight.set(baseUrl, sharedPromise);
+  }
+
+  if (!options.signal) return sharedPromise;
+  return new Promise<CatalogGenreOption[]>((resolve, reject) => {
+    const onAbort = () => {
+      reject(new CatalogApiError('Yêu cầu đã được hủy.', 499, undefined, { isCanceled: true }));
+    };
+    if (options.signal?.aborted) {
+      onAbort();
+      return;
+    }
+    options.signal?.addEventListener?.('abort', onAbort, { once: true });
+    sharedPromise.then(
+      (val) => {
+        options.signal?.removeEventListener?.('abort', onAbort);
+        if (options.signal?.aborted) onAbort();
+        else resolve(val);
+      },
+      (err) => {
+        options.signal?.removeEventListener?.('abort', onAbort);
+        if (options.signal?.aborted) onAbort();
+        else reject(err);
+      }
+    );
+  });
 }
 
 export async function browseCatalog(

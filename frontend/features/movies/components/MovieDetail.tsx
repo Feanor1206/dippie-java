@@ -116,8 +116,8 @@ function SimilarMovieCard({ movie }: { movie: Movie }) {
   const meta = [formatYear(movie.year), formatRuntime(movie.runtime)].filter(Boolean).join(' · ');
 
   return (
-    <div className="w-[155px] shrink-0 sm:w-[185px]">
-      <div className="overflow-hidden rounded-lg border border-surface-border bg-surface">
+    <div className="w-[155px] shrink-0 sm:w-[185px] transition-transform duration-smooth ease-out-smooth hover:-translate-y-1">
+      <div className="overflow-hidden rounded-lg border border-surface-border bg-surface transition-shadow duration-smooth ease-out-smooth hover:shadow-card-hover">
         <div className="relative aspect-[2/3] w-full overflow-hidden bg-surface-elevated group">
           {movie.poster?.trim() ? (
             <img
@@ -125,16 +125,16 @@ function SimilarMovieCard({ movie }: { movie: Movie }) {
               alt={title}
               loading="lazy"
               referrerPolicy="no-referrer"
-              className="absolute inset-0 h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center p-3 text-center bg-mint text-muted">
               <Film size={24} className="mb-1 text-muted" />
-              <span className="text-[11px] font-medium leading-tight line-clamp-2 text-muted">{title}</span>
+              <span className="text-[0.6875rem] font-medium leading-tight line-clamp-2 text-muted">{title}</span>
             </div>
           )}
           {rating.hasRating && (
-            <span className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded bg-surface/90 px-1.5 py-0.5 text-[10px] font-bold text-ink border border-surface-border">
+            <span className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded bg-surface/90 px-1.5 py-0.5 text-[0.625rem] font-bold text-ink border border-surface-border">
               <Star size={10} className="fill-amber-400 text-amber-500" aria-hidden="true" /> {rating.compactLabel}
             </span>
           )}
@@ -149,7 +149,7 @@ function SimilarMovieCard({ movie }: { movie: Movie }) {
               <span>{meta}</span>
             </div>
           )}
-          {!rating.hasRating && <p className="mt-1 text-[11px] text-muted">{rating.compactLabel}</p>}
+          {!rating.hasRating && <p className="mt-1 text-[0.6875rem] text-muted">{rating.compactLabel}</p>}
         </div>
       </div>
     </div>
@@ -297,7 +297,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
   const startPlayback = (kind: 'feature' | 'trailer', opener?: HTMLElement | null) => {
     if (opener) playerOpenerRef.current = opener;
     if (kind === 'feature' && isVaultLocked) {
-      setVaultBlockMessage('Két sắt phim cuối tuần đang khóa. Bé tích đủ 100% Vé xem phim hoặc nhờ ba mẹ nhập mã PIN để mở nhé.');
+      setVaultBlockMessage('Phim lẻ cuối tuần đang tạm khóa. Bé tích đủ 100% Vé xem phim hoặc nhờ ba mẹ nhập mã PIN để mở nhé.');
       return;
     }
     setVaultBlockMessage(null);
@@ -311,7 +311,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
           openVideoUrl(kind, grantResult.grant.streamUrl);
         } else if (grantResult.status === 423 && grantResult.lockReason === 'WEEKEND_VAULT') {
           setVaultBlockMessage(
-            grantResult.message || 'Két sắt phim cuối tuần đang khóa. Bé tích đủ 100% Vé xem phim nhé.'
+            grantResult.message || 'Phim lẻ cuối tuần đang tạm khóa. Bé tích đủ 100% Vé xem phim nhé.'
           );
           if (token) {
             void fetchWeekendVaultStatus(token).then(setVaultStatus).catch(() => {});
@@ -500,11 +500,14 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
       kidMode && token && (playFeatures.activeDrop || playFeatures.activeLootQuiz || playFeatures.lootFeedback)
     ),
   });
+  const isMovieLootQuizOpen = Boolean(movieActiveOverlay === 'loot' && playFeatures.activeLootQuiz);
   const isMoviePlaybackBlocked =
-    isScreenTimeLocked || holdSolvedOverlay || Boolean(kidMode && playFeatures.isPetLocked);
+    isScreenTimeLocked ||
+    holdSolvedOverlay ||
+    Boolean(kidMode && playFeatures.isPetLocked) ||
+    isMovieLootQuizOpen;
   const needsMovieOverlayHeight =
-    isFullScreenPlayerOverlay(movieActiveOverlay) ||
-    Boolean(movieActiveOverlay === 'loot' && playFeatures.activeLootQuiz);
+    isFullScreenPlayerOverlay(movieActiveOverlay) || isMovieLootQuizOpen;
 
   useScreenTimeHeartbeat({
     enabled: Boolean(kidMode && !isMoviePlaybackBlocked && screenTime),
@@ -512,15 +515,33 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
     onHeartbeat: (seconds) => screenTime?.reportWatchHeartbeat(seconds),
   });
 
+  const wasPlayingBeforeMovieBlockRef = useRef(false);
+  const prevMovieBlockedRef = useRef(isMoviePlaybackBlocked);
+
   useEffect(() => {
-    if (!isMoviePlaybackBlocked) return;
-    try {
-      videoRef.current?.pause();
-    } catch {}
-    if (playerState === 'playing') {
-      setPlayerState('paused');
+    const wasBlocked = prevMovieBlockedRef.current;
+    prevMovieBlockedRef.current = isMoviePlaybackBlocked;
+    if (isMoviePlaybackBlocked) {
+      if (!wasBlocked) {
+        wasPlayingBeforeMovieBlockRef.current =
+          playerState === 'playing' ||
+          Boolean(videoRef.current && !videoRef.current.paused && !videoRef.current.ended);
+      }
+      try {
+        videoRef.current?.pause();
+      } catch {}
+      if (playerState === 'playing') {
+        setPlayerState('paused');
+      }
+      return;
     }
-  }, [isMoviePlaybackBlocked, playerState]);
+    if (wasBlocked && wasPlayingBeforeMovieBlockRef.current && isPlaying && activeMediaUrl) {
+      wasPlayingBeforeMovieBlockRef.current = false;
+      videoRef.current?.play()?.catch((err: unknown) => {
+        if ((err as { name?: unknown } | null)?.name !== 'AbortError') setPlayerState('paused');
+      });
+    }
+  }, [isMoviePlaybackBlocked, playerState, isPlaying, activeMediaUrl]);
 
   useEffect(() => {
     if (isPlaying && activeMediaUrl && !isMoviePlaybackBlocked) {
@@ -647,12 +668,23 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                   • {activeMediaKind === 'feature' ? 'Phim chính' : 'Đoạn giới thiệu'}
                 </span>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <div
+                data-kid-playback-bar={kidMode && screenTime?.isLimited ? 'true' : undefined}
+                className="flex shrink-0 items-center gap-1.5 sm:gap-2"
+              >
                 {kidMode && screenTime?.isLimited && (
                   <ScreenTimeChip
                     data-testid="movie-player-screen-time-chip"
                     remainingSeconds={screenTime.remainingSeconds}
                     locked={screenTime.isLocked}
+                    totalSeconds={
+                      screenTime.screenTime
+                        ? screenTime.screenTime.dailySeconds +
+                          screenTime.screenTime.rewardSeconds +
+                          screenTime.screenTime.grantSeconds +
+                          screenTime.screenTime.bountySeconds
+                        : null
+                    }
                     variant="player"
                   />
                 )}
@@ -666,8 +698,10 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
 
             <div
               data-active-overlay={movieActiveOverlay || 'none'}
-              className={`relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden ${
-                needsMovieOverlayHeight ? 'min-h-[380px] sm:min-h-[420px]' : ''
+              className={`relative w-full bg-black flex items-center justify-center overflow-hidden ${
+                needsMovieOverlayHeight
+                  ? 'min-h-[30rem] sm:min-h-[32rem] lg:aspect-video'
+                  : 'aspect-video'
               }`}
             >
               <video
@@ -743,6 +777,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                 <ScreenTimeLockOverlay
                   status={screenTime.screenTime}
                   token={token}
+                  savedProgressLabel={currentTime >= 1 ? `${displayTitle} · ${formatTime(currentTime)}` : displayTitle}
                   onStatusUpdated={(next) => {
                     if (!next.locked) {
                       setHoldSolvedOverlay(true);
@@ -763,6 +798,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                       });
                     }
                   }}
+                  onFinishSession={closePlayer}
                 />
               )}
 
@@ -771,8 +807,11 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                   watchPet={playFeatures.watchPet}
                   token={token}
                   restCountdown={playFeatures.restCountdown}
+                  savedProgressLabel={currentTime >= 1 ? `${displayTitle} · ${formatTime(currentTime)}` : displayTitle}
                   onStartRest={playFeatures.handleStartRest}
                   onWatchPetUpdated={playFeatures.applyWatchPetStatus}
+                  onScreenTimeUpdated={(next) => screenTime?.applyScreenTimeStatus(next)}
+                  onFinishSession={closePlayer}
                   hideCorner
                 />
               )}
@@ -783,8 +822,11 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                     watchPet={playFeatures.watchPet}
                     token={token}
                     restCountdown={playFeatures.restCountdown}
+                    savedProgressLabel={currentTime >= 1 ? `${displayTitle} · ${formatTime(currentTime)}` : displayTitle}
                     onStartRest={playFeatures.handleStartRest}
                     onWatchPetUpdated={playFeatures.applyWatchPetStatus}
+                    onScreenTimeUpdated={(next) => screenTime?.applyScreenTimeStatus(next)}
+                    onFinishSession={closePlayer}
                   />
                   {movieActiveOverlay === 'loot' && (
                     <LootDropOverlay
@@ -792,11 +834,15 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                       dropSecondsLeft={playFeatures.dropSecondsLeft}
                       activeQuiz={playFeatures.activeLootQuiz}
                       quizSecondsLeft={playFeatures.lootQuizSecondsLeft}
+                      selectedOption={playFeatures.lootSelectedOption}
+                      retryError={playFeatures.lootRetryError}
                       feedback={playFeatures.lootFeedback}
                       opening={playFeatures.lootOpening}
                       submitting={playFeatures.lootSubmitting}
                       onOpenChest={playFeatures.handleOpenLootChest}
                       onSubmitAnswer={playFeatures.handleSubmitLootAnswer}
+                      onDismissQuiz={playFeatures.handleDismissLootQuiz}
+                      onSelectDraftOption={playFeatures.setLootSelectedOption}
                     />
                   )}
                 </>
@@ -939,11 +985,11 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
 
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded bg-brand px-2 py-0.5 font-bold text-zinc-950 text-[10px]">Phim hoạt hình</span>
+                <span className="motion-chip-pop rounded bg-brand px-2 py-0.5 font-bold text-zinc-950 text-[0.625rem]">Phim hoạt hình</span>
                 {externalOnly && !kidMode && (
                   <span
                     data-testid="movie-detail-external-badge"
-                    className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-900"
+                    className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-amber-900"
                   >
                     Chỉ mở trên YouTube
                   </span>

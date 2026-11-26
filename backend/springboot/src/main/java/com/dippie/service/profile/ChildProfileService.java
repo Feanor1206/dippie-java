@@ -9,6 +9,7 @@ import com.dippie.exception.InvalidRequestException;
 import com.dippie.exception.NotFoundException;
 import com.dippie.exception.UnauthorizedException;
 import com.dippie.model.profile.ChildProfile;
+import com.dippie.model.quiz.QuizGrade;
 import com.dippie.model.user.User;
 import com.dippie.repository.bounty.BountySubmissionRepository;
 import com.dippie.repository.bounty.BountyTaskProfileRepository;
@@ -26,6 +27,7 @@ import com.dippie.security.CurrentViewer;
 import com.dippie.security.JwtService;
 import com.dippie.security.Viewer;
 import com.dippie.service.play.PlaySettingsService;
+import com.dippie.service.quiz.QuizBankService;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +61,7 @@ public class ChildProfileService {
     private final MovieRatingRepository movieRatingRepository;
     private final ParentModeService parentModeService;
     private final PlaySettingsService playSettingsService;
+    private final QuizBankService quizBankService;
     private final JwtService jwtService;
     private final Clock clock;
 
@@ -78,6 +81,7 @@ public class ChildProfileService {
             MovieRatingRepository movieRatingRepository,
             ParentModeService parentModeService,
             PlaySettingsService playSettingsService,
+            QuizBankService quizBankService,
             JwtService jwtService,
             Clock clock
     ) {
@@ -96,6 +100,7 @@ public class ChildProfileService {
         this.movieRatingRepository = movieRatingRepository;
         this.parentModeService = parentModeService;
         this.playSettingsService = playSettingsService;
+        this.quizBankService = quizBankService;
         this.jwtService = jwtService;
         this.clock = clock;
     }
@@ -141,6 +146,13 @@ public class ChildProfileService {
         if (childProfileRepository.countByUserId(user.getId()) >= ChildProfile.MAX_PER_ACCOUNT) {
             throw new InvalidRequestException("Mỗi tài khoản chỉ tạo được tối đa 6 hồ sơ trẻ em.");
         }
+        QuizGrade initialGrade = request != null && request.quizGrade() != null && !request.quizGrade().isBlank()
+                ? QuizGrade.require(request.quizGrade())
+                : QuizGrade.LOP_1;
+        List<Long> requestedSetIds = request == null ? null : request.quizSetIds();
+        if (requestedSetIds != null) {
+            quizBankService.validateAssignableSetIds(user.getId(), requestedSetIds);
+        }
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
         ChildProfile created = new ChildProfile(
                 user.getId(),
@@ -148,12 +160,15 @@ public class ChildProfileService {
                 request == null ? null : request.avatarKey(),
                 request == null ? null : request.dailyMinutes(),
                 request == null ? null : request.unlimited(),
+                initialGrade,
                 now
         );
-        return ChildProfileView.from(childProfileRepository.saveAndFlush(created));
+        ChildProfile saved = childProfileRepository.saveAndFlush(created);
+        quizBankService.assignSetsForChild(user.getId(), saved.getId(), requestedSetIds, true);
+        return ChildProfileView.from(saved);
     }
 
-    // sửa tên, ảnh đại diện (và tùy chọn hạn mức ngày) của hồ sơ bé, bắt buộc gửi kèm mã PIN phụ huynh
+    // sửa tên, ảnh đại diện, hạn mức ngày, khối lớp và bộ câu hỏi của hồ sơ bé, bắt buộc gửi kèm mã PIN phụ huynh
     @Transactional
     public ChildProfileView update(Long profileId, ChildProfileMutationRequest request) {
         Viewer viewer = currentViewer.requireMainProfile(CHILD_MANAGE_FORBIDDEN);
@@ -165,15 +180,27 @@ public class ChildProfileService {
         parentModeService.verifyParentPin(user, request == null ? null : request.pin());
         ChildProfile profile = childProfileRepository.findByIdAndUserId(profileId, user.getId())
                 .orElseThrow(() -> new NotFoundException(PROFILE_NOT_FOUND));
+        QuizGrade updatedGrade = request != null && request.quizGrade() != null && !request.quizGrade().isBlank()
+                ? QuizGrade.require(request.quizGrade())
+                : null;
+        List<Long> requestedSetIds = request == null ? null : request.quizSetIds();
+        if (requestedSetIds != null) {
+            quizBankService.validateAssignableSetIds(user.getId(), requestedSetIds);
+        }
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
         profile.updateDetails(
                 request == null ? null : request.name(),
                 request == null ? null : request.avatarKey(),
                 request == null ? null : request.dailyMinutes(),
                 request == null ? null : request.unlimited(),
+                updatedGrade,
                 now
         );
-        return ChildProfileView.from(childProfileRepository.saveAndFlush(profile));
+        ChildProfile saved = childProfileRepository.saveAndFlush(profile);
+        if (requestedSetIds != null) {
+            quizBankService.assignSetsForChild(user.getId(), saved.getId(), requestedSetIds, false);
+        }
+        return ChildProfileView.from(saved);
     }
 
     // xóa hồ sơ trẻ em kèm dọn sạch lịch sử xem, xem sau, yêu thích, đánh giá và các dữ liệu phụ huynh riêng của bé
@@ -200,6 +227,7 @@ public class ChildProfileService {
         childVipSeriesRepository.deleteByProfileId(profile.getId());
         screenTimeLedgerRepository.deleteByProfileId(profile.getId());
         playSettingsService.deleteForProfile(profile.getId());
+        quizBankService.deleteForProfile(profile.getId());
         childProfileRepository.delete(profile);
         childProfileRepository.flush();
     }

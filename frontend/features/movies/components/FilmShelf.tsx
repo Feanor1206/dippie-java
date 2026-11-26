@@ -1,7 +1,15 @@
 import { YouTubeLink } from '@/components/ui/YouTubeLink';
 import { useOptionalAuth } from '@/lib/context/AuthContext';
 import { Link } from 'react-router';
-import { cleanMediaTitle, formatYear, movieSynopsis, normalizeGenreLabels, resolveRatingSummary } from '@/lib/labels';
+import {
+  cleanMediaTitle,
+  formatYear,
+  movieSynopsis,
+  normalizeGenreLabels,
+  resolveAgeBadge,
+  resolveRatingSummary,
+  toCompactCardArtworkUrl,
+} from '@/lib/labels';
 import { buildMediaItemHref } from '@/lib/services/mediaRouting';
 import { isMediaExternalOnly, resolveExternalYoutubeWatchUrl } from '@/lib/services/playbackSource';
 import { ArtworkImage } from '@/features/series/components/ArtworkImage';
@@ -28,28 +36,49 @@ export function FilmGrid({
   movies,
   search = false,
   loading = false,
+  includeTestId = true,
+  headingLevel,
 }: {
   movies: Movie[];
   search?: boolean;
   loading?: boolean;
+  includeTestId?: boolean;
+  headingLevel?: 'h2' | 'h3';
 }) {
   const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
   const isKidMode = Boolean(auth?.isKidMode);
-  const Title = search ? 'h2' : 'h3';
+  const Title = headingLevel ?? (search ? 'h2' : 'h3');
   return (
-    <div data-testid={search ? 'catalog-results' : undefined} className="film-grid" aria-busy={loading}>
+    <div
+      data-testid={search && includeTestId ? 'catalog-results' : undefined}
+      data-reveal-group=""
+      className="film-grid"
+      aria-busy={loading}
+    >
       {movies.map((movie) => {
         const type = movie.item_type || 'movie';
         const label = filmLabel(movie, type);
         const seriesTitle = (movie.series_title || movie.seriesTitle || '').trim();
         const cleanedTitle = cleanMediaTitle(movie.title);
         const title = cleanedTitle.charAt(0).toLocaleUpperCase('vi') + cleanedTitle.slice(1);
-        const primaryArt =
+        const showSeriesContext =
+          type !== 'series' &&
+          Boolean(seriesTitle) &&
+          seriesTitle.toLocaleLowerCase('vi') !== title.toLocaleLowerCase('vi');
+        const rawPrimaryArt =
           cleanMediaUrl(movie.thumbnailUrl) || cleanMediaUrl(movie.backdrop) || cleanMediaUrl(movie.poster);
-        const posterArt = cleanMediaUrl(movie.poster);
+        const rawPosterArt = cleanMediaUrl(movie.poster);
+        const primaryArt =
+          typeof toCompactCardArtworkUrl === 'function' ? toCompactCardArtworkUrl(rawPrimaryArt) : rawPrimaryArt;
+        const posterArt =
+          typeof toCompactCardArtworkUrl === 'function' ? toCompactCardArtworkUrl(rawPosterArt) : rawPosterArt;
         const fallbackArt = primaryArt && posterArt && posterArt !== primaryArt ? posterArt : null;
         const ratingSummary = resolveRatingSummary(movie);
         const displayGenres = normalizeGenreLabels(movie.genres).slice(0, MAX_VISIBLE_GENRES);
+        const ageBadge =
+          type === 'series' && typeof resolveAgeBadge === 'function'
+            ? resolveAgeBadge(movie.genres, title)
+            : null;
         const externalOnly =
           typeof isMediaExternalOnly === 'function'
             ? isMediaExternalOnly(movie)
@@ -61,7 +90,7 @@ export function FilmGrid({
           : null;
 
         return (
-          <article key={movie.id} className="film-tile group relative overflow-hidden">
+          <article key={movie.id} data-reveal-item="" className="film-tile group relative overflow-hidden">
             <div className="absolute top-2 right-2 z-20">
               <QuickSaveButtons
                 itemId={movie.id}
@@ -92,16 +121,24 @@ export function FilmGrid({
               </ArtworkImage>
 
               <div className="film-tile-body">
-                {seriesTitle && (
+                {showSeriesContext && (
                   <span className="film-series-context truncate" data-testid="film-series-title">
                     {seriesTitle}
                   </span>
                 )}
                 <Title>{title}</Title>
+                {ageBadge && (
+                  <span
+                    data-testid="series-card-age-badge"
+                    className="inline-flex items-center rounded border border-ink/35 bg-[#fef3c7] px-2 py-0.5 text-[0.6875rem] font-bold text-ink"
+                  >
+                    Độ tuổi {ageBadge}
+                  </span>
+                )}
                 {externalOnly && !isKidMode && (
                   <span
                     data-testid="film-external-badge"
-                    className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-900"
+                    className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-amber-900"
                   >
                     Chỉ mở trên YouTube
                   </span>
@@ -161,7 +198,13 @@ export function FilmShelf({
   onResetEmpty?: () => void;
 }) {
   return (
-    <section id="goi-y" data-testid="film-shelf" className="shelf-section" aria-labelledby="recommend-title">
+    <section
+      id="goi-y"
+      data-testid="film-shelf"
+      data-reveal-section=""
+      className="shelf-section"
+      aria-labelledby="recommend-title"
+    >
       <div className="shelf-heading">
         <div>
           <h2 id="recommend-title" className="section-title">

@@ -11,6 +11,7 @@ spring:
         - classpath:screen-time-h2.sql
         - classpath:parent-features-h2.sql
         - classpath:play-features-h2.sql
+        - classpath:quiz-bank-h2.sql
 
 springdoc:
   api-docs:

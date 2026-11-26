@@ -110,10 +110,14 @@ export function PlayFeaturesSettings({
   return (
     <SiteDialog
       title={`Tính năng xem phim · ${profile.name}`}
+      size="lg"
       onClose={onClose}
       busy={busy}
     >
       <form onSubmit={handleSubmit} data-testid="play-features-settings-form" className="space-y-4">
+        <p className="text-base leading-relaxed text-muted">
+          Bật hoặc tắt các hoạt động tương tác giúp {profile.name} nghỉ mắt đúng giờ và ôn bài nhẹ nhàng khi xem hoạt hình.
+        </p>
         {loading ? (
           <p role="status" className="py-4 text-center text-xs text-muted">
             Đang tải cài đặt của bé…
@@ -139,8 +143,8 @@ export function PlayFeaturesSettings({
                 />
                 <span>
                   <span className="block text-xs font-bold text-ink">Dieppie canh giờ nghỉ mắt</span>
-                  <span className="block text-[11px] text-muted">
-                    Dieppie nhắc bé nghỉ mắt khi xem liên tục quá lâu. Bé có thể cho Dieppie ngủ hoặc giải toán để Dieppie khỏe lại.
+                  <span className="block text-[0.6875rem] text-muted">
+                    Dieppie nhắc bé nghỉ mắt khi xem liên tục quá lâu. Bé có thể cho Dieppie ngủ hoặc trả lời 1 câu hỏi để Dieppie khỏe lại.
                   </span>
                 </span>
               </label>
@@ -193,9 +197,9 @@ export function PlayFeaturesSettings({
                 className="mt-1 h-4 w-4 accent-brand"
               />
               <span>
-                <span className="block text-xs font-bold text-ink">Rương báu bay ngang</span>
-                <span className="block text-[11px] text-muted">
-                  Mỗi 5–7 phút xem có rương báu xuất hiện 15 giây, chạm để giải toán nhanh 10 giây nhận +3 phút (combo 3 tặng thêm +1 phút).
+                <span className="block text-sm font-bold text-ink">Rương câu hỏi bất ngờ</span>
+                <span className="block text-xs text-muted">
+                  Mỗi 5–7 phút xem có rương câu hỏi hiện ra trong 15 giây, chạm để trả lời nhanh trong 10 giây nhận +3 phút (trả lời đúng 3 lần liên tiếp tặng thêm +1 phút).
                 </span>
               </span>
             </label>
@@ -210,9 +214,9 @@ export function PlayFeaturesSettings({
                 className="mt-1 h-4 w-4 accent-brand"
               />
               <span>
-                <span className="block text-xs font-bold text-ink">Xếp lại cốt truyện để qua tập</span>
-                <span className="block text-[11px] text-muted">
-                  Sau khi xem hết một tập, bé trả lời nhanh câu hỏi ôn tập để mở khóa tập tiếp theo.
+                <span className="block text-xs font-bold text-ink">Câu hỏi về tập vừa xem</span>
+                <span className="block text-[0.6875rem] text-muted">
+                  Sau khi xem hết một tập, bé trả lời nhanh câu hỏi về tập vừa xem để mở khóa tập tiếp theo.
                 </span>
               </span>
             </label>
@@ -238,7 +242,7 @@ export function PlayFeaturesSettings({
                 className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
               {sessionPin && pin === sessionPin && (
-                <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-brand-dark">
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[0.6875rem] text-brand-dark">
                   <span>Đã tự điền mã PIN vừa xác nhận trong phiên này.</span>
                   <button
                     type="button"
@@ -264,7 +268,7 @@ export function PlayFeaturesSettings({
               </div>
             )}
 
-            <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+            <div className="dialog-sticky-footer flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 disabled={busy}

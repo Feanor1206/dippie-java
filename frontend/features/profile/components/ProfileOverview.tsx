@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
+import * as motion from '@/lib/motion';
 import {
   AlertCircle,
   ArrowRight,
@@ -126,7 +127,7 @@ function MissingItemCard({
     <button
       disabled={pending}
       onClick={onRemove}
-      className={`${isError ? '' : 'mt-3 '}flex min-h-[44px] items-center justify-center gap-1 rounded py-1.5 text-[11px] transition-colors cursor-pointer disabled:opacity-50 ${
+      className={`${isError ? '' : 'mt-3 '}flex min-h-[44px] items-center justify-center gap-1 rounded py-1.5 text-[0.6875rem] transition-colors cursor-pointer disabled:opacity-50 ${
         unconfirmed
           ? 'bg-amber-500/20 text-amber-900 hover:bg-amber-500/30 border border-amber-400/40'
           : 'bg-surface-elevated text-red-900 hover:bg-red-500/20'
@@ -147,19 +148,20 @@ function MissingItemCard({
 
   return (
     <div
+      data-reveal-card=""
       className={`flex flex-col justify-between rounded-lg border ${
         isError ? 'border-amber-900/40' : 'border-ink/30'
       } bg-surface-muted p-4 text-xs`}
     >
       <div>
-        <div className="flex items-center gap-1 text-[11px] text-amber-900 font-semibold mb-1">
+        <div className="flex items-center gap-1 text-[0.6875rem] text-amber-900 font-semibold mb-1">
           <AlertCircle size={12} /> {isError ? 'Lỗi kết nối' : 'Không còn trong kho phim'}
         </div>
         <p className="font-bold text-ink truncate">{item.id}</p>
         {item.rating !== undefined && (
           <p className="text-amber-900 font-semibold mt-1">Điểm bạn chấm: {item.rating}/10</p>
         )}
-        <p className="text-[11px] text-muted mt-1">
+        <p className="text-[0.6875rem] text-muted mt-1">
           {isError
             ? 'Chưa kết nối được máy chủ để tải thông tin phim.'
             : 'Phim này không còn trong kho phim Dippie.'}
@@ -169,7 +171,7 @@ function MissingItemCard({
         <div className="mt-3 flex flex-col gap-1.5">
           <button
             onClick={onRetryFetch}
-            className="flex min-h-[44px] items-center justify-center gap-1 rounded bg-surface-elevated py-1.5 text-[11px] text-muted hover:bg-surface-elevated transition-colors cursor-pointer"
+            className="flex min-h-[44px] items-center justify-center gap-1 rounded bg-surface-elevated py-1.5 text-[0.6875rem] text-muted hover:bg-surface-elevated transition-colors cursor-pointer"
           >
             <RefreshCw size={12} /> Thử tải lại
           </button>
@@ -289,9 +291,12 @@ export function ProfileOverview() {
     activeTab === 'watchlist' ? watchlistItems : activeTab === 'favorites' ? favoriteItems : ratingItems;
   const activeTabConfig = TAB_CONFIG[activeTab];
   const isInitialLoading = isLibraryLoading && watchlist.length === 0 && favorites.length === 0 && ratingsCount === 0;
+  const pageRef = useRef<HTMLElement | null>(null);
+
+  motion.useScrollReveal?.(pageRef, [activeTab, isInitialLoading, activeItems.length]);
 
   return (
-    <main id="main-content" tabIndex={-1} className="page-shell min-h-[75vh] py-8 sm:py-12">
+    <main ref={pageRef} id="main-content" tabIndex={-1} className="page-shell min-h-[75vh] py-8 sm:py-12">
       {status === 'unavailable' && (
         <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-900">
           <div className="flex items-center gap-3">
@@ -309,7 +314,7 @@ export function ProfileOverview() {
         </div>
       )}
 
-      <div className="rounded-xl border border-surface-border bg-surface p-6 sm:p-8">
+      <div data-reveal-section="" className="rounded-xl border border-surface-border bg-surface p-6 sm:p-8">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
             {!isGuestMode && isKidMode && activeProfile ? (
@@ -401,7 +406,7 @@ export function ProfileOverview() {
         </div>
       </div>
 
-      <section className="mt-8">
+      <section data-reveal-section="" className="mt-8">
         <div
           role="tablist"
           aria-label="Thư viện"
@@ -501,7 +506,7 @@ export function ProfileOverview() {
                       className="flex h-56 flex-col items-center justify-center rounded-lg border border-ink/30 bg-surface-muted p-4 text-xs"
                     >
                       <Loader2 size={18} className="animate-spin text-brand-dark mb-2" />
-                      <span className="text-muted text-[11px]">Đang tải…</span>
+                      <span className="text-muted text-[0.6875rem]">Đang tải…</span>
                     </div>
                   );
                 }
@@ -537,7 +542,7 @@ export function ProfileOverview() {
                   <div key={item.id} className="relative group">
                     <MovieCard movie={item.movie} fluid />
                     <div className="mt-1 flex items-center justify-between px-1 text-xs">
-                      <span className="text-muted text-[11px]">Điểm của bạn:</span>
+                      <span className="text-muted text-[0.6875rem]">Điểm của bạn:</span>
                       <div className="flex items-center gap-2">
                         <span className="flex items-center gap-0.5 font-bold text-amber-900">
                           <Star size={11} className="fill-amber-400" /> {item.rating}/10
@@ -545,7 +550,7 @@ export function ProfileOverview() {
                         {unconfirmed && (
                           <span
                             data-testid="rating-unconfirmed-badge"
-                            className="rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-bold text-amber-900 border border-amber-400/30"
+                            className="rounded bg-amber-500/20 px-1 py-0.5 text-[0.625rem] font-bold text-amber-900 border border-amber-400/30"
                             title={isRateIntent ? 'Chưa lưu được điểm' : 'Chưa xóa được điểm'}
                           >
                             {isRateIntent ? 'Chưa lưu' : 'Chưa xóa'}

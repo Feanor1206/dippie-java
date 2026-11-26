@@ -143,7 +143,7 @@ export function AuthModal() {
       aria-labelledby="auth-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4 backdrop-blur-sm animate-fade-in"
     >
-      <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border-2 border-ink bg-paper-white p-6 shadow-brand-lg sm:p-8">
+      <div className="motion-dialog-enter relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border-2 border-ink bg-paper-white p-6 shadow-brand-lg sm:p-8">
         <button
           type="button"
           onClick={closeAuthModal}
@@ -159,14 +159,14 @@ export function AuthModal() {
             <span className="comic-wordmark text-2xl text-ink">Dippie</span>
           </div>
           <h2 id="auth-modal-title" className="mt-2 text-xl font-bold tracking-tight text-ink">
-            {isForgot ? 'Quên mật khẩu' : isLogin ? 'Đăng nhập' : 'Tạo tài khoản gia đình'}
+            {isForgot ? 'Quên mật khẩu' : isLogin ? 'Đăng nhập' : 'Tạo tài khoản Dippie'}
           </h2>
           <p className="mt-1 text-xs text-muted">
             {isForgot
               ? 'Nhận liên kết đặt lại mật khẩu qua email.'
               : isLogin
               ? 'Lưu mục Xem sau, Yêu thích và xem tiếp tập dở trên mọi thiết bị.'
-              : 'Dành cho ba mẹ hoặc người giám hộ chọn và lưu phim cho bé.'}
+              : 'Lưu phim yêu thích trên mọi thiết bị và có thể thêm góc xem riêng cho bé khi cần.'}
           </p>
         </div>
 
@@ -330,7 +330,7 @@ export function AuthModal() {
                   </button>
                 </div>
                 {isRegister && (
-                  <div id="auth-password-hint" className="mt-2 space-y-1.5 text-[11px] text-muted">
+                  <div id="auth-password-hint" className="mt-2 space-y-1.5 text-[0.6875rem] text-muted">
                     <p>{PASSWORD_RULES_HINT} {PASSWORD_STRENGTH_TIP}</p>
                     {passwordStrength && passwordStrength.level !== 'empty' && (
                       <div className="flex items-center gap-2">
@@ -378,7 +378,7 @@ export function AuthModal() {
                       className="mt-0.5 h-5 w-5 shrink-0 accent-[#203328]"
                     />
                     <span className="leading-relaxed">
-                      Tôi là phụ huynh hoặc người giám hộ, đã đọc và đồng ý với Điều khoản sử dụng và Chính sách quyền riêng tư của Dippie.
+                      Tôi từ đủ 18 tuổi (hoặc là phụ huynh/người giám hộ), đã đọc và đồng ý với Điều khoản sử dụng và Chính sách quyền riêng tư của Dippie.
                     </span>
                   </label>
                   <div className="mt-1 flex flex-wrap gap-x-4 pl-8">
@@ -404,7 +404,7 @@ export function AuthModal() {
                 data-testid="login-submit-button"
                 type="submit"
                 disabled={isSubmitting}
-                className="btn-primary w-full justify-center py-2.5 text-xs sm:text-sm font-bold shadow-brand-sm disabled:opacity-50 cursor-pointer"
+                className="btn-primary motion-sheen w-full justify-center py-2.5 text-xs sm:text-sm font-bold shadow-brand-sm disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting ? (
                   <span className="flex items-center gap-2">

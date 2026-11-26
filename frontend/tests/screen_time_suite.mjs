@@ -215,16 +215,19 @@ function loadServiceModule(relativePath, globals = {}) {
 function sampleStatus(overrides = {}) {
   return {
     limited: true,
+    unlimited: false,
     profileId: 10,
     day: '2026-11-26',
     dailyMinutes: 60,
-    mathLevel: 1,
+    quizGrade: 'LOP_1',
+    quizGradeLabel: 'Lớp 1',
     rewardMinutes: 5,
     maxBonusMinutes: 30,
     dailySeconds: 3600,
     watchedSeconds: 600,
     rewardSeconds: 0,
     grantSeconds: 0,
+    bountySeconds: 0,
     remainingSeconds: 3000,
     locked: false,
     bonusCapSeconds: 1800,
@@ -249,20 +252,17 @@ test('screenTimeService formats remaining time, usage duration, and validates pa
   assert.equal(svc.formatUsageDuration(3600), '1 giờ');
 
   assert.equal(
-    svc.validateScreenTimeSettings({ dailyMinutes: 60, mathLevel: 2, rewardMinutes: 5, maxBonusMinutes: 30 }),
+    svc.validateScreenTimeSettings({ dailyMinutes: 60, rewardMinutes: 5, maxBonusMinutes: 30 }),
     null
   );
   assert.ok(
-    svc.validateScreenTimeSettings({ dailyMinutes: 601, mathLevel: 2, rewardMinutes: 5, maxBonusMinutes: 30 })
+    svc.validateScreenTimeSettings({ dailyMinutes: 601, rewardMinutes: 5, maxBonusMinutes: 30 })
   );
   assert.ok(
-    svc.validateScreenTimeSettings({ dailyMinutes: 60, mathLevel: 5, rewardMinutes: 5, maxBonusMinutes: 30 })
+    svc.validateScreenTimeSettings({ dailyMinutes: 60, rewardMinutes: 0, maxBonusMinutes: 30 })
   );
   assert.ok(
-    svc.validateScreenTimeSettings({ dailyMinutes: 60, mathLevel: 1, rewardMinutes: 0, maxBonusMinutes: 30 })
-  );
-  assert.ok(
-    svc.validateScreenTimeSettings({ dailyMinutes: 60, mathLevel: 1, rewardMinutes: 5, maxBonusMinutes: 121 })
+    svc.validateScreenTimeSettings({ dailyMinutes: 60, rewardMinutes: 5, maxBonusMinutes: 121 })
   );
   assert.equal(svc.validateGrantMinutes(15), null);
   assert.ok(svc.validateGrantMinutes(0));
@@ -444,24 +444,36 @@ test('EpisodePlayerPanel shows player chip, pauses video at 0, and displays frie
   const overlay = collectNodes(tree, (n) => n.props?.['data-testid'] === 'screen-time-lock-overlay');
   assert.equal(overlay.length, 1);
   assert.match(collectText(overlay[0]), /Hết giờ xem hôm nay rồi/);
-  const mathBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'open-math-challenge-button');
-  assert.equal(mathBtn.length, 1);
-  assert.match(collectText(mathBtn[0]), /Giải toán để thêm phút/);
+  const quizBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'open-quiz-challenge-button');
+  assert.equal(quizBtn.length, 1);
+  assert.match(collectText(quizBtn[0]), /Trả lời câu hỏi để thêm phút/);
   harness.unmount();
 });
 
-test('ScreenTimeLockOverlay runs full math quiz flow: question, wrong feedback, correct reward and new remaining time', async () => {
+test('ScreenTimeLockOverlay runs full multiple-choice quiz flow: 4 buttons, gentle wrong reveal, fresh question reward and new remaining time', async () => {
   const requests = [];
+  let issueCount = 0;
   const fetchMock = async (url, init = {}) => {
     requests.push({ url, method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null });
     if (url === '/api/users/screen-time/challenge') {
+      issueCount += 1;
       return jsonResponse({
         success: true,
         message: 'Thành công',
         data: {
-          token: 'opaque-token-abc',
+          token: `opaque-token-${issueCount}`,
           question: '7 + 5 = ?',
-          mathLevel: 2,
+          options: [
+            { key: 'A', text: '10' },
+            { key: 'B', text: '11' },
+            { key: 'C', text: '12' },
+            { key: 'D', text: '13' },
+          ],
+          subject: 'TOAN',
+          subjectLabel: 'Toán',
+          grade: 'LOP_1',
+          gradeLabel: 'Lớp 1',
+          setName: 'Toán học',
           rewardMinutes: 5,
           expiresAt: '2026-11-26T10:02:00',
           expiresInSeconds: 120,
@@ -471,12 +483,15 @@ test('ScreenTimeLockOverlay runs full math quiz flow: question, wrong feedback, 
     }
     if (url === '/api/users/screen-time/challenge/answer') {
       const payload = JSON.parse(init.body);
-      if (payload.answer === 9) {
+      if (payload.option !== 'C') {
         return jsonResponse({
           success: true,
-          message: 'Chưa đúng rồi, bé thử tính lại nhé.',
+          message: 'Gần đúng rồi! Đáp án là C: 12 nè',
           data: {
             correct: false,
+            correctOption: 'C',
+            correctText: '12',
+            explanation: '7 + 5 = 12',
             earnedSeconds: 0,
             earnedMinutes: 0,
             bonusCapReached: false,
@@ -489,6 +504,9 @@ test('ScreenTimeLockOverlay runs full math quiz flow: question, wrong feedback, 
         message: 'Đúng rồi! Bé được cộng thêm 5 phút xem phim.',
         data: {
           correct: true,
+          correctOption: 'C',
+          correctText: '12',
+          explanation: '7 + 5 = 12',
           earnedSeconds: 300,
           earnedMinutes: 5,
           bonusCapReached: false,
@@ -507,7 +525,8 @@ test('ScreenTimeLockOverlay runs full math quiz flow: question, wrong feedback, 
     '../features/profiles/components/ScreenTimeLockOverlay.tsx',
     'ScreenTimeLockOverlay',
     {},
-    { fetch: fetchMock }
+    { fetch: fetchMock },
+    new Set(['QuizQuestionCard'])
   );
 
   const props = {
@@ -522,50 +541,52 @@ test('ScreenTimeLockOverlay runs full math quiz flow: question, wrong feedback, 
   };
 
   let tree = harness.render(props);
-  const openBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'open-math-challenge-button')[0];
+  const openBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'open-quiz-challenge-button')[0];
   assert.ok(openBtn);
   openBtn.props.onClick();
   await new Promise((resolve) => setTimeout(resolve, 10));
 
   tree = harness.render(props);
-  const questionNode = collectNodes(tree, (n) => n.props?.['data-testid'] === 'math-challenge-question')[0];
+  const questionNode = collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-challenge-question')[0];
   assert.equal(collectText(questionNode).trim(), '7 + 5 = ?');
+  assert.equal(collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-read-aloud-button').length, 1);
+  assert.equal(collectNodes(tree, (n) => n.type === 'input').length, 0);
 
-  const input = collectNodes(tree, (n) => n.props?.['data-testid'] === 'math-answer-input')[0];
-  input.props.onChange({ target: { value: '9' } });
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-option-A')[0].props.onClick();
+  tree = harness.render(props);
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-confirm-answer-button')[0].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
   tree = harness.render(props);
 
-  const wrongForm = collectNodes(tree, (n) => n.type === 'form')[0];
-  await wrongForm.props.onSubmit({ preventDefault: () => {} });
+  const wrongFeedback = collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-feedback')[0];
+  assert.match(collectText(wrongFeedback), /Gần đúng rồi! Đáp án là C: 12 nè/);
+
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-next-question-button')[0].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
   tree = harness.render(props);
 
-  const wrongFeedback = collectNodes(tree, (n) => n.props?.['data-testid'] === 'math-feedback')[0];
-  assert.match(collectText(wrongFeedback), /Chưa đúng rồi/);
-
-  const retryInput = collectNodes(tree, (n) => n.props?.['data-testid'] === 'math-answer-input')[0];
-  retryInput.props.onChange({ target: { value: '12' } });
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-option-C')[0].props.onClick();
   tree = harness.render(props);
-
-  const rightForm = collectNodes(tree, (n) => n.type === 'form')[0];
-  await rightForm.props.onSubmit({ preventDefault: () => {} });
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-confirm-answer-button')[0].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
   tree = harness.render(props);
 
   assert.equal(updatedStatus?.remainingSeconds, 300);
   assert.equal(updatedStatus?.locked, false);
-  const successFeedback = collectNodes(tree, (n) => n.props?.['data-testid'] === 'math-feedback')[0];
+  const successFeedback = collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-feedback')[0];
   assert.match(collectText(successFeedback), /cộng thêm 5 phút/);
-  const remainingNode = collectNodes(tree, (n) => n.props?.['data-testid'] === 'math-new-remaining')[0];
+  const remainingNode = collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-new-remaining')[0];
   assert.match(collectText(remainingNode), /Còn 5 phút/);
 
-  const continueBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'math-continue-watching')[0];
+  const continueBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-continue-watching')[0];
   assert.ok(continueBtn);
   continueBtn.props.onClick();
   assert.equal(continued, true);
-  assert.equal(requests.length, 3);
+  assert.equal(requests.length, 4);
   harness.unmount();
 });
 
-test('ScreenTimeLockOverlay hides math button and suggests asking a parent when daily bonus cap is reached', () => {
+test('ScreenTimeLockOverlay hides quiz button and suggests asking a parent when daily bonus cap is reached', () => {
   const cappedStatus = sampleStatus({
     remainingSeconds: 0,
     locked: true,
@@ -591,8 +612,8 @@ test('ScreenTimeLockOverlay hides math button and suggests asking a parent when 
   const capNote = collectNodes(tree, (n) => n.props?.['data-testid'] === 'bonus-cap-reached-note');
   assert.equal(capNote.length, 1);
   assert.match(collectText(capNote[0]), /nhờ ba mẹ/i);
-  const mathBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'open-math-challenge-button');
-  assert.equal(mathBtn.length, 0);
+  const quizBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'open-quiz-challenge-button');
+  assert.equal(quizBtn.length, 0);
   harness.unmount();
 });
 
@@ -675,6 +696,12 @@ test('ChildProfilesSection shows today usage summary, edits screen-time settings
     if (url === '/api/users/profiles/screen-time' && method === 'GET') {
       return jsonResponse({ success: true, message: 'Thành công', data: initialOverview });
     }
+    if (url === '/api/users/quiz/sets' && method === 'GET') {
+      return jsonResponse({ success: true, message: 'OK', data: { sets: [], ownSetCount: 0, maxSetsPerAccount: 20, maxQuestionsPerSet: 500, maxCsvBytes: 1048576, grades: [], subjects: [] } });
+    }
+    if (url === '/api/users/quiz/profiles' && method === 'GET') {
+      return jsonResponse({ success: true, message: 'OK', data: [] });
+    }
     if (url === '/api/users/profiles/10/screen-time' && method === 'PUT') {
       return jsonResponse({
         success: true,
@@ -685,7 +712,6 @@ test('ChildProfilesSection shows today usage summary, edits screen-time settings
           avatarKey: 'bunny',
           status: sampleStatus({
             dailyMinutes: body.dailyMinutes,
-            mathLevel: body.mathLevel,
             rewardMinutes: body.rewardMinutes,
             maxBonusMinutes: body.maxBonusMinutes,
             watchedSeconds: 900,
@@ -724,7 +750,7 @@ test('ChildProfilesSection shows today usage summary, edits screen-time settings
         useAuth: () => ({
           token: 'parent-jwt',
           parentModeEnabled: true,
-          childProfiles: [{ id: 10, name: 'Bé Bông', avatarKey: 'bunny', dailyMinutes: 60, mathLevel: 1, rewardMinutes: 5, maxBonusMinutes: 30, createdAt: '' }],
+          childProfiles: [{ id: 10, name: 'Bé Bông', avatarKey: 'bunny', dailyMinutes: 60, quizGrade: 'LOP_1', quizGradeLabel: 'Lớp 1', rewardMinutes: 5, maxBonusMinutes: 30, createdAt: '' }],
           refreshProfiles: async () => null,
           selectChildProfile: async () => ({ success: true }),
         }),
@@ -750,7 +776,6 @@ test('ChildProfilesSection shows today usage summary, edits screen-time settings
   tree = harness.render();
 
   collectNodes(tree, (n) => n.props?.['data-testid'] === 'screen-time-daily-minutes-input')[0].props.onChange({ target: { value: '45' } });
-  collectNodes(tree, (n) => n.props?.['data-testid'] === 'screen-time-math-level-select')[0].props.onChange({ target: { value: '3' } });
   collectNodes(tree, (n) => n.props?.['data-testid'] === 'screen-time-reward-minutes-input')[0].props.onChange({ target: { value: '10' } });
   collectNodes(tree, (n) => n.props?.['data-testid'] === 'screen-time-max-bonus-input')[0].props.onChange({ target: { value: '40' } });
   collectNodes(tree, (n) => n.props?.['data-testid'] === 'screen-time-settings-pin-input')[0].props.onChange({ target: { value: '2468' } });
@@ -764,7 +789,6 @@ test('ChildProfilesSection shows today usage summary, edits screen-time settings
     pin: '2468',
     dailyMinutes: 45,
     unlimited: false,
-    mathLevel: 3,
     rewardMinutes: 10,
     maxBonusMinutes: 40,
   });
@@ -814,6 +838,12 @@ test('ChildProfilesSection supports daily minutes on create, shows card presets,
           },
         ],
       });
+    }
+    if (url === '/api/users/quiz/sets' && method === 'GET') {
+      return jsonResponse({ success: true, message: 'OK', data: { sets: [], ownSetCount: 0, maxSetsPerAccount: 20, maxQuestionsPerSet: 500, maxCsvBytes: 1048576, grades: [], subjects: [] } });
+    }
+    if (url === '/api/users/quiz/profiles' && method === 'GET') {
+      return jsonResponse({ success: true, message: 'OK', data: [] });
     }
     if (url === '/api/users/profiles' && method === 'POST') {
       return jsonResponse(
@@ -878,9 +908,7 @@ test('ChildProfilesSection supports daily minutes on create, shows card presets,
 
   const limitLabel = collectNodes(tree, (n) => n.props?.['data-testid'] === 'child-daily-limit-10')[0];
   assert.match(collectText(limitLabel).replace(/\s+/g, ' '), /Thời gian xem mỗi ngày: 60 phút/);
-  assert.equal(collectNodes(tree, (n) => n.props?.['data-testid'] === 'preset-daily-10-30').length, 1);
-  assert.equal(collectNodes(tree, (n) => n.props?.['data-testid'] === 'preset-daily-10-90').length, 1);
-  assert.equal(collectNodes(tree, (n) => n.props?.['data-testid'] === 'preset-daily-10-120').length, 1);
+  assert.equal(collectNodes(tree, (n) => n.props?.['data-testid'] === 'grant-time-button-10').length, 1);
 
   collectNodes(tree, (n) => n.props?.['data-testid'] === 'add-child-profile-button')[0].props.onClick();
   tree = harness.render();
@@ -898,9 +926,12 @@ test('ChildProfilesSection supports daily minutes on create, shows card presets,
     avatarKey: 'bear',
     dailyMinutes: 90,
     unlimited: false,
+    quizGrade: 'LOP_1',
   });
 
-  collectNodes(tree, (n) => n.props?.['data-testid'] === 'preset-unlimited-10')[0].props.onClick();
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'screen-time-settings-button-10')[0].props.onClick();
+  tree = harness.render();
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'screen-time-unlimited-toggle')[0].props.onClick();
   tree = harness.render();
   collectNodes(tree, (n) => n.props?.['data-testid'] === 'screen-time-settings-pin-input')[0].props.onChange({ target: { value: '1234' } });
   tree = harness.render();

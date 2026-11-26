@@ -1,6 +1,6 @@
 package com.dippie.service.vip;
 
-import com.dippie.dto.profile.MathChallengeAnswerRequest;
+import com.dippie.dto.quiz.QuizAnswerRequest;
 import com.dippie.dto.vip.ChildProfileVipSeriesView;
 import com.dippie.dto.vip.KidVipStatusResponse;
 import com.dippie.dto.vip.UpdateVipSeriesRequest;
@@ -13,8 +13,9 @@ import com.dippie.exception.UnauthorizedException;
 import com.dippie.exception.VipEpisodeLockedException;
 import com.dippie.model.catalog.CatalogEpisode;
 import com.dippie.model.profile.ChildProfile;
-import com.dippie.model.profile.MathChallengeGenerator;
 import com.dippie.model.profile.ScreenTimeSummary;
+import com.dippie.model.quiz.QuizChallengeContext;
+import com.dippie.model.quiz.QuizGrade;
 import com.dippie.model.user.User;
 import com.dippie.model.vip.ChildVipEpisodeUnlock;
 import com.dippie.model.vip.ChildVipSeries;
@@ -27,30 +28,27 @@ import com.dippie.repository.vip.ChildVipSeriesRepository;
 import com.dippie.security.CurrentViewer;
 import com.dippie.security.Viewer;
 import com.dippie.service.catalog.CatalogVisibility;
-import com.dippie.service.profile.MathChallengeRateLimiter;
-import com.dippie.service.profile.MathChallengeTokenCodec;
 import com.dippie.service.profile.ParentModeService;
+import com.dippie.service.quiz.QuizRateLimiter;
+import com.dippie.service.quiz.QuizSelectionService;
+import com.dippie.service.quiz.QuizTokenCodec;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-// quản lý phim bộ VIP theo từng bé: phụ huynh gắn cờ VIP, bé giải 1 bài toán khó hơn 1 bậc (tối đa mức 4) để mở khóa tập trong ngày
+// quản lý phim bộ VIP theo từng bé: phụ huynh gắn cờ VIP, bé trả lời 1 câu hỏi khó hơn (lớp kế tiếp hoặc cao nhất) để mở khóa tập trong ngày
 @Service
 public class VipTitleService {
 
@@ -59,8 +57,7 @@ public class VipTitleService {
     private static final String CHILD_ONLY_MESSAGE = "Mở khóa tập phim VIP chỉ áp dụng cho hồ sơ trẻ em.";
     private static final String EPISODE_NOT_FOUND = "Không tìm thấy tập phim này.";
     private static final String VIP_LOCKED_MESSAGE =
-            "Tập phim VIP đang khóa. Bé giải một bài toán để mở khóa tập này hôm nay nhé.";
-    private static final String TOKEN_USED_MESSAGE = "Câu hỏi này đã được trả lời rồi. Bé lấy câu mới nhé.";
+            "Tập phim VIP đang khóa. Bé trả lời đúng một câu hỏi thử thách để mở khóa tập này hôm nay nhé.";
 
     private final CurrentViewer currentViewer;
     private final UserRepository userRepository;
@@ -71,12 +68,9 @@ public class VipTitleService {
     private final ChildVipSeriesRepository vipSeriesRepository;
     private final ChildVipEpisodeUnlockRepository vipUnlockRepository;
     private final ParentModeService parentModeService;
-    private final MathChallengeTokenCodec tokenCodec;
-    private final MathChallengeRateLimiter rateLimiter;
+    private final QuizSelectionService quizSelectionService;
+    private final QuizRateLimiter rateLimiter;
     private final Clock clock;
-    private final MathChallengeGenerator generator = new MathChallengeGenerator();
-    private final Map<String, Instant> usedTokenIds = new LinkedHashMap<>();
-    private final Object usedTokensLock = new Object();
 
     public VipTitleService(
             CurrentViewer currentViewer,
@@ -88,8 +82,8 @@ public class VipTitleService {
             ChildVipSeriesRepository vipSeriesRepository,
             ChildVipEpisodeUnlockRepository vipUnlockRepository,
             ParentModeService parentModeService,
-            MathChallengeTokenCodec tokenCodec,
-            MathChallengeRateLimiter rateLimiter,
+            QuizSelectionService quizSelectionService,
+            QuizRateLimiter rateLimiter,
             Clock clock
     ) {
         this.currentViewer = currentViewer;
@@ -101,14 +95,14 @@ public class VipTitleService {
         this.vipSeriesRepository = vipSeriesRepository;
         this.vipUnlockRepository = vipUnlockRepository;
         this.parentModeService = parentModeService;
-        this.tokenCodec = tokenCodec;
+        this.quizSelectionService = quizSelectionService;
         this.rateLimiter = rateLimiter;
         this.clock = clock;
     }
 
-    // mức toán cho phim VIP luôn tăng thêm 1 bậc so với mức hiện tại của bé, trần là mức 4
-    public static int requiredVipMathLevel(int childMathLevel) {
-        return Math.min(4, Math.max(1, childMathLevel) + 1);
+    // lớp thử thách VIP luôn là lớp kế tiếp so với lớp hiện tại của bé, cao nhất là Lớp 5
+    public static QuizGrade requiredVipGrade(QuizGrade childGrade) {
+        return (childGrade == null ? QuizGrade.LOP_1 : childGrade).nextGrade();
     }
 
     // phụ huynh xem danh sách bộ phim VIP đã gắn cho từng hồ sơ bé
@@ -130,14 +124,20 @@ public class VipTitleService {
             seriesByProfile.computeIfAbsent(row.getProfileId(), ignored -> new ArrayList<>()).add(row.getSeriesId());
         }
         return profiles.stream()
-                .map(profile -> new ChildProfileVipSeriesView(
-                        profile.getId(),
-                        profile.getName(),
-                        profile.getAvatarKey(),
-                        profile.getMathLevel(),
-                        requiredVipMathLevel(profile.getMathLevel()),
-                        List.copyOf(seriesByProfile.getOrDefault(profile.getId(), List.of()))
-                ))
+                .map(profile -> {
+                    QuizGrade grade = profile.getQuizGrade();
+                    QuizGrade vipGrade = requiredVipGrade(grade);
+                    return new ChildProfileVipSeriesView(
+                            profile.getId(),
+                            profile.getName(),
+                            profile.getAvatarKey(),
+                            grade.name(),
+                            grade.label(),
+                            vipGrade.name(),
+                            vipGrade.label(),
+                            List.copyOf(seriesByProfile.getOrDefault(profile.getId(), List.of()))
+                    );
+                })
                 .toList();
     }
 
@@ -178,12 +178,16 @@ public class VipTitleService {
                     .toList();
             vipSeriesRepository.saveAllAndFlush(rows);
         }
+        QuizGrade grade = profile.getQuizGrade();
+        QuizGrade vipGrade = requiredVipGrade(grade);
         return new ChildProfileVipSeriesView(
                 profile.getId(),
                 profile.getName(),
                 profile.getAvatarKey(),
-                profile.getMathLevel(),
-                requiredVipMathLevel(profile.getMathLevel()),
+                grade.name(),
+                grade.label(),
+                vipGrade.name(),
+                vipGrade.label(),
                 List.copyOf(cleanSeriesIds)
         );
     }
@@ -206,17 +210,21 @@ public class VipTitleService {
                 .stream()
                 .map(ChildVipEpisodeUnlock::getEpisodeId)
                 .toList();
+        QuizGrade grade = profile.getQuizGrade();
+        QuizGrade vipGrade = requiredVipGrade(grade);
         return new KidVipStatusResponse(
                 profile.getId(),
                 today,
-                profile.getMathLevel(),
-                requiredVipMathLevel(profile.getMathLevel()),
+                grade.name(),
+                grade.label(),
+                vipGrade.name(),
+                vipGrade.label(),
                 vipSeriesIds,
                 unlockedEpisodeIds
         );
     }
 
-    // phát đề toán mức (mathLevel + 1, tối đa 4) gắn token v2 khóa cứng vào đúng tập VIP và hồ sơ bé
+    // phát câu hỏi VIP ở lớp khó hơn gắn token khóa cứng vào đúng tập phim và hồ sơ bé
     @Transactional(readOnly = true)
     public VipChallengeResponse issueEpisodeChallenge(String episodeId) {
         Viewer viewer = currentViewer.require();
@@ -236,52 +244,38 @@ public class VipTitleService {
             throw new ConflictException("Tập phim VIP này đã được mở khóa hôm nay rồi.");
         }
 
-        int vipLevel = requiredVipMathLevel(profile.getMathLevel());
-        MathChallengeGenerator.MathQuestion generated = generator.generate(vipLevel);
-        MathChallengeTokenCodec.IssuedToken issued = tokenCodec.issueScoped(
-                profile.getId(),
-                generated.answer(),
-                generated.level(),
-                scopeForEpisode(episode.getId())
+        QuizSelectionService.IssuedQuizChallenge issued = quizSelectionService.issueForChild(
+                profile,
+                QuizChallengeContext.VIP_UNLOCK,
+                scopeForEpisode(episode.getId()),
+                QuizTokenCodec.STANDARD_TTL,
+                true
         );
-        LocalDateTime expiresAtUtc = LocalDateTime.ofInstant(issued.expiresAt(), ZoneOffset.UTC)
-                .truncatedTo(ChronoUnit.SECONDS);
         return new VipChallengeResponse(
                 issued.token(),
                 episode.getId(),
                 episode.getSeriesId(),
-                generated.question(),
-                generated.level(),
-                expiresAtUtc,
-                MathChallengeTokenCodec.TOKEN_TTL.toSeconds()
+                issued.question(),
+                issued.options(),
+                issued.subject().name(),
+                issued.subject().label(),
+                issued.grade().name(),
+                issued.grade().label(),
+                issued.setName(),
+                issued.expiresAt(),
+                issued.expiresInSeconds()
         );
     }
 
-    // chấm đáp án mở khóa VIP bằng token ký HMAC 1 lần, đúng thì mở đúng tập này cho hết hôm nay
+    // chấm lựa chọn mở khóa VIP bằng token ký HMAC dùng 1 lần, đúng thì mở đúng tập này cho hết hôm nay
     @Transactional
-    public UnlockOutcome submitEpisodeUnlock(String episodeId, MathChallengeAnswerRequest request) {
+    public UnlockOutcome submitEpisodeUnlock(String episodeId, QuizAnswerRequest request) {
         Viewer viewer = currentViewer.require();
         if (!viewer.isChildProfile()) {
             throw new InvalidRequestException(CHILD_ONLY_MESSAGE);
         }
         Long profileId = viewer.profileId();
         rateLimiter.ensureNotLocked(profileId);
-
-        Integer suppliedAnswer = request == null ? null : request.answer();
-        if (suppliedAnswer == null) {
-            throw new InvalidRequestException("Bé hãy nhập đáp án bằng số nhé.");
-        }
-        MathChallengeTokenCodec.DecodedScopedToken decoded = tokenCodec.decodeScoped(request.token())
-                .orElseThrow(() -> new InvalidRequestException("Câu hỏi không hợp lệ hoặc đã hết hạn. Bé lấy câu mới nhé."));
-        Instant nowInstant = clock.instant();
-        if (decoded.profileId() != profileId
-                || !decoded.expiresAt().isAfter(nowInstant)
-                || !scopeForEpisode(episodeId).equals(decoded.scope())) {
-            throw new InvalidRequestException("Câu hỏi đã hết hạn hoặc không thuộc tập phim này. Bé lấy câu mới nhé.");
-        }
-        if (isTokenUsed(decoded.tokenId(), nowInstant)) {
-            throw new InvalidRequestException(TOKEN_USED_MESSAGE);
-        }
 
         ChildProfile profile = childProfileRepository.findByIdAndUserIdForUpdate(profileId, viewer.userId())
                 .orElseThrow(() -> new UnauthorizedException(LOGIN_REQUIRED));
@@ -291,21 +285,30 @@ public class VipTitleService {
         if (!vipSeriesRepository.existsByProfileIdAndSeriesId(profile.getId(), episode.getSeriesId())) {
             throw new InvalidRequestException("Tập phim này không cần mở khóa VIP.");
         }
-        if (decoded.level() < requiredVipMathLevel(profile.getMathLevel())) {
-            throw new InvalidRequestException("Cấp độ bài toán đã thay đổi. Bé lấy câu hỏi mới nhé.");
-        }
+
+        QuizSelectionService.VerifiedAnswer verified = quizSelectionService.verifyAndRecordAnswer(
+                profileId,
+                QuizChallengeContext.VIP_UNLOCK,
+                scopeForEpisode(episode.getId()),
+                null,
+                request,
+                true
+        );
 
         LocalDate today = ScreenTimeSummary.todayVietnam(clock);
-        if (suppliedAnswer != decoded.answer()) {
-            rateLimiter.recordFailure(profileId);
+        if (!verified.correct()) {
             return new UnlockOutcome(
-                    new VipUnlockResponse(false, false, episode.getId(), today),
-                    "Chưa đúng rồi, bé thử tính lại nhé."
+                    new VipUnlockResponse(
+                            false,
+                            false,
+                            episode.getId(),
+                            today,
+                            verified.correctOption(),
+                            verified.correctText(),
+                            verified.explanation()
+                    ),
+                    verified.gentleWrongMessage()
             );
-        }
-
-        if (!tryRedeemToken(decoded.tokenId(), decoded.expiresAt(), nowInstant)) {
-            throw new InvalidRequestException(TOKEN_USED_MESSAGE);
         }
 
         if (!vipUnlockRepository.existsByProfileIdAndEpisodeIdAndUnlockDay(profile.getId(), episode.getId(), today)) {
@@ -317,7 +320,15 @@ public class VipTitleService {
             }
         }
         return new UnlockOutcome(
-                new VipUnlockResponse(true, true, episode.getId(), today),
+                new VipUnlockResponse(
+                        true,
+                        true,
+                        episode.getId(),
+                        today,
+                        verified.correctOption(),
+                        verified.correctText(),
+                        verified.explanation()
+                ),
                 "Giỏi lắm! Tập phim VIP đã được mở khóa cho hôm nay."
         );
     }
@@ -373,41 +384,8 @@ public class VipTitleService {
         throw new VipEpisodeLockedException(VIP_LOCKED_MESSAGE);
     }
 
-    public void resetUsedTokens() {
-        synchronized (usedTokensLock) {
-            usedTokenIds.clear();
-        }
-    }
-
     private static String scopeForEpisode(String episodeId) {
         return "vip:" + episodeId;
-    }
-
-    private boolean isTokenUsed(String tokenId, Instant now) {
-        synchronized (usedTokensLock) {
-            pruneExpired(now);
-            return usedTokenIds.containsKey(tokenId);
-        }
-    }
-
-    private boolean tryRedeemToken(String tokenId, Instant expiresAt, Instant now) {
-        synchronized (usedTokensLock) {
-            pruneExpired(now);
-            if (usedTokenIds.containsKey(tokenId)) {
-                return false;
-            }
-            usedTokenIds.put(tokenId, expiresAt);
-            return true;
-        }
-    }
-
-    private void pruneExpired(Instant now) {
-        Iterator<Map.Entry<String, Instant>> iterator = usedTokenIds.entrySet().iterator();
-        while (iterator.hasNext()) {
-            if (!iterator.next().getValue().isAfter(now)) {
-                iterator.remove();
-            }
-        }
     }
 
     public record UnlockOutcome(VipUnlockResponse response, String message) {

@@ -1,16 +1,18 @@
 package com.dippie.model.profile;
 
+import com.dippie.model.quiz.QuizGrade;
+
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 
-// tổng hợp số giây đã xem, thưởng toán, ba mẹ cho thêm, thưởng nhiệm vụ và số giây còn lại trong ngày theo giờ Việt Nam
+// tổng hợp số giây đã xem, thưởng câu hỏi, ba mẹ cho thêm, thưởng nhiệm vụ và số giây còn lại trong ngày theo giờ Việt Nam
 public record ScreenTimeSummary(
         Long profileId,
         LocalDate day,
         Integer dailyMinutes,
         boolean unlimited,
-        int mathLevel,
+        QuizGrade quizGrade,
         int rewardMinutes,
         int maxBonusMinutes,
         long dailySeconds,
@@ -40,7 +42,7 @@ public record ScreenTimeSummary(
         return of(profile, day, watchedSeconds, rewardSeconds, grantSeconds, 0L);
     }
 
-    // tính phần còn lại theo công thức hạn mức ngày + thưởng toán + ba mẹ cho + thưởng nhiệm vụ - đã xem
+    // tính phần còn lại theo công thức hạn mức ngày + thưởng câu hỏi + ba mẹ cho + thưởng nhiệm vụ - đã xem
     public static ScreenTimeSummary of(
             ChildProfile profile,
             LocalDate day,
@@ -66,7 +68,7 @@ public record ScreenTimeSummary(
                 day,
                 profile.getDailyMinutes(),
                 unlimited,
-                profile.getMathLevel(),
+                profile.getQuizGrade(),
                 profile.getRewardMinutes(),
                 profile.getMaxBonusMinutes(),
                 dailySeconds,

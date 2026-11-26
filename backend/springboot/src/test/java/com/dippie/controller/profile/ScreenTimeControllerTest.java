@@ -11,15 +11,20 @@ import com.dippie.repository.catalog.CatalogMediaAssetRepository;
 import com.dippie.repository.catalog.CatalogSeriesRepository;
 import com.dippie.repository.media.MediaAssetRepository;
 import com.dippie.repository.movie.MovieRepository;
+import com.dippie.model.quiz.QuizChallengeContext;
+import com.dippie.model.quiz.QuizOptionKey;
 import com.dippie.repository.profile.ChildProfileRepository;
 import com.dippie.repository.profile.ScreenTimeLedgerRepository;
 import com.dippie.repository.progress.WatchProgressRepository;
+import com.dippie.repository.quiz.ChildQuizSetRepository;
+import com.dippie.repository.quiz.QuizAttemptRepository;
 import com.dippie.repository.user.UserRepository;
 import com.dippie.security.LoginRateLimiter;
 import com.dippie.service.catalog.CatalogReadModelCache;
-import com.dippie.service.profile.MathChallengeRateLimiter;
-import com.dippie.service.profile.MathChallengeService;
 import com.dippie.service.profile.ParentPinRateLimiter;
+import com.dippie.service.quiz.QuizRateLimiter;
+import com.dippie.service.quiz.QuizSelectionService;
+import com.dippie.service.quiz.QuizTokenCodec;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -107,8 +112,11 @@ class ScreenTimeControllerTest {
     private final CatalogReadModelCache catalogReadModelCache;
     private final LoginRateLimiter loginRateLimiter;
     private final ParentPinRateLimiter parentPinRateLimiter;
-    private final MathChallengeRateLimiter mathChallengeRateLimiter;
-    private final MathChallengeService mathChallengeService;
+    private final QuizRateLimiter quizRateLimiter;
+    private final QuizTokenCodec quizTokenCodec;
+    private final QuizSelectionService quizSelectionService;
+    private final ChildQuizSetRepository childQuizSetRepository;
+    private final QuizAttemptRepository quizAttemptRepository;
 
     ScreenTimeControllerTest(
             MockMvc mockMvc,
@@ -128,8 +136,11 @@ class ScreenTimeControllerTest {
             CatalogReadModelCache catalogReadModelCache,
             LoginRateLimiter loginRateLimiter,
             ParentPinRateLimiter parentPinRateLimiter,
-            MathChallengeRateLimiter mathChallengeRateLimiter,
-            MathChallengeService mathChallengeService
+            QuizRateLimiter quizRateLimiter,
+            QuizTokenCodec quizTokenCodec,
+            QuizSelectionService quizSelectionService,
+            ChildQuizSetRepository childQuizSetRepository,
+            QuizAttemptRepository quizAttemptRepository
     ) {
         this.mockMvc = mockMvc;
         this.objectMapper = objectMapper;
@@ -148,8 +159,11 @@ class ScreenTimeControllerTest {
         this.catalogReadModelCache = catalogReadModelCache;
         this.loginRateLimiter = loginRateLimiter;
         this.parentPinRateLimiter = parentPinRateLimiter;
-        this.mathChallengeRateLimiter = mathChallengeRateLimiter;
-        this.mathChallengeService = mathChallengeService;
+        this.quizRateLimiter = quizRateLimiter;
+        this.quizTokenCodec = quizTokenCodec;
+        this.quizSelectionService = quizSelectionService;
+        this.childQuizSetRepository = childQuizSetRepository;
+        this.quizAttemptRepository = quizAttemptRepository;
     }
 
     @BeforeEach
@@ -157,8 +171,11 @@ class ScreenTimeControllerTest {
         clock.set(Instant.parse("2026-11-26T10:00:00Z"));
         loginRateLimiter.reset();
         parentPinRateLimiter.reset();
-        mathChallengeRateLimiter.reset();
-        mathChallengeService.resetUsedTokens();
+        quizRateLimiter.reset();
+        quizTokenCodec.resetUsedTokens();
+        quizSelectionService.resetRecentIssued();
+        quizAttemptRepository.deleteAll();
+        childQuizSetRepository.deleteAll();
         ledgerRepository.deleteAll();
         watchProgressRepository.deleteAll();
         childProfileRepository.deleteAll();
@@ -191,7 +208,6 @@ class ScreenTimeControllerTest {
                         .content(json(Map.of(
                                 "pin", "1234",
                                 "dailyMinutes", 1,
-                                "mathLevel", 1,
                                 "rewardMinutes", 5,
                                 "maxBonusMinutes", 30
                         ))))
@@ -310,23 +326,27 @@ class ScreenTimeControllerTest {
                 .andExpect(status().isOk());
     }
 
-    // test giải toán cộng phút, chống dùng lại token, hết hạn 2 phút, khóa hồ sơ khác, trần thưởng ngày và giới hạn 10 lần sai
+    // test trắc nghiệm cộng phút, chống dùng lại token (kể cả sau khi trả lời sai), hết hạn 2 phút, khóa hồ sơ khác, trần thưởng ngày và giới hạn 10 lần sai
     @Test
-    void enforcesMathChallengeSingleUseExpiryProfileBindingBonusCapAndWrongAnswerLimit() throws Exception {
+    void enforcesQuizChallengeSingleUseExpiryProfileBindingBonusCapAndWrongAnswerLimit() throws Exception {
         seedPlayableCatalogWithFile();
         String mainToken = registerUser("mathmom", "mathmom@example.com", "secret123", "Mẹ Na");
         enableParentMode(mainToken, "4321");
         long child1Id = createChildProfile(mainToken, "4321", "Bé Na", "cat");
         long child2Id = createChildProfile(mainToken, "4321", "Bé Bi", "dino");
 
-        // cấu hình child1: 0 phút mặc định (khóa sẵn), mức 4 (nhân/chia), thưởng 10 phút/câu, trần 15 phút/ngày
+        // cấu hình child1: 0 phút mặc định (khóa sẵn), lớp 3, thưởng 10 phút/câu, trần 15 phút/ngày
+        mockMvc.perform(post("/api/users/quiz/profiles/" + child1Id + "/grade")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("pin", "4321", "grade", "LOP_3"))))
+                .andExpect(status().isOk());
         mockMvc.perform(put("/api/users/profiles/" + child1Id + "/screen-time")
                         .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of(
                                 "pin", "4321",
                                 "dailyMinutes", 0,
-                                "mathLevel", 4,
                                 "rewardMinutes", 10,
                                 "maxBonusMinutes", 15
                         ))))
@@ -340,42 +360,56 @@ class ScreenTimeControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token)))
                 .andExpect(status().isLocked());
 
-        // lấy câu hỏi 1, response tuyệt đối không chứa trường answer
+        // lấy câu hỏi 1: có đúng 4 lựa chọn A-D và tuyệt đối không lộ đáp án đúng
         MvcResult challengeRes1 = mockMvc.perform(get("/api/users/screen-time/challenge")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.token").isNotEmpty())
                 .andExpect(jsonPath("$.data.question").isNotEmpty())
-                .andExpect(jsonPath("$.data.mathLevel").value(4))
+                .andExpect(jsonPath("$.data.options.length()").value(4))
+                .andExpect(jsonPath("$.data.grade").value("LOP_3"))
                 .andExpect(jsonPath("$.data.expiresInSeconds").value(120))
                 .andExpect(jsonPath("$.data.answer").doesNotExist())
+                .andExpect(jsonPath("$.data.correctOption").doesNotExist())
                 .andReturn();
         JsonNode ch1 = objectMapper.readTree(challengeRes1.getResponse().getContentAsString()).path("data");
         String token1 = ch1.path("token").asText();
-        int answer1 = solveQuestion(ch1.path("question").asText());
+        QuizOptionKey correct1 = decodeCorrectOption(token1);
+        QuizOptionKey wrong1 = pickWrongOption(correct1);
 
         // bé 2 dùng token của bé 1 bị từ chối 400
         mockMvc.perform(post("/api/users/screen-time/challenge/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child2Token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", token1, "answer", answer1))))
+                        .content(json(Map.of("token", token1, "option", correct1.name()))))
                 .andExpect(status().isBadRequest());
 
-        // nộp đáp án sai -> không cộng phút
+        // nộp sai -> không cộng phút, hiện lời nhắc nhẹ kèm đáp án đúng và khóa luôn token1 để không nộp lại được
         mockMvc.perform(post("/api/users/screen-time/challenge/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", token1, "answer", answer1 + 1))))
+                        .content(json(Map.of("token", token1, "option", wrong1.name()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.correct").value(false))
+                .andExpect(jsonPath("$.data.correctOption").value(correct1.name()))
                 .andExpect(jsonPath("$.data.earnedSeconds").value(0))
-                .andExpect(jsonPath("$.data.status.remainingSeconds").value(0));
+                .andExpect(jsonPath("$.data.status.remainingSeconds").value(0))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("Gần đúng rồi! Đáp án là " + correct1.name() + ":")));
 
-        // nộp đúng -> được +10 phút (600s) và mở khóa xem phim ngay
         mockMvc.perform(post("/api/users/screen-time/challenge/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", token1, "answer", answer1))))
+                        .content(json(Map.of("token", token1, "option", correct1.name()))))
+                .andExpect(status().isBadRequest());
+
+        // lấy câu mới và nộp đúng -> được +10 phút (600s) và mở khóa xem phim ngay
+        JsonNode ch1b = fetchChallenge(child1Token);
+        String token1b = ch1b.path("token").asText();
+        QuizOptionKey correct1b = decodeCorrectOption(token1b);
+        mockMvc.perform(post("/api/users/screen-time/challenge/answer")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("token", token1b, "option", correct1b.name()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.correct").value(true))
                 .andExpect(jsonPath("$.data.earnedSeconds").value(600))
@@ -388,37 +422,39 @@ class ScreenTimeControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token)))
                 .andExpect(status().isOk());
 
-        // dùng lại token1 lần nữa -> bị chặn 400 không cho ăn thưởng 2 lần
+        // dùng lại token1b lần nữa -> bị chặn 400 không cho ăn thưởng 2 lần
         mockMvc.perform(post("/api/users/screen-time/challenge/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", token1, "answer", answer1))))
+                        .content(json(Map.of("token", token1b, "option", correct1b.name()))))
                 .andExpect(status().isBadRequest());
-        assertThat(mathChallengeService.trackedUsedTokenCount()).isEqualTo(1);
+        assertThat(quizTokenCodec.trackedUsedTokenCount()).isEqualTo(2);
 
-        // lấy trước 2 token (token2 và token3) rồi test hết hạn 2 phút trên token3 trước
+        // lấy câu hỏi rồi tua quá 2 phút -> hết hạn bị 400 và dọn token cũ đã hết hạn
         JsonNode chExpired = fetchChallenge(child1Token);
+        String expiredToken = chExpired.path("token").asText();
         clock.advance(Duration.ofSeconds(121));
         mockMvc.perform(post("/api/users/screen-time/challenge/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of(
-                                "token", chExpired.path("token").asText(),
-                                "answer", solveQuestion(chExpired.path("question").asText())
+                                "token", expiredToken,
+                                "option", decodeCorrectOption(expiredToken).name()
                         ))))
                 .andExpect(status().isBadRequest());
-        // token1 cũng đã quá 2 phút nên bị dọn khỏi bộ nhớ lưu token đã dùng
-        assertThat(mathChallengeService.trackedUsedTokenCount()).isZero();
+        assertThat(quizTokenCodec.trackedUsedTokenCount()).isZero();
 
         // lấy trước 2 token cùng lúc để kiểm tra kẹp trần thưởng 15 phút/ngày (còn lại đúng 5 phút)
         JsonNode ch2 = fetchChallenge(child1Token);
         JsonNode ch3 = fetchChallenge(child1Token);
+        String token2 = ch2.path("token").asText();
+        String token3 = ch3.path("token").asText();
         mockMvc.perform(post("/api/users/screen-time/challenge/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of(
-                                "token", ch2.path("token").asText(),
-                                "answer", solveQuestion(ch2.path("question").asText())
+                                "token", token2,
+                                "option", decodeCorrectOption(token2).name()
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.correct").value(true))
@@ -436,28 +472,30 @@ class ScreenTimeControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of(
-                                "token", ch3.path("token").asText(),
-                                "answer", solveQuestion(ch3.path("question").asText())
+                                "token", token3,
+                                "option", decodeCorrectOption(token3).name()
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.earnedSeconds").value(0))
                 .andExpect(jsonPath("$.data.status.rewardSeconds").value(900));
 
         // test rate limit 10 lần trả lời sai trong 10 phút trên child2
-        JsonNode chChild2 = fetchChallenge(child2Token);
-        int wrongAnswer = solveQuestion(chChild2.path("question").asText()) + 99;
         for (int attempt = 0; attempt < 10; attempt++) {
+            JsonNode chChild2 = fetchChallenge(child2Token);
+            String t = chChild2.path("token").asText();
+            QuizOptionKey wrongOpt = pickWrongOption(decodeCorrectOption(t));
             mockMvc.perform(post("/api/users/screen-time/challenge/answer")
                             .header(HttpHeaders.AUTHORIZATION, bearer(child2Token))
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(json(Map.of("token", chChild2.path("token").asText(), "answer", wrongAnswer))))
+                            .content(json(Map.of("token", t, "option", wrongOpt.name()))))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.correct").value(false));
         }
+        JsonNode chChild2Blocked = fetchChallenge(child2Token);
         mockMvc.perform(post("/api/users/screen-time/challenge/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child2Token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", chChild2.path("token").asText(), "answer", wrongAnswer))))
+                        .content(json(Map.of("token", chChild2Blocked.path("token").asText(), "option", "A"))))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
     }
@@ -478,7 +516,6 @@ class ScreenTimeControllerTest {
                         .content(json(Map.of(
                                 "pin", "9999",
                                 "dailyMinutes", 30,
-                                "mathLevel", 2,
                                 "rewardMinutes", 5,
                                 "maxBonusMinutes", 30
                         ))))
@@ -490,7 +527,6 @@ class ScreenTimeControllerTest {
                         .content(json(Map.of(
                                 "pin", "2468",
                                 "dailyMinutes", 601,
-                                "mathLevel", 2,
                                 "rewardMinutes", 5,
                                 "maxBonusMinutes", 30
                         ))))
@@ -503,7 +539,6 @@ class ScreenTimeControllerTest {
                         .content(json(Map.of(
                                 "pin", "2468",
                                 "dailyMinutes", 0,
-                                "mathLevel", 2,
                                 "rewardMinutes", 5,
                                 "maxBonusMinutes", 0
                         ))))
@@ -522,7 +557,6 @@ class ScreenTimeControllerTest {
                         .content(json(Map.of(
                                 "pin", "2468",
                                 "dailyMinutes", 600,
-                                "mathLevel", 1,
                                 "rewardMinutes", 30,
                                 "maxBonusMinutes", 120
                         ))))
@@ -595,6 +629,22 @@ class ScreenTimeControllerTest {
         mockMvc.perform(post("/api/media/grant/asset_kid_1")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isOk());
+
+        // ngay trong chế độ bé, phụ huynh nhập đúng pin qua parent-grant thì cộng giờ ngay, sai pin bị 400
+        mockMvc.perform(post("/api/users/screen-time/parent-grant")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("pin", "0000", "minutes", 15))))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/users/screen-time/parent-grant")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("pin", "2468", "minutes", 15))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.grantSeconds").value(1800))
+                .andExpect(jsonPath("$.data.remainingSeconds").value(1800))
+                .andExpect(jsonPath("$.data.locked").value(false));
     }
 
     // test đổi phút xem mỗi ngày qua đúng API UI gọi, tạo hồ sơ kèm phút/không giới hạn và kiểm tra đồng bộ tức thì
@@ -644,7 +694,6 @@ class ScreenTimeControllerTest {
                                 "pin", "4321",
                                 "dailyMinutes", 30,
                                 "unlimited", false,
-                                "mathLevel", 2,
                                 "rewardMinutes", 10,
                                 "maxBonusMinutes", 40
                         ))))
@@ -664,14 +713,14 @@ class ScreenTimeControllerTest {
                 .andExpect(jsonPath("$.data.remainingSeconds").value(1785))
                 .andExpect(jsonPath("$.data.status.dailyMinutes").value(30));
 
-        // phụ huynh bấm preset nhanh 120 phút (chỉ gửi pin + dailyMinutes, giữ nguyên cấu hình toán)
+        // phụ huynh bấm preset nhanh 120 phút (chỉ gửi pin + dailyMinutes, giữ nguyên khối lớp và thưởng)
         mockMvc.perform(put("/api/users/profiles/" + child1Id + "/screen-time")
                         .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("pin", "4321", "dailyMinutes", 120, "unlimited", false))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status.dailyMinutes").value(120))
-                .andExpect(jsonPath("$.data.status.mathLevel").value(2))
+                .andExpect(jsonPath("$.data.status.quizGrade").value("LOP_1"))
                 .andExpect(jsonPath("$.data.status.rewardMinutes").value(10))
                 .andExpect(jsonPath("$.data.status.remainingSeconds").value(7185));
 
@@ -740,17 +789,14 @@ class ScreenTimeControllerTest {
         return objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
     }
 
-    private static int solveQuestion(String question) {
-        String[] parts = question.replace(" = ?", "").split(" ");
-        int left = Integer.parseInt(parts[0]);
-        int right = Integer.parseInt(parts[2]);
-        return switch (parts[1]) {
-            case "+" -> left + right;
-            case "-" -> left - right;
-            case "×" -> left * right;
-            case "÷" -> left / right;
-            default -> throw new IllegalArgumentException("Phép tính lạ: " + question);
-        };
+    private QuizOptionKey decodeCorrectOption(String token) {
+        return quizTokenCodec.decode(token, QuizChallengeContext.SCREEN_TIME)
+                .orElseThrow()
+                .correctOption();
+    }
+
+    private static QuizOptionKey pickWrongOption(QuizOptionKey correct) {
+        return correct == QuizOptionKey.A ? QuizOptionKey.B : QuizOptionKey.A;
     }
 
     private void seedPlayableCatalogWithFile() {

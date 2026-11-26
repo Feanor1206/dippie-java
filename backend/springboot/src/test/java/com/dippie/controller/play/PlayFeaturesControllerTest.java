@@ -10,6 +10,8 @@ import com.dippie.model.media.MediaAsset;
 import com.dippie.model.movie.Movie;
 import com.dippie.model.profile.ScreenTimeLedgerEntry;
 import com.dippie.model.profile.ScreenTimeLedgerKind;
+import com.dippie.model.quiz.QuizChallengeContext;
+import com.dippie.model.quiz.QuizOptionKey;
 import com.dippie.repository.catalog.CatalogCharacterRepository;
 import com.dippie.repository.catalog.CatalogEpisodeRepository;
 import com.dippie.repository.catalog.CatalogMediaAssetRepository;
@@ -24,12 +26,16 @@ import com.dippie.repository.play.ChildPlayStateRepository;
 import com.dippie.repository.profile.ChildProfileRepository;
 import com.dippie.repository.profile.ScreenTimeLedgerRepository;
 import com.dippie.repository.progress.WatchProgressRepository;
+import com.dippie.repository.quiz.ChildQuizSetRepository;
+import com.dippie.repository.quiz.QuizAttemptRepository;
 import com.dippie.repository.user.UserRepository;
 import com.dippie.security.LoginRateLimiter;
 import com.dippie.service.catalog.CatalogReadModelCache;
 import com.dippie.service.play.PlayTokenCodec;
-import com.dippie.service.profile.MathChallengeRateLimiter;
 import com.dippie.service.profile.ParentPinRateLimiter;
+import com.dippie.service.quiz.QuizRateLimiter;
+import com.dippie.service.quiz.QuizSelectionService;
+import com.dippie.service.quiz.QuizTokenCodec;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -125,8 +131,12 @@ class PlayFeaturesControllerTest {
     private final CatalogReadModelCache catalogReadModelCache;
     private final LoginRateLimiter loginRateLimiter;
     private final ParentPinRateLimiter parentPinRateLimiter;
-    private final MathChallengeRateLimiter mathChallengeRateLimiter;
+    private final QuizRateLimiter quizRateLimiter;
     private final PlayTokenCodec playTokenCodec;
+    private final QuizTokenCodec quizTokenCodec;
+    private final QuizSelectionService quizSelectionService;
+    private final ChildQuizSetRepository childQuizSetRepository;
+    private final QuizAttemptRepository quizAttemptRepository;
 
     PlayFeaturesControllerTest(
             MockMvc mockMvc,
@@ -152,8 +162,12 @@ class PlayFeaturesControllerTest {
             CatalogReadModelCache catalogReadModelCache,
             LoginRateLimiter loginRateLimiter,
             ParentPinRateLimiter parentPinRateLimiter,
-            MathChallengeRateLimiter mathChallengeRateLimiter,
-            PlayTokenCodec playTokenCodec
+            QuizRateLimiter quizRateLimiter,
+            PlayTokenCodec playTokenCodec,
+            QuizTokenCodec quizTokenCodec,
+            QuizSelectionService quizSelectionService,
+            ChildQuizSetRepository childQuizSetRepository,
+            QuizAttemptRepository quizAttemptRepository
     ) {
         this.mockMvc = mockMvc;
         this.objectMapper = objectMapper;
@@ -178,8 +192,12 @@ class PlayFeaturesControllerTest {
         this.catalogReadModelCache = catalogReadModelCache;
         this.loginRateLimiter = loginRateLimiter;
         this.parentPinRateLimiter = parentPinRateLimiter;
-        this.mathChallengeRateLimiter = mathChallengeRateLimiter;
+        this.quizRateLimiter = quizRateLimiter;
         this.playTokenCodec = playTokenCodec;
+        this.quizTokenCodec = quizTokenCodec;
+        this.quizSelectionService = quizSelectionService;
+        this.childQuizSetRepository = childQuizSetRepository;
+        this.quizAttemptRepository = quizAttemptRepository;
     }
 
     @BeforeEach
@@ -187,8 +205,12 @@ class PlayFeaturesControllerTest {
         clock.set(Instant.parse("2026-11-26T10:00:00Z"));
         loginRateLimiter.reset();
         parentPinRateLimiter.reset();
-        mathChallengeRateLimiter.reset();
+        quizRateLimiter.reset();
         playTokenCodec.resetUsedTokens();
+        quizTokenCodec.resetUsedTokens();
+        quizSelectionService.resetRecentIssued();
+        quizAttemptRepository.deleteAll();
+        childQuizSetRepository.deleteAll();
         recapGateRepository.deleteAll();
         playStateRepository.deleteAll();
         playSettingsRepository.deleteAll();
@@ -262,7 +284,7 @@ class PlayFeaturesControllerTest {
         mockMvc.perform(post("/api/media/grant/asset_play_1").header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isLocked())
                 .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_FAINT"))
-                .andExpect(jsonPath("$.message").value("Dieppie mệt xỉu rồi! Bé cho Dieppie ngủ hoặc mua thuốc hồi sức để xem tiếp nhé."));
+                .andExpect(jsonPath("$.message").value("Đến giờ nghỉ mắt rồi! Bé nghỉ cùng Dieppie ít phút hoặc trả lời 1 câu hỏi để xem tiếp nhé."));
         mockMvc.perform(get("/api/media/stream/asset_play_1").param("grant", grantToken))
                 .andExpect(status().isLocked())
                 .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_FAINT"));
@@ -273,11 +295,11 @@ class PlayFeaturesControllerTest {
                 .andExpect(status().isLocked())
                 .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_FAINT"));
 
-        // bé chọn "Cho Dieppie ngủ 3 phút" -> server khóa cứng 3 phút, không cho lách qua mua thuốc
+        // bé chọn nghỉ cùng dieppie 3 phút -> server khóa cứng 3 phút
         mockMvc.perform(post("/api/users/play-features/watch-pet/rest")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Dieppie đang đi ngủ nghỉ mắt rồi, bé thư giãn mắt nhé!"))
+                .andExpect(jsonPath("$.message").value("Nghỉ cùng Dieppie bắt đầu rồi, bé thư giãn mắt nhé!"))
                 .andExpect(jsonPath("$.data.stage").value("RESTING"))
                 .andExpect(jsonPath("$.data.resting").value(true))
                 .andExpect(jsonPath("$.data.restRemainingSeconds").value(180));
@@ -285,13 +307,13 @@ class PlayFeaturesControllerTest {
         mockMvc.perform(get("/api/users/play-features/watch-pet/medicine")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("Dieppie đang ngủ nghỉ mắt rồi, bé chờ hết giờ nghỉ nhé."));
+                .andExpect(jsonPath("$.message").value("Đang trong giờ nghỉ cùng Dieppie, bé chờ hết giờ nghỉ nhé."));
 
         mockMvc.perform(post("/api/media/grant/asset_play_1").header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isLocked())
                 .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_REST"))
                 .andExpect(header().exists(HttpHeaders.RETRY_AFTER))
-                .andExpect(jsonPath("$.message").value("Dieppie đang ngủ nghỉ mắt rồi, bé chờ hết giờ nghỉ nhé."));
+                .andExpect(jsonPath("$.message").value("Đang trong giờ nghỉ cùng Dieppie, bé chờ hết giờ nghỉ nhé."));
         mockMvc.perform(get("/api/media/stream/asset_play_1").param("grant", grantToken))
                 .andExpect(status().isLocked())
                 .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_REST"));
@@ -312,35 +334,51 @@ class PlayFeaturesControllerTest {
         mockMvc.perform(post("/api/media/grant/asset_play_1").header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isOk());
 
-        // xem tiếp 600s để Dieppie ngất lại, lần này chọn "Mua thuốc hồi sức cho Dieppie" bằng bài toán ký HMAC
+        // xem tiếp 600s để Dieppie ngất lại, lần này chọn mua thuốc hồi sức bằng câu hỏi trắc nghiệm ký HMAC
         sendHeartbeats(childToken, 30, 20, 15);
         MvcResult challengeRes = mockMvc.perform(get("/api/users/play-features/watch-pet/medicine")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.token").isNotEmpty())
                 .andExpect(jsonPath("$.data.question").isNotEmpty())
+                .andExpect(jsonPath("$.data.options.length()").value(4))
                 .andReturn();
         JsonNode challenge = objectMapper.readTree(challengeRes.getResponse().getContentAsString()).path("data");
-        String medToken = challenge.path("token").asText();
-        int correct = solveMathQuestion(challenge.path("question").asText());
+        String medToken1 = challenge.path("token").asText();
+        QuizOptionKey correct1 = decodeQuizOption(medToken1, QuizChallengeContext.WATCH_PET_MEDICINE);
+        QuizOptionKey wrong1 = pickWrongOption(correct1);
 
-        // trả lời sai vẫn ngất
+        // trả lời sai vẫn ngất, hiện đáp án đúng và tiêu hủy luôn token cũ
         mockMvc.perform(post("/api/users/play-features/watch-pet/medicine")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", medToken, "answer", correct + 5))))
+                        .content(json(Map.of("token", medToken1, "option", wrong1.name()))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Chưa đúng rồi, bé thử tính lại để mua thuốc cho Dieppie nhé."))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("Gần đúng rồi! Đáp án là " + correct1.name() + ":")))
                 .andExpect(jsonPath("$.data.correct").value(false))
+                .andExpect(jsonPath("$.data.correctOption").value(correct1.name()))
                 .andExpect(jsonPath("$.data.watchPet.fainted").value(true));
 
-        // trả lời đúng -> Dieppie hồi sức về HAPPY và mở khóa phát phim ngay
         mockMvc.perform(post("/api/users/play-features/watch-pet/medicine")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", medToken, "answer", correct))))
+                        .content(json(Map.of("token", medToken1, "option", correct1.name()))))
+                .andExpect(status().isBadRequest());
+
+        // lấy câu mới và trả lời đúng -> Dieppie hồi sức về HAPPY và mở khóa phát phim ngay
+        MvcResult challengeRes2 = mockMvc.perform(get("/api/users/play-features/watch-pet/medicine")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Giỏi quá! Dieppie uống thuốc xong đã khỏe lại rồi."))
+                .andReturn();
+        String medToken2 = objectMapper.readTree(challengeRes2.getResponse().getContentAsString()).path("data").path("token").asText();
+        QuizOptionKey correct2 = decodeQuizOption(medToken2, QuizChallengeContext.WATCH_PET_MEDICINE);
+
+        mockMvc.perform(post("/api/users/play-features/watch-pet/medicine")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("token", medToken2, "option", correct2.name()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Giỏi quá! Đôi mắt đã thư giãn xong, bé xem tiếp cùng Dieppie nhé."))
                 .andExpect(jsonPath("$.data.correct").value(true))
                 .andExpect(jsonPath("$.data.watchPet.stage").value("HAPPY"))
                 .andExpect(jsonPath("$.data.watchPet.continuousWatchSeconds").value(0));
@@ -349,7 +387,7 @@ class PlayFeaturesControllerTest {
         mockMvc.perform(post("/api/users/play-features/watch-pet/medicine")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", medToken, "answer", correct))))
+                        .content(json(Map.of("token", medToken2, "option", correct2.name()))))
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post("/api/media/grant/asset_play_1").header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
@@ -370,7 +408,6 @@ class PlayFeaturesControllerTest {
                         .content(json(Map.of(
                                 "pin", "1234",
                                 "dailyMinutes", 120,
-                                "mathLevel", 1,
                                 "rewardMinutes", 5,
                                 "maxBonusMinutes", 11
                         ))))
@@ -403,11 +440,12 @@ class PlayFeaturesControllerTest {
                         .content(json(Map.of("dropToken", drop1))))
                 .andExpect(status().isBadRequest());
 
-        int ans1 = solveMathQuestion(open1.path("question").asText());
+        String lootToken1 = open1.path("token").asText();
+        QuizOptionKey ans1 = decodeQuizOption(lootToken1, QuizChallengeContext.LOOT_DROP);
         mockMvc.perform(post("/api/users/play-features/loot/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", open1.path("token").asText(), "answer", ans1))))
+                        .content(json(Map.of("token", lootToken1, "option", ans1.name()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.correct").value(true))
                 .andExpect(jsonPath("$.data.earnedMinutes").value(3))
@@ -417,11 +455,12 @@ class PlayFeaturesControllerTest {
         // rương 2: đúng -> +3 phút, combo 2 (tổng thưởng 6/11 phút)
         sendHeartbeats(childToken, 21, 20, 15);
         JsonNode open2 = openLoot(childToken, spawnLoot(childToken));
-        int ans2 = solveMathQuestion(open2.path("question").asText());
+        String lootToken2 = open2.path("token").asText();
+        QuizOptionKey ans2 = decodeQuizOption(lootToken2, QuizChallengeContext.LOOT_DROP);
         mockMvc.perform(post("/api/users/play-features/loot/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", open2.path("token").asText(), "answer", ans2))))
+                        .content(json(Map.of("token", lootToken2, "option", ans2.name()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.correct").value(true))
                 .andExpect(jsonPath("$.data.earnedMinutes").value(3))
@@ -432,11 +471,12 @@ class PlayFeaturesControllerTest {
         sendHeartbeats(childToken, 21, 20, 15);
         JsonNode open3 = openLoot(childToken, spawnLoot(childToken));
         assertThat(open3.path("potentialComboBonusMinutes").asInt()).isEqualTo(1);
-        int ans3 = solveMathQuestion(open3.path("question").asText());
+        String lootToken3 = open3.path("token").asText();
+        QuizOptionKey ans3 = decodeQuizOption(lootToken3, QuizChallengeContext.LOOT_DROP);
         mockMvc.perform(post("/api/users/play-features/loot/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", open3.path("token").asText(), "answer", ans3))))
+                        .content(json(Map.of("token", lootToken3, "option", ans3.name()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.correct").value(true))
                 .andExpect(jsonPath("$.data.earnedMinutes").value(4))
@@ -446,11 +486,12 @@ class PlayFeaturesControllerTest {
         // rương 4: chỉ còn 1 phút trần thưởng ngày (11 - 10 = 1) -> server cắt đúng còn 60s và báo bonusCapReached
         sendHeartbeats(childToken, 21, 20, 15);
         JsonNode open4 = openLoot(childToken, spawnLoot(childToken));
-        int ans4 = solveMathQuestion(open4.path("question").asText());
+        String lootToken4 = open4.path("token").asText();
+        QuizOptionKey ans4 = decodeQuizOption(lootToken4, QuizChallengeContext.LOOT_DROP);
         mockMvc.perform(post("/api/users/play-features/loot/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", open4.path("token").asText(), "answer", ans4))))
+                        .content(json(Map.of("token", lootToken4, "option", ans4.name()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.correct").value(true))
                 .andExpect(jsonPath("$.data.earnedSeconds").value(60))
@@ -464,22 +505,25 @@ class PlayFeaturesControllerTest {
         assertThat(lootRows).hasSize(4);
         assertThat(lootRows.stream().mapToInt(ScreenTimeLedgerEntry::getSeconds).sum()).isEqualTo(11 * 60);
 
-        // rương 5: trả lời sai -> không cộng phút, mất combo về 0, không thử lại được cùng rương
+        // rương 5: trả lời sai -> không cộng phút, mất combo về 0, hiện đáp án đúng, không thử lại được cùng rương
         sendHeartbeats(childToken, 21, 20, 15);
         JsonNode open5 = openLoot(childToken, spawnLoot(childToken));
-        int ans5 = solveMathQuestion(open5.path("question").asText());
+        String lootToken5 = open5.path("token").asText();
+        QuizOptionKey ans5 = decodeQuizOption(lootToken5, QuizChallengeContext.LOOT_DROP);
+        QuizOptionKey wrong5 = pickWrongOption(ans5);
         mockMvc.perform(post("/api/users/play-features/loot/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", open5.path("token").asText(), "answer", ans5 + 9))))
+                        .content(json(Map.of("token", lootToken5, "option", wrong5.name()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.correct").value(false))
+                .andExpect(jsonPath("$.data.correctOption").value(ans5.name()))
                 .andExpect(jsonPath("$.data.earnedSeconds").value(0))
                 .andExpect(jsonPath("$.data.combo").value(0));
         mockMvc.perform(post("/api/users/play-features/loot/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", open5.path("token").asText(), "answer", ans5))))
+                        .content(json(Map.of("token", lootToken5, "option", ans5.name()))))
                 .andExpect(status().isBadRequest());
 
         // rương 6: quá 18 giây mới bấm mở -> hết hạn 400
@@ -801,7 +845,7 @@ class PlayFeaturesControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("dropToken", dropToken))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.timerSeconds").value(10))
+                .andExpect(jsonPath("$.data.timerSeconds").value(20))
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
     }
@@ -839,17 +883,12 @@ class PlayFeaturesControllerTest {
         return "";
     }
 
-    private static int solveMathQuestion(String question) {
-        String[] parts = question.replace(" = ?", "").split(" ");
-        int left = Integer.parseInt(parts[0]);
-        int right = Integer.parseInt(parts[2]);
-        return switch (parts[1]) {
-            case "+" -> left + right;
-            case "-" -> left - right;
-            case "×" -> left * right;
-            case "÷" -> left / right;
-            default -> throw new IllegalArgumentException("Phép tính lạ: " + question);
-        };
+    private QuizOptionKey decodeQuizOption(String token, QuizChallengeContext context) {
+        return quizTokenCodec.decode(token, context).orElseThrow().correctOption();
+    }
+
+    private static QuizOptionKey pickWrongOption(QuizOptionKey correct) {
+        return correct == QuizOptionKey.A ? QuizOptionKey.B : QuizOptionKey.A;
     }
 
     private void seedThreeEpisodeSeries() {
@@ -959,6 +998,14 @@ class PlayFeaturesControllerTest {
                 .andExpect(status().isCreated())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).path("data").path("id").asLong();
+    }
+
+    @Test
+    void givesYoungerGradesMoreSecondsToReadAndAnswerLootChest() {
+        assertThat(com.dippie.service.play.LootDropService.timerSecondsForGrade(com.dippie.model.quiz.QuizGrade.MAU_GIAO)).isEqualTo(25);
+        assertThat(com.dippie.service.play.LootDropService.timerSecondsForGrade(com.dippie.model.quiz.QuizGrade.LOP_1)).isEqualTo(20);
+        assertThat(com.dippie.service.play.LootDropService.timerSecondsForGrade(com.dippie.model.quiz.QuizGrade.LOP_2)).isEqualTo(15);
+        assertThat(com.dippie.service.play.LootDropService.timerSecondsForGrade(com.dippie.model.quiz.QuizGrade.LOP_3)).isEqualTo(12);
     }
 
     private String switchToChild(String token, long profileId) throws Exception {

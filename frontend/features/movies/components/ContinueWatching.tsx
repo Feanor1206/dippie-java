@@ -9,7 +9,7 @@ import {
   type MovieProgressRecord,
 } from '@/lib/services/movieProgress';
 import { ArtworkImage } from '@/features/series/components/ArtworkImage';
-import { cleanMediaTitle } from '@/lib/labels';
+import { cleanMediaTitle, toCompactCardArtworkUrl } from '@/lib/labels';
 import { computeProgressPercent, formatEpisodeTag } from '@/features/series/seriesBrowseUtils';
 
 const MAX_CONTINUE_ITEMS = 3;
@@ -63,7 +63,12 @@ export function ContinueWatching({ films }: { films: MovieProgressRecord[] }) {
   if (!unique.length) return null;
 
   return (
-    <section className="shelf-section" aria-labelledby="continue-title" data-testid="continue-watching">
+    <section
+      className="shelf-section"
+      aria-labelledby="continue-title"
+      data-testid="continue-watching"
+      data-reveal-group=""
+    >
       <h2 id="continue-title" className="section-title mb-4">
         Xem tiếp
       </h2>
@@ -77,10 +82,15 @@ export function ContinueWatching({ films }: { films: MovieProgressRecord[] }) {
               key={entry.id}
               to={entry.href}
               data-testid="continue-card"
+              data-reveal-item=""
               className="continue-card group overflow-hidden focus-visible:outline-none"
             >
               <ArtworkImage
-                src={entry.thumbnailUrl}
+                src={
+                  typeof toCompactCardArtworkUrl === 'function'
+                    ? toCompactCardArtworkUrl(entry.thumbnailUrl)
+                    : entry.thumbnailUrl
+                }
                 alt={entry.seriesTitle ? `${entry.seriesTitle}: ${entry.title}` : entry.title}
                 title={entry.seriesTitle || entry.title}
                 seed={entry.id}

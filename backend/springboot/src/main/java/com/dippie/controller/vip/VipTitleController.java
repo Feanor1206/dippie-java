@@ -1,7 +1,7 @@
 package com.dippie.controller.vip;
 
 import com.dippie.common.web.ApiResponse;
-import com.dippie.dto.profile.MathChallengeAnswerRequest;
+import com.dippie.dto.quiz.QuizAnswerRequest;
 import com.dippie.dto.vip.ChildProfileVipSeriesView;
 import com.dippie.dto.vip.KidVipStatusResponse;
 import com.dippie.dto.vip.UpdateVipSeriesRequest;
@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-// API phim VIP theo từng hồ sơ bé: phụ huynh chọn phim bộ VIP và bé giải toán khó hơn 1 bậc để mở khóa từng tập trong ngày
+// API phim VIP theo từng hồ sơ bé: phụ huynh chọn phim bộ VIP và bé trả lời câu hỏi thử thách để mở khóa từng tập trong ngày
 @RestController
 @RequestMapping("/api/users")
 public class VipTitleController {
@@ -60,7 +60,7 @@ public class VipTitleController {
     @PostMapping("/vip-series/episodes/{episodeId}/unlock")
     public ResponseEntity<ApiResponse<VipUnlockResponse>> unlockEpisode(
             @PathVariable String episodeId,
-            @RequestBody(required = false) MathChallengeAnswerRequest request
+            @RequestBody(required = false) QuizAnswerRequest request
     ) {
         VipTitleService.UnlockOutcome outcome = vipTitleService.submitEpisodeUnlock(episodeId, request);
         return ResponseEntity.ok(ApiResponse.ok(outcome.response(), outcome.message()));

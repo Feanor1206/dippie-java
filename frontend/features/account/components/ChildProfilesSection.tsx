@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { SiteDialog } from '@/components/ui/SiteDialog';
 import { PlayFeaturesSettings } from '@/features/account/components/PlayFeaturesSettings';
@@ -19,7 +20,6 @@ import {
 } from '@/lib/services/profileService';
 import {
   DAILY_MINUTE_PRESETS,
-  MATH_LEVEL_OPTIONS,
   broadcastScreenTimeUpdated,
   fetchParentScreenTimeOverview,
   formatDailyLimitLabel,
@@ -31,6 +31,21 @@ import {
   validateScreenTimeSettings,
   type ChildProfileScreenTime,
 } from '@/lib/services/screenTimeService';
+import {
+  QUIZ_GRADES,
+  fetchChildQuizConfigs,
+  fetchQuizSampleQuestions,
+  fetchQuizSetsOverview,
+  formatChildQuizSummaryLine,
+  getQuizGradeLabel,
+  type ChildQuizConfig,
+  type QuizGradeCode,
+  type QuizSampleQuestion,
+  type QuizSetsOverview,
+} from '@/features/quiz/quizService';
+import { ChildQuizSettingsDialog } from '@/features/quiz/components/ChildQuizSettingsDialog';
+import { ParentQuizBankSection } from '@/features/quiz/components/ParentQuizBankSection';
+import { ParentQuizInsightsSection } from '@/features/quiz/components/ParentQuizInsightsSection';
 import { ParentBountySection } from '@/features/account/components/ParentBountySection';
 import { ParentWeekendVaultSection } from '@/features/account/components/ParentWeekendVaultSection';
 import { ParentVipSeriesSection } from '@/features/account/components/ParentVipSeriesSection';
@@ -61,6 +76,7 @@ export function ChildProfilesSection() {
 
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [playSettingsProfile, setPlaySettingsProfile] = useState<ChildProfile | null>(null);
+  const [quizSettingsProfile, setQuizSettingsProfile] = useState<ChildProfile | null>(null);
   const [verifiedPin, setVerifiedPin] = useState('');
   const verifiedPinExpiryRef = useRef(0);
   const [pin, setPin] = useState('');
@@ -70,17 +86,31 @@ export function ChildProfilesSection() {
   const [avatarKey, setAvatarKey] = useState('bear');
   const [dailyMinutes, setDailyMinutes] = useState('60');
   const [isUnlimited, setIsUnlimited] = useState(false);
-  const [mathLevel, setMathLevel] = useState(1);
+  const [profileQuizGrade, setProfileQuizGrade] = useState<QuizGradeCode>('LOP_1');
+  const [profileQuizSetIds, setProfileQuizSetIds] = useState<number[]>([]);
+  const [profileQuizSamples, setProfileQuizSamples] = useState<QuizSampleQuestion[]>([]);
+  const [loadingProfileSamples, setLoadingProfileSamples] = useState(false);
   const [rewardMinutes, setRewardMinutes] = useState('5');
   const [maxBonusMinutes, setMaxBonusMinutes] = useState('30');
   const [grantMinutes, setGrantMinutes] = useState('15');
   const [screenTimeByProfile, setScreenTimeByProfile] = useState<Record<number, ChildProfileScreenTime>>({});
   const [screenTimeLoading, setScreenTimeLoading] = useState(false);
   const [screenTimeError, setScreenTimeError] = useState('');
+  const [quizOverview, setQuizOverview] = useState<QuizSetsOverview | null>(null);
+  const [quizConfigs, setQuizConfigs] = useState<ChildQuizConfig[]>([]);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizLoadError, setQuizLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [switchingId, setSwitchingId] = useState<number | null>(null);
+  const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
+  const [recentSavedChild, setRecentSavedChild] = useState<{ id: number | null; name: string } | null>(null);
   const [dialogError, setDialogError] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const quizConfigByProfile: Record<number, ChildQuizConfig> = {};
+  for (const cfg of quizConfigs) {
+    quizConfigByProfile[cfg.profileId] = cfg;
+  }
 
   const getActiveSessionPin = useCallback(() => {
     if (!verifiedPin || Date.now() >= verifiedPinExpiryRef.current) {
@@ -131,6 +161,30 @@ export function ChildProfilesSection() {
     }
   }, [token, parentModeEnabled]);
 
+  const loadQuizData = useCallback(async () => {
+    if (!token || !parentModeEnabled) {
+      setQuizOverview(null);
+      setQuizConfigs([]);
+      setQuizLoadError('');
+      setQuizLoading(false);
+      return;
+    }
+    setQuizLoading(true);
+    setQuizLoadError('');
+    try {
+      const [overviewData, configsData] = await Promise.all([
+        fetchQuizSetsOverview(token),
+        fetchChildQuizConfigs(token),
+      ]);
+      setQuizOverview(overviewData);
+      setQuizConfigs(configsData);
+    } catch (err: unknown) {
+      setQuizLoadError(err instanceof Error ? err.message : 'Chưa tải được ngân hàng câu hỏi.');
+    } finally {
+      setQuizLoading(false);
+    }
+  }, [token, parentModeEnabled]);
+
   useEffect(() => {
     if (token) {
       void refreshProfiles();
@@ -139,7 +193,46 @@ export function ChildProfilesSection() {
 
   useEffect(() => {
     void loadScreenTimeOverview();
-  }, [loadScreenTimeOverview, childProfiles.length]);
+    void loadQuizData();
+  }, [loadScreenTimeOverview, loadQuizData, childProfiles.length]);
+
+  useEffect(() => {
+    if (childProfiles.length === 0) {
+      setSelectedChildId(null);
+      return;
+    }
+    setSelectedChildId((prev) =>
+      prev && childProfiles.some((profile) => profile.id === prev) ? prev : childProfiles[0].id
+    );
+  }, [childProfiles]);
+
+  const loadProfileDialogSamples = useCallback(
+    async (grade: QuizGradeCode, setIds: number[]) => {
+      if (!token || setIds.length === 0) {
+        setProfileQuizSamples([]);
+        return;
+      }
+      setLoadingProfileSamples(true);
+      try {
+        const list = await fetchQuizSampleQuestions(token, grade, setIds);
+        setProfileQuizSamples(list);
+      } catch {
+        setProfileQuizSamples([]);
+      } finally {
+        setLoadingProfileSamples(false);
+      }
+    },
+    [token]
+  );
+
+  useEffect(() => {
+    if (dialog?.kind !== 'create' && dialog?.kind !== 'edit') return;
+    if (profileQuizSetIds.length === 0) {
+      setProfileQuizSamples([]);
+      return;
+    }
+    void loadProfileDialogSamples(profileQuizGrade, profileQuizSetIds);
+  }, [dialog?.kind, profileQuizGrade, profileQuizSetIds.join(','), loadProfileDialogSamples]);
 
   const resetDialog = () => {
     setDialog(null);
@@ -150,6 +243,9 @@ export function ChildProfilesSection() {
     setAvatarKey('bear');
     setDailyMinutes('60');
     setIsUnlimited(false);
+    setProfileQuizGrade('LOP_1');
+    setProfileQuizSetIds([]);
+    setProfileQuizSamples([]);
     setDialogError('');
   };
 
@@ -158,8 +254,16 @@ export function ChildProfilesSection() {
     resetDialog();
   };
 
+  const defaultBuiltInSetIds = (): number[] => {
+    const sets = quizOverview?.sets ?? [];
+    const builtIns = sets.filter((s) => s.active && s.builtIn).map((s) => s.id);
+    if (builtIns.length > 0) return builtIns;
+    return sets.filter((s) => s.active).map((s) => s.id);
+  };
+
   const openDialog = (next: DialogMode) => {
     setFeedback(null);
+    setRecentSavedChild(null);
     setDialogError('');
     const prefilledPin =
       next && (next.kind === 'create' || next.kind === 'edit' || next.kind === 'screen-time' || next.kind === 'grant')
@@ -170,16 +274,21 @@ export function ChildProfilesSection() {
     setCurrentPin('');
     if (next?.kind === 'edit') {
       const summary = screenTimeByProfile[next.profile.id]?.status;
+      const cfg = quizConfigByProfile[next.profile.id];
       const unlimited = Boolean(summary?.unlimited ?? next.profile.unlimited ?? next.profile.dailyMinutes === null);
       setChildName(next.profile.name);
       setAvatarKey(next.profile.avatarKey);
       setIsUnlimited(unlimited);
       setDailyMinutes(unlimited ? '60' : String(summary?.dailyMinutes ?? next.profile.dailyMinutes ?? 60));
+      setProfileQuizGrade((cfg?.grade ?? next.profile.quizGrade ?? 'LOP_1') as QuizGradeCode);
+      setProfileQuizSetIds(cfg?.activeSetIds?.length ? [...cfg.activeSetIds] : defaultBuiltInSetIds());
     } else if (next?.kind === 'create') {
       setChildName('');
       setAvatarKey('bear');
       setIsUnlimited(false);
       setDailyMinutes('60');
+      setProfileQuizGrade('LOP_1');
+      setProfileQuizSetIds(defaultBuiltInSetIds());
     } else if (next?.kind === 'screen-time') {
       const summary = screenTimeByProfile[next.profile.id]?.status;
       const baseUnlimited = Boolean(summary?.unlimited ?? next.profile.unlimited ?? next.profile.dailyMinutes === null);
@@ -192,7 +301,6 @@ export function ChildProfilesSection() {
           : summary?.dailyMinutes ?? next.profile.dailyMinutes ?? 60;
       setIsUnlimited(nextUnlimited);
       setDailyMinutes(String(nextDaily));
-      setMathLevel(summary?.mathLevel ?? next.profile.mathLevel ?? 1);
       setRewardMinutes(String(summary?.rewardMinutes ?? next.profile.rewardMinutes ?? 5));
       setMaxBonusMinutes(String(summary?.maxBonusMinutes ?? next.profile.maxBonusMinutes ?? 30));
     } else if (next?.kind === 'grant') {
@@ -202,6 +310,12 @@ export function ChildProfilesSection() {
       setAvatarKey('bear');
     }
     setDialog(next);
+  };
+
+  const toggleProfileQuizSet = (setId: number) => {
+    setProfileQuizSetIds((prev) =>
+      prev.includes(setId) ? prev.filter((id) => id !== setId) : [...prev, setId]
+    );
   };
 
   const sanitizePin = (value: string) => value.replace(/[^0-9]/g, '').slice(0, 6);
@@ -226,6 +340,7 @@ export function ChildProfilesSection() {
         await enableParentMode(token, pin);
         rememberSessionPin(pin);
         await refreshProfiles();
+        await loadQuizData();
         resetDialog();
         setFeedback({ type: 'success', text: 'Đã bật chế độ hồ sơ trẻ em. Giờ bạn có thể thêm hồ sơ bé đầu tiên!' });
       } catch (err: unknown) {
@@ -306,6 +421,11 @@ export function ChildProfilesSection() {
         setDialogError(dailyErr);
         return;
       }
+      const activeSetsAvailable = (quizOverview?.sets ?? []).filter((s) => s.active);
+      if (activeSetsAvailable.length > 0 && profileQuizSetIds.length === 0) {
+        setDialogError('Hãy chọn ít nhất 1 bộ câu hỏi cho bé.');
+        return;
+      }
       const pinErr = validateParentPin(pin);
       if (pinErr) {
         setDialogError(pinErr);
@@ -319,18 +439,35 @@ export function ChildProfilesSection() {
           avatarKey,
           dailyMinutes: isUnlimited ? null : parsedDaily,
           unlimited: isUnlimited,
+          quizGrade: profileQuizGrade,
+          ...(profileQuizSetIds.length > 0 ? { quizSetIds: profileQuizSetIds } : {}),
         };
+        const trimmedChildName = childName.trim();
+        let savedChildId: number | null = dialog.kind === 'edit' ? dialog.profile.id : null;
+        let savedChildName = trimmedChildName;
         if (dialog.kind === 'create') {
-          await createChildProfile(token, profilePayload);
+          const created = await createChildProfile(token, profilePayload);
+          if (created && typeof created === 'object' && typeof created.id === 'number') {
+            savedChildId = created.id;
+            savedChildName = created.name || trimmedChildName;
+          }
         } else {
-          await updateChildProfile(token, dialog.profile.id, profilePayload);
+          const updated = await updateChildProfile(token, dialog.profile.id, profilePayload);
+          if (updated && typeof updated === 'object' && typeof updated.id === 'number') {
+            savedChildId = updated.id;
+            savedChildName = updated.name || trimmedChildName;
+          }
+        }
+        if (savedChildId !== null) {
+          setSelectedChildId(savedChildId);
         }
         rememberSessionPin(pin);
         await refreshProfiles();
-        await loadScreenTimeOverview();
+        await Promise.all([loadScreenTimeOverview(), loadQuizData()]);
         broadcastScreenTimeUpdated(dialog.kind === 'edit' ? dialog.profile.id : undefined);
         const message = dialog.kind === 'create' ? 'Đã tạo hồ sơ trẻ em.' : 'Đã cập nhật hồ sơ trẻ em.';
         resetDialog();
+        setRecentSavedChild({ id: savedChildId, name: savedChildName });
         setFeedback({ type: 'success', text: message });
       } catch (err: unknown) {
         clearSessionPin();
@@ -349,7 +486,6 @@ export function ChildProfilesSection() {
       const settingsErr = validateScreenTimeSettings({
         dailyMinutes: parsedDaily,
         unlimited: isUnlimited,
-        mathLevel,
         rewardMinutes: parsedReward,
         maxBonusMinutes: parsedMaxBonus,
       });
@@ -368,7 +504,6 @@ export function ChildProfilesSection() {
           pin,
           dailyMinutes: isUnlimited ? null : parsedDaily,
           unlimited: isUnlimited,
-          mathLevel,
           rewardMinutes: parsedReward,
           maxBonusMinutes: parsedMaxBonus,
         });
@@ -376,8 +511,11 @@ export function ChildProfilesSection() {
         setScreenTimeByProfile((prev) => ({ ...prev, [updated.profileId]: updated }));
         await refreshProfiles();
         broadcastScreenTimeUpdated(updated.profileId);
+        const targetId = dialog.profile.id;
         const targetName = dialog.profile.name;
         resetDialog();
+        setSelectedChildId(targetId);
+        setRecentSavedChild({ id: targetId, name: targetName });
         setFeedback({ type: 'success', text: `Đã lưu cài đặt thời gian xem cho ${targetName}.` });
       } catch (err: unknown) {
         clearSessionPin();
@@ -407,8 +545,11 @@ export function ChildProfilesSection() {
         rememberSessionPin(pin);
         setScreenTimeByProfile((prev) => ({ ...prev, [updated.profileId]: updated }));
         broadcastScreenTimeUpdated(updated.profileId);
+        const targetId = dialog.profile.id;
         const targetName = dialog.profile.name;
         resetDialog();
+        setSelectedChildId(targetId);
+        setRecentSavedChild({ id: targetId, name: targetName });
         setFeedback({ type: 'success', text: `Đã cộng thêm ${parsedGrant} phút xem phim cho ${targetName}.` });
       } catch (err: unknown) {
         clearSessionPin();
@@ -430,7 +571,7 @@ export function ChildProfilesSection() {
       try {
         await deleteChildProfile(token, dialog.profile.id, pin);
         await refreshProfiles();
-        await loadScreenTimeOverview();
+        await Promise.all([loadScreenTimeOverview(), loadQuizData()]);
         const removedName = dialog.profile.name;
         resetDialog();
         setFeedback({ type: 'success', text: `Đã xóa hồ sơ ${removedName}.` });
@@ -460,11 +601,31 @@ export function ChildProfilesSection() {
     }
   };
 
+  const handleQuizConfigUpdated = (updated: ChildQuizConfig) => {
+    setQuizConfigs((prev) => {
+      const exists = prev.some((item) => item.profileId === updated.profileId);
+      if (!exists) return [...prev, updated];
+      return prev.map((item) => (item.profileId === updated.profileId ? updated : item));
+    });
+    void refreshProfiles();
+    void loadScreenTimeOverview();
+    broadcastScreenTimeUpdated(updated.profileId);
+  };
+
   const reachedLimit = childProfiles.length >= MAX_CHILD_PROFILES;
   const activeSessionPin = getActiveSessionPin();
+  const activeAvailableSets = (quizOverview?.sets ?? []).filter((s) => s.active);
+  const activeChildProfile =
+    childProfiles.find((profile) => profile.id === selectedChildId) ?? childProfiles[0] ?? null;
+  const recentSavedProfileId = recentSavedChild
+    ? recentSavedChild.id ??
+      childProfiles.find((profile) => profile.name === recentSavedChild.name)?.id ??
+      null
+    : null;
 
   return (
     <section
+      data-reveal-section=""
       aria-labelledby="child-profiles-heading"
       data-testid="child-profiles-section"
       className="rounded-xl border border-surface-border bg-surface p-6 sm:p-8"
@@ -473,10 +634,10 @@ export function ChildProfilesSection() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 id="child-profiles-heading" className="text-lg font-bold text-ink">
-              Hồ sơ trẻ em
+              Thiết lập cho bé
             </h2>
             <span
-              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${
+              className={`rounded-full border px-2.5 py-0.5 text-[0.6875rem] font-bold ${
                 parentModeEnabled
                   ? 'border-ink bg-mint text-ink'
                   : 'border-surface-border bg-surface-elevated text-muted'
@@ -485,8 +646,8 @@ export function ChildProfilesSection() {
               {parentModeEnabled ? `Đang bật (${childProfiles.length}/${MAX_CHILD_PROFILES})` : 'Chưa bật'}
             </span>
           </div>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
-            Tạo không gian xem riêng cho từng bé với lịch sử xem, yêu thích tách biệt, ẩn liên kết YouTube ngoài và khóa cài đặt bằng mã PIN phụ huynh.
+          <p className="mt-1 text-base leading-relaxed text-muted">
+            Quản lý tập trung từng bé ở cùng một nơi: thời gian xem, bộ câu hỏi theo lớp, phim lẻ cuối tuần, phim cần trả lời câu hỏi và nhiệm vụ đổi giờ.
           </p>
         </div>
 
@@ -533,13 +694,24 @@ export function ChildProfilesSection() {
       {feedback && (
         <div
           role={feedback.type === 'error' ? 'alert' : 'status'}
-          className={`mt-4 rounded-xl border p-3 text-xs leading-relaxed ${
+          className={`motion-toast-enter mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 text-xs leading-relaxed ${
             feedback.type === 'error'
               ? 'border-red-500/40 bg-red-500/10 text-red-900'
               : 'border-brand/50 bg-brand/15 text-ink'
           }`}
         >
-          {feedback.text}
+          <span>{feedback.text}</span>
+          {feedback.type === 'success' && recentSavedChild && recentSavedProfileId !== null && (
+            <button
+              type="button"
+              data-testid="open-saved-child-profile-button"
+              disabled={switchingId !== null}
+              onClick={() => void handleSwitchChild(recentSavedProfileId)}
+              className="btn-primary min-h-[40px] px-3 py-1.5 text-xs font-bold"
+            >
+              {switchingId === recentSavedProfileId ? 'Đang chuyển…' : `Mở hồ sơ của ${recentSavedChild.name}`}
+            </button>
+          )}
         </div>
       )}
 
@@ -558,23 +730,49 @@ export function ChildProfilesSection() {
                 Hồ sơ &amp; Thời gian
               </a>
               <a
+                href="#parent-weekend-vault-section"
+                className="inline-flex min-h-[44px] items-center rounded-lg border border-surface-border bg-paper-white px-3 text-xs font-bold text-ink hover:bg-mint/60"
+              >
+                Phim lẻ cuối tuần
+              </a>
+              <a
+                href="#parent-vip-series-section"
+                className="inline-flex min-h-[44px] items-center rounded-lg border border-surface-border bg-paper-white px-3 text-xs font-bold text-ink hover:bg-mint/60"
+              >
+                Phim cần trả lời câu hỏi
+              </a>
+              <a
                 href="#parent-bounty-section"
                 className="inline-flex min-h-[44px] items-center rounded-lg border border-surface-border bg-paper-white px-3 text-xs font-bold text-ink hover:bg-mint/60"
               >
                 Nhiệm vụ đổi giờ
               </a>
               <a
-                href="#parent-weekend-vault-section"
+                href="#parent-quiz-insights-section"
                 className="inline-flex min-h-[44px] items-center rounded-lg border border-surface-border bg-paper-white px-3 text-xs font-bold text-ink hover:bg-mint/60"
               >
-                Két sắt cuối tuần
+                Báo cáo học tập
               </a>
               <a
-                href="#parent-vip-series-section"
+                href="#parent-quiz-bank-section"
                 className="inline-flex min-h-[44px] items-center rounded-lg border border-surface-border bg-paper-white px-3 text-xs font-bold text-ink hover:bg-mint/60"
               >
-                Phim VIP
+                Ngân hàng câu hỏi
               </a>
+              {activeChildProfile && (
+                <button
+                  type="button"
+                  data-testid="jump-play-features-button"
+                  onClick={() => {
+                    setFeedback(null);
+                    setRecentSavedChild(null);
+                    setPlaySettingsProfile(activeChildProfile);
+                  }}
+                  className="inline-flex min-h-[44px] items-center rounded-lg border border-ink/40 bg-mint/55 px-3 text-xs font-bold text-ink hover:bg-mint cursor-pointer"
+                >
+                  Tính năng xem phim ({activeChildProfile.name})
+                </button>
+              )}
             </nav>
           )}
 
@@ -582,7 +780,7 @@ export function ChildProfilesSection() {
             <div
               role="alert"
               data-testid="screen-time-overview-error"
-              className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-800/35 bg-red-50 px-3.5 py-2.5 text-xs text-red-900"
+              className="motion-toast-enter mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-800/35 bg-red-50 px-3.5 py-2.5 text-xs text-red-900"
             >
               <span>{screenTimeError}</span>
               <button
@@ -604,9 +802,9 @@ export function ChildProfilesSection() {
 
           {childProfiles.length === 0 ? (
             <div className="rounded-xl border border-dashed border-surface-border bg-paper-white p-6 text-center">
-              <p className="text-sm font-semibold text-ink">Chưa có hồ sơ trẻ em nào</p>
-              <p className="mt-1 text-xs text-muted">
-                Tạo tối đa {MAX_CHILD_PROFILES} hồ sơ riêng để cài giờ xem, Dieppie, nhiệm vụ và phim VIP cho từng bé.
+              <p className="text-base font-semibold text-ink">Chưa có hồ sơ trẻ em nào</p>
+              <p className="mt-1 text-base text-muted">
+                Tạo tối đa {MAX_CHILD_PROFILES} hồ sơ riêng để cài giờ xem, bộ câu hỏi theo lớp, Dieppie, nhiệm vụ và phim cần trả lời câu hỏi cho từng bé.
               </p>
               <button
                 type="button"
@@ -618,191 +816,168 @@ export function ChildProfilesSection() {
               </button>
             </div>
           ) : (
-            <ul id="parent-profiles-list" className="scroll-mt-20 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <ul id="parent-profiles-list" className="scroll-mt-20 grid grid-cols-1 gap-4 lg:grid-cols-2">
               {childProfiles.map((profile) => {
                 const screenTime = screenTimeByProfile[profile.id]?.status;
+                const quizConfig = quizConfigByProfile[profile.id];
                 const effectiveUnlimited = Boolean(
                   screenTime?.unlimited ?? profile.unlimited ?? profile.dailyMinutes === null
                 );
                 const effectiveDaily = effectiveUnlimited ? null : screenTime?.dailyMinutes ?? profile.dailyMinutes ?? 60;
-                const effectiveMathLevel = screenTime?.mathLevel ?? profile.mathLevel ?? 1;
                 const effectiveReward = screenTime?.rewardMinutes ?? profile.rewardMinutes ?? 5;
                 const effectiveMaxBonus = screenTime?.maxBonusMinutes ?? profile.maxBonusMinutes ?? 30;
+                const effectiveGradeLabel =
+                  quizConfig?.gradeLabel ??
+                  screenTime?.quizGradeLabel ??
+                  profile.quizGradeLabel ??
+                  getQuizGradeLabel(profile.quizGrade);
+                const activeSetNames = quizConfig?.activeSets?.map((item) => item.name) ?? [];
+                const quizSummaryLine = formatChildQuizSummaryLine(effectiveGradeLabel, activeSetNames);
                 const dailyLimitLabel = formatDailyLimitLabel(effectiveDaily, effectiveUnlimited);
+                const isSelectedCard = childProfiles.length > 1 && activeChildProfile?.id === profile.id;
+                const watchedLabel = screenTime ? formatUsageDuration(screenTime.watchedSeconds) : '0 phút';
+                const remainingLabel = effectiveUnlimited
+                  ? 'Không giới hạn'
+                  : screenTime
+                  ? formatRemainingTime(screenTime.remainingSeconds, screenTime.locked)
+                  : `Còn ${effectiveDaily ?? 60} phút`;
+                const extraParts: string[] = [];
+                if (screenTime) {
+                  extraParts.push(`${formatUsageDuration(screenTime.rewardSeconds)} câu hỏi`);
+                  if (screenTime.grantSeconds > 0) {
+                    extraParts.push(`+${formatUsageDuration(screenTime.grantSeconds)} ba mẹ cho`);
+                  }
+                  if (screenTime.bountySeconds > 0) {
+                    extraParts.push(`+${formatUsageDuration(screenTime.bountySeconds)} nhiệm vụ`);
+                  }
+                } else {
+                  extraParts.push(`+${effectiveReward} phút/câu đúng (tối đa +${effectiveMaxBonus} phút)`);
+                }
+
                 return (
                   <li
                     key={profile.id}
                     data-testid={`child-profile-card-${profile.id}`}
-                    className="flex flex-col justify-between gap-3 rounded-xl border border-surface-border bg-paper-white p-4"
+                    className={`flex flex-col justify-between gap-4 rounded-xl border bg-paper-white p-5 transition-colors ${
+                      isSelectedCard ? 'border-2 border-ink shadow-brand-sm' : 'border-surface-border'
+                    }`}
                   >
                     <div className="space-y-3">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <ChildAvatarBadge avatarKey={profile.avatarKey} size="md" />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold text-ink">{profile.name}</p>
-                          <p className="text-[11px] text-muted">
-                            Toán mức {effectiveMathLevel} (+{effectiveReward} phút, tối đa +{effectiveMaxBonus} phút)
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-base font-bold text-ink">{profile.name}</p>
+                          <p
+                            data-testid={`child-quiz-summary-${profile.id}`}
+                            className="mt-0.5 text-xs font-medium leading-snug text-muted"
+                          >
+                            {quizSummaryLine}
                           </p>
                         </div>
                       </div>
 
-                      <div className="rounded-lg border border-ink/25 bg-mint/30 p-2.5 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
+                      <div
+                        data-testid={`child-screen-time-summary-${profile.id}`}
+                        className="rounded-xl border border-ink/25 bg-surface-muted p-3.5 space-y-2.5"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border/70 pb-2">
                           <p
                             data-testid={`child-daily-limit-${profile.id}`}
-                            className="text-xs font-bold text-ink"
+                            className="text-sm font-bold text-ink"
                           >
                             Thời gian xem mỗi ngày: {dailyLimitLabel}
                           </p>
-                          <button
-                            type="button"
-                            data-testid={`edit-daily-time-button-${profile.id}`}
-                            onClick={() => openDialog({ kind: 'screen-time', profile })}
-                            className="inline-flex min-h-[44px] shrink-0 items-center rounded-md border border-ink bg-paper-white px-3 text-xs font-bold text-ink hover:bg-mint cursor-pointer"
-                          >
-                            Đổi thời gian
-                          </button>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {DAILY_MINUTE_PRESETS.map((preset) => {
-                            const activePreset = !effectiveUnlimited && effectiveDaily === preset;
-                            return (
-                              <button
-                                key={preset}
-                                type="button"
-                                data-testid={`preset-daily-${profile.id}-${preset}`}
-                                onClick={() =>
-                                  openDialog({
-                                    kind: 'screen-time',
-                                    profile,
-                                    presetMinutes: preset,
-                                    presetUnlimited: false,
-                                  })
-                                }
-                                className={`min-h-[44px] rounded-md border px-2.5 py-1 text-xs font-bold cursor-pointer ${
-                                  activePreset
-                                    ? 'border-ink bg-brand text-ink'
-                                    : 'border-surface-border bg-paper-white text-muted hover:border-ink/60 hover:text-ink'
-                                }`}
-                              >
-                                {preset} phút
-                              </button>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            data-testid={`preset-unlimited-${profile.id}`}
-                            onClick={() =>
-                              openDialog({
-                                kind: 'screen-time',
-                                profile,
-                                presetUnlimited: true,
-                              })
-                            }
-                            className={`min-h-[44px] rounded-md border px-2.5 py-1 text-xs font-bold cursor-pointer ${
-                              effectiveUnlimited
-                                ? 'border-ink bg-brand text-ink'
-                                : 'border-surface-border bg-paper-white text-muted hover:border-ink/60 hover:text-ink'
+                          <span
+                            className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${
+                              screenTime?.locked
+                                ? 'border-red-800/40 bg-red-50 text-red-900'
+                                : 'border-ink/30 bg-mint/70 text-ink'
                             }`}
                           >
-                            Không giới hạn
-                          </button>
+                            {remainingLabel}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
+                          <div className="rounded-lg bg-paper-white px-3 py-2 border border-surface-border/60">
+                            <span className="text-muted">Đã xem hôm nay: </span>
+                            <strong className="font-bold text-ink">{watchedLabel}</strong>
+                          </div>
+                          <div className="rounded-lg bg-paper-white px-3 py-2 border border-surface-border/60">
+                            <span className="text-muted">Cộng thêm: </span>
+                            <strong className="font-bold text-brand-dark">{extraParts.join(' · ')}</strong>
+                          </div>
                         </div>
                       </div>
-
-                      {screenTime && (
-                        <div
-                          data-testid={`child-screen-time-summary-${profile.id}`}
-                          className="grid grid-cols-3 gap-2 rounded-lg border border-surface-border bg-surface-muted p-2.5 text-center"
-                        >
-                          <div>
-                            <p className="text-[10px] font-medium text-muted">Đã xem hôm nay</p>
-                            <p className="mt-0.5 text-xs font-bold text-ink">
-                              {formatUsageDuration(screenTime.watchedSeconds)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-medium text-muted">Thưởng toán</p>
-                            <p className="mt-0.5 text-xs font-bold text-brand-dark">
-                              {formatUsageDuration(screenTime.rewardSeconds)}
-                            </p>
-                            {screenTime.grantSeconds > 0 && (
-                              <p className="text-[10px] text-muted">
-                                +{formatUsageDuration(screenTime.grantSeconds)} ba mẹ cho
-                              </p>
-                            )}
-                            {screenTime.bountySeconds > 0 && (
-                              <p className="text-[10px] text-muted">
-                                +{formatUsageDuration(screenTime.bountySeconds)} nhiệm vụ
-                              </p>
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-medium text-muted">Còn lại</p>
-                            <p
-                              className={`mt-0.5 text-xs font-bold ${
-                                screenTime.locked ? 'text-red-800' : 'text-ink'
-                              }`}
-                            >
-                              {screenTime.unlimited
-                                ? 'Không giới hạn'
-                                : formatRemainingTime(screenTime.remainingSeconds, screenTime.locked)}
-                            </p>
-                          </div>
-                        </div>
-                      )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={switchingId !== null}
-                        onClick={() => void handleSwitchChild(profile.id)}
-                        className="btn-primary min-h-[44px] flex-1 justify-center text-xs"
-                      >
-                        {switchingId === profile.id ? 'Đang chuyển…' : 'Mở hồ sơ bé'}
-                      </button>
-                      <button
-                        type="button"
-                        data-testid={`grant-time-button-${profile.id}`}
-                        onClick={() => openDialog({ kind: 'grant', profile })}
-                        className="btn-secondary min-h-[44px] px-3 text-xs font-bold text-brand-dark"
-                      >
-                        Cho thêm 15 phút
-                      </button>
-                      <button
-                        type="button"
-                        data-testid={`screen-time-settings-button-${profile.id}`}
-                        onClick={() => openDialog({ kind: 'screen-time', profile })}
-                        className="btn-secondary min-h-[44px] px-3 text-xs"
-                      >
-                        Thời gian & Toán
-                      </button>
-                      <button
-                        type="button"
-                        data-testid={`play-features-settings-button-${profile.id}`}
-                        onClick={() => {
-                          setFeedback(null);
-                          setPlaySettingsProfile(profile);
-                        }}
-                        className="btn-secondary min-h-[44px] px-3 text-xs"
-                      >
-                        Tính năng xem phim
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openDialog({ kind: 'edit', profile })}
-                        className="btn-secondary min-h-[44px] px-3 text-xs"
-                      >
-                        Sửa
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openDialog({ kind: 'delete', profile })}
-                        className="btn-secondary min-h-[44px] px-3 text-xs text-red-900"
-                      >
-                        Xóa
-                      </button>
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={switchingId !== null}
+                          onClick={() => void handleSwitchChild(profile.id)}
+                          className="btn-primary min-h-[44px] flex-1 justify-center text-xs font-bold"
+                        >
+                          {switchingId === profile.id ? 'Đang chuyển…' : `Mở hồ sơ của ${profile.name}`}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`grant-time-button-${profile.id}`}
+                          onClick={() => openDialog({ kind: 'grant', profile })}
+                          className="btn-secondary min-h-[44px] px-3.5 text-xs font-bold text-brand-dark"
+                        >
+                          Cho thêm thời gian hôm nay
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          data-testid={`screen-time-settings-button-${profile.id}`}
+                          onClick={() => openDialog({ kind: 'screen-time', profile })}
+                          className="btn-secondary min-h-[44px] px-3 text-xs"
+                        >
+                          Thời gian xem
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`edit-child-quiz-button-${profile.id}`}
+                          onClick={() => {
+                            setFeedback(null);
+                            setQuizSettingsProfile(profile);
+                          }}
+                          className="btn-secondary min-h-[44px] px-3 text-xs"
+                        >
+                          Đổi bộ câu hỏi
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`play-features-settings-button-${profile.id}`}
+                          onClick={() => {
+                            setFeedback(null);
+                            setRecentSavedChild(null);
+                            setPlaySettingsProfile(profile);
+                          }}
+                          className="btn-secondary min-h-[44px] px-3 text-xs"
+                        >
+                          Tính năng xem phim
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openDialog({ kind: 'edit', profile })}
+                          className="btn-secondary min-h-[44px] px-3 text-xs"
+                        >
+                          Sửa
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openDialog({ kind: 'delete', profile })}
+                          className="btn-secondary min-h-[44px] px-3 text-xs text-red-900"
+                        >
+                          Xóa
+                        </button>
+                      </div>
                     </div>
                   </li>
                 );
@@ -815,19 +990,54 @@ export function ChildProfilesSection() {
             </p>
           )}
 
-          {token && childProfiles.length > 0 && (
-            <>
-              <ParentBountySection
-                token={token}
-                childProfiles={childProfiles}
-                sessionPin={activeSessionPin}
-                onPinVerified={rememberSessionPin}
-                onPinRejected={clearSessionPin}
-                onScreenTimeUpdated={() => void loadScreenTimeOverview()}
-              />
+          {token && childProfiles.length > 0 && activeChildProfile && (
+            <div
+              data-testid="child-unified-settings-group"
+              className="mt-6 rounded-xl border-2 border-ink/35 bg-surface-muted/70 p-4 sm:p-5"
+            >
+              <div className="flex flex-col gap-3 border-b border-surface-border pb-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <ChildAvatarBadge avatarKey={activeChildProfile.avatarKey} size="sm" />
+                  <div className="min-w-0">
+                    <p className="text-base font-bold text-ink">
+                      Mọi cài đặt của {activeChildProfile.name} ở cùng một nơi
+                    </p>
+                    <p className="text-sm text-muted">
+                      Phim lẻ cuối tuần, phim cần trả lời câu hỏi, nhiệm vụ đổi giờ và báo cáo học tập của bé.
+                    </p>
+                  </div>
+                </div>
+                {childProfiles.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Chọn bé để xem toàn bộ cài đặt">
+                    {childProfiles.map((profile) => {
+                      const active = profile.id === activeChildProfile.id;
+                      return (
+                        <button
+                          key={profile.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={active}
+                          data-testid={`unified-child-tab-${profile.id}`}
+                          onClick={() => setSelectedChildId(profile.id)}
+                          className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold cursor-pointer ${
+                            active
+                              ? 'border-ink bg-mint text-ink shadow-[2px_2px_0_#203328]'
+                              : 'border-surface-border bg-paper-white text-muted hover:text-ink'
+                          }`}
+                        >
+                          <ChildAvatarBadge avatarKey={profile.avatarKey} size="sm" />
+                          <span>{profile.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <ParentWeekendVaultSection
                 token={token}
                 childProfiles={childProfiles}
+                activeProfileId={activeChildProfile.id}
                 sessionPin={activeSessionPin}
                 onPinVerified={rememberSessionPin}
                 onPinRejected={clearSessionPin}
@@ -835,11 +1045,53 @@ export function ChildProfilesSection() {
               <ParentVipSeriesSection
                 token={token}
                 childProfiles={childProfiles}
+                activeProfileId={activeChildProfile.id}
+                hideChildTabs
+                onSelectProfile={setSelectedChildId}
                 sessionPin={activeSessionPin}
                 onPinVerified={rememberSessionPin}
                 onPinRejected={clearSessionPin}
               />
-            </>
+              <ParentBountySection
+                token={token}
+                childProfiles={childProfiles}
+                activeProfileId={activeChildProfile.id}
+                sessionPin={activeSessionPin}
+                onPinVerified={rememberSessionPin}
+                onPinRejected={clearSessionPin}
+                onScreenTimeUpdated={() => void loadScreenTimeOverview()}
+              />
+              <ParentQuizInsightsSection
+                token={token}
+                configs={quizConfigs}
+                loading={quizLoading}
+                loadError={quizLoadError}
+                activeProfileId={activeChildProfile.id}
+                hideChildTabs
+                onSelectProfile={setSelectedChildId}
+                sessionPin={activeSessionPin}
+                onPinVerified={rememberSessionPin}
+                onPinRejected={clearSessionPin}
+                onGradeChanged={handleQuizConfigUpdated}
+                onRetry={loadQuizData}
+              />
+            </div>
+          )}
+
+          {token && (
+            <ParentQuizBankSection
+              token={token}
+              overview={quizOverview}
+              loading={quizLoading}
+              loadError={quizLoadError}
+              childProfiles={childProfiles}
+              quizConfigs={quizConfigs}
+              onChildQuizUpdated={handleQuizConfigUpdated}
+              sessionPin={activeSessionPin}
+              onPinVerified={rememberSessionPin}
+              onPinRejected={clearSessionPin}
+              onRefresh={loadQuizData}
+            />
           )}
         </div>
       )}
@@ -858,12 +1110,13 @@ export function ChildProfilesSection() {
               : dialog.kind === 'edit'
               ? 'Sửa hồ sơ trẻ em'
               : dialog.kind === 'screen-time'
-              ? `Thời gian xem & Toán · ${dialog.profile.name}`
+              ? `Thời gian xem · ${dialog.profile.name}`
               : dialog.kind === 'grant'
               ? `Cho thêm thời gian · ${dialog.profile.name}`
               : 'Xóa hồ sơ trẻ em'
           }
           tone={dialog.kind === 'delete' || dialog.kind === 'disable' ? 'danger' : 'default'}
+          size={dialog.kind === 'create' || dialog.kind === 'edit' || dialog.kind === 'screen-time' ? 'lg' : 'md'}
           onClose={closeDialog}
           busy={busy}
         >
@@ -1030,7 +1283,7 @@ export function ChildProfilesSection() {
                           disabled={busy}
                           aria-pressed={selected}
                           onClick={() => setAvatarKey(item.key)}
-                          className={`flex min-h-[68px] flex-col items-center justify-center gap-1 rounded-xl border-2 p-2 text-[11px] font-semibold cursor-pointer transition-colors ${
+                          className={`flex min-h-[68px] flex-col items-center justify-center gap-1 rounded-xl border-2 p-2 text-[0.6875rem] font-semibold cursor-pointer transition-colors ${
                             selected
                               ? 'border-ink bg-mint/60 text-ink shadow-[2px_2px_0_#203328]'
                               : 'border-surface-border bg-paper-white text-muted hover:border-ink/50'
@@ -1095,6 +1348,101 @@ export function ChildProfilesSection() {
                   )}
                 </fieldset>
                 <div>
+                  <label htmlFor="child-profile-grade" className="mb-1.5 block text-xs font-semibold text-ink">
+                    Khối lớp của bé
+                  </label>
+                  <select
+                    id="child-profile-grade"
+                    data-testid="child-profile-grade-select"
+                    disabled={busy}
+                    value={profileQuizGrade}
+                    onChange={(event) => setProfileQuizGrade(event.target.value as QuizGradeCode)}
+                    className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+                  >
+                    {QUIZ_GRADES.map((item) => (
+                      <option key={item.code} value={item.code}>
+                        {item.label} · {item.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {activeAvailableSets.length > 0 && (
+                  <fieldset>
+                    <legend className="mb-2 text-xs font-semibold text-ink">Bộ câu hỏi dùng cho bé</legend>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {activeAvailableSets.map((set) => {
+                        const checked = profileQuizSetIds.includes(set.id);
+                        return (
+                          <label
+                            key={set.id}
+                            className={`flex min-h-[44px] items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold cursor-pointer ${
+                              checked
+                                ? 'border-ink bg-mint/50 text-ink'
+                                : 'border-surface-border bg-paper-white text-muted hover:text-ink'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              data-testid={`create-quiz-set-${set.id}`}
+                              checked={checked}
+                              disabled={busy}
+                              onChange={() => toggleProfileQuizSet(set.id)}
+                              className="h-4 w-4 shrink-0 accent-brand"
+                            />
+                            <span className="min-w-0 flex-1 truncate">{set.name}</span>
+                            <span className="shrink-0 rounded bg-surface-muted px-1.5 py-0.5 text-[0.625rem] font-bold text-muted">
+                              {set.builtIn ? 'Sẵn có' : `${set.questionCount} câu`}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+                )}
+                {activeAvailableSets.length > 0 && (
+                  <div
+                    data-testid="create-quiz-samples"
+                    className="rounded-xl border border-surface-border bg-surface-muted p-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-ink">Xem thử vài câu hỏi của bé</span>
+                      <button
+                        type="button"
+                        disabled={loadingProfileSamples || profileQuizSetIds.length === 0}
+                        onClick={() => void loadProfileDialogSamples(profileQuizGrade, profileQuizSetIds)}
+                        className="inline-flex min-h-[36px] items-center gap-1 rounded-md border border-surface-border bg-paper-white px-2.5 text-[0.6875rem] font-bold text-ink hover:bg-mint/40 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw size={12} aria-hidden="true" />
+                        Đổi câu mẫu
+                      </button>
+                    </div>
+                    {loadingProfileSamples ? (
+                      <p className="text-[0.6875rem] text-muted">Đang lấy câu hỏi mẫu…</p>
+                    ) : profileQuizSamples.length === 0 ? (
+                      <p className="text-[0.6875rem] text-muted">Chọn ít nhất 1 bộ câu hỏi để xem thử.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {profileQuizSamples.map((sample, index) => (
+                          <li
+                            key={`${sample.question}-${index}`}
+                            className="rounded-lg border border-surface-border bg-paper-white p-2.5 text-xs"
+                          >
+                            <div className="flex flex-wrap items-center gap-1.5 text-[0.625rem] font-bold text-muted">
+                              <span className="rounded bg-mint/60 px-1.5 py-0.5 text-ink">{sample.subjectLabel}</span>
+                              <span>{sample.gradeLabel}</span>
+                              {sample.setName && <span>· {sample.setName}</span>}
+                            </div>
+                            <p className="mt-1 font-bold text-ink">{sample.question}</p>
+                            <p className="mt-1 text-[0.6875rem] text-muted">
+                              {sample.options.map((opt) => `${opt.key}. ${opt.text}`).join('  |  ')}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                <div>
                   <label htmlFor="child-profile-pin" className="mb-1.5 block text-xs font-semibold text-ink">
                     Mã PIN phụ huynh
                   </label>
@@ -1116,7 +1464,7 @@ export function ChildProfilesSection() {
                   {activeSessionPin && pin === activeSessionPin && (
                     <div
                       data-testid="session-pin-prefilled-note"
-                      className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-brand-dark"
+                      className="mt-1.5 flex items-center justify-between gap-2 text-[0.6875rem] text-brand-dark"
                     >
                       <span>Đã tự điền mã PIN vừa xác nhận trong phiên này.</span>
                       <button
@@ -1234,25 +1582,6 @@ export function ChildProfilesSection() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="child-math-level" className="mb-1.5 block text-xs font-semibold text-ink">
-                    Cấp độ bài toán
-                  </label>
-                  <select
-                    id="child-math-level"
-                    data-testid="screen-time-math-level-select"
-                    disabled={busy}
-                    value={mathLevel}
-                    onChange={(event) => setMathLevel(Number(event.target.value))}
-                    className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
-                  >
-                    {MATH_LEVEL_OPTIONS.map((option) => (
-                      <option key={option.level} value={option.level}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
                   <label htmlFor="screen-time-settings-pin" className="mb-1.5 block text-xs font-semibold text-ink">
                     Mã PIN phụ huynh
                   </label>
@@ -1275,7 +1604,7 @@ export function ChildProfilesSection() {
                   {activeSessionPin && pin === activeSessionPin && (
                     <div
                       data-testid="session-pin-prefilled-note"
-                      className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-brand-dark"
+                      className="mt-1.5 flex items-center justify-between gap-2 text-[0.6875rem] text-brand-dark"
                     >
                       <span>Đã tự điền mã PIN vừa xác nhận trong phiên này.</span>
                       <button
@@ -1297,7 +1626,7 @@ export function ChildProfilesSection() {
             {dialog.kind === 'grant' && (
               <>
                 <p className="text-xs leading-relaxed text-muted">
-                  Cộng thêm thời gian xem đột xuất trong hôm nay cho <strong>{dialog.profile.name}</strong> (tính riêng, không trừ vào trần thưởng giải toán).
+                  Cộng thêm thời gian xem đột xuất trong hôm nay cho <strong>{dialog.profile.name}</strong> (tính riêng, không trừ vào trần thưởng câu hỏi).
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {GRANT_PRESETS.map((preset) => (
@@ -1356,7 +1685,7 @@ export function ChildProfilesSection() {
                   {activeSessionPin && pin === activeSessionPin && (
                     <div
                       data-testid="session-pin-prefilled-note"
-                      className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-brand-dark"
+                      className="mt-1.5 flex items-center justify-between gap-2 text-[0.6875rem] text-brand-dark"
                     >
                       <span>Đã tự điền mã PIN vừa xác nhận trong phiên này.</span>
                       <button
@@ -1378,7 +1707,7 @@ export function ChildProfilesSection() {
             {dialog.kind === 'delete' && (
               <>
                 <p className="text-xs leading-relaxed text-muted">
-                  Xóa hẳn hồ sơ <strong>{dialog.profile.name}</strong>? Toàn bộ lịch sử xem, Xem sau, Yêu thích và điểm chấm riêng của hồ sơ này sẽ bị xóa.
+                  Xóa hẳn hồ sơ <strong>{dialog.profile.name}</strong>? Toàn bộ lịch sử xem, lịch sử trả lời câu hỏi, Xem sau, Yêu thích và điểm chấm riêng của hồ sơ này sẽ bị xóa.
                 </p>
                 <div>
                   <label htmlFor="child-profile-delete-pin" className="mb-1.5 block text-xs font-semibold text-ink">
@@ -1407,7 +1736,7 @@ export function ChildProfilesSection() {
               </div>
             )}
 
-            <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+            <div className="dialog-sticky-footer flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 disabled={busy}
@@ -1448,6 +1777,31 @@ export function ChildProfilesSection() {
         </SiteDialog>
       )}
 
+      {quizSettingsProfile && token && (
+        <ChildQuizSettingsDialog
+          token={token}
+          profile={quizSettingsProfile}
+          currentConfig={quizConfigByProfile[quizSettingsProfile.id]}
+          availableSets={quizOverview?.sets ?? []}
+          sessionPin={activeSessionPin}
+          onPinVerified={rememberSessionPin}
+          onPinRejected={clearSessionPin}
+          onSaved={(updated) => {
+            handleQuizConfigUpdated(updated);
+            const targetId = updated.profileId || quizSettingsProfile.id;
+            const targetName = updated.name || quizSettingsProfile.name;
+            setQuizSettingsProfile(null);
+            setSelectedChildId(targetId);
+            setRecentSavedChild({ id: targetId, name: targetName });
+            setFeedback({
+              type: 'success',
+              text: `Đã lưu khối lớp và bộ câu hỏi cho ${targetName}.`,
+            });
+          }}
+          onClose={() => setQuizSettingsProfile(null)}
+        />
+      )}
+
       {playSettingsProfile && token && (
         <PlayFeaturesSettings
           token={token}
@@ -1456,12 +1810,16 @@ export function ChildProfilesSection() {
           onPinVerified={rememberSessionPin}
           onPinRejected={clearSessionPin}
           onClose={() => setPlaySettingsProfile(null)}
-          onSaved={(saved) =>
+          onSaved={(saved) => {
+            const targetId = saved.profileId || playSettingsProfile.id;
+            const targetName = saved.name || playSettingsProfile.name;
+            setSelectedChildId(targetId);
+            setRecentSavedChild({ id: targetId, name: targetName });
             setFeedback({
               type: 'success',
-              text: `Đã lưu cài đặt tính năng xem phim cho ${saved.name || playSettingsProfile.name}.`,
-            })
-          }
+              text: `Đã lưu cài đặt tính năng xem phim cho ${targetName}.`,
+            });
+          }}
         />
       )}
     </section>

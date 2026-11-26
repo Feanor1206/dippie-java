@@ -1,9 +1,9 @@
-import { ChildProfilesSection } from './ChildProfilesSection';
 import { DeleteAccountSection } from './DeleteAccountSection';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { AlertCircle, CheckCircle2, KeyRound, Loader2, RefreshCw, User } from 'lucide-react';
+import { AlertCircle, CheckCircle2, KeyRound, RefreshCw, User } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
+import * as motion from '@/lib/motion';
 import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
 import { ExitKidModeDialog } from '@/features/profiles/components/ExitKidModeDialog';
 import {
@@ -35,6 +35,8 @@ export function AccountSettings() {
     isLoading,
     isKidMode,
     activeProfile,
+    parentModeEnabled,
+    childProfiles = [],
     openAuthModal,
     retryVerify,
     applySession,
@@ -56,6 +58,9 @@ export function AccountSettings() {
 
   const profileAbortRef = useRef<AbortController | null>(null);
   const passwordAbortRef = useRef<AbortController | null>(null);
+  const pageRef = useRef<HTMLElement | null>(null);
+
+  motion.useScrollReveal?.(pageRef, [isLoading, isAuthenticated, kidMode]);
 
   useEffect(() => {
     setFullName(user?.fullName || '');
@@ -165,7 +170,7 @@ export function AccountSettings() {
   };
 
   return (
-    <main id="main-content" tabIndex={-1} className="page-shell min-h-[75vh] py-8 sm:py-12">
+    <main ref={pageRef} id="main-content" tabIndex={-1} className="page-shell min-h-[75vh] py-8 sm:py-12">
       {status === 'unavailable' && (
         <div
           role="alert"
@@ -286,7 +291,7 @@ export function AccountSettings() {
         </section>
       ) : (
         <div className="mx-auto max-w-4xl space-y-8">
-          <div className="rounded-xl border border-surface-border bg-surface p-6 sm:p-8">
+          <div data-reveal-section="" className="rounded-xl border border-surface-border bg-surface p-6 sm:p-8">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
                 <div className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-brand text-base font-bold text-zinc-950 shadow-brand-sm">
@@ -317,7 +322,43 @@ export function AccountSettings() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+          <section
+            data-reveal-section=""
+            data-testid="account-family-card"
+            aria-labelledby="account-family-heading"
+            className="rounded-xl border-2 border-ink bg-paper-white p-6 shadow-brand-sm sm:p-7"
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 id="account-family-heading" className="text-lg font-bold text-ink">
+                    Gia đình &amp; Hồ sơ của bé
+                  </h2>
+                  <span className="rounded-full border border-ink/40 bg-mint px-2.5 py-0.5 text-xs font-bold text-ink">
+                    {parentModeEnabled
+                      ? `${Array.isArray(childProfiles) ? childProfiles.length : 0} hồ sơ bé`
+                      : 'Chưa thiết lập'}
+                  </span>
+                </div>
+                <p className="text-sm leading-relaxed text-muted">
+                  Tất cả hồ sơ trẻ em, giới hạn giờ xem mỗi ngày, bộ câu hỏi theo lớp và tệp CSV câu hỏi nay nằm gọn tại mục Gia đình.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                <Link
+                  to={parentModeEnabled && Array.isArray(childProfiles) && childProfiles.length > 0 ? '/gia-dinh' : '/gia-dinh?setup=1'}
+                  data-testid="account-family-settings-link"
+                  className="btn-primary min-h-[44px] text-xs sm:text-sm font-bold"
+                >
+                  {parentModeEnabled && Array.isArray(childProfiles) && childProfiles.length > 0
+                    ? 'Mở cài đặt Gia đình'
+                    : 'Thiết lập cho bé ngay'}
+                </Link>
+              </div>
+            </div>
+          </section>
+
+          <div data-reveal-section="" className="grid grid-cols-1 gap-8 lg:grid-cols-2">
             <section
               aria-labelledby="account-profile-heading"
               className="rounded-xl border border-surface-border bg-surface p-6 sm:p-8"
@@ -334,7 +375,7 @@ export function AccountSettings() {
                   <div
                     role={profileFeedback.type === 'error' ? 'alert' : 'status'}
                     data-testid="account-profile-feedback"
-                    className={`flex items-start gap-2 rounded-xl border p-3 text-xs leading-relaxed ${
+                    className={`motion-toast-enter flex items-start gap-2 rounded-xl border p-3 text-xs leading-relaxed ${
                       profileFeedback.type === 'error'
                         ? 'border-red-500/40 bg-red-500/10 text-red-800'
                         : 'border-brand/50 bg-brand/15 text-ink'
@@ -430,7 +471,7 @@ export function AccountSettings() {
                   <div
                     role={passwordFeedback.type === 'error' ? 'alert' : 'status'}
                     data-testid="account-password-feedback"
-                    className={`flex items-start gap-2 rounded-xl border p-3 text-xs leading-relaxed ${
+                    className={`motion-toast-enter flex items-start gap-2 rounded-xl border p-3 text-xs leading-relaxed ${
                       passwordFeedback.type === 'error'
                         ? 'border-red-500/40 bg-red-500/10 text-red-800'
                         : 'border-brand/50 bg-brand/15 text-ink'
@@ -484,8 +525,8 @@ export function AccountSettings() {
                       className="w-full bg-transparent text-base sm:text-sm text-ink placeholder:text-muted focus:outline-none focus-visible:shadow-none disabled:opacity-50"
                     />
                   </div>
-                  <p id="account-password-hint" className="mt-1 text-[11px] text-muted">
-                    Mật khẩu dài từ 6 ký tự, tối đa khoảng 70 chữ (chữ có dấu tính nhiều hơn).
+                  <p id="account-password-hint" className="mt-1 text-xs text-muted">
+                    Mật khẩu dài từ 6 đến 50 ký tự.
                   </p>
                 </div>
 
@@ -519,8 +560,10 @@ export function AccountSettings() {
               </form>
             </section>
           </div>
-          <ChildProfilesSection />
-          <DeleteAccountSection />
+
+          <div data-reveal-section="">
+            <DeleteAccountSection />
+          </div>
         </div>
       )}
     </main>

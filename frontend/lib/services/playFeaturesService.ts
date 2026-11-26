@@ -6,6 +6,11 @@ import {
   withRequestTimeout,
 } from '@/lib/services/apiRequest';
 import type { ScreenTimeStatus } from '@/lib/services/screenTimeService';
+import {
+  normalizeQuizOptions,
+  type QuizOption,
+  type QuizOptionKey,
+} from '@/features/quiz/quizService';
 
 const API = '/api';
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -52,13 +57,21 @@ export type WatchPetStatus = {
 export type WatchPetMedicineChallenge = {
   token: string;
   question: string;
-  mathLevel: number;
+  options: QuizOption[];
+  subject: string;
+  subjectLabel: string;
+  grade: string;
+  gradeLabel: string;
+  setName: string;
   expiresAt: string;
   expiresInSeconds: number;
 };
 
 export type WatchPetMedicineAnswerResult = {
   correct: boolean;
+  correctOption: QuizOptionKey | null;
+  correctText: string | null;
+  explanation: string | null;
   message: string;
   watchPet: WatchPetStatus;
 };
@@ -79,7 +92,12 @@ export type LootDropSpawn = {
 export type LootDropQuiz = {
   token: string;
   question: string;
-  mathLevel: number;
+  options: QuizOption[];
+  subject: string;
+  subjectLabel: string;
+  grade: string;
+  gradeLabel: string;
+  setName: string;
   timerSeconds: number;
   expiresAt: string;
   combo: number;
@@ -89,6 +107,9 @@ export type LootDropQuiz = {
 
 export type LootDropAnswerResult = {
   correct: boolean;
+  correctOption: QuizOptionKey | null;
+  correctText: string | null;
+  explanation: string | null;
   earnedSeconds: number;
   earnedMinutes: number;
   combo: number;
@@ -158,6 +179,13 @@ export class PlayFeaturesApiError extends Error {
     this.status = status;
     this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+function normalizeOptionKey(raw: unknown): QuizOptionKey | null {
+  if (typeof raw !== 'string') return null;
+  const upper = raw.trim().toUpperCase();
+  if (upper === 'A' || upper === 'B' || upper === 'C' || upper === 'D') return upper;
+  return null;
 }
 
 export function notifyPlayFeaturesLocked(reason: string): void {
@@ -283,7 +311,9 @@ function normalizeScreenTimeStatus(raw: any): ScreenTimeStatus {
     profileId,
     day: typeof raw?.day === 'string' ? raw.day : '',
     dailyMinutes,
-    mathLevel: Math.min(4, Math.max(1, nonNeg(raw?.mathLevel, 1) || 1)),
+    quizGrade: typeof raw?.quizGrade === 'string' && raw.quizGrade.trim() ? raw.quizGrade.trim() : null,
+    quizGradeLabel:
+      typeof raw?.quizGradeLabel === 'string' && raw.quizGradeLabel.trim() ? raw.quizGradeLabel.trim() : null,
     rewardMinutes: nonNeg(raw?.rewardMinutes, 5),
     maxBonusMinutes: nonNeg(raw?.maxBonusMinutes, 30),
     dailySeconds: nonNeg(raw?.dailySeconds, 0),
@@ -403,7 +433,7 @@ export async function startWatchPetRest(
         headers: authHeaders(token),
         signal,
       });
-      const { data } = await parseEnvelope(response, 'Chưa cho Dieppie đi ngủ được.');
+      const { data } = await parseEnvelope(response, 'Chưa bắt đầu giờ nghỉ mắt cùng Dieppie được.');
       return normalizeWatchPet(data);
     },
     options
@@ -422,11 +452,22 @@ export async function fetchWatchPetMedicineChallenge(
         headers: authHeaders(token),
         signal,
       });
-      const { data } = await parseEnvelope(response, 'Chưa lấy được bài toán mua thuốc hồi sức cho Dieppie.');
+      const { data } = await parseEnvelope(response, 'Chưa lấy được câu hỏi để xem tiếp cùng Dieppie.');
+      const quizOptions = normalizeQuizOptions(data?.options);
+      const challengeToken = typeof data?.token === 'string' ? data.token.trim() : '';
+      const question = typeof data?.question === 'string' ? data.question.trim() : '';
+      if (!challengeToken || !question || quizOptions.length !== 4) {
+        throw new PlayFeaturesApiError('Dữ liệu câu hỏi của Dieppie chưa hợp lệ.', 502);
+      }
       return {
-        token: typeof data?.token === 'string' ? data.token : '',
-        question: typeof data?.question === 'string' ? data.question : '',
-        mathLevel: Math.min(4, Math.max(1, nonNeg(data?.mathLevel, 1) || 1)),
+        token: challengeToken,
+        question,
+        options: quizOptions,
+        subject: typeof data?.subject === 'string' ? data.subject : 'TOAN',
+        subjectLabel: typeof data?.subjectLabel === 'string' ? data.subjectLabel : 'Toán',
+        grade: typeof data?.grade === 'string' ? data.grade : 'LOP_1',
+        gradeLabel: typeof data?.gradeLabel === 'string' ? data.gradeLabel : 'Lớp 1',
+        setName: typeof data?.setName === 'string' ? data.setName : '',
         expiresAt: typeof data?.expiresAt === 'string' ? data.expiresAt : '',
         expiresInSeconds: nonNeg(data?.expiresInSeconds, 120),
       };
@@ -438,7 +479,7 @@ export async function fetchWatchPetMedicineChallenge(
 export async function submitWatchPetMedicineAnswer(
   token: string,
   challengeToken: string,
-  answer: number,
+  option: QuizOptionKey,
   options: PlayFeaturesRequestOptions = {}
 ): Promise<WatchPetMedicineAnswerResult> {
   const url = `${options.baseUrl || API}/users/play-features/watch-pet/medicine`;
@@ -447,12 +488,15 @@ export async function submitWatchPetMedicineAnswer(
       const response = await apiFetch(url, {
         method: 'POST',
         headers: authHeaders(token, true),
-        body: JSON.stringify({ token: challengeToken, answer }),
+        body: JSON.stringify({ token: challengeToken, option }),
         signal,
       });
-      const { data, message } = await parseEnvelope(response, 'Chưa kiểm tra được đáp án mua thuốc cho Dieppie.');
+      const { data, message } = await parseEnvelope(response, 'Chưa kiểm tra được câu trả lời cùng Dieppie.');
       return {
         correct: Boolean(data?.correct),
+        correctOption: normalizeOptionKey(data?.correctOption),
+        correctText: typeof data?.correctText === 'string' ? data.correctText : null,
+        explanation: typeof data?.explanation === 'string' && data.explanation.trim() ? data.explanation : null,
         message,
         watchPet: normalizeWatchPet(data?.watchPet),
       };
@@ -500,11 +544,22 @@ export async function openLootDrop(
         signal,
       });
       const { data } = await parseEnvelope(response, 'Rương báu đã bay mất rồi.');
+      const quizOptions = normalizeQuizOptions(data?.options);
+      const quizToken = typeof data?.token === 'string' ? data.token.trim() : '';
+      const question = typeof data?.question === 'string' ? data.question.trim() : '';
+      if (!quizToken || !question || quizOptions.length !== 4) {
+        throw new PlayFeaturesApiError('Dữ liệu câu hỏi rương báu chưa hợp lệ.', 502);
+      }
       return {
-        token: typeof data?.token === 'string' ? data.token : '',
-        question: typeof data?.question === 'string' ? data.question : '',
-        mathLevel: Math.min(4, Math.max(1, nonNeg(data?.mathLevel, 1) || 1)),
-        timerSeconds: nonNeg(data?.timerSeconds, 10) || 10,
+        token: quizToken,
+        question,
+        options: quizOptions,
+        subject: typeof data?.subject === 'string' ? data.subject : 'TOAN',
+        subjectLabel: typeof data?.subjectLabel === 'string' ? data.subjectLabel : 'Toán',
+        grade: typeof data?.grade === 'string' ? data.grade : 'LOP_1',
+        gradeLabel: typeof data?.gradeLabel === 'string' ? data.gradeLabel : 'Lớp 1',
+        setName: typeof data?.setName === 'string' ? data.setName : '',
+        timerSeconds: nonNeg(data?.timerSeconds, 20) || 20,
         expiresAt: typeof data?.expiresAt === 'string' ? data.expiresAt : '',
         combo: nonNeg(data?.combo, 0),
         baseRewardMinutes: nonNeg(data?.baseRewardMinutes, 3) || 3,
@@ -518,7 +573,7 @@ export async function openLootDrop(
 export async function submitLootDropAnswer(
   token: string,
   answerToken: string,
-  answer: number,
+  option: QuizOptionKey,
   options: PlayFeaturesRequestOptions = {}
 ): Promise<LootDropAnswerResult> {
   const url = `${options.baseUrl || API}/users/play-features/loot/answer`;
@@ -527,12 +582,15 @@ export async function submitLootDropAnswer(
       const response = await apiFetch(url, {
         method: 'POST',
         headers: authHeaders(token, true),
-        body: JSON.stringify({ token: answerToken, answer }),
+        body: JSON.stringify({ token: answerToken, option }),
         signal,
       });
       const { data, message } = await parseEnvelope(response, 'Chưa mở thưởng rương báu được.');
       return {
         correct: Boolean(data?.correct),
+        correctOption: normalizeOptionKey(data?.correctOption),
+        correctText: typeof data?.correctText === 'string' ? data.correctText : null,
+        explanation: typeof data?.explanation === 'string' && data.explanation.trim() ? data.explanation : null,
         earnedSeconds: nonNeg(data?.earnedSeconds, 0),
         earnedMinutes: nonNeg(data?.earnedMinutes, 0),
         combo: nonNeg(data?.combo, 0),

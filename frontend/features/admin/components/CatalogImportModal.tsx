@@ -295,7 +295,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
                 )}
               </div>
               {validationResult.contentHash && (
-                <span className="font-mono text-[11px] text-muted" title={validationResult.contentHash}>
+                <span className="font-mono text-[0.6875rem] text-muted" title={validationResult.contentHash}>
                   SHA-256: {validationResult.contentHash.slice(0, 12)}…
                 </span>
               )}
@@ -303,19 +303,19 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
 
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-lg bg-surface-elevated p-2.5 border border-surface-border">
-                <span className="text-[11px] text-muted">Tạo mới</span>
+                <span className="text-[0.6875rem] text-muted">Tạo mới</span>
                 <p className="text-base font-bold text-emerald-900">+{validationResult.toCreate}</p>
               </div>
               <div className="rounded-lg bg-surface-elevated p-2.5 border border-surface-border">
-                <span className="text-[11px] text-muted">Cập nhật</span>
+                <span className="text-[0.6875rem] text-muted">Cập nhật</span>
                 <p className="text-base font-bold text-amber-900">~{validationResult.toUpdate}</p>
               </div>
               <div className="rounded-lg bg-surface-elevated p-2.5 border border-surface-border">
-                <span className="text-[11px] text-muted">Không đổi</span>
+                <span className="text-[0.6875rem] text-muted">Không đổi</span>
                 <p className="text-base font-bold text-muted">{validationResult.unchanged}</p>
               </div>
               <div className="rounded-lg bg-surface-elevated p-2.5 border border-surface-border">
-                <span className="text-[11px] text-muted">Xung đột</span>
+                <span className="text-[0.6875rem] text-muted">Xung đột</span>
                 <p className={`text-base font-bold ${validationResult.conflicts > 0 ? 'text-red-900' : 'text-muted'}`}>
                   {validationResult.conflicts}
                 </p>
@@ -334,7 +334,7 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
                         <th className="p-2">Mô tả</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-surface-border font-mono text-[11px]">
+                    <tbody className="divide-y divide-surface-border font-mono text-[0.6875rem]">
                       {validationResult.errors.map((err, idx) => (
                         <tr key={idx} className="hover:bg-red-500/5">
                           <td className="p-2 text-amber-900">{err.path}</td>
@@ -370,13 +370,13 @@ export function CatalogImportModal({ onClose, onImportSuccess }: CatalogImportMo
               {importResult.counts &&
                 Object.entries(importResult.counts).map(([entity, count]) => (
                   <div key={entity} className="rounded bg-surface p-2 border border-surface-border">
-                    <span className="text-[11px] text-muted">{entityLabels[entity] || entity}:</span>
+                    <span className="text-[0.6875rem] text-muted">{entityLabels[entity] || entity}:</span>
                     <strong className="ml-1 text-ink">{count}</strong>
                   </div>
                 ))}
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-emerald-500/20 pt-2 text-[11px] text-muted">
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-emerald-500/20 pt-2 text-[0.6875rem] text-muted">
               <span>Mã lần nhập: <code className="text-emerald-900">{importResult.importId}</code></span>
               <span>Trạng thái tìm kiếm: {indexStatusLabels[importResult.indexStatus || ''] || importResult.indexStatus || 'Chưa rõ'}</span>
             </div>

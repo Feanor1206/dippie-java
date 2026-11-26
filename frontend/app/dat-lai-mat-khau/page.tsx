@@ -228,7 +228,7 @@ export default function ResetPasswordPage() {
                   {showNew ? 'Ẩn' : 'Hiện'}
                 </button>
               </div>
-              <div id="reset-password-hint" className="mt-2 space-y-1.5 text-[11px] text-muted">
+              <div id="reset-password-hint" className="mt-2 space-y-1.5 text-[0.6875rem] text-muted">
                 <p>{PASSWORD_RULES_HINT} {PASSWORD_STRENGTH_TIP}</p>
                 {strength.level !== 'empty' && (
                   <div className="flex items-center gap-2">

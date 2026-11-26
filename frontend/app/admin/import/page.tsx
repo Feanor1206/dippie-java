@@ -207,11 +207,11 @@ export default function AdminImportPage() {
                           {series.title}
                         </Link>
                         {typeof series.releaseYearStart === 'number' && Number.isFinite(series.releaseYearStart) && series.releaseYearStart > 0 && (
-                          <span className="rounded bg-surface-elevated px-1.5 py-0.5 text-[10px] text-muted border border-surface-border">
+                          <span className="rounded bg-surface-elevated px-1.5 py-0.5 text-[0.625rem] text-muted border border-surface-border">
                             {Math.trunc(series.releaseYearStart)}
                           </span>
                         )}
-                        <span className="max-w-full break-all font-mono text-[11px] text-muted">
+                        <span className="max-w-full break-all font-mono text-[0.6875rem] text-muted">
                           [{series.id}]
                         </span>
                       </div>
@@ -305,28 +305,28 @@ export default function AdminImportPage() {
 
                         <div className="flex flex-wrap items-center gap-2">
                           {snapshot.status === 'READY' && (
-                            <span className="flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-900 border border-emerald-500/30">
+                            <span className="flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 text-[0.6875rem] font-bold text-emerald-900 border border-emerald-500/30">
                               <CheckCircle2 size={12} /> Đã đồng bộ
                             </span>
                           )}
                           {(snapshot.status === 'SYNCING' || snapshot.status === 'BUILDING') && (
-                            <span className="flex items-center gap-1 rounded bg-blue-500/10 px-2 py-0.5 text-[11px] font-bold text-blue-900 border border-blue-500/30 animate-pulse">
+                            <span className="flex items-center gap-1 rounded bg-blue-500/10 px-2 py-0.5 text-[0.6875rem] font-bold text-blue-900 border border-blue-500/30 animate-pulse">
                               <RefreshCw size={12} className="animate-spin" /> Đang đồng bộ
                             </span>
                           )}
                           {snapshot.status === 'PENDING' && (
-                            <span className="flex items-center gap-1 rounded bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-900 border border-amber-500/30">
+                            <span className="flex items-center gap-1 rounded bg-amber-500/10 px-2 py-0.5 text-[0.6875rem] font-bold text-amber-900 border border-amber-500/30">
                               <Clock size={12} /> Chờ xử lý
                             </span>
                           )}
                           {snapshot.status === 'BLOCKED' && (
-                            <span className="flex items-center gap-1 rounded bg-orange-500/10 px-2 py-0.5 text-[11px] font-bold text-orange-900 border border-orange-500/30">
+                            <span className="flex items-center gap-1 rounded bg-orange-500/10 px-2 py-0.5 text-[0.6875rem] font-bold text-orange-900 border border-orange-500/30">
                               <AlertTriangle size={12} /> {snapshot.errorMessage?.startsWith('CACHE_REQUIRED')
                                 ? 'Tạm dừng: thiếu dữ liệu chỉ mục' : 'Tạm dừng: thiếu mã truy cập'}
                             </span>
                           )}
                           {snapshot.status === 'SYNC_FAILED' && (
-                            <span className="flex items-center gap-1 rounded bg-red-500/10 px-2 py-0.5 text-[11px] font-bold text-red-900 border border-red-500/30">
+                            <span className="flex items-center gap-1 rounded bg-red-500/10 px-2 py-0.5 text-[0.6875rem] font-bold text-red-900 border border-red-500/30">
                               <XCircle size={12} /> Lỗi đồng bộ
                             </span>
                           )}
@@ -336,7 +336,7 @@ export default function AdminImportPage() {
                               type="button"
                               onClick={() => handleRetrySnapshot(snapshot.id)}
                               disabled={isRetrying}
-                              className="btn-secondary flex items-center gap-1 text-[11px] py-1 px-2.5 font-semibold text-brand-dark hover:text-ink disabled:opacity-50"
+                              className="btn-secondary flex items-center gap-1 text-[0.6875rem] py-1 px-2.5 font-semibold text-brand-dark hover:text-ink disabled:opacity-50"
                             >
                               <RotateCcw size={11} className={isRetrying ? 'animate-spin' : ''} />
                               <span>{isRetrying ? 'Đang gửi…' : 'Thử lại'}</span>
@@ -346,12 +346,12 @@ export default function AdminImportPage() {
                       </div>
 
                       {snapshot.errorMessage && (
-                        <p className="whitespace-pre-wrap break-words rounded bg-red-500/10 p-2 font-mono text-[11px] text-red-900 border border-red-500/20">
+                        <p className="whitespace-pre-wrap break-words rounded bg-red-500/10 p-2 font-mono text-[0.6875rem] text-red-900 border border-red-500/20">
                           {snapshot.errorMessage}
                         </p>
                       )}
 
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-muted font-mono">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[0.625rem] text-muted font-mono">
                         <span title={snapshot.contentHash}>SHA-256: {snapshot.contentHash.slice(0, 16)}…</span>
                         {snapshot.retryCount !== undefined && snapshot.retryCount > 0 && (
                           <span>Số lần thử lại: {snapshot.retryCount}</span>
@@ -385,16 +385,16 @@ export default function AdminImportPage() {
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <strong className="max-w-full break-all text-ink font-mono">{entry.id}</strong>
-                      <span className="rounded bg-brand/10 px-1.5 py-0.5 text-[10px] font-bold text-brand-dark border border-brand/20">
+                      <span className="rounded bg-brand/10 px-1.5 py-0.5 text-[0.625rem] font-bold text-brand-dark border border-brand/20">
                         Phiên bản {entry.revision}
                       </span>
                     </div>
                     {entry.description && (
-                      <p className="mt-1 text-[11px] text-muted line-clamp-2">
+                      <p className="mt-1 text-[0.6875rem] text-muted line-clamp-2">
                         {entry.description}
                       </p>
                     )}
-                    <div className="mt-2 flex items-center justify-between text-[10px] text-muted font-mono">
+                    <div className="mt-2 flex items-center justify-between text-[0.625rem] text-muted font-mono">
                       <span>{entry.defaultLanguage?.toUpperCase()}</span>
                       <span title={entry.contentHash}>
                         {entry.contentHash ? `SHA: ${entry.contentHash.slice(0, 10)}…` : ''}

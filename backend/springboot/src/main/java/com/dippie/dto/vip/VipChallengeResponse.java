@@ -1,14 +1,22 @@
 package com.dippie.dto.vip;
 
-import java.time.LocalDateTime;
+import com.dippie.dto.quiz.QuizOptionView;
 
-// đề toán khó hơn 1 bậc (tối đa mức 4) kèm token ký HMAC để bé mở khóa 1 tập phim VIP trong hôm nay
+import java.time.LocalDateTime;
+import java.util.List;
+
+// câu hỏi trắc nghiệm mức khó hơn (lớp kế tiếp hoặc lớp cao nhất sẵn có) để bé mở khóa 1 tập phim VIP trong hôm nay
 public record VipChallengeResponse(
         String token,
         String episodeId,
         String seriesId,
         String question,
-        int mathLevel,
+        List<QuizOptionView> options,
+        String subject,
+        String subjectLabel,
+        String grade,
+        String gradeLabel,
+        String setName,
         LocalDateTime expiresAt,
         long expiresInSeconds
 ) {

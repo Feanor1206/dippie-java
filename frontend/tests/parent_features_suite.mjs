@@ -240,7 +240,7 @@ test('ParentBountySection creates tasks and approves pending submissions with PI
         message: 'Đã duyệt nhiệm vụ.',
         data: {
           submission: { id: 77, taskId: 1, taskTitle: 'Dọn đồ chơi', profileId: 10, profileName: 'Bé Bông', profileAvatarKey: 'bunny', usageDay: '2026-11-26', status: 'APPROVED', rewardMinutes: 15, submittedAt: '', decidedAt: '', rejectNote: null },
-          screenTime: { limited: true, unlimited: false, profileId: 10, day: '2026-11-26', dailyMinutes: 60, mathLevel: 1, rewardMinutes: 5, maxBonusMinutes: 30, dailySeconds: 3600, watchedSeconds: 0, rewardSeconds: 0, grantSeconds: 0, bountySeconds: 900, remainingSeconds: 4500, locked: false, bonusCapSeconds: 1800, bonusRemainingSeconds: 1800, bonusCapReached: false },
+          screenTime: { limited: true, unlimited: false, profileId: 10, day: '2026-11-26', dailyMinutes: 60, quizGrade: 'LOP_1', quizGradeLabel: 'Lớp 1', rewardMinutes: 5, maxBonusMinutes: 30, dailySeconds: 3600, watchedSeconds: 0, rewardSeconds: 0, grantSeconds: 0, bountySeconds: 900, remainingSeconds: 4500, locked: false, bonusCapSeconds: 1800, bonusRemainingSeconds: 1800, bonusCapReached: false },
         },
       });
     }
@@ -340,7 +340,7 @@ test('KidBountyBoard submits a task and lets parent approve with PIN right in ki
         message: 'Đã duyệt.',
         data: {
           submission: { id: 88, taskId: 5, taskTitle: 'Gấp chăn gọn', profileId: 10, profileName: 'Bé Bông', profileAvatarKey: 'bunny', usageDay: '2026-11-26', status: 'APPROVED', rewardMinutes: 15, submittedAt: '', decidedAt: '', rejectNote: null },
-          screenTime: { limited: true, unlimited: false, profileId: 10, day: '2026-11-26', dailyMinutes: 60, mathLevel: 1, rewardMinutes: 5, maxBonusMinutes: 30, dailySeconds: 3600, watchedSeconds: 0, rewardSeconds: 0, grantSeconds: 0, bountySeconds: 900, remainingSeconds: 4500, locked: false, bonusCapSeconds: 1800, bonusRemainingSeconds: 1800, bonusCapReached: false },
+          screenTime: { limited: true, unlimited: false, profileId: 10, day: '2026-11-26', dailyMinutes: 60, quizGrade: 'LOP_1', quizGradeLabel: 'Lớp 1', rewardMinutes: 5, maxBonusMinutes: 30, dailySeconds: 3600, watchedSeconds: 0, rewardSeconds: 0, grantSeconds: 0, bountySeconds: 900, remainingSeconds: 4500, locked: false, bonusCapSeconds: 1800, bonusRemainingSeconds: 1800, bonusCapReached: false },
         },
       });
     }
@@ -470,7 +470,7 @@ test('ParentVipSeriesSection marks VIP series per child and saves with PIN', asy
         success: true,
         message: 'OK',
         data: [
-          { profileId: 10, name: 'Bé Bông', avatarKey: 'bunny', mathLevel: 2, vipMathLevel: 3, seriesIds: [] },
+          { profileId: 10, name: 'Bé Bông', avatarKey: 'bunny', quizGrade: 'LOP_2', quizGradeLabel: 'Lớp 2', vipQuizGrade: 'LOP_3', vipQuizGradeLabel: 'Lớp 3', seriesIds: [] },
         ],
       });
     }
@@ -478,7 +478,7 @@ test('ParentVipSeriesSection marks VIP series per child and saves with PIN', asy
       return jsonResponse({
         success: true,
         message: 'Đã lưu danh sách phim VIP.',
-        data: { profileId: 10, name: 'Bé Bông', avatarKey: 'bunny', mathLevel: 2, vipMathLevel: 3, seriesIds: body.seriesIds },
+        data: { profileId: 10, name: 'Bé Bông', avatarKey: 'bunny', quizGrade: 'LOP_2', quizGradeLabel: 'Lớp 2', vipQuizGrade: 'LOP_3', vipQuizGradeLabel: 'Lớp 3', seriesIds: body.seriesIds },
       });
     }
     throw new Error(`Unexpected ${method} ${url}`);
@@ -504,7 +504,7 @@ test('ParentVipSeriesSection marks VIP series per child and saves with PIN', asy
   await new Promise((resolve) => setTimeout(resolve, 10));
   tree = harness.render(props);
 
-  assert.match(collectText(tree).replace(/\s+/g, ' '), /Mức 3/);
+  assert.match(collectText(tree).replace(/\s+/g, ' '), /Lớp 3/);
   collectNodes(tree, (n) => n.props?.['data-testid'] === 'vip-series-checkbox-ser_vip')[0].props.onChange();
   tree = harness.render(props);
   collectNodes(tree, (n) => n.props?.['data-testid'] === 'save-vip-series-button')[0].props.onClick();
@@ -516,23 +516,35 @@ test('ParentVipSeriesSection marks VIP series per child and saves with PIN', asy
 
   const saveReq = requests.find((r) => r.method === 'PUT' && r.url === '/api/users/profiles/10/vip-series');
   assert.deepEqual(saveReq?.body, { pin: '2468', seriesIds: ['ser_vip'] });
-  assert.match(collectText(tree), /Đã lưu danh sách phim VIP cho Bé Bông/);
+  assert.match(collectText(tree), /Đã lưu danh sách phim cần trả lời câu hỏi cho Bé Bông/);
   harness.unmount();
 });
 
-test('VipUnlockDialog solves a level+1 challenge and unlocks the episode', async () => {
+test('VipUnlockDialog solves a harder-grade multiple-choice challenge and unlocks the episode', async () => {
   let unlockedEpisode = null;
+  let challengeCount = 0;
   const fetchMock = async (url, init = {}) => {
     if (url === '/api/users/vip-series/episodes/ep_vip_1/challenge') {
+      challengeCount += 1;
       return jsonResponse({
         success: true,
         message: 'OK',
         data: {
-          token: 'vip-tok-1',
+          token: `vip-tok-${challengeCount}`,
           episodeId: 'ep_vip_1',
           seriesId: 'ser_vip',
           question: '14 + 5 = ?',
-          mathLevel: 2,
+          options: [
+            { key: 'A', text: '17' },
+            { key: 'B', text: '18' },
+            { key: 'C', text: '19' },
+            { key: 'D', text: '20' },
+          ],
+          subject: 'TOAN',
+          subjectLabel: 'Toán',
+          grade: 'LOP_2',
+          gradeLabel: 'Lớp 2',
+          setName: 'Toán học',
           expiresAt: '2026-11-26T10:02:00Z',
           expiresInSeconds: 120,
         },
@@ -540,17 +552,17 @@ test('VipUnlockDialog solves a level+1 challenge and unlocks the episode', async
     }
     if (url === '/api/users/vip-series/episodes/ep_vip_1/unlock' && init.method === 'POST') {
       const body = JSON.parse(init.body);
-      if (body.answer !== 19) {
+      if (body.option !== 'C') {
         return jsonResponse({
           success: true,
-          message: 'Chưa đúng rồi!',
-          data: { correct: false, unlocked: false, episodeId: 'ep_vip_1', day: '2026-11-26' },
+          message: 'Gần đúng rồi! Đáp án là C: 19 nè',
+          data: { correct: false, unlocked: false, episodeId: 'ep_vip_1', day: '2026-11-26', correctOption: 'C', correctText: '19', explanation: '14 + 5 = 19' },
         });
       }
       return jsonResponse({
         success: true,
         message: 'Mở khóa thành công!',
-        data: { correct: true, unlocked: true, episodeId: 'ep_vip_1', day: '2026-11-26' },
+        data: { correct: true, unlocked: true, episodeId: 'ep_vip_1', day: '2026-11-26', correctOption: 'C', correctText: '19', explanation: '14 + 5 = 19' },
       });
     }
     throw new Error(`Unexpected ${url}`);
@@ -561,7 +573,7 @@ test('VipUnlockDialog solves a level+1 challenge and unlocks the episode', async
     'VipUnlockDialog',
     {},
     { fetch: fetchMock },
-    new Set(['SiteDialog'])
+    new Set(['SiteDialog', 'QuizQuestionCard'])
   );
 
   const props = {
@@ -579,16 +591,24 @@ test('VipUnlockDialog solves a level+1 challenge and unlocks the episode', async
   tree = harness.render(props);
 
   assert.match(collectText(collectNodes(tree, (n) => n.props?.['data-testid'] === 'vip-challenge-question')[0]), /14 \+ 5 = \?/);
-  collectNodes(tree, (n) => n.props?.['data-testid'] === 'vip-answer-input')[0].props.onChange({ target: { value: '18' } });
+  assert.equal(collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-read-aloud-button').length, 1);
+
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-option-B')[0].props.onClick();
   tree = harness.render(props);
-  await collectNodes(tree, (n) => n.type === 'form')[0].props.onSubmit({ preventDefault: () => {} });
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-confirm-answer-button')[0].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
   tree = harness.render(props);
   assert.equal(unlockedEpisode, null);
-  assert.match(collectText(collectNodes(tree, (n) => n.props?.['data-testid'] === 'vip-feedback')[0]), /Chưa đúng/);
+  assert.match(collectText(collectNodes(tree, (n) => n.props?.['data-testid'] === 'vip-feedback')[0]), /Gần đúng rồi! Đáp án là C: 19 nè/);
 
-  collectNodes(tree, (n) => n.props?.['data-testid'] === 'vip-answer-input')[0].props.onChange({ target: { value: '19' } });
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-next-question-button')[0].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
   tree = harness.render(props);
-  await collectNodes(tree, (n) => n.type === 'form')[0].props.onSubmit({ preventDefault: () => {} });
+
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-option-C')[0].props.onClick();
+  tree = harness.render(props);
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-confirm-answer-button')[0].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(unlockedEpisode, 'ep_vip_1');
   harness.unmount();
 });
@@ -643,7 +663,7 @@ test('EpisodePlayerPanel locks VIP episodes in kid mode and ignores VIP for main
     onCancelNextCountdown: () => {},
     progressError: null,
     isVipLocked: true,
-    vipMathLevel: 3,
+    vipQuizGradeLabel: 'Lớp 3',
     onVipUnlocked: () => {},
   };
 

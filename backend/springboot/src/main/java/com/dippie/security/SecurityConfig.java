@@ -207,6 +207,8 @@ public class SecurityConfig {
         return (HttpServletRequest request, HttpServletResponse response) -> {
             String path = normalizedPath(request);
             if ("/api/chat".equals(path)
+                    || "/favicon.svg".equals(path)
+                    || "/favicon.ico".equals(path)
                     || path.startsWith("/assets/")
                     || path.startsWith("/illustrations/")) {
                 return;

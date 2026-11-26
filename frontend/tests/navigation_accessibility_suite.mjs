@@ -55,7 +55,7 @@ test('Authenticated mobile navigation offers logout and closes after use', () =>
     '@/lib/context/AuthContext': { useAuth: () => ({ isAuthenticated: true, user: { username: 'user' }, logout: () => logouts++ }) },
   });
   let tree = render();
-  nodes(tree, (n) => n.props?.['aria-label'] === 'Mở menu')[0].props.onClick();
+  nodes(tree, (n) => n.props?.['aria-label'] === 'Mở danh mục')[0].props.onClick();
   tree = render();
   const mobileMenu = nodes(tree, (n) => n.props?.id === 'mobile-navigation')[0];
   const logout = nodes(mobileMenu, (n) => n.type === 'button' && n.props?.['data-testid'] === 'mobile-logout')[0];

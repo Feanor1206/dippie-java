@@ -7,13 +7,15 @@ import java.util.List;
 public record KidVipStatusResponse(
         Long profileId,
         LocalDate day,
-        int mathLevel,
-        int vipMathLevel,
+        String quizGrade,
+        String quizGradeLabel,
+        String vipQuizGrade,
+        String vipQuizGradeLabel,
         List<String> vipSeriesIds,
         List<String> unlockedEpisodeIds
 ) {
 
     public static KidVipStatusResponse empty(LocalDate day) {
-        return new KidVipStatusResponse(null, day, 0, 0, List.of(), List.of());
+        return new KidVipStatusResponse(null, day, null, null, null, null, List.of(), List.of());
     }
 }

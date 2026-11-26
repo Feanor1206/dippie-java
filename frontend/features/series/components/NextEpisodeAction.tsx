@@ -142,7 +142,7 @@ export function NextEpisodeAction({
           )}
         </span>
         {showEpisodePreview && (
-          <span className="max-w-[240px] truncate text-[11px] font-medium text-ink/80">
+          <span className="max-w-[240px] truncate text-[0.6875rem] font-medium text-ink/80">
             {rawPreview}
           </span>
         )}

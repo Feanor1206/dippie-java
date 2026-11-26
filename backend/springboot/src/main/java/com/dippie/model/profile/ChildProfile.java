@@ -1,10 +1,13 @@
 package com.dippie.model.profile;
 
 import com.dippie.exception.InvalidRequestException;
+import com.dippie.model.quiz.QuizGrade;
 import com.dippie.model.user.User;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.GeneratedValue;
@@ -54,9 +57,10 @@ public class ChildProfile {
     @ColumnDefault("60")
     private Integer dailyMinutes = 60;
 
-    @Column(name = "math_level", nullable = false)
-    @ColumnDefault("1")
-    private int mathLevel = 1;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "quiz_grade", nullable = false, length = 20)
+    @ColumnDefault("'LOP_1'")
+    private QuizGrade quizGrade = QuizGrade.LOP_1;
 
     @Column(name = "reward_minutes", nullable = false)
     @ColumnDefault("5")
@@ -88,7 +92,7 @@ public class ChildProfile {
     }
 
     public ChildProfile(Long userId, String name, String avatarKey, LocalDateTime now) {
-        this(userId, name, avatarKey, null, null, now);
+        this(userId, name, avatarKey, null, null, null, now);
     }
 
     public ChildProfile(
@@ -97,6 +101,18 @@ public class ChildProfile {
             String avatarKey,
             Integer initialDailyMinutes,
             Boolean unlimited,
+            LocalDateTime now
+    ) {
+        this(userId, name, avatarKey, initialDailyMinutes, unlimited, null, now);
+    }
+
+    public ChildProfile(
+            Long userId,
+            String name,
+            String avatarKey,
+            Integer initialDailyMinutes,
+            Boolean unlimited,
+            QuizGrade initialGrade,
             LocalDateTime now
     ) {
         this.userId = userId;
@@ -109,6 +125,7 @@ public class ChildProfile {
         } else {
             this.dailyMinutes = 60;
         }
+        this.quizGrade = initialGrade == null ? QuizGrade.LOP_1 : initialGrade;
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -137,8 +154,8 @@ public class ChildProfile {
         return dailyMinutes == null;
     }
 
-    public int getMathLevel() {
-        return mathLevel;
+    public QuizGrade getQuizGrade() {
+        return quizGrade == null ? QuizGrade.LOP_1 : quizGrade;
     }
 
     public int getRewardMinutes() {
@@ -157,12 +174,13 @@ public class ChildProfile {
         return updatedAt;
     }
 
-    // sửa tên, ảnh đại diện và tùy chọn đổi luôn hạn mức ngày nếu phụ huynh có gửi kèm
+    // sửa tên, ảnh đại diện, hạn mức ngày và khối lớp học của bé nếu phụ huynh có gửi kèm
     public void updateDetails(
             String newName,
             String newAvatarKey,
             Integer newDailyMinutes,
             Boolean unlimited,
+            QuizGrade newGrade,
             LocalDateTime updatedAt
     ) {
         this.name = validateName(newName);
@@ -172,19 +190,29 @@ public class ChildProfile {
         } else if (newDailyMinutes != null) {
             this.dailyMinutes = validateDailyMinutes(newDailyMinutes);
         }
+        if (newGrade != null) {
+            this.quizGrade = newGrade;
+        }
         this.updatedAt = updatedAt;
     }
 
-    // giữ bản cũ cho chỗ chỉ đổi tên và ảnh đại diện
     public void updateDetails(String newName, String newAvatarKey, LocalDateTime updatedAt) {
-        updateDetails(newName, newAvatarKey, null, null, updatedAt);
+        updateDetails(newName, newAvatarKey, null, null, null, updatedAt);
     }
 
-    // cập nhật giới hạn phút xem mỗi ngày (hoặc không giới hạn) với cấu hình bài toán thưởng cho bé
+    // đổi khối lớp học của bé sau khi phụ huynh xác nhận bằng mã PIN
+    public void updateQuizGrade(QuizGrade newGrade, LocalDateTime updatedAt) {
+        if (newGrade == null) {
+            throw new InvalidRequestException("Vui lòng chọn khối lớp hợp lệ cho bé.");
+        }
+        this.quizGrade = newGrade;
+        this.updatedAt = updatedAt;
+    }
+
+    // cập nhật giới hạn phút xem mỗi ngày (hoặc không giới hạn) cùng số phút thưởng mỗi câu đúng và trần thưởng ngày
     public void updateScreenTimeSettings(
             Integer newDailyMinutes,
             Boolean unlimited,
-            Integer newMathLevel,
             Integer newRewardMinutes,
             Integer newMaxBonusMinutes,
             LocalDateTime updatedAt
@@ -193,9 +221,6 @@ public class ChildProfile {
             this.dailyMinutes = null;
         } else {
             this.dailyMinutes = validateDailyMinutes(newDailyMinutes);
-        }
-        if (newMathLevel != null) {
-            this.mathLevel = validateMathLevel(newMathLevel);
         }
         if (newRewardMinutes != null) {
             this.rewardMinutes = validateRewardMinutes(newRewardMinutes);
@@ -206,29 +231,10 @@ public class ChildProfile {
         this.updatedAt = updatedAt;
     }
 
-    // giữ bản cũ 5 tham số cho caller cũ không truyền cờ không giới hạn
-    public void updateScreenTimeSettings(
-            Integer newDailyMinutes,
-            Integer newMathLevel,
-            Integer newRewardMinutes,
-            Integer newMaxBonusMinutes,
-            LocalDateTime updatedAt
-    ) {
-        updateScreenTimeSettings(newDailyMinutes, false, newMathLevel, newRewardMinutes, newMaxBonusMinutes, updatedAt);
-    }
-
     // giới hạn mỗi ngày nằm trong khoảng 0 đến 600 phút
     public static int validateDailyMinutes(Integer value) {
         if (value == null || value < 0 || value > 600) {
             throw new InvalidRequestException("Giới hạn thời gian mỗi ngày cần từ 0 đến 600 phút.");
-        }
-        return value;
-    }
-
-    // cấp độ toán chỉ nhận mức 1 đến 4
-    public static int validateMathLevel(Integer value) {
-        if (value == null || value < 1 || value > 4) {
-            throw new InvalidRequestException("Cấp độ bài toán cần từ 1 đến 4.");
         }
         return value;
     }

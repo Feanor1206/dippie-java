@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { Search, X } from 'lucide-react';
 import { useSeriesCards } from '@/lib/hooks/useCatalogData';
+import * as motion from '@/lib/motion';
 import { SeriesCard } from '@/features/series/components/SeriesCard';
 import {
   extractSeriesGenres,
@@ -15,6 +16,7 @@ import {
 
 export default function SeriesBrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const pageRef = useRef<HTMLElement>(null);
   const queryState = useMemo(() => parseSeriesBrowseParams(searchParams), [searchParams]);
   const { cards, loading, error, retry } = useSeriesCards(true, 'Chưa tải được danh sách phim bộ. Bạn thử lại nhé.');
 
@@ -40,10 +42,11 @@ export default function SeriesBrowsePage() {
     [queryState.genres]
   );
   const hasActiveFilters = Boolean(queryState.q.trim() || queryState.genres.length > 0);
+  motion.useScrollReveal?.(pageRef, [filteredCards.length, loading]);
 
   return (
-    <main id="main-content" tabIndex={-1} className="page-shell min-h-[75vh] py-6 sm:py-8">
-      <header className="catalog-cover">
+    <main ref={pageRef} id="main-content" tabIndex={-1} className="page-shell min-h-[75vh] py-6 sm:py-8">
+      <header data-reveal-section="" className="catalog-cover">
         <div className="self-center px-5 py-4 sm:px-8 sm:py-6">
           <h1 className="comic-heading text-3xl font-bold sm:text-4xl">Phim bộ</h1>
           <p className="mt-1 text-sm text-muted">
@@ -111,11 +114,12 @@ export default function SeriesBrowsePage() {
               data-testid="genre-chip-all"
               aria-pressed={queryState.genres.length === 0}
               onClick={() => queryState.genres.length > 0 && updateQueryState({ ...queryState, genres: [] })}
-              className={`series-filter-chip min-h-[44px] ${queryState.genres.length === 0 ? 'series-filter-chip--active' : ''}`}
+              style={{ '--stagger-idx': 0 } as React.CSSProperties}
+              className={`series-filter-chip motion-chip-pop min-h-[44px] ${queryState.genres.length === 0 ? 'series-filter-chip--active' : ''}`}
             >
               Tất cả
             </button>
-            {availableGenres.map((genre) => {
+            {availableGenres.map((genre, index) => {
               const active = selectedGenreKeys.has(genre.id.toLocaleLowerCase('vi'));
               return (
                 <button
@@ -125,7 +129,8 @@ export default function SeriesBrowsePage() {
                   data-genre-id={genre.id}
                   aria-pressed={active}
                   onClick={() => handleToggleGenre(genre.id)}
-                  className={`series-filter-chip min-h-[44px] ${active ? 'series-filter-chip--active' : ''}`}
+                  style={{ '--stagger-idx': Math.min(index + 1, 10) } as React.CSSProperties}
+                  className={`series-filter-chip motion-chip-pop min-h-[44px] ${active ? 'series-filter-chip--active' : ''}`}
                 >
                   {genre.label}
                 </button>
@@ -214,7 +219,7 @@ export default function SeriesBrowsePage() {
             )}
           </div>
         ) : (
-          <div data-testid="series-catalog-grid" className="series-catalog-grid">
+          <div data-testid="series-catalog-grid" data-reveal-group="" className="series-catalog-grid">
             {filteredCards.map((card) => (
               <SeriesCard key={card.id} card={card} headingLevel="h2" className="h-full" />
             ))}

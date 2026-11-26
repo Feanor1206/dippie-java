@@ -11,7 +11,8 @@ public record ChildProfileView(
         String avatarKey,
         Integer dailyMinutes,
         boolean unlimited,
-        int mathLevel,
+        String quizGrade,
+        String quizGradeLabel,
         int rewardMinutes,
         int maxBonusMinutes,
         LocalDateTime createdAt
@@ -24,7 +25,8 @@ public record ChildProfileView(
                 profile.getAvatarKey(),
                 profile.getDailyMinutes(),
                 profile.isUnlimited(),
-                profile.getMathLevel(),
+                profile.getQuizGrade().name(),
+                profile.getQuizGrade().label(),
                 profile.getRewardMinutes(),
                 profile.getMaxBonusMinutes(),
                 profile.getCreatedAt()

@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { QuizQuestionCard } from '@/features/quiz/components/QuizQuestionCard';
+import type { QuizOptionKey } from '@/features/quiz/quizService';
+import { useBlockingOverlayFocus } from '@/features/profiles/hooks/useBlockingOverlayFocus';
 import type { LootFeedbackBanner } from '@/features/profiles/hooks/usePlayFeatures';
 import type { LootDropAnswerResult, LootDropQuiz, LootDropSpawn } from '@/lib/services/playFeaturesService';
 
@@ -21,36 +24,35 @@ export function LootDropOverlay({
   dropSecondsLeft,
   activeQuiz,
   quizSecondsLeft,
+  selectedOption = null,
+  retryError = null,
   feedback,
   opening,
   submitting,
   onOpenChest,
   onSubmitAnswer,
+  onDismissQuiz,
+  onSelectDraftOption,
 }: {
   activeDrop: LootDropSpawn | null;
   dropSecondsLeft: number;
   activeQuiz: LootDropQuiz | null;
   quizSecondsLeft: number;
+  selectedOption?: QuizOptionKey | null;
+  retryError?: string | null;
   feedback: LootFeedbackBanner | null;
   opening: boolean;
   submitting: boolean;
   onOpenChest: () => Promise<void>;
-  onSubmitAnswer: (answer: number) => Promise<LootDropAnswerResult | null>;
+  onSubmitAnswer: (option: QuizOptionKey) => Promise<LootDropAnswerResult | null>;
+  onDismissQuiz?: () => void;
+  onSelectDraftOption?: (option: QuizOptionKey) => void;
 }) {
-  const [answerInput, setAnswerInput] = useState('');
-  const [inputError, setInputError] = useState('');
+  const quizDialogRef = useRef<HTMLDivElement | null>(null);
+  const [localDraft, setLocalDraft] = useState<QuizOptionKey | null>(null);
+  useBlockingOverlayFocus(quizDialogRef, Boolean(activeQuiz));
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmed = answerInput.trim();
-    if (!/^-?\d+$/.test(trimmed)) {
-      setInputError('Nhập số nhé bé!');
-      return;
-    }
-    setInputError('');
-    setAnswerInput('');
-    await onSubmitAnswer(parseInt(trimmed, 10));
-  };
+  const effectiveSelected = selectedOption ?? localDraft;
 
   return (
     <>
@@ -60,13 +62,13 @@ export function LootDropOverlay({
           data-testid="loot-chest-button"
           disabled={opening}
           onClick={() => void onOpenChest()}
-          aria-label={`Rương báu bay ngang, bấm để giải toán nhanh nhận thêm phút xem, còn ${dropSecondsLeft} giây`}
-          className="loot-float absolute bottom-14 left-3 z-20 flex min-h-[56px] items-center gap-2 rounded-2xl border-2 border-ink bg-[#fef3c7] px-3 py-1.5 text-left shadow-[3px_3px_0_#203328] hover:scale-105 cursor-pointer transition-transform"
+          aria-label={`Rương báu bay ngang, bấm để trả lời câu hỏi nhận thêm phút xem, còn ${dropSecondsLeft} giây`}
+          className="loot-float motion-sheen-loop absolute bottom-14 left-3 z-20 flex min-h-[56px] items-center gap-2 rounded-2xl border-2 border-ink bg-[#fef3c7] px-3 py-1.5 text-left shadow-[3px_3px_0_#203328] hover:scale-105 cursor-pointer transition-transform"
         >
           <TreasureChestSvg />
           <div className="leading-tight">
             <span className="block text-xs font-extrabold text-ink">Rương báu!</span>
-            <span className="block text-[10px] font-bold text-amber-900">
+            <span className="block text-[0.6875rem] font-bold text-amber-900">
               Chạm mở · {dropSecondsLeft}s
             </span>
           </div>
@@ -75,79 +77,107 @@ export function LootDropOverlay({
 
       {activeQuiz && (
         <div
+          ref={quizDialogRef}
+          tabIndex={-1}
           role="dialog"
-          aria-modal="false"
+          aria-modal="true"
           aria-labelledby="loot-quiz-title"
           data-testid="loot-quiz-card"
-          className="absolute bottom-3 left-3 right-3 z-30 rounded-2xl border-2 border-ink bg-paper-white p-4 shadow-brand-lg sm:bottom-14 sm:right-auto sm:w-[310px]"
+          className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto overscroll-contain bg-ink/85 p-2.5 sm:items-center sm:p-4 animate-fade-in"
         >
-          <div className="flex items-center justify-between gap-2">
-            <h4 id="loot-quiz-title" className="font-display text-sm font-bold text-ink">
-              Mở rương +{activeQuiz.baseRewardMinutes + activeQuiz.potentialComboBonusMinutes} phút
-            </h4>
-            <span
-              data-testid="loot-quiz-timer"
-              className="rounded-full border border-ink bg-[#f2d18c] px-2 py-0.5 font-mono text-xs font-bold text-ink"
-            >
-              {quizSecondsLeft}s
-            </span>
-          </div>
+          <div className="motion-overlay-overshoot my-auto w-full max-w-lg rounded-2xl border-2 border-ink bg-paper-white p-3.5 shadow-brand-lg sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 id="loot-quiz-title" className="font-display text-sm font-bold text-ink sm:text-base">
+                Mở rương +{activeQuiz.baseRewardMinutes + activeQuiz.potentialComboBonusMinutes} phút
+              </h4>
+              <div className="flex items-center gap-2">
+                <span
+                  data-testid="loot-quiz-timer"
+                  className="rounded-full border border-ink bg-[#f2d18c] px-2.5 py-0.5 font-mono text-xs font-bold text-ink"
+                >
+                  {retryError ? 'Tạm dừng' : `${quizSecondsLeft}s`}
+                </span>
+                {onDismissQuiz && (
+                  <button
+                    type="button"
+                    data-testid="loot-dismiss-button"
+                    disabled={submitting}
+                    onClick={onDismissQuiz}
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-ink/40 bg-surface-muted px-2.5 py-1 text-xs font-semibold text-ink hover:bg-surface-elevated cursor-pointer"
+                  >
+                    Đóng rương
+                  </button>
+                )}
+              </div>
+            </div>
 
-          {activeQuiz.combo > 0 && (
-            <p className="mt-1 text-[11px] font-bold text-brand-dark">
-              Combo hiện tại: {activeQuiz.combo}
-              {activeQuiz.potentialComboBonusMinutes > 0 ? ' · Đúng câu này thưởng thêm +1 phút!' : ''}
-            </p>
-          )}
+            {activeQuiz.combo > 0 && (
+              <p className="mt-1 text-[0.6875rem] font-bold text-brand-dark">
+                Combo hiện tại: {activeQuiz.combo}
+                {activeQuiz.potentialComboBonusMinutes > 0 ? ' · Đúng câu này thưởng thêm +1 phút!' : ''}
+              </p>
+            )}
 
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-elevated">
-            <div
-              className="h-full bg-amber-500 transition-all duration-300"
-              style={{ width: `${Math.max(0, Math.min(100, (quizSecondsLeft / activeQuiz.timerSeconds) * 100))}%` }}
-            />
-          </div>
+            <div className="mt-2 mb-2.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-elevated">
+              <div
+                className="h-full bg-amber-500 transition-all duration-300"
+                style={{ width: `${Math.max(0, Math.min(100, (quizSecondsLeft / activeQuiz.timerSeconds) * 100))}%` }}
+              />
+            </div>
 
-          <p data-testid="loot-quiz-question" className="mt-2.5 text-center font-display text-xl font-bold text-ink">
-            {activeQuiz.question}
-          </p>
+            {retryError && (
+              <div
+                role="alert"
+                data-testid="loot-retry-banner"
+                className="mb-3 space-y-2.5 rounded-xl border-2 border-amber-700/60 bg-[#fef3c7] p-3 text-left text-xs text-ink"
+              >
+                <p className="font-semibold leading-relaxed">{retryError}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {effectiveSelected && (
+                    <button
+                      type="button"
+                      data-testid="loot-retry-submit-button"
+                      disabled={submitting}
+                      onClick={() => void onSubmitAnswer(effectiveSelected)}
+                      className="btn-primary min-h-[44px] px-3.5 py-1.5 text-xs font-bold"
+                    >
+                      {submitting ? 'Đang gửi lại…' : `Gửi lại đáp án ${effectiveSelected}`}
+                    </button>
+                  )}
+                  {onDismissQuiz && (
+                    <button
+                      type="button"
+                      data-testid="loot-retry-dismiss-button"
+                      disabled={submitting}
+                      onClick={onDismissQuiz}
+                      className="btn-secondary min-h-[44px] px-3.5 py-1.5 text-xs font-semibold"
+                    >
+                      Bỏ qua rương này · Xem tiếp
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
-          <form onSubmit={handleSubmit} className="mt-2.5 flex items-center gap-2">
-            <label htmlFor="loot-quiz-input" className="sr-only">
-              Đáp án rương báu
-            </label>
-            <input
-              id="loot-quiz-input"
-              data-testid="loot-quiz-input"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              enterKeyHint="done"
-              autoComplete="off"
-              autoFocus
-              disabled={submitting}
-              value={answerInput}
-              onChange={(event) => {
-                setAnswerInput(event.target.value.replace(/[^0-9]/g, '').slice(0, 5));
-                if (inputError) setInputError('');
+            <QuizQuestionCard
+              question={activeQuiz.question}
+              options={activeQuiz.options}
+              subject={activeQuiz.subject}
+              subjectLabel={activeQuiz.subjectLabel}
+              gradeLabel={activeQuiz.gradeLabel}
+              setName={activeQuiz.setName}
+              submitting={submitting}
+              compact
+              selectedOption={effectiveSelected}
+              onDraftSelectOption={(opt) => {
+                setLocalDraft(opt);
+                onSelectDraftOption?.(opt);
               }}
-              placeholder="Đáp án"
-              className="min-h-[48px] w-full rounded-lg border-2 border-ink/40 bg-surface-muted px-3 text-center text-lg font-bold text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+              questionTestId="loot-quiz-question"
+              feedbackTestId="loot-quiz-feedback"
+              onSelectOption={(option) => void onSubmitAnswer(option)}
             />
-            <button
-              type="submit"
-              data-testid="loot-quiz-submit"
-              disabled={submitting || !answerInput.trim()}
-              className="btn-primary min-h-[44px] shrink-0 px-3 text-xs font-bold disabled:opacity-50"
-            >
-              Mở
-            </button>
-          </form>
-
-          {inputError && (
-            <p role="alert" className="mt-1.5 text-[11px] font-semibold text-red-900">
-              {inputError}
-            </p>
-          )}
+          </div>
         </div>
       )}
 
@@ -156,11 +186,16 @@ export function LootDropOverlay({
           role="status"
           aria-live="polite"
           data-testid="loot-result-banner"
-          className={`absolute bottom-3 left-3 right-3 z-20 rounded-xl border-2 border-ink px-3.5 py-2 text-xs font-bold shadow-[2px_2px_0_#203328] sm:bottom-14 sm:right-auto sm:max-w-[300px] ${
-            feedback.kind === 'success' ? 'bg-mint text-ink' : 'bg-paper-white text-ink'
-          }`}
+          className={`${
+            feedback.kind === 'success' ? 'motion-correct-pop bg-mint text-ink' : 'motion-toast-enter bg-[#fef3c7] text-ink'
+          } absolute bottom-3 left-3 right-3 z-20 rounded-xl border-2 border-ink px-3.5 py-2.5 text-xs shadow-[2px_2px_0_#203328] sm:bottom-14 sm:right-auto sm:max-w-[360px]`}
         >
-          {feedback.text}
+          <p className="font-bold">{feedback.text}</p>
+          {feedback.explanation && (
+            <p data-testid="loot-result-explanation" className="mt-1 text-[0.6875rem] leading-snug text-muted">
+              {feedback.explanation}
+            </p>
+          )}
         </div>
       )}
     </>

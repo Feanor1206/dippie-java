@@ -1,6 +1,5 @@
 package com.dippie.service.play;
 
-import com.dippie.dto.play.LootDropAnswerRequest;
 import com.dippie.dto.play.LootDropAnswerResponse;
 import com.dippie.dto.play.LootDropMissRequest;
 import com.dippie.dto.play.LootDropOpenRequest;
@@ -8,16 +7,18 @@ import com.dippie.dto.play.LootDropOpenResponse;
 import com.dippie.dto.play.LootDropSpawnResponse;
 import com.dippie.dto.play.LootStatusView;
 import com.dippie.dto.profile.ScreenTimeStatusView;
+import com.dippie.dto.quiz.QuizAnswerRequest;
 import com.dippie.exception.ConflictException;
 import com.dippie.exception.InvalidRequestException;
 import com.dippie.exception.UnauthorizedException;
 import com.dippie.model.play.ChildPlaySettings;
 import com.dippie.model.play.ChildPlayState;
 import com.dippie.model.profile.ChildProfile;
-import com.dippie.model.profile.MathChallengeGenerator;
 import com.dippie.model.profile.ScreenTimeLedgerEntry;
 import com.dippie.model.profile.ScreenTimeLedgerKind;
 import com.dippie.model.profile.ScreenTimeSummary;
+import com.dippie.model.quiz.QuizChallengeContext;
+import com.dippie.model.quiz.QuizGrade;
 import com.dippie.repository.play.ChildPlaySettingsRepository;
 import com.dippie.repository.play.ChildPlayStateRepository;
 import com.dippie.repository.profile.ChildProfileRepository;
@@ -25,6 +26,8 @@ import com.dippie.repository.profile.ScreenTimeLedgerRepository;
 import com.dippie.security.CurrentViewer;
 import com.dippie.security.Viewer;
 import com.dippie.service.profile.ScreenTimeService;
+import com.dippie.service.quiz.QuizSelectionService;
+import com.dippie.service.quiz.QuizTokenCodec;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +40,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 
-// quản lý rương báu bay ngang: chỉ phát khi bé đã xem đủ 5 đến 7 phút, chấm toán nhanh 10 giây, tính combo và cộng dòng LOOT
+// quản lý rương báu bay ngang: phát sau 5 đến 7 phút xem, hỏi trắc nghiệm nhanh 10 giây, tính combo và cộng dòng LOOT
 @Service
 public class LootDropService {
 
@@ -45,7 +48,20 @@ public class LootDropService {
     private static final String LOOT_DISABLED = "Tính năng rương báu bay ngang đang tắt.";
     private static final int BASE_REWARD_MINUTES = 3;
     private static final int VISIBLE_SECONDS = 15;
-    private static final int QUESTION_TIMER_SECONDS = 10;
+    private static final int DEFAULT_QUESTION_TIMER_SECONDS = 12;
+
+    // bé nhỏ tuổi có thêm thời gian đọc hoặc nghe câu hỏi rương báu
+    public static int timerSecondsForGrade(QuizGrade grade) {
+        if (grade == null) {
+            return DEFAULT_QUESTION_TIMER_SECONDS;
+        }
+        return switch (grade) {
+            case MAU_GIAO -> 25;
+            case LOP_1 -> 20;
+            case LOP_2 -> 15;
+            default -> DEFAULT_QUESTION_TIMER_SECONDS;
+        };
+    }
 
     private final CurrentViewer currentViewer;
     private final ChildProfileRepository childProfileRepository;
@@ -55,8 +71,9 @@ public class LootDropService {
     private final ScreenTimeService screenTimeService;
     private final PlayPlaybackGuard playbackGuard;
     private final PlayTokenCodec tokenCodec;
+    private final QuizTokenCodec quizTokenCodec;
+    private final QuizSelectionService quizSelectionService;
     private final Clock clock;
-    private final MathChallengeGenerator generator = new MathChallengeGenerator();
 
     public LootDropService(
             CurrentViewer currentViewer,
@@ -67,6 +84,8 @@ public class LootDropService {
             ScreenTimeService screenTimeService,
             PlayPlaybackGuard playbackGuard,
             PlayTokenCodec tokenCodec,
+            QuizTokenCodec quizTokenCodec,
+            QuizSelectionService quizSelectionService,
             Clock clock
     ) {
         this.currentViewer = currentViewer;
@@ -77,6 +96,8 @@ public class LootDropService {
         this.screenTimeService = screenTimeService;
         this.playbackGuard = playbackGuard;
         this.tokenCodec = tokenCodec;
+        this.quizTokenCodec = quizTokenCodec;
+        this.quizSelectionService = quizSelectionService;
         this.clock = clock;
     }
 
@@ -129,7 +150,7 @@ public class LootDropService {
         return new LootDropSpawnResponse(issued.token(), VISIBLE_SECONDS, expiresAtUtc, state.getLootCombo());
     }
 
-    // bé bấm vào rương đang bay: đổi dropToken 1 lần lấy câu hỏi toán nhanh hạn 10 giây
+    // bé bấm vào rương đang bay: đổi dropToken 1 lần lấy câu hỏi trắc nghiệm nhanh hạn 10 giây (+3s đệm mạng)
     @Transactional
     public LootDropOpenResponse openDrop(LootDropOpenRequest request) {
         Viewer viewer = requireChildViewer();
@@ -156,48 +177,37 @@ public class LootDropService {
         ChildPlayState state = stateRepository.findById(profile.getId()).orElse(null);
         int currentCombo = state == null ? 0 : state.getLootCombo();
 
-        MathChallengeGenerator.MathQuestion generated = generator.generate(profile.getMathLevel());
-        // 10 giây làm bài cộng thêm 3 giây đệm mạng để bé gửi kịp ở giây cuối
-        PlayTokenCodec.IssuedToken answerToken = tokenCodec.issue(
-                PlayTokenCodec.KIND_LOOT_ANSWER,
-                profile.getId(),
-                Duration.ofSeconds(QUESTION_TIMER_SECONDS + 3),
-                generated.answer() + ":" + generated.level()
+        int timerSeconds = timerSecondsForGrade(profile.getQuizGrade());
+        QuizSelectionService.IssuedQuizChallenge issued = quizSelectionService.issueForChild(
+                profile,
+                QuizChallengeContext.LOOT_DROP,
+                "",
+                Duration.ofSeconds(timerSeconds + 5),
+                false
         );
-        LocalDateTime expiresAtUtc = LocalDateTime.ofInstant(answerToken.expiresAt(), ZoneOffset.UTC)
-                .truncatedTo(ChronoUnit.SECONDS);
         int potentialComboBonus = ((currentCombo + 1) % 3 == 0) ? 1 : 0;
         return new LootDropOpenResponse(
-                answerToken.token(),
-                generated.question(),
-                generated.level(),
-                QUESTION_TIMER_SECONDS,
-                expiresAtUtc,
+                issued.token(),
+                issued.question(),
+                issued.options(),
+                issued.subject().name(),
+                issued.subject().label(),
+                issued.grade().name(),
+                issued.grade().label(),
+                issued.setName(),
+                timerSeconds,
+                issued.expiresAt(),
                 currentCombo,
                 BASE_REWARD_MINUTES,
                 potentialComboBonus
         );
     }
 
-    // chấm bài toán rương báu: đúng cộng +3 phút (combo chia hết cho 3 thêm +1 phút) vào dòng LOOT theo trần thưởng ngày, sai thì mất rương và về combo 0
+    // chấm lựa chọn rương báu: đúng cộng +3 phút (combo chia hết cho 3 thêm +1 phút) vào dòng LOOT theo trần ngày, sai về combo 0
     @Transactional
-    public LootAnswerOutcome answerDrop(LootDropAnswerRequest request) {
+    public LootAnswerOutcome answerDrop(QuizAnswerRequest request) {
         Viewer viewer = requireChildViewer();
         Long profileId = viewer.profileId();
-        Integer suppliedAnswer = request == null ? null : request.answer();
-        if (suppliedAnswer == null) {
-            throw new InvalidRequestException("Bé hãy nhập đáp án bằng số nhé.");
-        }
-        PlayTokenCodec.DecodedToken decoded = tokenCodec.decode(request.token(), PlayTokenCodec.KIND_LOOT_ANSWER)
-                .orElseThrow(() -> new InvalidRequestException("Rương báu không hợp lệ hoặc đã hết thời gian rồi."));
-        Instant nowInstant = clock.instant();
-        if (decoded.profileId() != profileId || !decoded.expiresAt().isAfter(nowInstant)) {
-            throw new InvalidRequestException("Hết 10 giây mất rồi! Hẹn bé ở rương báu tiếp theo nhé.");
-        }
-        // mỗi rương chỉ trả lời đúng 1 lần duy nhất, sai cũng tiêu hủy token luôn
-        if (!tokenCodec.tryRedeem(decoded.tokenId(), decoded.expiresAt(), nowInstant)) {
-            throw new InvalidRequestException("Rương báu này đã được mở rồi.");
-        }
 
         ChildProfile profile = childProfileRepository.findByIdAndUserIdForUpdate(profileId, viewer.userId())
                 .orElseThrow(() -> new UnauthorizedException(LOGIN_REQUIRED));
@@ -206,13 +216,24 @@ public class LootDropService {
         ChildPlayState state = stateRepository.findById(profile.getId())
                 .orElseGet(() -> new ChildPlayState(profile.getId(), playbackGuard.randomLootThreshold(), now));
 
-        int expectedAnswer = parseExpectedAnswer(decoded.payload());
-        if (suppliedAnswer != expectedAnswer) {
+        QuizSelectionService.VerifiedAnswer verified = quizSelectionService.verifyAndRecordAnswer(
+                profileId,
+                QuizChallengeContext.LOOT_DROP,
+                "",
+                null,
+                request,
+                false
+        );
+
+        if (!verified.correct()) {
             state.recordLootMissOrWrong(now);
             stateRepository.saveAndFlush(state);
             ScreenTimeSummary current = screenTimeService.summarize(profile, today);
             LootDropAnswerResponse response = new LootDropAnswerResponse(
                     false,
+                    verified.correctOption(),
+                    verified.correctText(),
+                    verified.explanation(),
                     0,
                     0,
                     0,
@@ -220,7 +241,7 @@ public class LootDropService {
                     current.bonusCapReached(),
                     ScreenTimeStatusView.from(current)
             );
-            return new LootAnswerOutcome(response, "Tiếc quá, chưa đúng rồi! Hẹn bé ở rương báu tiếp theo nhé.");
+            return new LootAnswerOutcome(response, verified.gentleWrongMessage());
         }
 
         int newCombo = state.recordLootCorrect(now);
@@ -244,6 +265,9 @@ public class LootDropService {
         int earnedMinutes = creditedSeconds / 60;
         LootDropAnswerResponse response = new LootDropAnswerResponse(
                 true,
+                verified.correctOption(),
+                verified.correctText(),
+                verified.explanation(),
                 creditedSeconds,
                 earnedMinutes,
                 newCombo,
@@ -268,10 +292,12 @@ public class LootDropService {
         Viewer viewer = requireChildViewer();
         Long profileId = viewer.profileId();
         String rawToken = request == null ? null : request.token();
-        PlayTokenCodec.DecodedToken decoded = tokenCodec.decode(rawToken, PlayTokenCodec.KIND_LOOT_DROP)
-                .or(() -> tokenCodec.decode(rawToken, PlayTokenCodec.KIND_LOOT_ANSWER))
+        Long tokenProfileId = tokenCodec.decode(rawToken, PlayTokenCodec.KIND_LOOT_DROP)
+                .map(PlayTokenCodec.DecodedToken::profileId)
+                .or(() -> quizTokenCodec.decode(rawToken, QuizChallengeContext.LOOT_DROP)
+                        .map(QuizTokenCodec.DecodedToken::profileId))
                 .orElseThrow(() -> new InvalidRequestException("Mã rương báu không hợp lệ."));
-        if (decoded.profileId() != profileId) {
+        if (!tokenProfileId.equals(profileId)) {
             throw new InvalidRequestException("Mã rương báu không thuộc hồ sơ này.");
         }
         ChildProfile profile = childProfileRepository.findByIdAndUserIdForUpdate(profileId, viewer.userId())
@@ -293,16 +319,6 @@ public class LootDropService {
             throw new InvalidRequestException("Rương báu bay ngang chỉ áp dụng cho hồ sơ trẻ em.");
         }
         return viewer;
-    }
-
-    private static int parseExpectedAnswer(String payload) {
-        int sep = payload.indexOf(':');
-        String raw = sep >= 0 ? payload.substring(0, sep) : payload;
-        try {
-            return Integer.parseInt(raw);
-        } catch (NumberFormatException ex) {
-            throw new InvalidRequestException("Rương báu không hợp lệ.");
-        }
     }
 
     public record LootAnswerOutcome(LootDropAnswerResponse response, String message) {

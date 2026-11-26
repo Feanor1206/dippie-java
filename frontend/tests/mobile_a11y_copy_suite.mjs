@@ -168,14 +168,14 @@ test('1. /account is reachable in mobile Navbar menu and desktop dropdown has me
   assert.equal(dropdownTrigger.props['aria-haspopup'], 'menu');
   dropdownTrigger.props.onClick();
 
-  const menuToggle = findNodes(tree, (n) => n.props?.['aria-label'] === 'Mở menu')[0];
+  const menuToggle = findNodes(tree, (n) => n.props?.['aria-label'] === 'Mở danh mục')[0];
   menuToggle.props.onClick();
   tree = h.render(() => mod.Navbar());
 
   const menu = findNodes(tree, (n) => n.props?.role === 'menu')[0];
   assert.ok(menu, 'Desktop user dropdown must expose role="menu"');
   const menuItems = findNodes(menu, (n) => n.props?.role === 'menuitem');
-  assert.equal(menuItems.length, 4);
+  assert.equal(menuItems.length, 6);
   assert.ok(menuItems.some((item) => item.props.to === '/lich-su'));
 
   const mobileNav = findNodes(tree, (n) => n.props?.id === 'mobile-navigation')[0];

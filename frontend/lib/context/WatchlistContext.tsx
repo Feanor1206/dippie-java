@@ -83,7 +83,7 @@ type WatchlistContextType = {
   showToast: (message: string, type?: 'success' | 'info' | 'error') => void;
   dismissToast: (id: string) => void;
   isChatOpen: boolean;
-  openChat: () => void;
+  openChat: (initialPrompt?: string | unknown) => void;
   closeChat: () => void;
   toggleChat: () => void;
 };
@@ -122,6 +122,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [hasOpenedChat, setHasOpenedChat] = useState(false);
+  const [pendingChatPrompt, setPendingChatPrompt] = useState<string | null>(null);
   const [guestSyncPrompt, setGuestSyncPrompt] = useState<GuestSyncSummary | null>(null);
   const [isGuestSyncing, setIsGuestSyncing] = useState(false);
 
@@ -725,10 +726,14 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   const isFavorite = useCallback((id: string) => visibleFavorites.includes(id), [visibleFavorites]);
   const getRating = useCallback((id: string) => visibleRatings[id], [visibleRatings]);
   const refetchLibrary = useCallback(() => loadLibrary(), [loadLibrary]);
-  const openChat = useCallback(() => {
+  const openChat = useCallback((initialPrompt?: string | unknown) => {
+    if (typeof initialPrompt === 'string' && initialPrompt.trim().length > 0) {
+      setPendingChatPrompt(initialPrompt.trim());
+    }
     setHasOpenedChat(true);
     setIsChatOpen(true);
   }, []);
+  const clearPendingChatPrompt = useCallback(() => setPendingChatPrompt(null), []);
   const closeChat = useCallback(() => setIsChatOpen(false), []);
   const toggleChat = useCallback(() => {
     setHasOpenedChat(true);
@@ -807,7 +812,48 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       {children}
       <Suspense fallback={null}>
         {isAuthModalOpen && <AuthModal />}
-        {hasOpenedChat && <CineBot isOpen={isChatOpen} onClose={closeChat} />}
+      </Suspense>
+      <Suspense
+        fallback={
+          isChatOpen ? (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Đang mở CineBot"
+              data-testid="cinebot-loading-shell"
+              className="fixed inset-0 z-50 flex items-end justify-end p-0 sm:p-6 bg-black/60 backdrop-blur-sm pointer-events-auto"
+            >
+              <div className="flex h-full w-full flex-col overflow-hidden bg-paper-white border-0 sm:border-2 sm:border-ink sm:rounded-xl sm:h-[620px] sm:w-[440px] sm:shadow-brand-lg">
+                <div className="flex items-center justify-between border-b border-ink/20 bg-[#edf3e4] px-4 py-3">
+                  <div>
+                    <p className="comic-heading text-xl font-bold text-ink">CineBot</p>
+                    <p className="text-[0.6875rem] text-muted">Đang chuẩn bị khung trò chuyện…</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeChat}
+                    aria-label="Đóng CineBot"
+                    className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md px-3 text-xs text-muted hover:bg-surface-elevated hover:text-ink cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+                </div>
+                <div role="status" className="flex flex-1 items-center justify-center p-6 text-sm text-muted">
+                  Đang mở CineBot…
+                </div>
+              </div>
+            </div>
+          ) : null
+        }
+      >
+        {hasOpenedChat && (
+          <CineBot
+            isOpen={isChatOpen}
+            onClose={closeChat}
+            initialPrompt={pendingChatPrompt}
+            onConsumeInitialPrompt={clearPendingChatPrompt}
+          />
+        )}
       </Suspense>
       {guestSyncPrompt && (
         <GuestSyncDialog
@@ -832,7 +878,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
           <div
             key={toast.id}
             role="status"
-            className={`pointer-events-auto flex items-center justify-between gap-2 rounded-lg border-2 px-4 py-2 text-xs sm:text-sm font-medium shadow-brand-sm animate-slide-up transition-all ${
+            className={`motion-toast-enter pointer-events-auto flex items-center justify-between gap-2 rounded-lg border-2 px-4 py-2 text-xs sm:text-sm font-medium shadow-brand-sm transition-all ${
               toast.type === 'error'
                 ? 'border-red-800 bg-paper-white text-red-900'
                 : toast.type === 'success'

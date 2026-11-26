@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS child_profiles (
     name VARCHAR(50) NOT NULL,
     avatar_key VARCHAR(32) NOT NULL,
     daily_minutes INT NULL DEFAULT 60,
-    math_level INT NOT NULL DEFAULT 1,
+    quiz_grade VARCHAR(20) NOT NULL DEFAULT 'LOP_1',
     reward_minutes INT NOT NULL DEFAULT 5,
     max_bonus_minutes INT NOT NULL DEFAULT 30,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS child_profiles (
     INDEX idx_child_profiles_user_created (user_id, created_at),
     CONSTRAINT fk_child_profile_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT ck_child_profile_daily_minutes CHECK (daily_minutes IS NULL OR daily_minutes BETWEEN 0 AND 600),
-    CONSTRAINT ck_child_profile_math_level CHECK (math_level BETWEEN 1 AND 4),
+    CONSTRAINT ck_child_profile_quiz_grade CHECK (HEX(quiz_grade) IN (HEX('MAU_GIAO'), HEX('LOP_1'), HEX('LOP_2'), HEX('LOP_3'), HEX('LOP_4'), HEX('LOP_5'))),
     CONSTRAINT ck_child_profile_reward_minutes CHECK (reward_minutes BETWEEN 1 AND 30),
     CONSTRAINT ck_child_profile_max_bonus_minutes CHECK (max_bonus_minutes BETWEEN 0 AND 120)
 );
@@ -723,4 +723,84 @@ CREATE TABLE IF NOT EXISTS child_vip_episode_unlocks (
     INDEX idx_child_vip_unlock_profile_day (profile_id, unlock_day),
     CONSTRAINT fk_child_vip_unlock_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
     CONSTRAINT fk_child_vip_unlock_episode FOREIGN KEY (episode_id) REFERENCES catalog_episodes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS quiz_sets (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    owner_user_id BIGINT NULL,
+    system_key VARCHAR(40) NULL,
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(300) NULL,
+    default_subject VARCHAR(20) NOT NULL DEFAULT 'KHAC',
+    default_grade VARCHAR(20) NULL,
+    built_in BOOLEAN NOT NULL DEFAULT FALSE,
+    dynamic_generator BOOLEAN NOT NULL DEFAULT FALSE,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT uq_quiz_sets_system_key UNIQUE (system_key),
+    INDEX idx_quiz_sets_owner_active (owner_user_id, active),
+    INDEX idx_quiz_sets_built_in (built_in, active),
+    CONSTRAINT fk_quiz_sets_owner FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT ck_quiz_sets_subject CHECK (HEX(default_subject) IN (HEX('TOAN'), HEX('TIENG_VIET'), HEX('TIENG_ANH'), HEX('KHOA_HOC'), HEX('DO_VUI'), HEX('KHAC'))),
+    CONSTRAINT ck_quiz_sets_grade CHECK (default_grade IS NULL OR HEX(default_grade) IN (HEX('MAU_GIAO'), HEX('LOP_1'), HEX('LOP_2'), HEX('LOP_3'), HEX('LOP_4'), HEX('LOP_5')))
+);
+
+CREATE TABLE IF NOT EXISTS quiz_questions (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    set_id BIGINT NOT NULL,
+    seed_key VARCHAR(64) NULL,
+    question_text VARCHAR(400) NOT NULL,
+    option_a VARCHAR(200) NOT NULL,
+    option_b VARCHAR(200) NOT NULL,
+    option_c VARCHAR(200) NOT NULL,
+    option_d VARCHAR(200) NOT NULL,
+    correct_option VARCHAR(1) NOT NULL,
+    explanation VARCHAR(400) NULL,
+    subject VARCHAR(20) NOT NULL,
+    grade VARCHAR(20) NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT uq_quiz_questions_seed_key UNIQUE (seed_key),
+    INDEX idx_quiz_questions_set_active_grade (set_id, active, grade),
+    CONSTRAINT fk_quiz_questions_set FOREIGN KEY (set_id) REFERENCES quiz_sets(id) ON DELETE CASCADE,
+    CONSTRAINT ck_quiz_questions_correct CHECK (HEX(correct_option) IN (HEX('A'), HEX('B'), HEX('C'), HEX('D'))),
+    CONSTRAINT ck_quiz_questions_subject CHECK (HEX(subject) IN (HEX('TOAN'), HEX('TIENG_VIET'), HEX('TIENG_ANH'), HEX('KHOA_HOC'), HEX('DO_VUI'), HEX('KHAC'))),
+    CONSTRAINT ck_quiz_questions_grade CHECK (HEX(grade) IN (HEX('MAU_GIAO'), HEX('LOP_1'), HEX('LOP_2'), HEX('LOP_3'), HEX('LOP_4'), HEX('LOP_5')))
+);
+
+CREATE TABLE IF NOT EXISTS child_quiz_sets (
+    profile_id BIGINT NOT NULL,
+    set_id BIGINT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (profile_id, set_id),
+    INDEX idx_child_quiz_sets_set (set_id),
+    CONSTRAINT fk_child_quiz_sets_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT fk_child_quiz_sets_set FOREIGN KEY (set_id) REFERENCES quiz_sets(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL,
+    set_id BIGINT NULL,
+    question_id BIGINT NULL,
+    question_key VARCHAR(120) NOT NULL,
+    question_text VARCHAR(400) NOT NULL,
+    set_name VARCHAR(100) NOT NULL,
+    subject VARCHAR(20) NOT NULL,
+    grade VARCHAR(20) NOT NULL,
+    context VARCHAR(30) NOT NULL,
+    correct BOOLEAN NOT NULL,
+    response_ms INT NOT NULL DEFAULT 0,
+    answered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_quiz_attempts_profile_answered (profile_id, answered_at),
+    INDEX idx_quiz_attempts_profile_set_answered (profile_id, set_id, answered_at),
+    CONSTRAINT fk_quiz_attempts_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT fk_quiz_attempts_set FOREIGN KEY (set_id) REFERENCES quiz_sets(id) ON DELETE SET NULL,
+    CONSTRAINT fk_quiz_attempts_question FOREIGN KEY (question_id) REFERENCES quiz_questions(id) ON DELETE SET NULL,
+    CONSTRAINT ck_quiz_attempts_subject CHECK (HEX(subject) IN (HEX('TOAN'), HEX('TIENG_VIET'), HEX('TIENG_ANH'), HEX('KHOA_HOC'), HEX('DO_VUI'), HEX('KHAC'))),
+    CONSTRAINT ck_quiz_attempts_grade CHECK (HEX(grade) IN (HEX('MAU_GIAO'), HEX('LOP_1'), HEX('LOP_2'), HEX('LOP_3'), HEX('LOP_4'), HEX('LOP_5'))),
+    CONSTRAINT ck_quiz_attempts_context CHECK (HEX(context) IN (HEX('SCREEN_TIME'), HEX('WATCH_PET_MEDICINE'), HEX('LOOT_DROP'), HEX('VIP_UNLOCK'))),
+    CONSTRAINT ck_quiz_attempts_response_ms CHECK (response_ms >= 0)
 );

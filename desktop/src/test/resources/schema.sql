@@ -20,7 +20,7 @@ CREATE TABLE child_profiles (
     name VARCHAR(50) NOT NULL,
     avatar_key VARCHAR(32) NOT NULL,
     daily_minutes INT DEFAULT 60 CHECK (daily_minutes IS NULL OR daily_minutes BETWEEN 0 AND 600),
-    math_level INT NOT NULL DEFAULT 1 CHECK (math_level BETWEEN 1 AND 4),
+    quiz_grade VARCHAR(20) NOT NULL DEFAULT 'LOP_1' CHECK (quiz_grade IN ('MAU_GIAO', 'LOP_1', 'LOP_2', 'LOP_3', 'LOP_4', 'LOP_5')),
     reward_minutes INT NOT NULL DEFAULT 5 CHECK (reward_minutes BETWEEN 1 AND 30),
     max_bonus_minutes INT NOT NULL DEFAULT 30 CHECK (max_bonus_minutes BETWEEN 0 AND 120),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -215,4 +215,60 @@ CREATE TABLE child_vip_episode_unlocks (
     unlock_day DATE NOT NULL,
     unlocked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (profile_id, episode_id, unlock_day)
+);
+
+CREATE TABLE quiz_sets (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    owner_user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+    system_key VARCHAR(40) UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(300),
+    default_subject VARCHAR(20) NOT NULL DEFAULT 'KHAC' CHECK (default_subject IN ('TOAN', 'TIENG_VIET', 'TIENG_ANH', 'KHOA_HOC', 'DO_VUI', 'KHAC')),
+    default_grade VARCHAR(20) CHECK (default_grade IS NULL OR default_grade IN ('MAU_GIAO', 'LOP_1', 'LOP_2', 'LOP_3', 'LOP_4', 'LOP_5')),
+    built_in BOOLEAN NOT NULL DEFAULT FALSE,
+    dynamic_generator BOOLEAN NOT NULL DEFAULT FALSE,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE quiz_questions (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    set_id BIGINT NOT NULL REFERENCES quiz_sets(id) ON DELETE CASCADE,
+    seed_key VARCHAR(64) UNIQUE,
+    question_text VARCHAR(400) NOT NULL,
+    option_a VARCHAR(200) NOT NULL,
+    option_b VARCHAR(200) NOT NULL,
+    option_c VARCHAR(200) NOT NULL,
+    option_d VARCHAR(200) NOT NULL,
+    correct_option VARCHAR(1) NOT NULL CHECK (correct_option IN ('A', 'B', 'C', 'D')),
+    explanation VARCHAR(400),
+    subject VARCHAR(20) NOT NULL CHECK (subject IN ('TOAN', 'TIENG_VIET', 'TIENG_ANH', 'KHOA_HOC', 'DO_VUI', 'KHAC')),
+    grade VARCHAR(20) NOT NULL CHECK (grade IN ('MAU_GIAO', 'LOP_1', 'LOP_2', 'LOP_3', 'LOP_4', 'LOP_5')),
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE child_quiz_sets (
+    profile_id BIGINT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+    set_id BIGINT NOT NULL REFERENCES quiz_sets(id) ON DELETE CASCADE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (profile_id, set_id)
+);
+
+CREATE TABLE quiz_attempts (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+    set_id BIGINT REFERENCES quiz_sets(id) ON DELETE SET NULL,
+    question_id BIGINT REFERENCES quiz_questions(id) ON DELETE SET NULL,
+    question_key VARCHAR(120) NOT NULL,
+    question_text VARCHAR(400) NOT NULL,
+    set_name VARCHAR(100) NOT NULL,
+    subject VARCHAR(20) NOT NULL CHECK (subject IN ('TOAN', 'TIENG_VIET', 'TIENG_ANH', 'KHOA_HOC', 'DO_VUI', 'KHAC')),
+    grade VARCHAR(20) NOT NULL CHECK (grade IN ('MAU_GIAO', 'LOP_1', 'LOP_2', 'LOP_3', 'LOP_4', 'LOP_5')),
+    context VARCHAR(30) NOT NULL CHECK (context IN ('SCREEN_TIME', 'WATCH_PET_MEDICINE', 'LOOT_DROP', 'VIP_UNLOCK')),
+    correct BOOLEAN NOT NULL,
+    response_ms INT NOT NULL DEFAULT 0 CHECK (response_ms >= 0),
+    answered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

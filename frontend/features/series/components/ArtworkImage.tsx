@@ -83,7 +83,7 @@ export function ArtworkImage({
           >
             {initials}
           </span>
-          <span className="line-clamp-1 max-w-[90%] text-[11px] font-semibold opacity-75">
+          <span className="line-clamp-1 max-w-[90%] text-[0.6875rem] font-semibold opacity-75">
             {title}
           </span>
         </div>

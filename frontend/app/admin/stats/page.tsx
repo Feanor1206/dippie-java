@@ -208,7 +208,7 @@ export default function AdminStatsPage() {
                   style={{ width: `${completionPercent}%` }}
                 />
               </div>
-              <p className="mt-2 text-[11px] text-muted">
+              <p className="mt-2 text-[0.6875rem] text-muted">
                 {formatCount(stats.completedWatchSessions)} / {formatCount(stats.totalWatchSessions)} phiên xem hoàn tất
               </p>
             </div>
@@ -242,7 +242,7 @@ export default function AdminStatsPage() {
                           <div className="min-w-0">
                             <span className="mr-2 font-mono font-bold text-brand-dark">#{index + 1}</span>
                             <span className="font-semibold text-ink">{episode.title}</span>
-                            <span className="ml-2 font-mono text-[10px] text-muted">[{episode.episodeId}]</span>
+                            <span className="ml-2 font-mono text-[0.625rem] text-muted">[{episode.episodeId}]</span>
                           </div>
                           <span className="shrink-0 font-mono text-xs font-bold text-ink">
                             {formatCount(episode.viewers)} người xem
@@ -287,7 +287,7 @@ export default function AdminStatsPage() {
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full border-collapse text-left text-xs">
                     <thead>
-                      <tr className="border-b border-surface-border bg-surface-elevated/70 text-[11px] font-bold text-muted">
+                      <tr className="border-b border-surface-border bg-surface-elevated/70 text-[0.6875rem] font-bold text-muted">
                         <th scope="col" className="px-3 py-2.5">Hạng</th>
                         <th scope="col" className="px-3 py-2.5">Phim</th>
                         <th scope="col" className="px-3 py-2.5 text-right">Điểm trung bình</th>
@@ -300,10 +300,10 @@ export default function AdminStatsPage() {
                           <td className="px-3 py-3 font-mono font-bold text-brand-dark">#{idx + 1}</td>
                           <td className="px-3 py-3">
                             <div className="font-semibold text-ink">{movie.title}</div>
-                            <div className="font-mono text-[10px] text-muted">{movie.movieId}</div>
+                            <div className="font-mono text-[0.625rem] text-muted">{movie.movieId}</div>
                           </td>
                           <td className="px-3 py-3 text-right">
-                            <span className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-900">
+                            <span className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-mono text-[0.6875rem] font-bold text-amber-900">
                               <Star size={11} aria-hidden="true" />
                               <span>{formatRating(movie.averageRating)}</span>
                             </span>
@@ -345,7 +345,7 @@ function KpiCard({
         </div>
       </div>
       <p className="mt-2 text-2xl font-extrabold text-ink">{value}</p>
-      {subtext && <p className="mt-1 text-[11px] text-muted">{subtext}</p>}
+      {subtext && <p className="mt-1 text-[0.6875rem] text-muted">{subtext}</p>}
     </div>
   );
 }
