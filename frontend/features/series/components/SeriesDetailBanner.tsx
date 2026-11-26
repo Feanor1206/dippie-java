@@ -5,6 +5,7 @@ import { normalizeGenreLabels, resolveRatingSummary } from '@/lib/labels';
 import type { CatalogSeriesSummary } from '@/lib/services/catalogService';
 import type { SeriesCard } from '@/lib/services/seriesCardService';
 import { formatSeriesCounts, formatYearRange, pickSeriesArtwork } from '@/features/series/seriesBrowseUtils';
+import { VipBadge } from '@/features/profiles/components/VipBadge';
 
 export type SeriesDetailBannerProps = {
   series: CatalogSeriesSummary;
@@ -13,6 +14,7 @@ export type SeriesDetailBannerProps = {
   episodeCount: number;
   nextEpisodeAction: React.ReactNode;
   seriesActions?: React.ReactNode;
+  isVipSeries?: boolean;
 };
 
 function parseFallbackGenreIds(series: CatalogSeriesSummary): string[] {
@@ -37,6 +39,7 @@ export function SeriesDetailBanner({
   episodeCount,
   nextEpisodeAction,
   seriesActions,
+  isVipSeries = false,
 }: SeriesDetailBannerProps) {
   const artwork = pickSeriesArtwork(card || {}, 'backdrop');
   const [stage, setStage] = useState<0 | 1 | 2>(0);
@@ -107,9 +110,12 @@ export function SeriesDetailBanner({
 
         <div className="mt-3 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
-            <h1 className={`break-words text-2xl font-bold leading-tight sm:text-4xl ${hasBackdrop ? 'text-[#fffdf6]' : 'text-ink'}`}>
-              {series.title}
-            </h1>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className={`break-words text-2xl font-bold leading-tight sm:text-4xl ${hasBackdrop ? 'text-[#fffdf6]' : 'text-ink'}`}>
+                {series.title}
+              </h1>
+              {isVipSeries && <VipBadge data-testid="series-banner-vip-badge" />}
+            </div>
 
             <div
               className={`mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm font-medium ${

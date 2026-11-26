@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS child_profiles (
     user_id BIGINT NOT NULL,
     name VARCHAR(50) NOT NULL,
     avatar_key VARCHAR(32) NOT NULL,
-    daily_minutes INT NOT NULL DEFAULT 60,
+    daily_minutes INT NULL DEFAULT 60,
     math_level INT NOT NULL DEFAULT 1,
     reward_minutes INT NOT NULL DEFAULT 5,
     max_bonus_minutes INT NOT NULL DEFAULT 30,
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS child_profiles (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_child_profiles_user_created (user_id, created_at),
     CONSTRAINT fk_child_profile_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT ck_child_profile_daily_minutes CHECK (daily_minutes BETWEEN 0 AND 600),
+    CONSTRAINT ck_child_profile_daily_minutes CHECK (daily_minutes IS NULL OR daily_minutes BETWEEN 0 AND 600),
     CONSTRAINT ck_child_profile_math_level CHECK (math_level BETWEEN 1 AND 4),
     CONSTRAINT ck_child_profile_reward_minutes CHECK (reward_minutes BETWEEN 1 AND 30),
     CONSTRAINT ck_child_profile_max_bonus_minutes CHECK (max_bonus_minutes BETWEEN 0 AND 120)
@@ -46,8 +46,106 @@ CREATE TABLE IF NOT EXISTS screen_time_ledger (
     INDEX idx_screen_time_ledger_profile_day (profile_id, usage_day, kind),
     INDEX idx_screen_time_ledger_profile_kind_created (profile_id, kind, created_at),
     CONSTRAINT fk_screen_time_ledger_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
-    CONSTRAINT ck_screen_time_ledger_kind CHECK (HEX(kind) IN (HEX('WATCH'), HEX('REWARD'), HEX('PARENT_GRANT'))),
+    CONSTRAINT ck_screen_time_ledger_kind CHECK (HEX(kind) IN (HEX('WATCH'), HEX('REWARD'), HEX('PARENT_GRANT'), HEX('BOUNTY'), HEX('LOOT'))),
     CONSTRAINT ck_screen_time_ledger_seconds CHECK (seconds > 0)
+);
+
+CREATE TABLE IF NOT EXISTS bounty_tasks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    title VARCHAR(120) NOT NULL,
+    reward_minutes INT NOT NULL,
+    icon VARCHAR(32) NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    repeatable_daily BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_bounty_tasks_user_active (user_id, active),
+    CONSTRAINT fk_bounty_tasks_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT ck_bounty_task_reward_minutes CHECK (reward_minutes BETWEEN 1 AND 120)
+);
+
+CREATE TABLE IF NOT EXISTS bounty_task_profiles (
+    task_id BIGINT NOT NULL,
+    profile_id BIGINT NOT NULL,
+    PRIMARY KEY (task_id, profile_id),
+    INDEX idx_bounty_task_profiles_profile (profile_id),
+    CONSTRAINT fk_bounty_task_profiles_task FOREIGN KEY (task_id) REFERENCES bounty_tasks(id) ON DELETE CASCADE,
+    CONSTRAINT fk_bounty_task_profiles_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS bounty_submissions (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id BIGINT NOT NULL,
+    profile_id BIGINT NOT NULL,
+    usage_day DATE NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    reward_minutes INT NOT NULL,
+    submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    decided_at TIMESTAMP NULL,
+    reject_note VARCHAR(255) NULL,
+    INDEX idx_bounty_submissions_profile_day (profile_id, usage_day, status),
+    INDEX idx_bounty_submissions_task_profile_status (task_id, profile_id, status),
+    CONSTRAINT fk_bounty_submissions_task FOREIGN KEY (task_id) REFERENCES bounty_tasks(id) ON DELETE CASCADE,
+    CONSTRAINT fk_bounty_submissions_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT ck_bounty_submission_status CHECK (HEX(status) IN (HEX('PENDING'), HEX('APPROVED'), HEX('REJECTED'))),
+    CONSTRAINT ck_bounty_submission_reward_minutes CHECK (reward_minutes BETWEEN 1 AND 120)
+);
+
+CREATE TABLE IF NOT EXISTS weekend_vault_overrides (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL,
+    week_start DATE NOT NULL,
+    unlocked BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT uq_weekend_vault_profile_week UNIQUE (profile_id, week_start),
+    CONSTRAINT fk_weekend_vault_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS child_play_settings (
+    profile_id BIGINT PRIMARY KEY,
+    watch_pet_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    watch_pet_faint_minutes INT NOT NULL DEFAULT 20,
+    watch_pet_rest_minutes INT NOT NULL DEFAULT 5,
+    loot_drop_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    recap_to_next_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_child_play_settings_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT ck_child_play_pet_faint_minutes CHECK (watch_pet_faint_minutes BETWEEN 10 AND 60),
+    CONSTRAINT ck_child_play_pet_rest_minutes CHECK (watch_pet_rest_minutes BETWEEN 3 AND 15)
+);
+
+CREATE TABLE IF NOT EXISTS child_play_state (
+    profile_id BIGINT PRIMARY KEY,
+    continuous_watch_seconds INT NOT NULL DEFAULT 0,
+    last_watch_heartbeat_at TIMESTAMP NULL,
+    pet_fainted BOOLEAN NOT NULL DEFAULT FALSE,
+    rest_lock_until TIMESTAMP NULL,
+    watch_seconds_since_loot INT NOT NULL DEFAULT 0,
+    next_loot_threshold_seconds INT NOT NULL DEFAULT 360,
+    loot_combo INT NOT NULL DEFAULT 0,
+    loot_drop_pending BOOLEAN NOT NULL DEFAULT FALSE,
+    last_loot_issued_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_child_play_state_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT ck_child_play_continuous_watch CHECK (continuous_watch_seconds >= 0),
+    CONSTRAINT ck_child_play_loot_watch CHECK (watch_seconds_since_loot >= 0),
+    CONSTRAINT ck_child_play_loot_threshold CHECK (next_loot_threshold_seconds BETWEEN 300 AND 420),
+    CONSTRAINT ck_child_play_loot_combo CHECK (loot_combo >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS child_episode_recap_gates (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL,
+    series_id VARCHAR(100) NOT NULL,
+    source_episode_id VARCHAR(100) NOT NULL,
+    target_episode_id VARCHAR(100) NOT NULL,
+    unlocked BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    unlocked_at TIMESTAMP NULL,
+    CONSTRAINT fk_recap_gate_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT uq_recap_gate_profile_target UNIQUE (profile_id, target_episode_id),
+    INDEX idx_recap_gate_profile_series (profile_id, series_id, unlocked)
 );
 
 CREATE TABLE IF NOT EXISTS movies (
@@ -602,4 +700,27 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     INDEX idx_password_reset_user (user_id),
     INDEX idx_password_reset_expires (expires_at),
     CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS child_vip_series (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL,
+    series_id VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_child_vip_series UNIQUE (profile_id, series_id),
+    INDEX idx_child_vip_series_profile (profile_id),
+    CONSTRAINT fk_child_vip_series_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT fk_child_vip_series_series FOREIGN KEY (series_id) REFERENCES catalog_series(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS child_vip_episode_unlocks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL,
+    episode_id VARCHAR(100) NOT NULL,
+    unlock_day DATE NOT NULL,
+    unlocked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_child_vip_unlock UNIQUE (profile_id, episode_id, unlock_day),
+    INDEX idx_child_vip_unlock_profile_day (profile_id, unlock_day),
+    CONSTRAINT fk_child_vip_unlock_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT fk_child_vip_unlock_episode FOREIGN KEY (episode_id) REFERENCES catalog_episodes(id) ON DELETE CASCADE
 );

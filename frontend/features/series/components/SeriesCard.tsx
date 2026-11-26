@@ -5,6 +5,7 @@ import { normalizeGenreLabels, resolveRatingSummary } from '@/lib/labels';
 import type { SeriesCard as SeriesCardData } from '@/lib/services/seriesCardService';
 import { ArtworkImage } from '@/features/series/components/ArtworkImage';
 import { QuickSaveButtons } from '@/features/library/components/LibraryControls';
+import { VipBadge } from '@/features/profiles/components/VipBadge';
 import { formatSeriesCounts, formatYearRange, pickSeriesArtwork } from '@/features/series/seriesBrowseUtils';
 
 const MAX_CARD_GENRES = 3;
@@ -13,9 +14,10 @@ export type SeriesCardProps = {
   card: SeriesCardData;
   headingLevel?: 'h2' | 'h3';
   className?: string;
+  isVip?: boolean;
 };
 
-export function SeriesCard({ card, headingLevel = 'h3', className = '' }: SeriesCardProps) {
+export function SeriesCard({ card, headingLevel = 'h3', className = '', isVip = false }: SeriesCardProps) {
   const Heading = headingLevel;
   const artwork = pickSeriesArtwork(card, 'backdrop');
   const years = formatYearRange(card.releaseYearStart, card.releaseYearEnd);
@@ -30,6 +32,11 @@ export function SeriesCard({ card, headingLevel = 'h3', className = '' }: Series
       data-series-id={card.id}
       className={`series-card group relative overflow-hidden ${className}`}
     >
+      {isVip && (
+        <div className="absolute top-2 left-2 z-20">
+          <VipBadge data-testid={`series-card-vip-${card.id}`} />
+        </div>
+      )}
       <div className="absolute top-2 right-2 z-20">
         <QuickSaveButtons
           itemId={card.id}

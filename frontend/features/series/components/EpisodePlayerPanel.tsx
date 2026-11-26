@@ -4,6 +4,18 @@ import { useOptionalAuth } from '@/lib/context/AuthContext';
 import { useOptionalScreenTime } from '@/lib/context/ScreenTimeContext';
 import { ScreenTimeChip } from '@/features/profiles/components/ScreenTimeChip';
 import { ScreenTimeLockOverlay } from '@/features/profiles/components/ScreenTimeLockOverlay';
+import { VipBadge } from '@/features/profiles/components/VipBadge';
+import { VipUnlockDialog } from '@/features/profiles/components/VipUnlockDialog';
+import { WatchPetWidget } from '@/features/profiles/components/WatchPetWidget';
+import { LootDropOverlay } from '@/features/profiles/components/LootDropOverlay';
+import { RecapQuizOverlay } from '@/features/profiles/components/RecapQuizOverlay';
+import type { LootFeedbackBanner } from '@/features/profiles/hooks/usePlayFeatures';
+import type {
+  LootDropAnswerResult,
+  LootDropQuiz,
+  LootDropSpawn,
+  WatchPetStatus,
+} from '@/lib/services/playFeaturesService';
 import React, { useEffect, useState } from 'react';
 import { cleanMediaTitle, formatDurationMs } from '@/lib/labels';
 import {
@@ -65,6 +77,28 @@ export type EpisodePlayerPanelProps = {
   hasNextEpisode: boolean;
   onCancelNextCountdown: () => void;
   progressError: string | null;
+  isVipLocked?: boolean;
+  vipMathLevel?: number;
+  onVipUnlocked?: (episodeId: string) => void;
+  kidPlayOverlay?: {
+    watchPet: WatchPetStatus | null;
+    isPetLocked: boolean;
+    restCountdown: number;
+    onStartRest: () => Promise<WatchPetStatus | null>;
+    onWatchPetUpdated: (next: WatchPetStatus) => void;
+    activeDrop: LootDropSpawn | null;
+    dropSecondsLeft: number;
+    activeLootQuiz: LootDropQuiz | null;
+    lootQuizSecondsLeft: number;
+    lootFeedback: LootFeedbackBanner | null;
+    lootOpening: boolean;
+    lootSubmitting: boolean;
+    onOpenLootChest: () => Promise<void>;
+    onSubmitLootAnswer: (answer: number) => Promise<LootDropAnswerResult | null>;
+    activeRecapEpisodeId: string | null;
+    onRecapUnlocked: (targetEpisodeId: string | null) => void;
+    onRecapRewatch: () => void;
+  };
 };
 
 export function EpisodePlayerPanel({
@@ -97,19 +131,33 @@ export function EpisodePlayerPanel({
   hasNextEpisode,
   onCancelNextCountdown,
   progressError,
+  isVipLocked = false,
+  vipMathLevel = 2,
+  onVipUnlocked,
+  kidPlayOverlay,
 }: EpisodePlayerPanelProps) {
   const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
   const screenTime = typeof useOptionalScreenTime === 'function' ? useOptionalScreenTime() : null;
   const isKidMode = Boolean(auth?.isKidMode);
   const isScreenTimeLocked = Boolean(isKidMode && screenTime?.isLocked);
+  const isKidPlayBlocked = Boolean(
+    isKidMode && (kidPlayOverlay?.isPetLocked || kidPlayOverlay?.activeRecapEpisodeId)
+  );
+  const showVipLock = Boolean(isKidMode && isVipLocked && selectedEpisode && auth?.token && !isScreenTimeLocked);
+  const isPlaybackPaused = isScreenTimeLocked || showVipLock || isKidPlayBlocked;
   const [holdSolvedOverlay, setHoldSolvedOverlay] = useState(false);
+  const [vipDialogOpen, setVipDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (!isScreenTimeLocked) return;
+    setVipDialogOpen(false);
+  }, [selectedEpisode?.id]);
+
+  useEffect(() => {
+    if (!isPlaybackPaused) return;
     try {
       videoRef.current?.pause();
     } catch {}
-  }, [isScreenTimeLocked, videoRef]);
+  }, [isPlaybackPaused, videoRef]);
 
   const showLockOverlay = Boolean(
     isKidMode && (isScreenTimeLocked || holdSolvedOverlay) && screenTime?.screenTime && auth?.token
@@ -186,7 +234,28 @@ export function EpisodePlayerPanel({
             : 'bg-black'
         } ${youtubeEmbed ? 'min-h-[200px]' : ''}`}
       >
-        {isLoadingEpisode || isResolvingStream ? (
+        {showVipLock && selectedEpisode ? (
+          <div
+            data-testid="vip-episode-lock-overlay"
+            className="flex h-full w-full flex-col items-center justify-center bg-ink/95 p-6 text-center text-paper-white"
+          >
+            <VipBadge data-testid="player-vip-badge" />
+            <h3 className="mt-3 font-display text-lg font-bold text-paper-white sm:text-xl">
+              Tập phim VIP đang khóa
+            </h3>
+            <p className="mt-2 max-w-md text-xs leading-relaxed text-zinc-200 sm:text-sm">
+              Bé hãy giải đúng 1 bài toán mức {vipMathLevel} để mở khóa tập này trong hôm nay nhé!
+            </p>
+            <button
+              type="button"
+              data-testid="open-vip-unlock-button"
+              onClick={() => setVipDialogOpen(true)}
+              className="btn-primary mt-4 min-h-[44px] text-xs font-bold sm:text-sm"
+            >
+              Giải toán mở khóa tập này
+            </button>
+          </div>
+        ) : isLoadingEpisode || isResolvingStream ? (
           <p role="status" className="p-6 text-center text-xs text-zinc-200">
             Đang tải tập…
           </p>
@@ -205,9 +274,9 @@ export function EpisodePlayerPanel({
             src={playbackSource.embedUrl}
             title={cleanMediaTitle(selectedEpisode?.title) || 'Tập trên YouTube'}
             seekRequest={youtubeSeekRequest}
-            autoPlay={shouldAutoPlayYoutube && !isScreenTimeLocked}
+            autoPlay={shouldAutoPlayYoutube && !isPlaybackPaused}
             kidMode={isKidMode}
-            paused={isScreenTimeLocked}
+            paused={isPlaybackPaused}
             {...youtubeHandlers}
           />
         ) : playbackSource.kind === 'file' && streamUrl ? (
@@ -221,7 +290,7 @@ export function EpisodePlayerPanel({
             {...videoHandlers}
             className="h-full w-full object-contain"
           />
-        ) : showLockOverlay ? (
+        ) : showLockOverlay || isKidPlayBlocked ? (
           <div className="h-full w-full bg-ink" />
         ) : (
           <div
@@ -288,6 +357,39 @@ export function EpisodePlayerPanel({
             }}
             onContinueWatching={() => setHoldSolvedOverlay(false)}
           />
+        )}
+        {isKidMode && auth?.token && kidPlayOverlay && !showLockOverlay && !showVipLock && (
+          <>
+            <WatchPetWidget
+              watchPet={kidPlayOverlay.watchPet}
+              token={auth.token}
+              restCountdown={kidPlayOverlay.restCountdown}
+              onStartRest={kidPlayOverlay.onStartRest}
+              onWatchPetUpdated={kidPlayOverlay.onWatchPetUpdated}
+            />
+            {!kidPlayOverlay.isPetLocked && !kidPlayOverlay.activeRecapEpisodeId && (
+              <LootDropOverlay
+                activeDrop={kidPlayOverlay.activeDrop}
+                dropSecondsLeft={kidPlayOverlay.dropSecondsLeft}
+                activeQuiz={kidPlayOverlay.activeLootQuiz}
+                quizSecondsLeft={kidPlayOverlay.lootQuizSecondsLeft}
+                feedback={kidPlayOverlay.lootFeedback}
+                opening={kidPlayOverlay.lootOpening}
+                submitting={kidPlayOverlay.lootSubmitting}
+                onOpenChest={kidPlayOverlay.onOpenLootChest}
+                onSubmitAnswer={kidPlayOverlay.onSubmitLootAnswer}
+              />
+            )}
+            {!kidPlayOverlay.isPetLocked && kidPlayOverlay.activeRecapEpisodeId && (
+              <RecapQuizOverlay
+                token={auth.token}
+                episodeId={kidPlayOverlay.activeRecapEpisodeId}
+                nextEpisodeLabel={nextEpisodeLabel}
+                onUnlocked={kidPlayOverlay.onRecapUnlocked}
+                onRewatchEpisode={kidPlayOverlay.onRecapRewatch}
+              />
+            )}
+          </>
         )}
       </div>
 
@@ -369,6 +471,19 @@ export function EpisodePlayerPanel({
         <p role="status" className="text-xs text-muted">
           {progressError}
         </p>
+      )}
+
+      {vipDialogOpen && selectedEpisode && auth?.token && (
+        <VipUnlockDialog
+          episodeId={selectedEpisode.id}
+          episodeTitle={cleanMediaTitle(selectedEpisode.title)}
+          token={auth.token}
+          onUnlocked={(episodeId) => {
+            setVipDialogOpen(false);
+            onVipUnlocked?.(episodeId);
+          }}
+          onClose={() => setVipDialogOpen(false)}
+        />
       )}
     </>
   );

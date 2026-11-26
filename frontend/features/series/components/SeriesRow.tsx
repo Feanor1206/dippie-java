@@ -4,6 +4,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { SeriesCard as SeriesCardData } from '@/lib/services/seriesCardService';
 import { useSeriesCards } from '@/lib/hooks/useCatalogData';
 import { SeriesCard } from '@/features/series/components/SeriesCard';
+import { useOptionalAuth } from '@/lib/context/AuthContext';
+import { fetchKidVipStatus } from '@/lib/services/vipService';
 
 export type SeriesRowProps = {
   cards?: SeriesCardData[];
@@ -33,6 +35,25 @@ export function SeriesRow({
   const trackRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
+  const isKidMode = Boolean(auth?.isAuthenticated && auth?.isKidMode && auth?.token);
+  const [vipSeriesIds, setVipSeriesIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isKidMode || !auth?.token) {
+      setVipSeriesIds([]);
+      return;
+    }
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    fetchKidVipStatus(auth.token, { signal: controller?.signal })
+      .then((status) => {
+        if (!controller?.signal.aborted) setVipSeriesIds(status.vipSeriesIds);
+      })
+      .catch(() => {
+        if (!controller?.signal.aborted) setVipSeriesIds([]);
+      });
+    return () => controller?.abort();
+  }, [isKidMode, auth?.token, auth?.activeProfile?.id]);
 
   const updateScrollState = useCallback(() => {
     const track = trackRef.current;
@@ -139,7 +160,7 @@ export function SeriesRow({
         >
           {cards.map((card) => (
             <div key={card.id} className="series-row-item">
-              <SeriesCard card={card} headingLevel="h3" className="h-full" />
+              <SeriesCard card={card} headingLevel="h3" className="h-full" isVip={isKidMode && vipSeriesIds.includes(card.id)} />
             </div>
           ))}
         </div>

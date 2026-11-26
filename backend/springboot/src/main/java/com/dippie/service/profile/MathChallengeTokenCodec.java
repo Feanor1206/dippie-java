@@ -9,6 +9,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -30,6 +31,7 @@ public class MathChallengeTokenCodec {
     public static final Duration TOKEN_TTL = Duration.ofMinutes(2);
 
     private static final byte VERSION = 1;
+    private static final byte VERSION_SCOPED = 2;
     private static final int TOKEN_ID_BYTES = 16;
     private static final int IV_BYTES = 16;
     private static final int PLAINTEXT_BYTES = TOKEN_ID_BYTES + Long.BYTES + Integer.BYTES + Long.BYTES + Integer.BYTES;
@@ -159,9 +161,133 @@ public class MathChallengeTokenCodec {
         }
     }
 
+    // bản v2 gắn thêm phạm vi riêng (vd vip:<episodeId>) để token mở khóa VIP không dùng chéo sang thưởng phút hay tập khác
+    public IssuedToken issueScoped(long profileId, int answer, int level, String scope) {
+        byte[] scopeBytes = scope == null ? new byte[0] : scope.getBytes(StandardCharsets.UTF_8);
+        if (scopeBytes.length == 0 || scopeBytes.length > 255) {
+            throw new IllegalArgumentException("Phạm vi token câu hỏi toán chưa hợp lệ.");
+        }
+        Instant expiresAt = clock.instant().plus(TOKEN_TTL);
+        byte[] tokenIdRaw = new byte[TOKEN_ID_BYTES];
+        byte[] iv = new byte[IV_BYTES];
+        random.nextBytes(tokenIdRaw);
+        random.nextBytes(iv);
+
+        byte[] plaintext = serializeScopedPayload(tokenIdRaw, profileId, answer, expiresAt.getEpochSecond(), level, scopeBytes);
+        byte[] ciphertext = crypt(Cipher.ENCRYPT_MODE, iv, plaintext);
+        byte[] body = new byte[1 + IV_BYTES + ciphertext.length];
+        body[0] = VERSION_SCOPED;
+        System.arraycopy(iv, 0, body, 1, IV_BYTES);
+        System.arraycopy(ciphertext, 0, body, 1 + IV_BYTES, ciphertext.length);
+
+        byte[] mac = computeMac(body);
+        byte[] full = new byte[body.length + MAC_BYTES];
+        System.arraycopy(body, 0, full, 0, body.length);
+        System.arraycopy(mac, 0, full, body.length, MAC_BYTES);
+
+        String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(full);
+        String tokenId = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenIdRaw);
+        return new IssuedToken(encoded, tokenId, expiresAt);
+    }
+
+    // giải mã token v2 kèm phạm vi, kiểm tra chữ ký HMAC trước rồi mới đọc payload
+    public Optional<DecodedScopedToken> decodeScoped(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) {
+            return Optional.empty();
+        }
+        byte[] full;
+        try {
+            full = Base64.getUrlDecoder().decode(rawToken.trim());
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
+        int minBytes = 1 + IV_BYTES + PLAINTEXT_BYTES + Short.BYTES + 1 + MAC_BYTES;
+        if (full.length < minBytes || full[0] != VERSION_SCOPED) {
+            return Optional.empty();
+        }
+        int bodyLength = full.length - MAC_BYTES;
+        byte[] body = Arrays.copyOfRange(full, 0, bodyLength);
+        byte[] suppliedMac = Arrays.copyOfRange(full, bodyLength, full.length);
+        byte[] expectedMac = computeMac(body);
+        if (!MessageDigest.isEqual(expectedMac, suppliedMac)) {
+            return Optional.empty();
+        }
+        byte[] iv = Arrays.copyOfRange(body, 1, 1 + IV_BYTES);
+        byte[] ciphertext = Arrays.copyOfRange(body, 1 + IV_BYTES, bodyLength);
+        byte[] plaintext = crypt(Cipher.DECRYPT_MODE, iv, ciphertext);
+        return parseScopedPayload(plaintext);
+    }
+
+    private byte[] serializeScopedPayload(
+            byte[] tokenIdRaw,
+            long profileId,
+            int answer,
+            long expiresAtEpochSec,
+            int level,
+            byte[] scopeBytes
+    ) {
+        try (ByteArrayOutputStream buffer = new ByteArrayOutputStream(PLAINTEXT_BYTES + Short.BYTES + scopeBytes.length);
+                DataOutputStream out = new DataOutputStream(buffer)) {
+            out.write(tokenIdRaw);
+            out.writeLong(profileId);
+            out.writeInt(answer);
+            out.writeLong(expiresAtEpochSec);
+            out.writeInt(level);
+            out.writeShort(scopeBytes.length);
+            out.write(scopeBytes);
+            out.flush();
+            return buffer.toByteArray();
+        } catch (IOException ex) {
+            throw new IllegalStateException("Không đóng gói được token câu hỏi toán.", ex);
+        }
+    }
+
+    private Optional<DecodedScopedToken> parseScopedPayload(byte[] plaintext) {
+        if (plaintext.length < PLAINTEXT_BYTES + Short.BYTES + 1) {
+            return Optional.empty();
+        }
+        try (ByteArrayInputStream buffer = new ByteArrayInputStream(plaintext);
+                DataInputStream in = new DataInputStream(buffer)) {
+            byte[] tokenIdRaw = new byte[TOKEN_ID_BYTES];
+            in.readFully(tokenIdRaw);
+            long profileId = in.readLong();
+            int answer = in.readInt();
+            long expiresAtEpochSec = in.readLong();
+            int level = in.readInt();
+            int scopeLength = in.readUnsignedShort();
+            if (scopeLength == 0 || scopeLength > 255 || plaintext.length != PLAINTEXT_BYTES + Short.BYTES + scopeLength) {
+                return Optional.empty();
+            }
+            byte[] scopeBytes = new byte[scopeLength];
+            in.readFully(scopeBytes);
+            String tokenId = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenIdRaw);
+            String scope = new String(scopeBytes, StandardCharsets.UTF_8);
+            return Optional.of(new DecodedScopedToken(
+                    tokenId,
+                    profileId,
+                    answer,
+                    Instant.ofEpochSecond(expiresAtEpochSec),
+                    level,
+                    scope
+            ));
+        } catch (IOException ex) {
+            return Optional.empty();
+        }
+    }
+
     public record IssuedToken(String token, String tokenId, Instant expiresAt) {
     }
 
     public record DecodedToken(String tokenId, long profileId, int answer, Instant expiresAt, int level) {
+    }
+
+    public record DecodedScopedToken(
+            String tokenId,
+            long profileId,
+            int answer,
+            Instant expiresAt,
+            int level,
+            String scope
+    ) {
     }
 }

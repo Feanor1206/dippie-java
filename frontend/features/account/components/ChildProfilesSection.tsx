@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { SiteDialog } from '@/components/ui/SiteDialog';
+import { PlayFeaturesSettings } from '@/features/account/components/PlayFeaturesSettings';
 import { useAuth } from '@/lib/context/AuthContext';
 import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
 import {
@@ -17,8 +18,11 @@ import {
   type ChildProfile,
 } from '@/lib/services/profileService';
 import {
+  DAILY_MINUTE_PRESETS,
   MATH_LEVEL_OPTIONS,
+  broadcastScreenTimeUpdated,
   fetchParentScreenTimeOverview,
+  formatDailyLimitLabel,
   formatRemainingTime,
   formatUsageDuration,
   grantChildExtraMinutes,
@@ -27,6 +31,9 @@ import {
   validateScreenTimeSettings,
   type ChildProfileScreenTime,
 } from '@/lib/services/screenTimeService';
+import { ParentBountySection } from '@/features/account/components/ParentBountySection';
+import { ParentWeekendVaultSection } from '@/features/account/components/ParentWeekendVaultSection';
+import { ParentVipSeriesSection } from '@/features/account/components/ParentVipSeriesSection';
 
 type DialogMode =
   | { kind: 'enable' }
@@ -35,7 +42,7 @@ type DialogMode =
   | { kind: 'create' }
   | { kind: 'edit'; profile: ChildProfile }
   | { kind: 'delete'; profile: ChildProfile }
-  | { kind: 'screen-time'; profile: ChildProfile }
+  | { kind: 'screen-time'; profile: ChildProfile; presetMinutes?: number; presetUnlimited?: boolean }
   | { kind: 'grant'; profile: ChildProfile }
   | null;
 
@@ -52,12 +59,14 @@ export function ChildProfilesSection() {
   const navigate = useNavigate();
 
   const [dialog, setDialog] = useState<DialogMode>(null);
+  const [playSettingsProfile, setPlaySettingsProfile] = useState<ChildProfile | null>(null);
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [currentPin, setCurrentPin] = useState('');
   const [childName, setChildName] = useState('');
   const [avatarKey, setAvatarKey] = useState('bear');
   const [dailyMinutes, setDailyMinutes] = useState('60');
+  const [isUnlimited, setIsUnlimited] = useState(false);
   const [mathLevel, setMathLevel] = useState(1);
   const [rewardMinutes, setRewardMinutes] = useState('5');
   const [maxBonusMinutes, setMaxBonusMinutes] = useState('30');
@@ -93,15 +102,21 @@ export function ChildProfilesSection() {
     void loadScreenTimeOverview();
   }, [loadScreenTimeOverview, childProfiles.length]);
 
-  const closeDialog = () => {
-    if (busy) return;
+  const resetDialog = () => {
     setDialog(null);
     setPin('');
     setConfirmPin('');
     setCurrentPin('');
     setChildName('');
     setAvatarKey('bear');
+    setDailyMinutes('60');
+    setIsUnlimited(false);
     setDialogError('');
+  };
+
+  const closeDialog = () => {
+    if (busy) return;
+    resetDialog();
   };
 
   const openDialog = (next: DialogMode) => {
@@ -111,11 +126,29 @@ export function ChildProfilesSection() {
     setConfirmPin('');
     setCurrentPin('');
     if (next?.kind === 'edit') {
+      const summary = screenTimeByProfile[next.profile.id]?.status;
+      const unlimited = Boolean(summary?.unlimited ?? next.profile.unlimited ?? next.profile.dailyMinutes === null);
       setChildName(next.profile.name);
       setAvatarKey(next.profile.avatarKey);
+      setIsUnlimited(unlimited);
+      setDailyMinutes(unlimited ? '60' : String(summary?.dailyMinutes ?? next.profile.dailyMinutes ?? 60));
+    } else if (next?.kind === 'create') {
+      setChildName('');
+      setAvatarKey('bear');
+      setIsUnlimited(false);
+      setDailyMinutes('60');
     } else if (next?.kind === 'screen-time') {
       const summary = screenTimeByProfile[next.profile.id]?.status;
-      setDailyMinutes(String(summary?.dailyMinutes ?? next.profile.dailyMinutes ?? 60));
+      const baseUnlimited = Boolean(summary?.unlimited ?? next.profile.unlimited ?? next.profile.dailyMinutes === null);
+      const nextUnlimited = next.presetUnlimited !== undefined ? next.presetUnlimited : baseUnlimited;
+      const nextDaily =
+        next.presetMinutes !== undefined
+          ? next.presetMinutes
+          : nextUnlimited
+          ? 60
+          : summary?.dailyMinutes ?? next.profile.dailyMinutes ?? 60;
+      setIsUnlimited(nextUnlimited);
+      setDailyMinutes(String(nextDaily));
       setMathLevel(summary?.mathLevel ?? next.profile.mathLevel ?? 1);
       setRewardMinutes(String(summary?.rewardMinutes ?? next.profile.rewardMinutes ?? 5));
       setMaxBonusMinutes(String(summary?.maxBonusMinutes ?? next.profile.maxBonusMinutes ?? 30));
@@ -149,7 +182,7 @@ export function ChildProfilesSection() {
       try {
         await enableParentMode(token, pin);
         await refreshProfiles();
-        closeDialog();
+        resetDialog();
         setFeedback({ type: 'success', text: 'Đã bật chế độ hồ sơ trẻ em.' });
       } catch (err: unknown) {
         setDialogError(err instanceof Error ? err.message : 'Chưa bật được chế độ hồ sơ trẻ em.');
@@ -181,7 +214,7 @@ export function ChildProfilesSection() {
       setBusy(true);
       try {
         await changeParentPin(token, currentPin, pin);
-        closeDialog();
+        resetDialog();
         setFeedback({ type: 'success', text: 'Đã đổi mã PIN phụ huynh.' });
       } catch (err: unknown) {
         setCurrentPin('');
@@ -202,7 +235,7 @@ export function ChildProfilesSection() {
       try {
         await disableParentMode(token, pin);
         await refreshProfiles();
-        closeDialog();
+        resetDialog();
         setFeedback({ type: 'success', text: 'Đã tắt chế độ hồ sơ trẻ em. Hồ sơ của các bé vẫn được giữ lại.' });
       } catch (err: unknown) {
         setPin('');
@@ -219,6 +252,12 @@ export function ChildProfilesSection() {
         setDialogError(nameErr);
         return;
       }
+      const parsedDaily = isUnlimited ? null : dailyMinutes.trim() === '' ? NaN : Number(dailyMinutes);
+      const dailyErr = validateScreenTimeSettings({ dailyMinutes: parsedDaily, unlimited: isUnlimited });
+      if (dailyErr) {
+        setDialogError(dailyErr);
+        return;
+      }
       const pinErr = validateParentPin(pin);
       if (pinErr) {
         setDialogError(pinErr);
@@ -226,15 +265,23 @@ export function ChildProfilesSection() {
       }
       setBusy(true);
       try {
+        const profilePayload = {
+          pin,
+          name: childName.trim(),
+          avatarKey,
+          dailyMinutes: isUnlimited ? null : parsedDaily,
+          unlimited: isUnlimited,
+        };
         if (dialog.kind === 'create') {
-          await createChildProfile(token, { pin, name: childName.trim(), avatarKey });
+          await createChildProfile(token, profilePayload);
         } else {
-          await updateChildProfile(token, dialog.profile.id, { pin, name: childName.trim(), avatarKey });
+          await updateChildProfile(token, dialog.profile.id, profilePayload);
         }
         await refreshProfiles();
         await loadScreenTimeOverview();
+        broadcastScreenTimeUpdated(dialog.kind === 'edit' ? dialog.profile.id : undefined);
         const message = dialog.kind === 'create' ? 'Đã tạo hồ sơ trẻ em.' : 'Đã cập nhật hồ sơ trẻ em.';
-        closeDialog();
+        resetDialog();
         setFeedback({ type: 'success', text: message });
       } catch (err: unknown) {
         setPin('');
@@ -246,11 +293,12 @@ export function ChildProfilesSection() {
     }
 
     if (dialog.kind === 'screen-time') {
-      const parsedDaily = Number(dailyMinutes);
-      const parsedReward = Number(rewardMinutes);
-      const parsedMaxBonus = Number(maxBonusMinutes);
+      const parsedDaily = isUnlimited ? null : dailyMinutes.trim() === '' ? NaN : Number(dailyMinutes);
+      const parsedReward = rewardMinutes.trim() === '' ? NaN : Number(rewardMinutes);
+      const parsedMaxBonus = maxBonusMinutes.trim() === '' ? NaN : Number(maxBonusMinutes);
       const settingsErr = validateScreenTimeSettings({
         dailyMinutes: parsedDaily,
+        unlimited: isUnlimited,
         mathLevel,
         rewardMinutes: parsedReward,
         maxBonusMinutes: parsedMaxBonus,
@@ -268,15 +316,17 @@ export function ChildProfilesSection() {
       try {
         const updated = await updateChildScreenTimeSettings(token, dialog.profile.id, {
           pin,
-          dailyMinutes: parsedDaily,
+          dailyMinutes: isUnlimited ? null : parsedDaily,
+          unlimited: isUnlimited,
           mathLevel,
           rewardMinutes: parsedReward,
           maxBonusMinutes: parsedMaxBonus,
         });
         setScreenTimeByProfile((prev) => ({ ...prev, [updated.profileId]: updated }));
         await refreshProfiles();
+        broadcastScreenTimeUpdated(updated.profileId);
         const targetName = dialog.profile.name;
-        closeDialog();
+        resetDialog();
         setFeedback({ type: 'success', text: `Đã lưu cài đặt thời gian xem cho ${targetName}.` });
       } catch (err: unknown) {
         setPin('');
@@ -288,7 +338,7 @@ export function ChildProfilesSection() {
     }
 
     if (dialog.kind === 'grant') {
-      const parsedGrant = Number(grantMinutes);
+      const parsedGrant = grantMinutes.trim() === '' ? NaN : Number(grantMinutes);
       const grantErr = validateGrantMinutes(parsedGrant);
       if (grantErr) {
         setDialogError(grantErr);
@@ -303,8 +353,9 @@ export function ChildProfilesSection() {
       try {
         const updated = await grantChildExtraMinutes(token, dialog.profile.id, pin, parsedGrant);
         setScreenTimeByProfile((prev) => ({ ...prev, [updated.profileId]: updated }));
+        broadcastScreenTimeUpdated(updated.profileId);
         const targetName = dialog.profile.name;
-        closeDialog();
+        resetDialog();
         setFeedback({ type: 'success', text: `Đã cộng thêm ${parsedGrant} phút xem phim cho ${targetName}.` });
       } catch (err: unknown) {
         setPin('');
@@ -327,7 +378,7 @@ export function ChildProfilesSection() {
         await refreshProfiles();
         await loadScreenTimeOverview();
         const removedName = dialog.profile.name;
-        closeDialog();
+        resetDialog();
         setFeedback({ type: 'success', text: `Đã xóa hồ sơ ${removedName}.` });
       } catch (err: unknown) {
         setPin('');
@@ -449,10 +500,14 @@ export function ChildProfilesSection() {
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {childProfiles.map((profile) => {
                 const screenTime = screenTimeByProfile[profile.id]?.status;
-                const effectiveDaily = screenTime?.dailyMinutes ?? profile.dailyMinutes ?? 60;
+                const effectiveUnlimited = Boolean(
+                  screenTime?.unlimited ?? profile.unlimited ?? profile.dailyMinutes === null
+                );
+                const effectiveDaily = effectiveUnlimited ? null : screenTime?.dailyMinutes ?? profile.dailyMinutes ?? 60;
                 const effectiveMathLevel = screenTime?.mathLevel ?? profile.mathLevel ?? 1;
                 const effectiveReward = screenTime?.rewardMinutes ?? profile.rewardMinutes ?? 5;
                 const effectiveMaxBonus = screenTime?.maxBonusMinutes ?? profile.maxBonusMinutes ?? 30;
+                const dailyLimitLabel = formatDailyLimitLabel(effectiveDaily, effectiveUnlimited);
                 return (
                   <li
                     key={profile.id}
@@ -465,8 +520,72 @@ export function ChildProfilesSection() {
                         <div className="min-w-0">
                           <p className="truncate text-sm font-bold text-ink">{profile.name}</p>
                           <p className="text-[11px] text-muted">
-                            Giới hạn {effectiveDaily} phút/ngày · Toán mức {effectiveMathLevel} (+{effectiveReward} phút, tối đa +{effectiveMaxBonus} phút)
+                            Toán mức {effectiveMathLevel} (+{effectiveReward} phút, tối đa +{effectiveMaxBonus} phút)
                           </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-ink/25 bg-mint/30 p-2.5 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p
+                            data-testid={`child-daily-limit-${profile.id}`}
+                            className="text-xs font-bold text-ink"
+                          >
+                            Thời gian xem mỗi ngày: {dailyLimitLabel}
+                          </p>
+                          <button
+                            type="button"
+                            data-testid={`edit-daily-time-button-${profile.id}`}
+                            onClick={() => openDialog({ kind: 'screen-time', profile })}
+                            className="shrink-0 rounded-md border border-ink bg-paper-white px-2.5 py-1 text-[11px] font-bold text-ink hover:bg-mint cursor-pointer"
+                          >
+                            Đổi thời gian
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {DAILY_MINUTE_PRESETS.map((preset) => {
+                            const activePreset = !effectiveUnlimited && effectiveDaily === preset;
+                            return (
+                              <button
+                                key={preset}
+                                type="button"
+                                data-testid={`preset-daily-${profile.id}-${preset}`}
+                                onClick={() =>
+                                  openDialog({
+                                    kind: 'screen-time',
+                                    profile,
+                                    presetMinutes: preset,
+                                    presetUnlimited: false,
+                                  })
+                                }
+                                className={`min-h-[32px] rounded-md border px-2 py-0.5 text-[11px] font-bold cursor-pointer ${
+                                  activePreset
+                                    ? 'border-ink bg-brand text-ink'
+                                    : 'border-surface-border bg-paper-white text-muted hover:border-ink/60 hover:text-ink'
+                                }`}
+                              >
+                                {preset} phút
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            data-testid={`preset-unlimited-${profile.id}`}
+                            onClick={() =>
+                              openDialog({
+                                kind: 'screen-time',
+                                profile,
+                                presetUnlimited: true,
+                              })
+                            }
+                            className={`min-h-[32px] rounded-md border px-2 py-0.5 text-[11px] font-bold cursor-pointer ${
+                              effectiveUnlimited
+                                ? 'border-ink bg-brand text-ink'
+                                : 'border-surface-border bg-paper-white text-muted hover:border-ink/60 hover:text-ink'
+                            }`}
+                          >
+                            Không giới hạn
+                          </button>
                         </div>
                       </div>
 
@@ -491,6 +610,11 @@ export function ChildProfilesSection() {
                                 +{formatUsageDuration(screenTime.grantSeconds)} ba mẹ cho
                               </p>
                             )}
+                            {screenTime.bountySeconds > 0 && (
+                              <p className="text-[10px] text-muted">
+                                +{formatUsageDuration(screenTime.bountySeconds)} nhiệm vụ
+                              </p>
+                            )}
                           </div>
                           <div>
                             <p className="text-[10px] font-medium text-muted">Còn lại</p>
@@ -499,7 +623,9 @@ export function ChildProfilesSection() {
                                 screenTime.locked ? 'text-red-800' : 'text-ink'
                               }`}
                             >
-                              {formatRemainingTime(screenTime.remainingSeconds, screenTime.locked)}
+                              {screenTime.unlimited
+                                ? 'Không giới hạn'
+                                : formatRemainingTime(screenTime.remainingSeconds, screenTime.locked)}
                             </p>
                           </div>
                         </div>
@@ -533,6 +659,17 @@ export function ChildProfilesSection() {
                       </button>
                       <button
                         type="button"
+                        data-testid={`play-features-settings-button-${profile.id}`}
+                        onClick={() => {
+                          setFeedback(null);
+                          setPlaySettingsProfile(profile);
+                        }}
+                        className="btn-secondary min-h-[44px] px-3 text-xs"
+                      >
+                        Tính năng xem phim
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => openDialog({ kind: 'edit', profile })}
                         className="btn-secondary min-h-[44px] px-3 text-xs"
                       >
@@ -555,6 +692,18 @@ export function ChildProfilesSection() {
             <p className="mt-3 text-xs text-muted">
               Tài khoản đã đạt tối đa {MAX_CHILD_PROFILES} hồ sơ trẻ em.
             </p>
+          )}
+
+          {token && childProfiles.length > 0 && (
+            <>
+              <ParentBountySection
+                token={token}
+                childProfiles={childProfiles}
+                onScreenTimeUpdated={() => void loadScreenTimeOverview()}
+              />
+              <ParentWeekendVaultSection token={token} childProfiles={childProfiles} />
+              <ParentVipSeriesSection token={token} childProfiles={childProfiles} />
+            </>
           )}
         </div>
       )}
@@ -755,6 +904,57 @@ export function ChildProfilesSection() {
                     })}
                   </div>
                 </fieldset>
+                <fieldset>
+                  <legend className="mb-2 text-xs font-semibold text-ink">Thời gian xem mỗi ngày</legend>
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {DAILY_MINUTE_PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        disabled={busy}
+                        data-testid={`create-daily-preset-${preset}`}
+                        onClick={() => {
+                          setIsUnlimited(false);
+                          setDailyMinutes(String(preset));
+                        }}
+                        className={`min-h-[38px] rounded-lg border px-2.5 text-xs font-bold cursor-pointer ${
+                          !isUnlimited && Number(dailyMinutes) === preset
+                            ? 'border-ink bg-mint text-ink'
+                            : 'border-surface-border bg-paper-white text-muted'
+                        }`}
+                      >
+                        {preset} phút
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      data-testid="create-daily-unlimited-button"
+                      onClick={() => setIsUnlimited(true)}
+                      className={`min-h-[38px] rounded-lg border px-2.5 text-xs font-bold cursor-pointer ${
+                        isUnlimited
+                          ? 'border-ink bg-mint text-ink'
+                          : 'border-surface-border bg-paper-white text-muted'
+                      }`}
+                    >
+                      Không giới hạn
+                    </button>
+                  </div>
+                  {!isUnlimited && (
+                    <input
+                      id="child-profile-daily-minutes"
+                      data-testid="create-daily-minutes-input"
+                      type="number"
+                      min={0}
+                      max={600}
+                      required
+                      disabled={busy}
+                      value={dailyMinutes}
+                      onChange={(event) => setDailyMinutes(event.target.value)}
+                      className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+                    />
+                  )}
+                </fieldset>
                 <div>
                   <label htmlFor="child-profile-pin" className="mb-1.5 block text-xs font-semibold text-ink">
                     Mã PIN phụ huynh
@@ -778,6 +978,45 @@ export function ChildProfilesSection() {
 
             {dialog.kind === 'screen-time' && (
               <>
+                <fieldset>
+                  <legend className="mb-2 text-xs font-semibold text-ink">Chọn nhanh thời gian xem mỗi ngày</legend>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DAILY_MINUTE_PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        disabled={busy}
+                        data-testid={`screen-time-preset-${preset}`}
+                        onClick={() => {
+                          setIsUnlimited(false);
+                          setDailyMinutes(String(preset));
+                        }}
+                        className={`min-h-[38px] rounded-lg border px-2.5 text-xs font-bold cursor-pointer ${
+                          !isUnlimited && Number(dailyMinutes) === preset
+                            ? 'border-ink bg-mint text-ink'
+                            : 'border-surface-border bg-paper-white text-muted'
+                        }`}
+                      >
+                        {preset} phút
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      data-testid="screen-time-unlimited-toggle"
+                      aria-pressed={isUnlimited}
+                      onClick={() => setIsUnlimited((prev) => !prev)}
+                      className={`min-h-[38px] rounded-lg border px-2.5 text-xs font-bold cursor-pointer ${
+                        isUnlimited
+                          ? 'border-ink bg-mint text-ink'
+                          : 'border-surface-border bg-paper-white text-muted'
+                      }`}
+                    >
+                      Không giới hạn
+                    </button>
+                  </div>
+                </fieldset>
+
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label htmlFor="child-daily-minutes" className="mb-1.5 block text-xs font-semibold text-ink">
@@ -789,11 +1028,15 @@ export function ChildProfilesSection() {
                       type="number"
                       min={0}
                       max={600}
-                      required
-                      disabled={busy}
-                      value={dailyMinutes}
-                      onChange={(event) => setDailyMinutes(event.target.value)}
-                      className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+                      required={!isUnlimited}
+                      disabled={busy || isUnlimited}
+                      value={isUnlimited ? '' : dailyMinutes}
+                      placeholder={isUnlimited ? 'Không giới hạn' : '60'}
+                      onChange={(event) => {
+                        setIsUnlimited(false);
+                        setDailyMinutes(event.target.value);
+                      }}
+                      className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none disabled:opacity-50"
                     />
                   </div>
                   <div>
@@ -1004,6 +1247,20 @@ export function ChildProfilesSection() {
             </div>
           </form>
         </SiteDialog>
+      )}
+
+      {playSettingsProfile && token && (
+        <PlayFeaturesSettings
+          token={token}
+          profile={playSettingsProfile}
+          onClose={() => setPlaySettingsProfile(null)}
+          onSaved={(saved) =>
+            setFeedback({
+              type: 'success',
+              text: `Đã lưu cài đặt tính năng xem phim cho ${saved.name || playSettingsProfile.name}.`,
+            })
+          }
+        />
       )}
     </section>
   );

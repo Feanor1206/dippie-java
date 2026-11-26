@@ -50,9 +50,9 @@ public class ChildProfile {
     @Column(name = "avatar_key", nullable = false, length = 32)
     private String avatarKey;
 
-    @Column(name = "daily_minutes", nullable = false)
+    @Column(name = "daily_minutes")
     @ColumnDefault("60")
-    private int dailyMinutes = 60;
+    private Integer dailyMinutes = 60;
 
     @Column(name = "math_level", nullable = false)
     @ColumnDefault("1")
@@ -88,9 +88,27 @@ public class ChildProfile {
     }
 
     public ChildProfile(Long userId, String name, String avatarKey, LocalDateTime now) {
+        this(userId, name, avatarKey, null, null, now);
+    }
+
+    public ChildProfile(
+            Long userId,
+            String name,
+            String avatarKey,
+            Integer initialDailyMinutes,
+            Boolean unlimited,
+            LocalDateTime now
+    ) {
         this.userId = userId;
         this.name = validateName(name);
         this.avatarKey = validateAvatarKey(avatarKey);
+        if (Boolean.TRUE.equals(unlimited)) {
+            this.dailyMinutes = null;
+        } else if (initialDailyMinutes != null) {
+            this.dailyMinutes = validateDailyMinutes(initialDailyMinutes);
+        } else {
+            this.dailyMinutes = 60;
+        }
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -111,8 +129,12 @@ public class ChildProfile {
         return avatarKey;
     }
 
-    public int getDailyMinutes() {
+    public Integer getDailyMinutes() {
         return dailyMinutes;
+    }
+
+    public boolean isUnlimited() {
+        return dailyMinutes == null;
     }
 
     public int getMathLevel() {
@@ -135,14 +157,56 @@ public class ChildProfile {
         return updatedAt;
     }
 
-    // sửa tên với ảnh đại diện bé kèm giờ cập nhật mới
-    public void updateDetails(String newName, String newAvatarKey, LocalDateTime updatedAt) {
+    // sửa tên, ảnh đại diện và tùy chọn đổi luôn hạn mức ngày nếu phụ huynh có gửi kèm
+    public void updateDetails(
+            String newName,
+            String newAvatarKey,
+            Integer newDailyMinutes,
+            Boolean unlimited,
+            LocalDateTime updatedAt
+    ) {
         this.name = validateName(newName);
         this.avatarKey = validateAvatarKey(newAvatarKey);
+        if (Boolean.TRUE.equals(unlimited)) {
+            this.dailyMinutes = null;
+        } else if (newDailyMinutes != null) {
+            this.dailyMinutes = validateDailyMinutes(newDailyMinutes);
+        }
         this.updatedAt = updatedAt;
     }
 
-    // cập nhật giới hạn phút xem mỗi ngày với cấu hình bài toán thưởng cho bé
+    // giữ bản cũ cho chỗ chỉ đổi tên và ảnh đại diện
+    public void updateDetails(String newName, String newAvatarKey, LocalDateTime updatedAt) {
+        updateDetails(newName, newAvatarKey, null, null, updatedAt);
+    }
+
+    // cập nhật giới hạn phút xem mỗi ngày (hoặc không giới hạn) với cấu hình bài toán thưởng cho bé
+    public void updateScreenTimeSettings(
+            Integer newDailyMinutes,
+            Boolean unlimited,
+            Integer newMathLevel,
+            Integer newRewardMinutes,
+            Integer newMaxBonusMinutes,
+            LocalDateTime updatedAt
+    ) {
+        if (Boolean.TRUE.equals(unlimited)) {
+            this.dailyMinutes = null;
+        } else {
+            this.dailyMinutes = validateDailyMinutes(newDailyMinutes);
+        }
+        if (newMathLevel != null) {
+            this.mathLevel = validateMathLevel(newMathLevel);
+        }
+        if (newRewardMinutes != null) {
+            this.rewardMinutes = validateRewardMinutes(newRewardMinutes);
+        }
+        if (newMaxBonusMinutes != null) {
+            this.maxBonusMinutes = validateMaxBonusMinutes(newMaxBonusMinutes);
+        }
+        this.updatedAt = updatedAt;
+    }
+
+    // giữ bản cũ 5 tham số cho caller cũ không truyền cờ không giới hạn
     public void updateScreenTimeSettings(
             Integer newDailyMinutes,
             Integer newMathLevel,
@@ -150,11 +214,7 @@ public class ChildProfile {
             Integer newMaxBonusMinutes,
             LocalDateTime updatedAt
     ) {
-        this.dailyMinutes = validateDailyMinutes(newDailyMinutes);
-        this.mathLevel = validateMathLevel(newMathLevel);
-        this.rewardMinutes = validateRewardMinutes(newRewardMinutes);
-        this.maxBonusMinutes = validateMaxBonusMinutes(newMaxBonusMinutes);
-        this.updatedAt = updatedAt;
+        updateScreenTimeSettings(newDailyMinutes, false, newMathLevel, newRewardMinutes, newMaxBonusMinutes, updatedAt);
     }
 
     // giới hạn mỗi ngày nằm trong khoảng 0 đến 600 phút

@@ -11,7 +11,12 @@ import com.dippie.security.CurrentViewer;
 import com.dippie.security.JwtProperties;
 import com.dippie.security.JwtService;
 import com.dippie.security.Viewer;
+import com.dippie.service.play.PlayPlaybackGuard;
 import com.dippie.service.profile.ScreenTimeService;
+import com.dippie.service.vault.WeekendVaultService;
+import com.dippie.service.vip.VipTitleService;
+
+import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -31,6 +36,9 @@ public class PlaybackGrantService {
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
     private final ScreenTimeService screenTimeService;
+    private final WeekendVaultService weekendVaultService;
+    private final VipTitleService vipTitleService;
+    private final PlayPlaybackGuard playPlaybackGuard;
     private final TransactionTemplate reads;
 
     public PlaybackGrantService(MediaAssetRepository mediaAssetRepository,
@@ -39,6 +47,8 @@ public class PlaybackGrantService {
             PlaybackAccess playbackAccess,
             MediaFileResolver mediaFiles, CurrentViewer currentViewer, ActiveViewerLookup activeViewerLookup,
             JwtService jwtService, JwtProperties jwtProperties, ScreenTimeService screenTimeService,
+            WeekendVaultService weekendVaultService, VipTitleService vipTitleService,
+            PlayPlaybackGuard playPlaybackGuard,
             PlatformTransactionManager transactions) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.catalogMediaAssetRepository = catalogMediaAssetRepository;
@@ -50,6 +60,9 @@ public class PlaybackGrantService {
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
         this.screenTimeService = screenTimeService;
+        this.weekendVaultService = weekendVaultService;
+        this.vipTitleService = vipTitleService;
+        this.playPlaybackGuard = playPlaybackGuard;
         this.reads = new TransactionTemplate(transactions);
         this.reads.setReadOnly(true);
     }
@@ -60,12 +73,24 @@ public class PlaybackGrantService {
         AuthorizedGrant authorized = reads.execute(status -> {
             MediaAsset asset = mediaAssetRepository.findById(assetId).orElse(null);
             var catalogAsset = catalogMediaAssetRepository.findById(assetId).orElse(null);
-            boolean hasPublishedParent = catalogAsset != null
-                    && catalogEpisodeRepository.findWithParentsByMediaAssetId(assetId).stream()
-                            .anyMatch(CatalogEpisodeRepository.EpisodeWithParents::isPublished);
+            List<CatalogEpisodeRepository.EpisodeWithParents> linkedEpisodes = catalogAsset == null
+                    ? List.of()
+                    : catalogEpisodeRepository.findWithParentsByMediaAssetId(assetId);
+            boolean hasPublishedParent = linkedEpisodes.stream()
+                    .anyMatch(CatalogEpisodeRepository.EpisodeWithParents::isPublished);
             MediaAsset allowed = playbackAccess.authorizeForGrant(assetId, asset, catalogAsset, hasPublishedParent, viewer);
-            // hồ sơ trẻ em hết giờ xem trong ngày thì khóa 423 trước khi cấp vé phát
-            screenTimeService.requireUnlockedForPlayback(viewer);
+            // kiểm tra khóa theo thứ tự: hạn mức ngày, két sắt cuối tuần, tập VIP, thú ảo nghỉ mắt rồi ôn tập qua tập
+            screenTimeService.requireBudgetUnlockedForPlayback(viewer);
+            if (viewer != null && viewer.isChildProfile()) {
+                weekendVaultService.requireFilmUnlockedForAsset(viewer.userId(), viewer.profileId(), allowed, linkedEpisodes);
+                vipTitleService.requireAssetUnlockedForProfile(viewer.userId(), viewer.profileId(), linkedEpisodes);
+                playPlaybackGuard.requireWatchPetUnlocked(viewer.userId(), viewer.profileId());
+                List<String> episodeIds = linkedEpisodes.stream()
+                        .filter(CatalogEpisodeRepository.EpisodeWithParents::isPublished)
+                        .map(row -> row.episode().getId())
+                        .toList();
+                playPlaybackGuard.requireEpisodesUnlocked(viewer, episodeIds);
+            }
             long tokenVersion = viewer == null
                     ? 0L
                     : activeViewerLookup.findActiveTokenVersion(viewer.userId()).orElse(0L);

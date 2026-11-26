@@ -19,7 +19,7 @@ CREATE TABLE child_profiles (
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL,
     avatar_key VARCHAR(32) NOT NULL,
-    daily_minutes INT NOT NULL DEFAULT 60 CHECK (daily_minutes BETWEEN 0 AND 600),
+    daily_minutes INT DEFAULT 60 CHECK (daily_minutes IS NULL OR daily_minutes BETWEEN 0 AND 600),
     math_level INT NOT NULL DEFAULT 1 CHECK (math_level BETWEEN 1 AND 4),
     reward_minutes INT NOT NULL DEFAULT 5 CHECK (reward_minutes BETWEEN 1 AND 30),
     max_bonus_minutes INT NOT NULL DEFAULT 30 CHECK (max_bonus_minutes BETWEEN 0 AND 120),
@@ -31,9 +31,84 @@ CREATE TABLE screen_time_ledger (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     profile_id BIGINT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
     usage_day DATE NOT NULL,
-    kind VARCHAR(20) NOT NULL CHECK (kind IN ('WATCH', 'REWARD', 'PARENT_GRANT')),
+    kind VARCHAR(20) NOT NULL CHECK (kind IN ('WATCH', 'REWARD', 'PARENT_GRANT', 'BOUNTY', 'LOOT')),
     seconds INT NOT NULL CHECK (seconds > 0),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE bounty_tasks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(120) NOT NULL,
+    reward_minutes INT NOT NULL CHECK (reward_minutes BETWEEN 1 AND 120),
+    icon VARCHAR(32),
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    repeatable_daily BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE bounty_task_profiles (
+    task_id BIGINT NOT NULL REFERENCES bounty_tasks(id) ON DELETE CASCADE,
+    profile_id BIGINT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+    PRIMARY KEY (task_id, profile_id)
+);
+
+CREATE TABLE bounty_submissions (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id BIGINT NOT NULL REFERENCES bounty_tasks(id) ON DELETE CASCADE,
+    profile_id BIGINT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+    usage_day DATE NOT NULL,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    reward_minutes INT NOT NULL CHECK (reward_minutes BETWEEN 1 AND 120),
+    submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    decided_at TIMESTAMP NULL,
+    reject_note VARCHAR(255)
+);
+
+CREATE TABLE weekend_vault_overrides (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+    week_start DATE NOT NULL,
+    unlocked BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE (profile_id, week_start)
+);
+
+CREATE TABLE child_play_settings (
+    profile_id BIGINT PRIMARY KEY REFERENCES child_profiles(id) ON DELETE CASCADE,
+    watch_pet_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    watch_pet_faint_minutes INT NOT NULL DEFAULT 20 CHECK (watch_pet_faint_minutes BETWEEN 10 AND 60),
+    watch_pet_rest_minutes INT NOT NULL DEFAULT 5 CHECK (watch_pet_rest_minutes BETWEEN 3 AND 15),
+    loot_drop_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    recap_to_next_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE child_play_state (
+    profile_id BIGINT PRIMARY KEY REFERENCES child_profiles(id) ON DELETE CASCADE,
+    continuous_watch_seconds INT NOT NULL DEFAULT 0 CHECK (continuous_watch_seconds >= 0),
+    last_watch_heartbeat_at TIMESTAMP NULL,
+    pet_fainted BOOLEAN NOT NULL DEFAULT FALSE,
+    rest_lock_until TIMESTAMP NULL,
+    watch_seconds_since_loot INT NOT NULL DEFAULT 0 CHECK (watch_seconds_since_loot >= 0),
+    next_loot_threshold_seconds INT NOT NULL DEFAULT 360 CHECK (next_loot_threshold_seconds BETWEEN 300 AND 420),
+    loot_combo INT NOT NULL DEFAULT 0 CHECK (loot_combo >= 0),
+    loot_drop_pending BOOLEAN NOT NULL DEFAULT FALSE,
+    last_loot_issued_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE child_episode_recap_gates (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+    series_id VARCHAR(100) NOT NULL,
+    source_episode_id VARCHAR(100) NOT NULL,
+    target_episode_id VARCHAR(100) NOT NULL,
+    unlocked BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    unlocked_at TIMESTAMP NULL,
+    UNIQUE (profile_id, target_episode_id)
 );
 
 CREATE TABLE movies (
@@ -123,4 +198,21 @@ CREATE TABLE admin_audit_events (
     target_id VARCHAR(100) NOT NULL,
     details_json LONGTEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE child_vip_series (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+    series_id VARCHAR(100) NOT NULL REFERENCES catalog_series(id) ON DELETE CASCADE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (profile_id, series_id)
+);
+
+CREATE TABLE child_vip_episode_unlocks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+    episode_id VARCHAR(100) NOT NULL REFERENCES catalog_episodes(id) ON DELETE CASCADE,
+    unlock_day DATE NOT NULL,
+    unlocked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (profile_id, episode_id, unlock_day)
 );

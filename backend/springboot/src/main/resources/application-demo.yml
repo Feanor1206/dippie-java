@@ -9,6 +9,8 @@ spring:
         - classpath:catalog-year-h2.sql
         - classpath:child-profiles-h2.sql
         - classpath:screen-time-h2.sql
+        - classpath:parent-features-h2.sql
+        - classpath:play-features-h2.sql
 
 springdoc:
   api-docs:

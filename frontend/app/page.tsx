@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { FilmShelf } from '@/features/movies/components/FilmShelf';
 import { ContinueWatching } from '@/features/movies/components/ContinueWatching';
 import { SeriesRow } from '@/features/series/components/SeriesRow';
+import { KidModeDashboard } from '@/features/profiles/components/KidModeDashboard';
 import { useAuth } from '@/lib/context/AuthContext';
 import { listMovieProgress } from '@/lib/services/movieProgress';
 import { getGuestWatchProgress, WATCH_HISTORY_CHANGED_EVENT } from '@/lib/services/watchProgressService';
@@ -175,6 +176,7 @@ export default function HomePage() {
         </div>
       </section>
 
+      <KidModeDashboard />
       <ContinueWatching films={films} />
       <SeriesRow />
       <FilmShelf

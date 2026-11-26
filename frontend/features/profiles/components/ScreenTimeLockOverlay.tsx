@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Calculator, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
 import {
   fetchMathChallenge,
@@ -29,7 +29,11 @@ export function ScreenTimeLockOverlay({
   const [feedback, setFeedback] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
   const [latestStatus, setLatestStatus] = useState<ScreenTimeStatus>(status);
 
-  const effectiveStatus = latestStatus.remainingSeconds !== status.remainingSeconds ? latestStatus : status;
+  useEffect(() => {
+    setLatestStatus(status);
+  }, [status]);
+
+  const effectiveStatus = latestStatus;
   const capReached = effectiveStatus.bonusCapReached || effectiveStatus.maxBonusMinutes <= 0;
 
   const loadChallenge = async () => {

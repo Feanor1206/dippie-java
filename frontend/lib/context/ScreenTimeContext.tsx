@@ -1,7 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useOptionalAuth } from '@/lib/context/AuthContext';
+import { notifyScreenTimeHeartbeat } from '@/lib/services/playFeaturesService';
 import {
   SCREEN_TIME_LOCKED_EVENT,
+  SCREEN_TIME_UPDATED_EVENT,
+  SCREEN_TIME_UPDATED_STORAGE_KEY,
   fetchScreenTimeStatus,
   sendScreenTimeHeartbeat,
   type ScreenTimeHeartbeatResult,
@@ -12,6 +15,7 @@ export type ScreenTimeContextValue = {
   screenTime: ScreenTimeStatus | null;
   loading: boolean;
   isLimited: boolean;
+  isUnlimited: boolean;
   isLocked: boolean;
   remainingSeconds: number | null;
   refreshScreenTime: () => Promise<ScreenTimeStatus | null>;
@@ -28,12 +32,14 @@ function fallbackLockedStatus(previous: ScreenTimeStatus | null, profileId: numb
     return {
       ...previous,
       limited: true,
+      unlimited: false,
       remainingSeconds: 0,
       locked: true,
     };
   }
   return {
     limited: true,
+    unlimited: false,
     profileId,
     day: '',
     dailyMinutes: 60,
@@ -44,6 +50,7 @@ function fallbackLockedStatus(previous: ScreenTimeStatus | null, profileId: numb
     watchedSeconds: 3600,
     rewardSeconds: 0,
     grantSeconds: 0,
+    bountySeconds: 0,
     remainingSeconds: 0,
     locked: true,
     bonusCapSeconds: 1800,
@@ -80,7 +87,7 @@ export function ScreenTimeProvider({ children }: { children: ReactNode }) {
     try {
       const next = await fetchScreenTimeStatus(currentToken);
       if (scopeKeyRef.current !== currentScope) return null;
-      setScreenTime(next.limited ? next : null);
+      setScreenTime(next);
       return next;
     } catch {
       return null;
@@ -113,11 +120,36 @@ export function ScreenTimeProvider({ children }: { children: ReactNode }) {
     const handleLocked = () => {
       markLockedFromServer();
     };
+    const handleRefresh = () => {
+      void refreshScreenTime();
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === SCREEN_TIME_UPDATED_STORAGE_KEY) {
+        void refreshScreenTime();
+      }
+    };
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void refreshScreenTime();
+      }
+    };
     window.addEventListener(SCREEN_TIME_LOCKED_EVENT, handleLocked);
+    window.addEventListener(SCREEN_TIME_UPDATED_EVENT, handleRefresh);
+    window.addEventListener('focus', handleRefresh);
+    window.addEventListener('storage', handleStorage);
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener('visibilitychange', handleVisibility);
+    }
     return () => {
       window.removeEventListener(SCREEN_TIME_LOCKED_EVENT, handleLocked);
+      window.removeEventListener(SCREEN_TIME_UPDATED_EVENT, handleRefresh);
+      window.removeEventListener('focus', handleRefresh);
+      window.removeEventListener('storage', handleStorage);
+      if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+        document.removeEventListener('visibilitychange', handleVisibility);
+      }
     };
-  }, [scopeKey, markLockedFromServer]);
+  }, [scopeKey, markLockedFromServer, refreshScreenTime]);
 
   const reportWatchHeartbeat = useCallback(
     async (seconds: number): Promise<ScreenTimeHeartbeatResult | null> => {
@@ -129,9 +161,8 @@ export function ScreenTimeProvider({ children }: { children: ReactNode }) {
       try {
         const result = await sendScreenTimeHeartbeat(currentToken, seconds);
         if (scopeKeyRef.current !== currentScope) return null;
-        if (result.limited) {
-          setScreenTime(result.status);
-        }
+        setScreenTime(result.status);
+        notifyScreenTimeHeartbeat();
         return result;
       } catch {
         return null;
@@ -142,10 +173,11 @@ export function ScreenTimeProvider({ children }: { children: ReactNode }) {
 
   const applyScreenTimeStatus = useCallback((next: ScreenTimeStatus) => {
     if (!scopeKeyRef.current) return;
-    setScreenTime(next.limited ? next : null);
+    setScreenTime(next);
   }, []);
 
-  const isLimited = Boolean(isKidMode && screenTime?.limited);
+  const isUnlimited = Boolean(isKidMode && screenTime?.unlimited);
+  const isLimited = Boolean(isKidMode && screenTime?.limited && !screenTime?.unlimited);
   const isLocked = Boolean(isLimited && screenTime?.locked);
   const remainingSeconds = isLimited ? screenTime?.remainingSeconds ?? null : null;
 
@@ -159,6 +191,7 @@ export function ScreenTimeProvider({ children }: { children: ReactNode }) {
         screenTime: isLimited ? screenTime : null,
         loading,
         isLimited,
+        isUnlimited,
         isLocked,
         remainingSeconds,
         refreshScreenTime,

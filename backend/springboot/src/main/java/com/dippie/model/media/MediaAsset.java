@@ -113,6 +113,10 @@ public class MediaAsset {
         return id;
     }
 
+    public String getMovieId() {
+        return movieId;
+    }
+
     public String getKind() {
         return kind;
     }

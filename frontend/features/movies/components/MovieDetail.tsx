@@ -2,8 +2,13 @@ import { PlaybackReportButton } from '@/features/series/components/PlaybackRepor
 import { useAuth } from '@/lib/context/AuthContext';
 import { useOptionalScreenTime } from '@/lib/context/ScreenTimeContext';
 import { useScreenTimeHeartbeat } from '@/features/profiles/hooks/useScreenTimeHeartbeat';
+import { usePlayFeatures } from '@/features/profiles/hooks/usePlayFeatures';
 import { ScreenTimeChip } from '@/features/profiles/components/ScreenTimeChip';
 import { ScreenTimeLockOverlay } from '@/features/profiles/components/ScreenTimeLockOverlay';
+import { WeekendVaultBanner } from '@/features/profiles/components/WeekendVaultBanner';
+import { fetchWeekendVaultStatus, type WeekendVaultStatus } from '@/lib/services/weekendVaultService';
+import { WatchPetWidget } from '@/features/profiles/components/WatchPetWidget';
+import { LootDropOverlay } from '@/features/profiles/components/LootDropOverlay';
 import { YouTubeLink } from '@/components/ui/YouTubeLink';
 import { safeImageUrl, resolveStreamUrl } from '@/lib/safeUrl';
 import React, { useEffect, useRef, useState } from 'react';
@@ -21,7 +26,7 @@ import {
 import { isMediaExternalOnly, resolveExternalYoutubeWatchUrl } from '@/lib/services/playbackSource';
 import type { Movie } from '@/types/movie';
 import { useWatchlist } from '@/lib/context/WatchlistContext';
-import { getMediaDescriptor, type MediaDescriptor } from '@/lib/services/mediaService';
+import { getMediaDescriptor, requestPlaybackGrantResult, type MediaDescriptor } from '@/lib/services/mediaService';
 import * as movieProgress from '@/lib/services/movieProgress';
 
 const ACTION_BUTTON_CLASS =
@@ -153,6 +158,9 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
   const screenTime = typeof useOptionalScreenTime === 'function' ? useOptionalScreenTime() : null;
   const isScreenTimeLocked = Boolean(kidMode && screenTime?.isLocked);
   const [holdSolvedOverlay, setHoldSolvedOverlay] = useState(false);
+  const [vaultStatus, setVaultStatus] = useState<WeekendVaultStatus | null>(null);
+  const [vaultBlockMessage, setVaultBlockMessage] = useState<string | null>(null);
+  const isVaultLocked = Boolean(kidMode && vaultStatus?.enabled && vaultStatus.locked);
   const progressOwner = status === 'guest' ? null : status === 'authenticated' ? user?.id : undefined;
   const {
     isWatchlisted,
@@ -244,16 +252,31 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
     };
   }, [movie.id, descriptorRetryCount]);
 
+  useEffect(() => {
+    if (!kidMode || !token) {
+      setVaultStatus(null);
+      setVaultBlockMessage(null);
+      return;
+    }
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    fetchWeekendVaultStatus(token, { signal: controller?.signal })
+      .then((next) => {
+        if (!controller?.signal.aborted) {
+          setVaultStatus(next);
+          if (!next.locked) setVaultBlockMessage(null);
+        }
+      })
+      .catch(() => {
+        if (!controller?.signal.aborted) setVaultStatus(null);
+      });
+    return () => controller?.abort();
+  }, [kidMode, token, movie.id]);
+
   const hasVideo = Boolean(resolveStreamUrl(movie.videoUrl || ''));
   const hasValidFeature = Boolean(descriptor?.movieId === movie.id && descriptor.hasFeature);
   const hasValidTrailer = Boolean(descriptor?.movieId === movie.id && descriptor.hasTrailer);
 
-  const startPlayback = (kind: 'feature' | 'trailer', opener?: HTMLElement | null) => {
-    if (opener) playerOpenerRef.current = opener;
-    setActiveMediaKind(kind);
-    const url = kind === 'feature' ? descriptor?.feature?.streamUrl : descriptor?.trailer?.streamUrl || movie.videoUrl;
-    const safeUrl = resolveStreamUrl(url || '');
-    if (!safeUrl) return;
+  const openVideoUrl = (kind: 'feature' | 'trailer', safeUrl: string) => {
     const resumeSeconds = kind === 'feature' && progressOwner !== undefined ? readResumeSeconds(movie.id, progressOwner) : 0;
     resumeSecondsRef.current = resumeSeconds;
     pendingResumeSeekRef.current = kind === 'feature' && resumeSeconds > 0;
@@ -265,6 +288,45 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
     setCurrentTime(resumeSeconds);
     setRetryTime(0);
     setIsPlaying(true);
+  };
+
+  const startPlayback = (kind: 'feature' | 'trailer', opener?: HTMLElement | null) => {
+    if (opener) playerOpenerRef.current = opener;
+    if (kind === 'feature' && isVaultLocked) {
+      setVaultBlockMessage('Két sắt phim cuối tuần đang khóa. Bé tích đủ 100% Vé xem phim hoặc nhờ ba mẹ nhập mã PIN để mở nhé.');
+      return;
+    }
+    setVaultBlockMessage(null);
+    setActiveMediaKind(kind);
+    const url = kind === 'feature' ? descriptor?.feature?.streamUrl : descriptor?.trailer?.streamUrl || movie.videoUrl;
+    const safeUrl = resolveStreamUrl(url || '');
+    if (!safeUrl) return;
+    if (kind === 'feature' && kidMode && descriptor?.feature?.assetId && typeof requestPlaybackGrantResult === 'function') {
+      void requestPlaybackGrantResult(descriptor.feature.assetId).then((grantResult) => {
+        if (grantResult.ok && grantResult.grant?.streamUrl) {
+          openVideoUrl(kind, grantResult.grant.streamUrl);
+        } else if (grantResult.status === 423 && grantResult.lockReason === 'WEEKEND_VAULT') {
+          setVaultBlockMessage(
+            grantResult.message || 'Két sắt phim cuối tuần đang khóa. Bé tích đủ 100% Vé xem phim nhé.'
+          );
+          if (token) {
+            void fetchWeekendVaultStatus(token).then(setVaultStatus).catch(() => {});
+          }
+        } else if (
+          grantResult.status === 423 &&
+          (grantResult.lockReason === 'WATCH_PET_REST' || grantResult.lockReason === 'WATCH_PET_FAINT')
+        ) {
+          openVideoUrl(kind, safeUrl);
+          void playFeatures.refreshStatus();
+        } else if (grantResult.status === 423) {
+          screenTime?.markLockedFromServer();
+        } else {
+          openVideoUrl(kind, safeUrl);
+        }
+      });
+      return;
+    }
+    openVideoUrl(kind, safeUrl);
   };
 
   const rememberPosition = (seconds: number, durationSeconds: number, completed: boolean, force = false) => {
@@ -408,29 +470,39 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
     }
   };
 
+  const playFeatures = usePlayFeatures({
+    enabled: Boolean(kidMode && isPlaying),
+    token: token ?? null,
+    seriesId: null,
+    isPlaying: isPlaying && playerState === 'playing',
+    isScreenTimeLocked,
+    onScreenTimeUpdated: (next) => screenTime?.applyScreenTimeStatus(next),
+  });
+  const isMoviePlaybackBlocked = isScreenTimeLocked || Boolean(kidMode && playFeatures.isPetLocked);
+
   useScreenTimeHeartbeat({
-    enabled: Boolean(kidMode && !isScreenTimeLocked && screenTime),
+    enabled: Boolean(kidMode && !isMoviePlaybackBlocked && screenTime),
     isPlaying: isPlaying && playerState === 'playing',
     onHeartbeat: (seconds) => screenTime?.reportWatchHeartbeat(seconds),
   });
 
   useEffect(() => {
-    if (!isScreenTimeLocked) return;
+    if (!isMoviePlaybackBlocked) return;
     try {
       videoRef.current?.pause();
     } catch {}
     if (playerState === 'playing') {
       setPlayerState('paused');
     }
-  }, [isScreenTimeLocked, playerState]);
+  }, [isMoviePlaybackBlocked, playerState]);
 
   useEffect(() => {
-    if (isPlaying && activeMediaUrl && !isScreenTimeLocked) {
+    if (isPlaying && activeMediaUrl && !isMoviePlaybackBlocked) {
       videoRef.current?.play()?.catch((err: unknown) => {
         if ((err as { name?: unknown } | null)?.name !== 'AbortError') setPlayerState('paused');
       });
     }
-  }, [isPlaying, activeMediaUrl, isScreenTimeLocked]);
+  }, [isPlaying, activeMediaUrl, isMoviePlaybackBlocked]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -570,7 +642,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
               <video
                 ref={videoRef}
                 src={activeMediaUrl}
-                autoPlay={!isScreenTimeLocked}
+                autoPlay={!isMoviePlaybackBlocked}
                 playsInline
                 preload="metadata"
                 onLoadedMetadata={(e) => {
@@ -626,7 +698,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                 </div>
               )}
 
-              {playerState === 'error' && !isScreenTimeLocked && (
+              {playerState === 'error' && !isMoviePlaybackBlocked && (
                 <div data-testid="video-error-overlay" className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 p-6 text-center z-20">
                   <AlertCircle size={44} className="text-amber-400 mb-3" />
                   <p className="text-xs text-zinc-200 mb-4">{playbackError || STREAM_ERROR_MESSAGE}</p>
@@ -648,6 +720,31 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                   }}
                   onContinueWatching={() => setHoldSolvedOverlay(false)}
                 />
+              )}
+
+              {kidMode && token && !isScreenTimeLocked && !holdSolvedOverlay && (
+                <>
+                  <WatchPetWidget
+                    watchPet={playFeatures.watchPet}
+                    token={token}
+                    restCountdown={playFeatures.restCountdown}
+                    onStartRest={playFeatures.handleStartRest}
+                    onWatchPetUpdated={playFeatures.applyWatchPetStatus}
+                  />
+                  {!playFeatures.isPetLocked && (
+                    <LootDropOverlay
+                      activeDrop={playFeatures.activeDrop}
+                      dropSecondsLeft={playFeatures.dropSecondsLeft}
+                      activeQuiz={playFeatures.activeLootQuiz}
+                      quizSecondsLeft={playFeatures.lootQuizSecondsLeft}
+                      feedback={playFeatures.lootFeedback}
+                      opening={playFeatures.lootOpening}
+                      submitting={playFeatures.lootSubmitting}
+                      onOpenChest={playFeatures.handleOpenLootChest}
+                      onSubmitAnswer={playFeatures.handleSubmitLootAnswer}
+                    />
+                  )}
+                </>
               )}
             </div>
 
@@ -847,11 +944,12 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                   <button
                     ref={playButtonRef}
                     data-testid="play-feature-btn"
+                    disabled={isVaultLocked}
                     onClick={(e) => startPlayback('feature', e.currentTarget)}
-                    className={PRIMARY_PLAY_BUTTON_CLASS}
+                    className={`${PRIMARY_PLAY_BUTTON_CLASS} disabled:opacity-50`}
                   >
                     <Play size={16} className="fill-current" />
-                    Xem phim
+                    {isVaultLocked ? 'Phim cuối tuần đang khóa' : 'Xem phim'}
                   </button>
                 )}
 
@@ -907,6 +1005,28 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                   Hỏi CineBot
                 </button>
               </div>
+              {vaultBlockMessage && (
+                <div
+                  role="alert"
+                  data-testid="movie-vault-lock-message"
+                  className="mt-4 rounded-xl border border-amber-700/40 bg-[#f2d18c]/45 p-3 text-xs font-semibold text-ink"
+                >
+                  {vaultBlockMessage}
+                </div>
+              )}
+
+              {kidMode && token && vaultStatus?.enabled && (
+                <div className="mt-5 max-w-2xl">
+                  <WeekendVaultBanner
+                    status={vaultStatus}
+                    token={token}
+                    onStatusUpdated={(next) => {
+                      setVaultStatus(next);
+                      if (!next.locked) setVaultBlockMessage(null);
+                    }}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

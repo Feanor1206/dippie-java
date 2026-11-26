@@ -597,6 +597,141 @@ class ScreenTimeControllerTest {
                 .andExpect(status().isOk());
     }
 
+    // test đổi phút xem mỗi ngày qua đúng API UI gọi, tạo hồ sơ kèm phút/không giới hạn và kiểm tra đồng bộ tức thì
+    @Test
+    void changesDailyMinutesThroughUiApiAndSupportsUnlimitedChildProfiles() throws Exception {
+        seedPlayableCatalogWithFile();
+        String mainToken = registerUser("mom1", "mom1@example.com", "secret123", "Mẹ Lan");
+        enableParentMode(mainToken, "4321");
+
+        // tạo bé 1 có sẵn hạn mức 90 phút và bé 2 chọn không giới hạn ngay lúc tạo
+        MvcResult child1Res = mockMvc.perform(post("/api/users/profiles")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("pin", "4321", "name", "Bé Na", "avatarKey", "bunny", "dailyMinutes", 90))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.dailyMinutes").value(90))
+                .andExpect(jsonPath("$.data.unlimited").value(false))
+                .andReturn();
+        long child1Id = objectMapper.readTree(child1Res.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        MvcResult child2Res = mockMvc.perform(post("/api/users/profiles")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("pin", "4321", "name", "Bé Tin", "avatarKey", "dino", "unlimited", true))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.dailyMinutes").isEmpty())
+                .andExpect(jsonPath("$.data.unlimited").value(true))
+                .andReturn();
+        long child2Id = objectMapper.readTree(child2Res.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        String child1Token = switchToChild(mainToken, child1Id);
+        String child2Token = switchToChild(mainToken, child2Id);
+
+        // bé 1 đang có 90 phút = 5400 giây
+        mockMvc.perform(get("/api/users/screen-time").header(HttpHeaders.AUTHORIZATION, bearer(child1Token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.limited").value(true))
+                .andExpect(jsonPath("$.data.unlimited").value(false))
+                .andExpect(jsonPath("$.data.dailyMinutes").value(90))
+                .andExpect(jsonPath("$.data.remainingSeconds").value(5400));
+
+        // phụ huynh đổi bé 1 sang 30 phút bằng đúng PUT /api/users/profiles/{id}/screen-time như UI gọi
+        mockMvc.perform(put("/api/users/profiles/" + child1Id + "/screen-time")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "pin", "4321",
+                                "dailyMinutes", 30,
+                                "unlimited", false,
+                                "mathLevel", 2,
+                                "rewardMinutes", 10,
+                                "maxBonusMinutes", 40
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status.dailyMinutes").value(30))
+                .andExpect(jsonPath("$.data.status.unlimited").value(false))
+                .andExpect(jsonPath("$.data.status.remainingSeconds").value(1800));
+
+        // tab bé 1 gọi trạng thái hoặc heartbeat tiếp theo thấy ngay 30 phút
+        mockMvc.perform(post("/api/users/screen-time/heartbeat")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("seconds", 15))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.limited").value(true))
+                .andExpect(jsonPath("$.data.creditedSeconds").value(15))
+                .andExpect(jsonPath("$.data.remainingSeconds").value(1785))
+                .andExpect(jsonPath("$.data.status.dailyMinutes").value(30));
+
+        // phụ huynh bấm preset nhanh 120 phút (chỉ gửi pin + dailyMinutes, giữ nguyên cấu hình toán)
+        mockMvc.perform(put("/api/users/profiles/" + child1Id + "/screen-time")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("pin", "4321", "dailyMinutes", 120, "unlimited", false))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status.dailyMinutes").value(120))
+                .andExpect(jsonPath("$.data.status.mathLevel").value(2))
+                .andExpect(jsonPath("$.data.status.rewardMinutes").value(10))
+                .andExpect(jsonPath("$.data.status.remainingSeconds").value(7185));
+
+        // chuyển bé 1 sang không giới hạn -> không khóa, không trừ heartbeat
+        mockMvc.perform(put("/api/users/profiles/" + child1Id + "/screen-time")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("pin", "4321", "unlimited", true))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status.limited").value(false))
+                .andExpect(jsonPath("$.data.status.unlimited").value(true))
+                .andExpect(jsonPath("$.data.status.dailyMinutes").isEmpty())
+                .andExpect(jsonPath("$.data.status.remainingSeconds").isEmpty())
+                .andExpect(jsonPath("$.data.status.locked").value(false));
+
+        clock.advance(Duration.ofSeconds(15));
+        mockMvc.perform(post("/api/users/screen-time/heartbeat")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("seconds", 15))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.limited").value(false))
+                .andExpect(jsonPath("$.data.creditedSeconds").value(0))
+                .andExpect(jsonPath("$.data.locked").value(false))
+                .andExpect(jsonPath("$.data.remainingSeconds").isEmpty())
+                .andExpect(jsonPath("$.data.status.unlimited").value(true));
+
+        // đổi ngược từ không giới hạn về 45 phút vẫn hoạt động bình thường
+        mockMvc.perform(put("/api/users/profiles/" + child1Id + "/screen-time")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("pin", "4321", "dailyMinutes", 45, "unlimited", false))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status.limited").value(true))
+                .andExpect(jsonPath("$.data.status.dailyMinutes").value(45))
+                .andExpect(jsonPath("$.data.status.remainingSeconds").value(2685));
+
+        // bé 2 tạo không giới hạn từ đầu: không bao giờ bị khóa ở status, heartbeat, grant hay watch-progress
+        mockMvc.perform(get("/api/users/screen-time").header(HttpHeaders.AUTHORIZATION, bearer(child2Token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.limited").value(false))
+                .andExpect(jsonPath("$.data.unlimited").value(true))
+                .andExpect(jsonPath("$.data.locked").value(false))
+                .andExpect(jsonPath("$.data.remainingSeconds").isEmpty());
+        mockMvc.perform(post("/api/users/screen-time/heartbeat")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(child2Token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("seconds", 15))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.limited").value(false))
+                .andExpect(jsonPath("$.data.locked").value(false));
+        mockMvc.perform(post("/api/media/grant/asset_kid_1").header(HttpHeaders.AUTHORIZATION, bearer(child2Token)))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/users/watch-progress/ep_screen_1")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(child2Token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("assetId", "asset_kid_1", "positionMs", 15_000, "expectedVersion", -1))))
+                .andExpect(status().isOk());
+    }
+
     private JsonNode fetchChallenge(String childToken) throws Exception {
         MvcResult result = mockMvc.perform(get("/api/users/screen-time/challenge")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))

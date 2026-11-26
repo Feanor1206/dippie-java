@@ -1,5 +1,6 @@
 import { parseTimestamp } from '@/lib/timestamps';
 import { apiFetch, RequestTimeoutError, withRequestTimeout } from '@/lib/services/apiRequest';
+import { LOCK_REASON_HEADER, notifyPlayFeaturesLocked } from '@/lib/services/playFeaturesService';
 import { notifyScreenTimeLocked } from '@/lib/services/screenTimeService';
 const API = '/api';
 export const WATCH_PROGRESS_LIMIT = 30;
@@ -56,13 +57,19 @@ export class WatchProgressError extends Error {
   status: number;
   isCanceled: boolean;
   isTimeout: boolean;
+  lockReason?: string;
 
-  constructor(message: string, status: number, options: { isCanceled?: boolean; isTimeout?: boolean } = {}) {
+  constructor(
+    message: string,
+    status: number,
+    options: { isCanceled?: boolean; isTimeout?: boolean; lockReason?: string } = {}
+  ) {
     super(message);
     this.name = options.isCanceled ? 'AbortError' : 'WatchProgressError';
     this.status = status;
     this.isCanceled = Boolean(options.isCanceled);
     this.isTimeout = Boolean(options.isTimeout);
+    this.lockReason = options.lockReason;
   }
 }
 
@@ -218,8 +225,26 @@ function throwHttpError(res: Response, label: string): never {
   if (res.status === 401) throw new WatchProgressError('Phiên đăng nhập đã hết hạn.', 401);
   if (res.status === 403) throw new WatchProgressError('Bạn không có quyền xem tiến độ này.', 403);
   if (res.status === 423) {
-    notifyScreenTimeLocked();
-    throw new WatchProgressError('Hết giờ xem hôm nay rồi.', 423);
+    const lockReason = res.headers?.get?.(LOCK_REASON_HEADER)?.trim() || undefined;
+    if (!lockReason || lockReason === 'SCREEN_TIME') {
+      notifyScreenTimeLocked();
+      throw new WatchProgressError('Hết giờ xem hôm nay rồi.', 423, { lockReason });
+    }
+    if (lockReason === 'WATCH_PET_REST' || lockReason === 'WATCH_PET_FAINT' || lockReason === 'RECAP_REQUIRED') {
+      notifyPlayFeaturesLocked(lockReason);
+      throw new WatchProgressError(
+        lockReason === 'RECAP_REQUIRED'
+          ? 'Bé trả lời nhanh câu hỏi ôn tập để mở khóa tập này nhé.'
+          : 'Thú ảo đang cần nghỉ mắt rồi.',
+        423,
+        { lockReason }
+      );
+    }
+    const message =
+      lockReason === 'VIP_EPISODE'
+        ? 'Tập phim VIP đang khóa. Bé giải một bài toán để mở khóa tập này hôm nay nhé.'
+        : 'Nội dung này đang tạm khóa.';
+    throw new WatchProgressError(message, 423, { lockReason });
   }
   throw new WatchProgressError(`${label} thất bại (HTTP ${res.status}).`, res.status);
 }

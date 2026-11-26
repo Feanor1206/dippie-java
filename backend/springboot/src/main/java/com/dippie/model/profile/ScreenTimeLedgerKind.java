@@ -4,5 +4,7 @@ package com.dippie.model.profile;
 public enum ScreenTimeLedgerKind {
     WATCH,
     REWARD,
-    PARENT_GRANT
+    PARENT_GRANT,
+    BOUNTY,
+    LOOT
 }
