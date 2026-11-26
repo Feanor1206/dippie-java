@@ -10,6 +10,8 @@ import com.dippie.repository.account.PasswordResetTokenRepository;
 import com.dippie.repository.library.FavoriteItemRepository;
 import com.dippie.repository.library.MovieRatingRepository;
 import com.dippie.repository.library.WatchlistItemRepository;
+import com.dippie.repository.profile.ChildProfileRepository;
+import com.dippie.repository.profile.ScreenTimeLedgerRepository;
 import com.dippie.repository.progress.WatchProgressRepository;
 import com.dippie.repository.report.PlaybackReportRepository;
 import com.dippie.repository.user.UserRepository;
@@ -44,6 +46,8 @@ public class AccountErasureService {
     private final WatchlistItemRepository watchlistItemRepository;
     private final FavoriteItemRepository favoriteItemRepository;
     private final WatchProgressRepository watchProgressRepository;
+    private final ChildProfileRepository childProfileRepository;
+    private final ScreenTimeLedgerRepository screenTimeLedgerRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PlaybackReportRepository playbackReportRepository;
     private final AuditTrailWriter auditTrailWriter;
@@ -56,6 +60,8 @@ public class AccountErasureService {
             WatchlistItemRepository watchlistItemRepository,
             FavoriteItemRepository favoriteItemRepository,
             WatchProgressRepository watchProgressRepository,
+            ChildProfileRepository childProfileRepository,
+            ScreenTimeLedgerRepository screenTimeLedgerRepository,
             PasswordResetTokenRepository passwordResetTokenRepository,
             PlaybackReportRepository playbackReportRepository,
             AuditTrailWriter auditTrailWriter
@@ -67,15 +73,17 @@ public class AccountErasureService {
         this.watchlistItemRepository = watchlistItemRepository;
         this.favoriteItemRepository = favoriteItemRepository;
         this.watchProgressRepository = watchProgressRepository;
+        this.childProfileRepository = childProfileRepository;
+        this.screenTimeLedgerRepository = screenTimeLedgerRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.playbackReportRepository = playbackReportRepository;
         this.auditTrailWriter = auditTrailWriter;
     }
 
-    // xóa tài khoản trong 1 transaction, giữ thứ tự khóa khớp AdminUserService kẻo deadlock
+    // xóa tài khoản trong 1 transaction, chặn hồ sơ trẻ em và giữ thứ tự khóa khớp AdminUserService kẻo deadlock
     @Transactional
     public void deleteCurrentAccount(DeleteAccountRequest request) {
-        Viewer viewer = currentViewer.require();
+        Viewer viewer = currentViewer.requireMainProfile("Hồ sơ trẻ em không thể xóa tài khoản.");
         String password = request == null ? "" : request.rawPassword();
         if (password.isEmpty()) {
             throw new InvalidRequestException(MISSING_PASSWORD_MESSAGE);
@@ -100,11 +108,13 @@ public class AccountErasureService {
         String username = user.getUsername();
         String roleName = user.getRole().name();
 
-        // dọn dữ liệu cá nhân ở mấy bảng phụ, riêng báo lỗi phát chỉ gỡ userId để còn xem lại lỗi phim
+        // dọn dữ liệu cá nhân ở mấy bảng phụ trước rồi xóa hết hồ sơ trẻ em của tài khoản
         movieRatingRepository.deleteByUserId(userId);
         watchlistItemRepository.deleteByUserId(userId);
         favoriteItemRepository.deleteByUserId(userId);
         watchProgressRepository.deleteByUserId(userId);
+        screenTimeLedgerRepository.deleteByUserId(userId);
+        childProfileRepository.deleteByUserId(userId);
         passwordResetTokenRepository.deleteByUserId(userId);
         playbackReportRepository.clearReporterUser(userId);
         playbackReportRepository.clearResolverUser(userId);

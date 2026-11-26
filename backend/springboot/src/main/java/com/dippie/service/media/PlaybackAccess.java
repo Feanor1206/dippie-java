@@ -66,10 +66,10 @@ public class PlaybackAccess {
         return asset;
     }
 
-    // có phiên đăng nhập sẵn thì lấy quyền phiên đó, không cho mượn vé của admin để leo quyền
+    // có phiên đăng nhập sẵn thì lấy quyền phiên đó, đang ở hồ sơ trẻ em thì hạ xuống user thường
     private static Role effectiveRole(Viewer viewer, PlaybackPrincipal grantPrincipal) {
         if (viewer != null) {
-            return viewer.role();
+            return viewer.isChildProfile() ? Role.ROLE_USER : viewer.role();
         }
         return switch (grantPrincipal) {
             case PlaybackPrincipal.Authenticated(Role role) -> role;

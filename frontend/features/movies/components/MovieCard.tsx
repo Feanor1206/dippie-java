@@ -1,4 +1,5 @@
 import { YouTubeLink } from '@/components/ui/YouTubeLink';
+import { useOptionalAuth } from '@/lib/context/AuthContext';
 import { safeImageUrl } from '@/lib/safeUrl';
 import React, { useState } from 'react';
 import { Link } from 'react-router';
@@ -25,6 +26,8 @@ export function MovieCard({ movie, fluid = false, actionMode = 'watchlist' }: Mo
     isActionUnconfirmed,
     getActionIntent,
   } = useWatchlist();
+  const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
+  const isKidMode = Boolean(auth?.isKidMode);
   const [posterError, setPosterError] = useState(false);
 
   const displayTitle = cleanMediaTitle(movie.title);
@@ -183,7 +186,7 @@ export function MovieCard({ movie, fluid = false, actionMode = 'watchlist' }: Mo
             {displayTitle}
           </Link>
 
-          {externalOnly && (
+          {externalOnly && !isKidMode && (
             <span
               data-testid="movie-external-badge"
               className="mt-1 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"
@@ -204,7 +207,7 @@ export function MovieCard({ movie, fluid = false, actionMode = 'watchlist' }: Mo
             </p>
           )}
 
-          {externalOnly && externalYoutubeUrl && (
+          {externalOnly && !isKidMode && externalYoutubeUrl && (
             <YouTubeLink
               url={externalYoutubeUrl}
               testId="movie-open-youtube-link"

@@ -32,8 +32,23 @@ public class SecurityContextCurrentViewer implements CurrentViewer {
 
     @Override
     public Viewer requireAdmin() {
-        return find()
-                .filter(Viewer::isAdmin)
+        Viewer viewer = find()
                 .orElseThrow(() -> new ForbiddenException("Chỉ tài khoản quản trị mới dùng được mục này."));
+        if (viewer.isChildProfile()) {
+            throw new ForbiddenException("Hồ sơ trẻ em không thể truy cập khu vực quản trị.");
+        }
+        if (!viewer.isAdmin()) {
+            throw new ForbiddenException("Chỉ tài khoản quản trị mới dùng được mục này.");
+        }
+        return viewer;
+    }
+
+    @Override
+    public Viewer requireMainProfile(String forbiddenMessage) {
+        Viewer viewer = require();
+        if (viewer.isChildProfile()) {
+            throw new ForbiddenException(forbiddenMessage);
+        }
+        return viewer;
     }
 }

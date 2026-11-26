@@ -54,12 +54,13 @@ public abstract class AbstractLibraryListService<E extends LibraryEntry> {
         this.clock = clock;
     }
 
-    // lấy list phim mới thêm nhất, bỏ phim đang ẩn và bù poster từ SeriesCard nếu bảng movies để trống
+    // lấy list phim mới thêm nhất theo hồ sơ đang chọn, bỏ phim đang ẩn và bù poster từ SeriesCard nếu bảng movies để trống
     public List<LibraryItemView> list() {
         Viewer viewer = currentViewer.require();
         CatalogReadModel model = catalogReadModelCache.current();
         Set<String> hiddenIds = model.hiddenMovieIds();
-        List<LibraryItemView> rawItems = readTransaction.execute(status -> repository.findViewsByUserIdOrderByAddedAtDesc(viewer.userId()));
+        List<LibraryItemView> rawItems = readTransaction.execute(status ->
+                repository.findViewsByUserIdAndProfileScopeIdOrderByAddedAtDesc(viewer.userId(), viewer.profileScopeId()));
         // lọc phim ẩn theo snapshot danh mục rồi bù poster từ SeriesCard cho mấy mục thiếu ảnh
         return rawItems.stream()
                 .filter(item -> !hiddenIds.contains(item.movieId()))
@@ -86,11 +87,12 @@ public abstract class AbstractLibraryListService<E extends LibraryEntry> {
         if (movieId.isEmpty()) {
             throw new InvalidRequestException("Bạn chưa chọn phim.");
         }
-        // check phim có đang mở không và user đã lưu sẵn chưa trong cùng 1 transaction đọc
+        // check phim có đang mở không và hồ sơ hiện tại đã lưu sẵn chưa trong cùng 1 transaction đọc
         LookupResult<E> lookup = readTransaction.execute(status -> {
             Movie movie = movieVisibility.findVisibleById(movieId)
                     .orElseThrow(() -> new InvalidRequestException("Không tìm thấy phim: " + movieId));
-            return new LookupResult<>(movie, repository.findByUserIdAndMovieId(viewer.userId(), movie.getId()));
+            return new LookupResult<>(movie, repository.findByUserIdAndProfileScopeIdAndMovieId(
+                    viewer.userId(), viewer.profileScopeId(), movie.getId()));
         });
         Movie movie = lookup.movie();
         if (lookup.existing().isPresent()) {
@@ -101,10 +103,11 @@ public abstract class AbstractLibraryListService<E extends LibraryEntry> {
         E entry;
         try {
             entry = requiresNewTransaction.execute(status -> repository.saveAndFlush(
-                    newEntry(viewer.userId(), movie.getId(), LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS))
+                    newEntry(viewer.userId(), viewer.profileId(), movie.getId(), LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS))
             ));
         } catch (DataIntegrityViolationException ex) {
-            entry = readTransaction.execute(status -> repository.findByUserIdAndMovieId(viewer.userId(), movie.getId()))
+            entry = readTransaction.execute(status -> repository.findByUserIdAndProfileScopeIdAndMovieId(
+                            viewer.userId(), viewer.profileScopeId(), movie.getId()))
                     .orElseThrow(() -> ex);
         }
         return LibraryItemView.of(entry, movie);
@@ -112,11 +115,12 @@ public abstract class AbstractLibraryListService<E extends LibraryEntry> {
 
     public void remove(String movieId) {
         Viewer viewer = currentViewer.require();
-        requiresNewTransaction.executeWithoutResult(status -> repository.deleteByUserIdAndMovieId(viewer.userId(), movieId));
+        requiresNewTransaction.executeWithoutResult(status ->
+                repository.deleteByUserIdAndProfileScopeIdAndMovieId(viewer.userId(), viewer.profileScopeId(), movieId));
     }
 
-    // chỗ Factory Method để lớp con trả đúng FavoriteItem hay WatchlistItem
-    protected abstract E newEntry(Long userId, String movieId, LocalDateTime addedAt);
+    // chỗ Factory Method để lớp con trả đúng FavoriteItem hay WatchlistItem gắn profileId
+    protected abstract E newEntry(Long userId, Long profileId, String movieId, LocalDateTime addedAt);
 
     // gói phim tìm được với mục đã lưu để trả ra từ cùng 1 transaction đọc
     private record LookupResult<E extends LibraryEntry>(Movie movie, Optional<E> existing) {

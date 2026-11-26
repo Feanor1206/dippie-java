@@ -1,5 +1,6 @@
 import { parseTimestamp } from '@/lib/timestamps';
 import { apiFetch, RequestTimeoutError, withRequestTimeout } from '@/lib/services/apiRequest';
+import { notifyScreenTimeLocked } from '@/lib/services/screenTimeService';
 const API = '/api';
 export const WATCH_PROGRESS_LIMIT = 30;
 export const GUEST_WATCH_PROGRESS_KEY = 'dippie_guest_watch_progress_v1';
@@ -216,6 +217,10 @@ function authHeaders(token: string, json = false): Record<string, string> {
 function throwHttpError(res: Response, label: string): never {
   if (res.status === 401) throw new WatchProgressError('Phiên đăng nhập đã hết hạn.', 401);
   if (res.status === 403) throw new WatchProgressError('Bạn không có quyền xem tiến độ này.', 403);
+  if (res.status === 423) {
+    notifyScreenTimeLocked();
+    throw new WatchProgressError('Hết giờ xem hôm nay rồi.', 423);
+  }
   throw new WatchProgressError(`${label} thất bại (HTTP ${res.status}).`, res.status);
 }
 

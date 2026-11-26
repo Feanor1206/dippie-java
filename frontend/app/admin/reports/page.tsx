@@ -341,8 +341,8 @@ function PlaybackReports({ token }: { token: string }) {
 }
 
 export default function AdminReportsPage() {
-  const { status, user, token, openAuthModal, retryVerify } = useAuth();
-  const isAdmin = status === 'authenticated' && user?.role === 'ROLE_ADMIN' && token;
+  const { status, user, token, isKidMode, openAuthModal, retryVerify } = useAuth();
+  const isAdmin = status === 'authenticated' && user?.role === 'ROLE_ADMIN' && !isKidMode && token;
 
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto min-h-[70vh] max-w-7xl px-4 py-10 sm:px-6 lg:px-8">

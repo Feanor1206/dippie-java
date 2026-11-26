@@ -106,7 +106,7 @@ function abortSafe(controller: AbortController | null): void {
 }
 
 export function WatchlistProvider({ children }: { children: ReactNode }) {
-  const { user, token, status, isAuthenticated, isAuthModalOpen } = useAuth();
+  const { user, token, status, isAuthenticated, isAuthModalOpen, isKidMode } = useAuth();
   const currentActorKey = getActorKey(status, user, token);
 
   const [snapshot, setSnapshot] = useState<LibrarySnapshot>(() => {
@@ -313,7 +313,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
           return { ownerKey: actorKey, ...reconciled };
         });
 
-        if (!options?.isBackgroundReconcile && hasGuestSyncData()) {
+        if (!isKidMode && !options?.isBackgroundReconcile && hasGuestSyncData()) {
           if (approvedSyncActorRef.current === actorKey) {
             setIsGuestSyncing(true);
             try {
@@ -353,7 +353,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [isAuthenticated, token, user, status, currentActorKey, syncGuestLibrary]
+    [isAuthenticated, token, user, status, isKidMode, currentActorKey, syncGuestLibrary]
   );
 
   useEffect(() => {

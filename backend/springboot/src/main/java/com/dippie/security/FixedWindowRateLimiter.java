@@ -53,6 +53,59 @@ public final class FixedWindowRateLimiter {
         }
     }
 
+    // chỉ kiểm tra xem key đang bị khóa chưa mà không tăng bộ đếm
+    public long blockedRetryAfterSeconds(String key) {
+        String normalizedKey = (key == null || key.isBlank()) ? "unknown" : key;
+        Instant now = clock.instant();
+        Instant cutoff = now.minus(window);
+        synchronized (lock) {
+            evictExpired(cutoff);
+            WindowState current = entries.get(normalizedKey);
+            if (current != null && current.count() >= maxAttempts) {
+                return secondsUntilReset(now, current.startedAt());
+            }
+            return 0L;
+        }
+    }
+
+    // cộng 1 lần sai, hễ chạm ngưỡng khóa thì đặt lại mốc bắt đầu để khóa trọn 1 cửa sổ
+    public long recordFailure(String key) {
+        String normalizedKey = (key == null || key.isBlank()) ? "unknown" : key;
+        Instant now = clock.instant();
+        Instant cutoff = now.minus(window);
+        synchronized (lock) {
+            evictExpired(cutoff);
+            WindowState current = entries.get(normalizedKey);
+            if (current != null && current.count() >= maxAttempts) {
+                return secondsUntilReset(now, current.startedAt());
+            }
+            if (current == null) {
+                if (entries.size() >= maxEntries && !evictLowestUnblocked()) {
+                    return Math.max(1L, window.toSeconds());
+                }
+                entries.put(normalizedKey, new WindowState(now, 1));
+                return maxAttempts <= 1 ? secondsUntilReset(now, now) : 0L;
+            }
+            int nextCount = current.count() + 1;
+            if (nextCount >= maxAttempts) {
+                // xóa rồi chèn lại cuối map để giữ đúng thứ tự thời gian cho evictExpired
+                entries.remove(normalizedKey);
+                entries.put(normalizedKey, new WindowState(now, nextCount));
+                return secondsUntilReset(now, now);
+            }
+            entries.put(normalizedKey, new WindowState(current.startedAt(), nextCount));
+            return 0L;
+        }
+    }
+
+    // xóa bộ đếm riêng của 1 key khi nhập đúng
+    public void clear(String key) {
+        String normalizedKey = (key == null || key.isBlank()) ? "unknown" : key;
+        synchronized (lock) {
+            entries.remove(normalizedKey);
+        }
+    }
+
     public void reset() {
         synchronized (lock) {
             entries.clear();

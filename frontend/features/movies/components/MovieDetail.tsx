@@ -1,5 +1,9 @@
 import { PlaybackReportButton } from '@/features/series/components/PlaybackReportButton';
 import { useAuth } from '@/lib/context/AuthContext';
+import { useOptionalScreenTime } from '@/lib/context/ScreenTimeContext';
+import { useScreenTimeHeartbeat } from '@/features/profiles/hooks/useScreenTimeHeartbeat';
+import { ScreenTimeChip } from '@/features/profiles/components/ScreenTimeChip';
+import { ScreenTimeLockOverlay } from '@/features/profiles/components/ScreenTimeLockOverlay';
 import { YouTubeLink } from '@/components/ui/YouTubeLink';
 import { safeImageUrl, resolveStreamUrl } from '@/lib/safeUrl';
 import React, { useEffect, useRef, useState } from 'react';
@@ -144,7 +148,11 @@ function SimilarMovieCard({ movie }: { movie: Movie }) {
 }
 
 export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMovies: Movie[] }) {
-  const { status, user } = useAuth();
+  const { status, user, token, isKidMode } = useAuth();
+  const kidMode = Boolean(isKidMode);
+  const screenTime = typeof useOptionalScreenTime === 'function' ? useOptionalScreenTime() : null;
+  const isScreenTimeLocked = Boolean(kidMode && screenTime?.isLocked);
+  const [holdSolvedOverlay, setHoldSolvedOverlay] = useState(false);
   const progressOwner = status === 'guest' ? null : status === 'authenticated' ? user?.id : undefined;
   const {
     isWatchlisted,
@@ -400,13 +408,29 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
     }
   };
 
+  useScreenTimeHeartbeat({
+    enabled: Boolean(kidMode && !isScreenTimeLocked && screenTime),
+    isPlaying: isPlaying && playerState === 'playing',
+    onHeartbeat: (seconds) => screenTime?.reportWatchHeartbeat(seconds),
+  });
+
   useEffect(() => {
-    if (isPlaying && activeMediaUrl) {
+    if (!isScreenTimeLocked) return;
+    try {
+      videoRef.current?.pause();
+    } catch {}
+    if (playerState === 'playing') {
+      setPlayerState('paused');
+    }
+  }, [isScreenTimeLocked, playerState]);
+
+  useEffect(() => {
+    if (isPlaying && activeMediaUrl && !isScreenTimeLocked) {
       videoRef.current?.play()?.catch((err: unknown) => {
         if ((err as { name?: unknown } | null)?.name !== 'AbortError') setPlayerState('paused');
       });
     }
-  }, [isPlaying, activeMediaUrl]);
+  }, [isPlaying, activeMediaUrl, isScreenTimeLocked]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -526,6 +550,14 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                 </span>
               </div>
               <div className="flex items-center gap-2">
+                {kidMode && screenTime?.isLimited && (
+                  <ScreenTimeChip
+                    data-testid="movie-player-screen-time-chip"
+                    remainingSeconds={screenTime.remainingSeconds}
+                    locked={screenTime.isLocked}
+                    variant="player"
+                  />
+                )}
                 <PlaybackReportButton episodeId={reportEpisodeId}
                   assetId={(activeMediaKind === 'feature' ? descriptor?.feature?.assetId : descriptor?.trailer?.assetId) ?? null} />
                 <button onClick={closePlayer} className={ICON_BUTTON_CLASS} aria-label="Đóng trình phát">
@@ -538,7 +570,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
               <video
                 ref={videoRef}
                 src={activeMediaUrl}
-                autoPlay
+                autoPlay={!isScreenTimeLocked}
                 playsInline
                 preload="metadata"
                 onLoadedMetadata={(e) => {
@@ -594,7 +626,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                 </div>
               )}
 
-              {playerState === 'error' && (
+              {playerState === 'error' && !isScreenTimeLocked && (
                 <div data-testid="video-error-overlay" className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 p-6 text-center z-20">
                   <AlertCircle size={44} className="text-amber-400 mb-3" />
                   <p className="text-xs text-zinc-200 mb-4">{playbackError || STREAM_ERROR_MESSAGE}</p>
@@ -602,6 +634,20 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
                     <RefreshCw size={16} /> Thử lại ({formatTime(retryTime)})
                   </button>
                 </div>
+              )}
+
+              {kidMode && (isScreenTimeLocked || holdSolvedOverlay) && screenTime?.screenTime && token && (
+                <ScreenTimeLockOverlay
+                  status={screenTime.screenTime}
+                  token={token}
+                  onStatusUpdated={(next) => {
+                    if (!next.locked) {
+                      setHoldSolvedOverlay(true);
+                    }
+                    screenTime.applyScreenTimeStatus(next);
+                  }}
+                  onContinueWatching={() => setHoldSolvedOverlay(false)}
+                />
               )}
             </div>
 
@@ -742,7 +788,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded bg-brand px-2 py-0.5 font-bold text-zinc-950 text-[10px]">Phim hoạt hình</span>
-                {externalOnly && (
+                {externalOnly && !kidMode && (
                   <span
                     data-testid="movie-detail-external-badge"
                     className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-900"
@@ -785,7 +831,7 @@ export function MovieDetail({ movie, similarMovies }: { movie: Movie; similarMov
               )}
 
               <div className="mt-6 flex flex-wrap items-center gap-3">
-                {externalOnly && externalYoutubeUrl && (
+                {externalOnly && !kidMode && externalYoutubeUrl && (
                   <YouTubeLink
                     url={externalYoutubeUrl}
                     testId="movie-detail-open-youtube-link"

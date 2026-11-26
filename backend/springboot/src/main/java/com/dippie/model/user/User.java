@@ -59,6 +59,13 @@ public class User {
     @Column(name = "terms_accepted_at")
     private LocalDateTime termsAcceptedAt;
 
+    @Column(name = "parent_mode_enabled", nullable = false)
+    @ColumnDefault("FALSE")
+    private boolean parentModeEnabled = false;
+
+    @Column(name = "parent_pin_hash", length = 255)
+    private String parentPinHash;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -127,8 +134,50 @@ public class User {
         return termsAcceptedAt;
     }
 
+    public boolean isParentModeEnabled() {
+        return parentModeEnabled;
+    }
+
+    public String getParentPinHash() {
+        return parentPinHash;
+    }
+
     public void acceptTerms(LocalDateTime acceptedAt) {
         this.termsAcceptedAt = acceptedAt;
+    }
+
+    // bật chế độ phụ huynh với mã PIN đã băm BCrypt
+    public void enableParentMode(String encodedPin, LocalDateTime updatedAt) {
+        this.parentModeEnabled = true;
+        this.parentPinHash = encodedPin;
+        this.updatedAt = updatedAt;
+    }
+
+    // đổi mã PIN phụ huynh đã băm
+    public void changeParentPin(String encodedPin, LocalDateTime updatedAt) {
+        this.parentPinHash = encodedPin;
+        this.updatedAt = updatedAt;
+    }
+
+    // tắt chế độ phụ huynh và xóa mã băm PIN, còn hồ sơ bé vẫn giữ lại phòng bật lại sau
+    public void disableParentMode(LocalDateTime updatedAt) {
+        this.parentModeEnabled = false;
+        this.parentPinHash = null;
+        this.updatedAt = updatedAt;
+    }
+
+    // mã PIN phải đúng 4 đến 6 chữ số ASCII, không nhận dấu cách hay ký tự lạ
+    public static String validateParentPin(String rawPin) {
+        if (rawPin == null || rawPin.length() < 4 || rawPin.length() > 6) {
+            throw new InvalidRequestException("Mã PIN phụ huynh cần gồm từ 4 đến 6 chữ số.");
+        }
+        for (int index = 0; index < rawPin.length(); index++) {
+            char digit = rawPin.charAt(index);
+            if (digit < '0' || digit > '9') {
+                throw new InvalidRequestException("Mã PIN phụ huynh cần gồm từ 4 đến 6 chữ số.");
+            }
+        }
+        return rawPin;
     }
 
     // tăng tokenVersion để cắt hết JWT đã cấp trước đó

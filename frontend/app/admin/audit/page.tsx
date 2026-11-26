@@ -42,8 +42,8 @@ function actionBadgeClass(action: string): string {
 }
 
 export default function AdminAuditPage() {
-  const { status, user, token, openAuthModal, retryVerify } = useAuth();
-  const isAdmin = status === 'authenticated' && user?.role === 'ROLE_ADMIN' && !!token;
+  const { status, user, token, isKidMode, openAuthModal, retryVerify } = useAuth();
+  const isAdmin = status === 'authenticated' && user?.role === 'ROLE_ADMIN' && !isKidMode && !!token;
 
   const [page, setPage] = useState(0);
   const [refreshCount, setRefreshCount] = useState(0);

@@ -53,11 +53,12 @@ public class MovieRatingService {
         this.clock = clock;
     }
 
-    // trả list điểm mới sửa nhất lên đầu, bỏ qua mấy phim đang ẩn hoặc chưa xuất bản
+    // trả list điểm mới sửa nhất lên đầu theo hồ sơ hiện tại, bỏ qua mấy phim đang ẩn hoặc chưa xuất bản
     public List<MovieRatingView> list() {
         Viewer viewer = currentViewer.require();
         Set<String> hiddenIds = catalogReadModelCache.current().hiddenMovieIds();
-        return readTransaction.execute(status -> ratingRepository.findByUserIdOrderByUpdatedAtDesc(viewer.userId())
+        return readTransaction.execute(status -> ratingRepository
+                .findByUserIdAndProfileScopeIdOrderByUpdatedAtDesc(viewer.userId(), viewer.profileScopeId())
                 .stream()
                 .filter(rating -> !hiddenIds.contains(rating.getMovieId()))
                 .map(MovieRatingView::from)
@@ -79,37 +80,41 @@ public class MovieRatingService {
         // chạy transaction riêng để lỡ race condition đụng unique key thì rollback gọn, rồi mở transaction khác cập nhật dòng vừa chèn
         MovieRating saved;
         try {
-            saved = requiresNewTransaction.execute(status -> upsertRating(viewer.userId(), movie.getId(), rating));
+            saved = requiresNewTransaction.execute(status ->
+                    upsertRating(viewer.userId(), viewer.profileId(), viewer.profileScopeId(), movie.getId(), rating));
         } catch (DataIntegrityViolationException ex) {
-            saved = requiresNewTransaction.execute(status -> updateExistingRating(viewer.userId(), movie.getId(), rating, ex));
+            saved = requiresNewTransaction.execute(status ->
+                    updateExistingRating(viewer.userId(), viewer.profileScopeId(), movie.getId(), rating, ex));
         }
         return MovieRatingView.from(saved);
     }
 
     public void remove(String movieId) {
         Viewer viewer = currentViewer.require();
-        requiresNewTransaction.executeWithoutResult(status -> ratingRepository.deleteByUserIdAndMovieId(viewer.userId(), movieId));
+        requiresNewTransaction.executeWithoutResult(status ->
+                ratingRepository.deleteByUserIdAndProfileScopeIdAndMovieId(viewer.userId(), viewer.profileScopeId(), movieId));
     }
 
-    // có điểm rồi thì sửa, chưa có thì tạo mới rồi flush ngay trong transaction
-    private MovieRating upsertRating(Long userId, String movieId, int rating) {
+    // có điểm rồi thì sửa, chưa có thì tạo mới gắn profileId rồi flush ngay trong transaction
+    private MovieRating upsertRating(Long userId, Long profileId, long profileScopeId, String movieId, int rating) {
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
-        return ratingRepository.findByUserIdAndMovieId(userId, movieId)
+        return ratingRepository.findByUserIdAndProfileScopeIdAndMovieId(userId, profileScopeId, movieId)
                 .map(existing -> {
                     existing.updateRating(rating, now);
                     return ratingRepository.saveAndFlush(existing);
                 })
-                .orElseGet(() -> ratingRepository.saveAndFlush(new MovieRating(userId, movieId, rating, now)));
+                .orElseGet(() -> ratingRepository.saveAndFlush(new MovieRating(userId, profileId, movieId, rating, now)));
     }
 
-    // nhánh dự phòng lúc 2 request cùng tạo trùng (userId, movieId), đọc lại dòng vừa thắng rồi cập nhật điểm mới nhất
+    // nhánh dự phòng lúc 2 request cùng tạo trùng (userId, profileScopeId, movieId), đọc lại dòng vừa thắng rồi cập nhật điểm mới nhất
     private MovieRating updateExistingRating(
             Long userId,
+            long profileScopeId,
             String movieId,
             int rating,
             DataIntegrityViolationException original
     ) {
-        MovieRating existing = ratingRepository.findByUserIdAndMovieId(userId, movieId)
+        MovieRating existing = ratingRepository.findByUserIdAndProfileScopeIdAndMovieId(userId, profileScopeId, movieId)
                 .orElseThrow(() -> original);
         existing.updateRating(rating, LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS));
         return ratingRepository.saveAndFlush(existing);

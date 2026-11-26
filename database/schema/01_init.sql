@@ -9,10 +9,45 @@ CREATE TABLE IF NOT EXISTS users (
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     token_version BIGINT NOT NULL DEFAULT 0,
     terms_accepted_at TIMESTAMP NULL,
+    parent_mode_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    parent_pin_hash VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_users_role_enabled (role, enabled),
     CONSTRAINT ck_user_role CHECK (HEX(role) IN (HEX('ROLE_USER'), HEX('ROLE_ADMIN')))
+);
+
+CREATE TABLE IF NOT EXISTS child_profiles (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    name VARCHAR(50) NOT NULL,
+    avatar_key VARCHAR(32) NOT NULL,
+    daily_minutes INT NOT NULL DEFAULT 60,
+    math_level INT NOT NULL DEFAULT 1,
+    reward_minutes INT NOT NULL DEFAULT 5,
+    max_bonus_minutes INT NOT NULL DEFAULT 30,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_child_profiles_user_created (user_id, created_at),
+    CONSTRAINT fk_child_profile_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT ck_child_profile_daily_minutes CHECK (daily_minutes BETWEEN 0 AND 600),
+    CONSTRAINT ck_child_profile_math_level CHECK (math_level BETWEEN 1 AND 4),
+    CONSTRAINT ck_child_profile_reward_minutes CHECK (reward_minutes BETWEEN 1 AND 30),
+    CONSTRAINT ck_child_profile_max_bonus_minutes CHECK (max_bonus_minutes BETWEEN 0 AND 120)
+);
+
+CREATE TABLE IF NOT EXISTS screen_time_ledger (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    profile_id BIGINT NOT NULL,
+    usage_day DATE NOT NULL,
+    kind VARCHAR(20) NOT NULL,
+    seconds INT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_screen_time_ledger_profile_day (profile_id, usage_day, kind),
+    INDEX idx_screen_time_ledger_profile_kind_created (profile_id, kind, created_at),
+    CONSTRAINT fk_screen_time_ledger_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT ck_screen_time_ledger_kind CHECK (HEX(kind) IN (HEX('WATCH'), HEX('REWARD'), HEX('PARENT_GRANT'))),
+    CONSTRAINT ck_screen_time_ledger_seconds CHECK (seconds > 0)
 );
 
 CREATE TABLE IF NOT EXISTS movies (
@@ -37,39 +72,51 @@ CREATE TABLE IF NOT EXISTS movies (
 CREATE TABLE IF NOT EXISTS watchlist_items (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,
+    profile_id BIGINT NULL,
+    profile_scope_id BIGINT NOT NULL DEFAULT 0,
     movie_id VARCHAR(100) NOT NULL,
     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_watchlist_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT uq_user_movie_watchlist UNIQUE (user_id, movie_id),
+    CONSTRAINT fk_watchlist_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT uq_user_profile_movie_watchlist UNIQUE (user_id, profile_scope_id, movie_id),
     INDEX idx_watchlist_movie (movie_id),
     INDEX idx_watchlist_user_added (user_id, added_at),
+    INDEX idx_watchlist_user_profile_added (user_id, profile_scope_id, added_at),
     CONSTRAINT fk_watchlist_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS movie_ratings (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,
+    profile_id BIGINT NULL,
+    profile_scope_id BIGINT NOT NULL DEFAULT 0,
     movie_id VARCHAR(100) NOT NULL,
     rating INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT ck_movie_rating_range CHECK (rating >= 1 AND rating <= 10),
     CONSTRAINT fk_rating_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT uq_user_movie_rating UNIQUE (user_id, movie_id),
+    CONSTRAINT fk_rating_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT uq_user_profile_movie_rating UNIQUE (user_id, profile_scope_id, movie_id),
     INDEX idx_ratings_movie (movie_id),
     INDEX idx_ratings_user_updated (user_id, updated_at),
+    INDEX idx_ratings_user_profile_updated (user_id, profile_scope_id, updated_at),
     CONSTRAINT fk_rating_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS favorite_items (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,
+    profile_id BIGINT NULL,
+    profile_scope_id BIGINT NOT NULL DEFAULT 0,
     movie_id VARCHAR(100) NOT NULL,
     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_favorite_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT uq_user_movie_favorite UNIQUE (user_id, movie_id),
+    CONSTRAINT fk_favorite_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT uq_user_profile_movie_favorite UNIQUE (user_id, profile_scope_id, movie_id),
     INDEX idx_favorite_movie (movie_id),
     INDEX idx_favorite_user_added (user_id, added_at),
+    INDEX idx_favorite_user_profile_added (user_id, profile_scope_id, added_at),
     CONSTRAINT fk_favorite_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
 );
 
@@ -441,6 +488,8 @@ CREATE TABLE IF NOT EXISTS catalog_snapshots (
 CREATE TABLE IF NOT EXISTS watch_progress (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,
+    profile_id BIGINT NULL,
+    profile_scope_id BIGINT NOT NULL DEFAULT 0,
     episode_id VARCHAR(100) NOT NULL,
     asset_id VARCHAR(100) NOT NULL,
     position_ms BIGINT NOT NULL,
@@ -448,9 +497,11 @@ CREATE TABLE IF NOT EXISTS watch_progress (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT ck_watch_progress_position CHECK (position_ms >= 0),
     CONSTRAINT fk_watch_progress_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_watch_progress_profile FOREIGN KEY (profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
     CONSTRAINT fk_watch_progress_episode FOREIGN KEY (episode_id) REFERENCES catalog_episodes(id) ON DELETE CASCADE,
-    CONSTRAINT uq_watch_progress_user_episode UNIQUE (user_id, episode_id),
+    CONSTRAINT uq_watch_progress_user_profile_episode UNIQUE (user_id, profile_scope_id, episode_id),
     INDEX idx_watch_progress_user_updated (user_id, updated_at),
+    INDEX idx_watch_progress_user_profile_updated (user_id, profile_scope_id, updated_at),
     INDEX idx_watch_progress_episode (episode_id)
 );
 

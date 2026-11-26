@@ -9,6 +9,14 @@ import React, {
 } from 'react';
 
 import { observeSessionResponses, PERMISSION_MESSAGE, SESSION_EXPIRED_MESSAGE, withRequestTimeout } from '@/lib/services/apiRequest';
+import {
+  decodeJwtProfileId,
+  exitChildProfile,
+  fetchProfilesState,
+  switchToChildProfile,
+  type ChildProfile,
+  type ProfilesState,
+} from '@/lib/services/profileService';
 import { AUTH_TOKEN_KEY, AUTH_USER_KEY, clearPrivateStorage, getStoredAuthToken, notifySessionReset } from '@/lib/services/sessionStorage';
 
 export type AuthUser = {
@@ -43,6 +51,16 @@ type AuthContextType = {
   retryVerify: () => Promise<void>;
   applySession: (token: string, user: AuthUser) => void;
   updateUser: (user: AuthUser) => void;
+  parentModeEnabled: boolean;
+  childProfiles: ChildProfile[];
+  activeProfile: ChildProfile | null;
+  isKidMode: boolean;
+  showProfilePicker: boolean;
+  openProfilePicker: () => void;
+  closeProfilePicker: () => void;
+  refreshProfiles: () => Promise<ProfilesState | null>;
+  selectChildProfile: (profileId: number) => Promise<{ success: boolean; message?: string }>;
+  exitKidMode: (pin: string) => Promise<{ success: boolean; message?: string }>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -96,6 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authModalMode, setAuthModalMode] = useState<AuthModalMode>('login');
   const [sessionEpoch, setSessionEpoch] = useState(0);
   const [notice, setNotice] = useState<{ text: string; kind: 'info' | 'success' } | null>(null);
+  const [parentModeEnabled, setParentModeEnabled] = useState(false);
+  const [childProfiles, setChildProfiles] = useState<ChildProfile[]>([]);
+  const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
+  const [showProfilePicker, setShowProfilePicker] = useState(false);
   const activeToken = useRef<string | null>(null);
   const activeUserId = useRef<number | null>(null);
   const logoutRequest = useRef<Promise<void> | null>(null);
@@ -137,11 +159,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSessionEpoch((epoch) => epoch + 1);
     setUser(null);
     setToken(null);
+    setParentModeEnabled(false);
+    setChildProfiles([]);
+    setActiveProfile(null);
+    setShowProfilePicker(false);
     setStatus('guest');
     setIsAuthModalOpen(false);
     setErrorMessage(null);
     setNotice(message ? { text: message, kind } : null);
   }, [abortActiveRequest]);
+
+  const loadProfilesSilently = useCallback(
+    async (authToken: string, generation: number, openPickerIfEnabled = false): Promise<ProfilesState | null> => {
+      try {
+        const res = await fetch(`${API}/users/profiles`, {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            Accept: 'application/json',
+          },
+          cache: 'no-store',
+        });
+        if (generation !== generationRef.current || activeToken.current !== authToken) {
+          return null;
+        }
+        if (!res.ok) return null;
+        const json = await res.json().catch(() => null);
+        if (generation !== generationRef.current || activeToken.current !== authToken) {
+          return null;
+        }
+        if (!json?.success || !json?.data) return null;
+        const data = json.data;
+        const profiles: ChildProfile[] = Array.isArray(data.profiles) ? data.profiles : [];
+        const active: ChildProfile | null = data.activeProfile && typeof data.activeProfile === 'object'
+          ? data.activeProfile
+          : null;
+        const enabled = Boolean(data.parentModeEnabled);
+        setParentModeEnabled(enabled);
+        setChildProfiles(profiles);
+        setActiveProfile(active);
+        if (openPickerIfEnabled && enabled && !active) {
+          setShowProfilePicker(true);
+        }
+        return {
+          parentModeEnabled: enabled,
+          activeProfileId: active ? active.id : null,
+          activeProfile: active,
+          profiles,
+          availableAvatars: Array.isArray(data.availableAvatars) ? data.availableAvatars : [],
+        };
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
 
   const verifySession = useCallback(
     async (authToken: string, generation: number, background = false) => {
@@ -187,6 +258,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const validated = validateAuthPayload(json?.data, authToken);
           if (json?.success && validated) {
             applyVerifiedSession(validated.token, validated.user, false);
+            if (!background) {
+              await loadProfilesSilently(validated.token, generation, false);
+            }
           } else if (!background) {
             endSession();
           }
@@ -343,6 +417,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         applyVerifiedSession(validated.token, validated.user, true);
         setNotice({ text: 'Đã đăng nhập.', kind: 'success' });
         closeAuthModal();
+        await loadProfilesSilently(validated.token, requestGeneration, true);
         return { success: true };
       } else {
         const serverMessage =
@@ -545,6 +620,93 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [applyVerifiedSession]);
 
+  const openProfilePicker = useCallback(() => {
+    if (parentModeEnabled && !activeProfile) {
+      setShowProfilePicker(true);
+    }
+  }, [parentModeEnabled, activeProfile]);
+
+  const closeProfilePicker = useCallback(() => {
+    setShowProfilePicker(false);
+  }, []);
+
+  const refreshProfiles = useCallback(async (): Promise<ProfilesState | null> => {
+    const currentToken = activeToken.current;
+    if (!currentToken || logoutRequest.current) return null;
+    try {
+      const state = await fetchProfilesState(currentToken);
+      if (activeToken.current !== currentToken) return null;
+      setParentModeEnabled(state.parentModeEnabled);
+      setChildProfiles(state.profiles);
+      setActiveProfile(state.activeProfile);
+      return state;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const applyProfileSwitch = useCallback((nextToken: string, nextUser: AuthUser, nextProfile: ChildProfile | null) => {
+    abortActiveRequest();
+    generationRef.current += 1;
+    clearPrivateStorage({ keepToken: true, keepNonEmptyGuest: false });
+    notifySessionReset();
+    setSessionEpoch((epoch) => epoch + 1);
+    activeToken.current = nextToken;
+    activeUserId.current = nextUser.id;
+    try {
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(nextUser));
+      localStorage.setItem(AUTH_TOKEN_KEY, nextToken);
+    } catch {}
+    setUser(nextUser);
+    setToken(nextToken);
+    setActiveProfile(nextProfile);
+    setShowProfilePicker(false);
+    setStatus('authenticated');
+    setErrorMessage(null);
+  }, [abortActiveRequest]);
+
+  const selectChildProfile = useCallback(async (profileId: number): Promise<{ success: boolean; message?: string }> => {
+    const currentToken = activeToken.current;
+    if (!currentToken || logoutRequest.current) {
+      return { success: false, message: 'Bạn cần đăng nhập trước.' };
+    }
+    try {
+      const result = await switchToChildProfile(currentToken, profileId);
+      applyProfileSwitch(result.token, result.user, result.activeProfile);
+      setNotice({
+        text: result.activeProfile ? `Đang xem với hồ sơ ${result.activeProfile.name}.` : result.message,
+        kind: 'success',
+      });
+      return { success: true };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : 'Chưa chuyển được sang hồ sơ trẻ em.',
+      };
+    }
+  }, [applyProfileSwitch]);
+
+  const exitKidMode = useCallback(async (pin: string): Promise<{ success: boolean; message?: string }> => {
+    const currentToken = activeToken.current;
+    if (!currentToken || logoutRequest.current) {
+      return { success: false, message: 'Bạn cần đăng nhập trước.' };
+    }
+    try {
+      const result = await exitChildProfile(currentToken, pin);
+      applyProfileSwitch(result.token, result.user, null);
+      setNotice({ text: result.message || 'Đã quay lại tài khoản chính.', kind: 'success' });
+      void loadProfilesSilently(result.token, generationRef.current, false);
+      return { success: true };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : 'Mã PIN phụ huynh chưa đúng.',
+      };
+    }
+  }, [applyProfileSwitch, loadProfilesSilently]);
+
+  const isKidMode = status === 'authenticated' && (activeProfile !== null || decodeJwtProfileId(token) !== null);
+
   return (
     <AuthContext.Provider
       value={{
@@ -567,6 +729,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionEpoch,
         applySession,
         updateUser,
+        parentModeEnabled,
+        childProfiles,
+        activeProfile,
+        isKidMode,
+        showProfilePicker,
+        openProfilePicker,
+        closeProfilePicker,
+        refreshProfiles,
+        selectChildProfile,
+        exitKidMode,
       }}
     >
       {children}
@@ -590,6 +762,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       )}
     </AuthContext.Provider>
   );
+}
+
+export function useOptionalAuth(): AuthContextType | null {
+  return useContext(AuthContext) ?? null;
 }
 
 export function useAuth() {

@@ -1,6 +1,7 @@
 package com.dippie.model.library;
 
 import com.dippie.model.movie.Movie;
+import com.dippie.model.profile.ChildProfile;
 import com.dippie.model.user.User;
 
 import jakarta.persistence.Entity;
@@ -21,11 +22,12 @@ import java.time.LocalDateTime;
 @Table(
         name = "watchlist_items",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uq_user_movie_watchlist", columnNames = {"user_id", "movie_id"})
+                @UniqueConstraint(name = "uq_user_profile_movie_watchlist", columnNames = {"user_id", "profile_scope_id", "movie_id"})
         },
         indexes = {
                 @Index(name = "idx_watchlist_movie", columnList = "movie_id"),
-                @Index(name = "idx_watchlist_user_added", columnList = "user_id, added_at")
+                @Index(name = "idx_watchlist_user_added", columnList = "user_id, added_at"),
+                @Index(name = "idx_watchlist_user_profile_added", columnList = "user_id, profile_scope_id, added_at")
         }
 )
 public class WatchlistItem extends LibraryEntry {
@@ -42,6 +44,16 @@ public class WatchlistItem extends LibraryEntry {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
+            name = "profile_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(name = "fk_watchlist_profile")
+    )
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    private ChildProfile profile;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
             name = "movie_id",
             insertable = false,
             updatable = false,
@@ -54,6 +66,10 @@ public class WatchlistItem extends LibraryEntry {
     }
 
     public WatchlistItem(Long userId, String movieId, LocalDateTime addedAt) {
-        super(userId, movieId, addedAt);
+        super(userId, null, movieId, addedAt);
+    }
+
+    public WatchlistItem(Long userId, Long profileId, String movieId, LocalDateTime addedAt) {
+        super(userId, profileId, movieId, addedAt);
     }
 }

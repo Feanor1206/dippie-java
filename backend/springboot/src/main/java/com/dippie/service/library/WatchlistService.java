@@ -28,7 +28,7 @@ public class WatchlistService extends AbstractLibraryListService<WatchlistItem> 
     }
 
     @Override
-    protected WatchlistItem newEntry(Long userId, String movieId, LocalDateTime addedAt) {
-        return new WatchlistItem(userId, movieId, addedAt);
+    protected WatchlistItem newEntry(Long userId, Long profileId, String movieId, LocalDateTime addedAt) {
+        return new WatchlistItem(userId, profileId, movieId, addedAt);
     }
 }

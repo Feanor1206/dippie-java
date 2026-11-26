@@ -2,6 +2,7 @@ package com.dippie.model.library;
 
 import com.dippie.exception.InvalidRequestException;
 import com.dippie.model.movie.Movie;
+import com.dippie.model.profile.ChildProfile;
 import com.dippie.model.user.User;
 
 import jakarta.persistence.Column;
@@ -29,11 +30,12 @@ import java.time.LocalDateTime;
 @Table(
         name = "movie_ratings",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uq_user_movie_rating", columnNames = {"user_id", "movie_id"})
+                @UniqueConstraint(name = "uq_user_profile_movie_rating", columnNames = {"user_id", "profile_scope_id", "movie_id"})
         },
         indexes = {
                 @Index(name = "idx_ratings_movie", columnList = "movie_id"),
-                @Index(name = "idx_ratings_user_updated", columnList = "user_id, updated_at")
+                @Index(name = "idx_ratings_user_updated", columnList = "user_id, updated_at"),
+                @Index(name = "idx_ratings_user_profile_updated", columnList = "user_id, profile_scope_id, updated_at")
         }
 )
 @Check(name = "ck_movie_rating_range", constraints = "rating >= 1 AND rating <= 10")
@@ -49,6 +51,13 @@ public class MovieRating {
 
     @Column(name = "user_id", nullable = false)
     private Long userId;
+
+    @Column(name = "profile_id")
+    private Long profileId;
+
+    @Column(name = "profile_scope_id", nullable = false)
+    @ColumnDefault("0")
+    private long profileScopeId;
 
     @Column(name = "movie_id", length = 100, nullable = false)
     private String movieId;
@@ -76,6 +85,16 @@ public class MovieRating {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
+            name = "profile_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(name = "fk_rating_profile")
+    )
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    private ChildProfile profile;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
             name = "movie_id",
             insertable = false,
             updatable = false,
@@ -88,8 +107,14 @@ public class MovieRating {
     }
 
     public MovieRating(Long userId, String movieId, int rating, LocalDateTime timestamp) {
+        this(userId, null, movieId, rating, timestamp);
+    }
+
+    public MovieRating(Long userId, Long profileId, String movieId, int rating, LocalDateTime timestamp) {
         validateRating(rating);
         this.userId = userId;
+        this.profileId = profileId;
+        this.profileScopeId = profileId == null ? 0L : profileId;
         this.movieId = movieId;
         this.rating = rating;
         this.createdAt = timestamp;
@@ -102,6 +127,14 @@ public class MovieRating {
 
     public Long getUserId() {
         return userId;
+    }
+
+    public Long getProfileId() {
+        return profileId;
+    }
+
+    public long getProfileScopeId() {
+        return profileScopeId;
     }
 
     public String getMovieId() {

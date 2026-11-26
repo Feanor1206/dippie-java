@@ -43,8 +43,8 @@ type PendingAction =
   | { type: 'status'; target: AdminUserView; nextEnabled: boolean };
 
 export default function AdminUsersPage() {
-  const { status, user, token, openAuthModal, retryVerify } = useAuth();
-  const isAdmin = status === 'authenticated' && user?.role === 'ROLE_ADMIN' && !!token;
+  const { status, user, token, isKidMode, openAuthModal, retryVerify } = useAuth();
+  const isAdmin = status === 'authenticated' && user?.role === 'ROLE_ADMIN' && !isKidMode && !!token;
 
   const [searchInput, setSearchInput] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');

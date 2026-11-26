@@ -28,7 +28,7 @@ public class FavoriteService extends AbstractLibraryListService<FavoriteItem> {
     }
 
     @Override
-    protected FavoriteItem newEntry(Long userId, String movieId, LocalDateTime addedAt) {
-        return new FavoriteItem(userId, movieId, addedAt);
+    protected FavoriteItem newEntry(Long userId, Long profileId, String movieId, LocalDateTime addedAt) {
+        return new FavoriteItem(userId, profileId, movieId, addedAt);
     }
 }

@@ -33,8 +33,14 @@ public class RecommendationService {
 
     // có mood hay moodPreset thì chạy MoodRecommendationStrategy, không thì chạy AffinityRecommendationStrategy
     public RecommendationResult recommend(RecommendationRequest request) {
-        Long userId = currentViewer.find().map(Viewer::userId).orElse(null);
-        var context = new RecommendationContext(request, catalog.load(), signals.load(userId, request.likedMovieIds()));
+        Viewer viewer = currentViewer.find().orElse(null);
+        Long userId = viewer == null ? null : viewer.userId();
+        long profileScopeId = viewer == null ? 0L : viewer.profileScopeId();
+        var context = new RecommendationContext(
+                request,
+                catalog.load(),
+                signals.load(userId, profileScopeId, request.likedMovieIds())
+        );
         boolean wantsMood = request.moodPreset() != null || (request.mood() != null && !request.mood().isBlank());
         RecommendationStrategy strategy = wantsMood ? mood : affinity;
         var result = strategy.recommend(context);

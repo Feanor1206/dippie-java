@@ -106,6 +106,16 @@ dippie:
       max-attempts: 5
       window: PT15M
       max-clients: 4096
+  parent-pin:
+    rate-limit:
+      max-attempts: 5
+      window: PT5M
+      max-clients: 4096
+  math-challenge:
+    rate-limit:
+      max-attempts: 10
+      window: PT10M
+      max-clients: 4096
 
 springdoc:
   api-docs:

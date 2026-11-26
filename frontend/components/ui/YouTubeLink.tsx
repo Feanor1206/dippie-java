@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { SiteDialog } from '@/components/ui/SiteDialog';
+import { useOptionalAuth } from '@/lib/context/AuthContext';
 
 export const YOUTUBE_PARENT_WARNING =
   'Bạn sắp rời Dippie để xem trên YouTube. YouTube có thể hiện quảng cáo và video khác không dành cho trẻ em.';
@@ -16,7 +17,9 @@ export function YouTubeLink({
   className?: string;
   testId?: string;
 }) {
+  const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
   const [open, setOpen] = useState(false);
+  if (auth?.isKidMode) return null;
   const safe = safeHttpUrl(url);
   if (!safe) return null;
   const destination = new URL(safe);

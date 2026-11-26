@@ -14,6 +14,8 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -22,6 +24,7 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Optional;
+import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 
 // ký và verify JWT (HS256) cho cả phiên đăng nhập lẫn vé phát video ngắn hạn
@@ -36,6 +39,7 @@ public class JwtService {
     private static final String CLAIM_ROLE = "role";
     private static final String CLAIM_USER_ID = "uid";
     private static final String CLAIM_VERSION = "ver";
+    private static final String CLAIM_PROFILE_ID = "pid";
     private static final String TYPE_PLAYBACK_GRANT = "playback_grant";
     private static final String PURPOSE_PLAYBACK = "playback";
     private static final String ROLE_ANONYMOUS = "ROLE_ANONYMOUS";
@@ -64,28 +68,39 @@ public class JwtService {
                 .build();
     }
 
-    // dữ liệu lấy ra sau khi verify token đăng nhập hợp lệ
-    public record LoginToken(String username, long tokenVersion) {
+    // dữ liệu lấy ra sau khi verify token đăng nhập hợp lệ, profileId null là hồ sơ chính
+    public record LoginToken(String username, long tokenVersion, Long profileId) {
+
+        public LoginToken(String username, long tokenVersion) {
+            this(username, tokenVersion, null);
+        }
     }
 
     public String issueLoginToken(String username) {
-        return issueLoginToken(username, 0L);
+        return issueLoginToken(username, 0L, null);
     }
 
     // ký token đăng nhập kèm tokenVersion để đổi mật khẩu hay đăng xuất là thu hồi được liền
     public String issueLoginToken(String username, long tokenVersion) {
+        return issueLoginToken(username, tokenVersion, null);
+    }
+
+    // ký token đăng nhập có thêm claim pid khi đang bật hồ sơ trẻ em, còn hồ sơ chính thì bỏ hẳn claim này
+    public String issueLoginToken(String username, long tokenVersion, Long profileId) {
         Instant now = clock.instant();
         Instant expiresAt = now.plus(expiration);
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(username)
                 .claim(CLAIM_VERSION, tokenVersion)
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(expiresAt))
-                .signWith(signingKey, Jwts.SIG.HS256)
-                .compact();
+                .expiration(Date.from(expiresAt));
+        if (profileId != null) {
+            builder.claim(CLAIM_PROFILE_ID, profileId);
+        }
+        return builder.signWith(signingKey, Jwts.SIG.HS256).compact();
     }
 
-    // verify JWT đăng nhập, loại luôn vé phát video và mấy token thiếu hoặc sai kiểu claim ver
+    // verify JWT đăng nhập, loại luôn vé phát video và mấy token thiếu hoặc sai kiểu claim ver hay pid
     public Optional<LoginToken> parseLoginToken(String token) {
         Optional<Claims> parsed = parseVerifiedClaims(token);
         if (parsed.isEmpty()) {
@@ -110,15 +125,50 @@ public class JwtService {
         if (version < 0) {
             return Optional.empty();
         }
-        return Optional.of(new LoginToken(subject, version));
+        // claim pid nếu có thì phải là số nguyên dương, sai kiểu hay <= 0 thì coi như token lỗi
+        Long profileId = null;
+        if (claims.containsKey(CLAIM_PROFILE_ID)) {
+            Object rawProfileId = claims.get(CLAIM_PROFILE_ID);
+            if (rawProfileId != null) {
+                if (!(rawProfileId instanceof Integer || rawProfileId instanceof Long)) {
+                    return Optional.empty();
+                }
+                long parsedProfileId = ((Number) rawProfileId).longValue();
+                if (parsedProfileId <= 0) {
+                    return Optional.empty();
+                }
+                profileId = parsedProfileId;
+            }
+        }
+        return Optional.of(new LoginToken(subject, version, profileId));
     }
 
     Optional<String> loginSubject(String token) {
         return parseLoginToken(token).map(LoginToken::username);
     }
 
-    // kết quả verify vé phát video, kèm userId và tokenVersion nếu người xem đã đăng nhập
-    public record VerifiedPlaybackGrant(PlaybackPrincipal principal, Long userId, Long tokenVersion) {
+    // kết quả verify vé phát video, kèm userId, tokenVersion và profileId nếu người xem đang ở hồ sơ trẻ em
+    public record VerifiedPlaybackGrant(
+            PlaybackPrincipal principal,
+            Long userId,
+            Long tokenVersion,
+            Long profileId
+    ) {
+
+        public VerifiedPlaybackGrant(PlaybackPrincipal principal, Long userId, Long tokenVersion) {
+            this(principal, userId, tokenVersion, null);
+        }
+    }
+
+    // dẫn xuất khóa con 32 byte bằng HMAC-SHA256 từ khóa bí mật hiện có của app cho từng mục đích riêng
+    public byte[] derivePurposeKey(String purpose) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(signingKey);
+            return mac.doFinal(purpose.getBytes(StandardCharsets.UTF_8));
+        } catch (GeneralSecurityException ex) {
+            throw new IllegalStateException("Không khởi tạo được khóa HMAC cho " + purpose, ex);
+        }
     }
 
     // cấp vé phát video ngắn hạn gắn với 1 assetId cụ thể (bản cũ theo username)
@@ -141,6 +191,11 @@ public class JwtService {
 
     // cấp vé phát video gắn userId và tokenVersion thay vì username để đăng xuất hay khóa nick là thu hồi được liền
     public String issuePlaybackGrant(String assetId, Long userId, long tokenVersion, Role role) {
+        return issuePlaybackGrant(assetId, userId, tokenVersion, role, null);
+    }
+
+    // cấp vé phát video có kèm thêm profileId nếu đang ở hồ sơ trẻ em để stream kiểm tra khóa giờ xem
+    public String issuePlaybackGrant(String assetId, Long userId, long tokenVersion, Role role, Long profileId) {
         Instant now = clock.instant();
         Instant expiresAt = now.plus(playbackGrantValidity);
         String subject = userId == null ? ANONYMOUS_SUBJECT : String.valueOf(userId);
@@ -155,6 +210,9 @@ public class JwtService {
                 .expiration(Date.from(expiresAt));
         if (userId != null) {
             builder.claim(CLAIM_USER_ID, userId).claim(CLAIM_VERSION, tokenVersion);
+            if (profileId != null) {
+                builder.claim(CLAIM_PROFILE_ID, profileId);
+            }
         }
         return builder.signWith(signingKey, Jwts.SIG.HS256).compact();
     }
@@ -180,16 +238,26 @@ public class JwtService {
         }
         Long userId = readNonNegativeLong(claims.get(CLAIM_USER_ID));
         Long version = readNonNegativeLong(claims.get(CLAIM_VERSION));
+        Long profileId = null;
+        if (claims.containsKey(CLAIM_PROFILE_ID) && claims.get(CLAIM_PROFILE_ID) != null) {
+            Long candidateProfileId = readNonNegativeLong(claims.get(CLAIM_PROFILE_ID));
+            if (candidateProfileId == null || candidateProfileId <= 0) {
+                return Optional.empty();
+            }
+            profileId = candidateProfileId;
+        }
         // đổi claim role sang nhánh tương ứng của PlaybackPrincipal
         Object rawRole = claims.get(CLAIM_ROLE);
         String roleName = rawRole == null ? "" : rawRole.toString();
         if (Role.ROLE_ADMIN.name().equals(roleName)) {
-            return Optional.of(new VerifiedPlaybackGrant(new PlaybackPrincipal.Authenticated(Role.ROLE_ADMIN), userId, version));
+            return Optional.of(new VerifiedPlaybackGrant(
+                    new PlaybackPrincipal.Authenticated(Role.ROLE_ADMIN), userId, version, profileId));
         }
         if (Role.ROLE_USER.name().equals(roleName)) {
-            return Optional.of(new VerifiedPlaybackGrant(new PlaybackPrincipal.Authenticated(Role.ROLE_USER), userId, version));
+            return Optional.of(new VerifiedPlaybackGrant(
+                    new PlaybackPrincipal.Authenticated(Role.ROLE_USER), userId, version, profileId));
         }
-        return Optional.of(new VerifiedPlaybackGrant(PlaybackPrincipal.Anonymous.INSTANCE, null, null));
+        return Optional.of(new VerifiedPlaybackGrant(PlaybackPrincipal.Anonymous.INSTANCE, null, null, null));
     }
 
     private static Long readNonNegativeLong(Object raw) {

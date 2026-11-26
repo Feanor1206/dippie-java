@@ -4,7 +4,9 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { Footer } from '@/components/layout/Footer';
 import { OfflineBanner } from '@/components/layout/OfflineBanner';
 import { Navbar } from '@/components/layout/Navbar';
+import { ProfilePickerModal } from '@/features/profiles/components/ProfilePickerModal';
 import { AuthProvider, useAuth } from '@/lib/context/AuthContext';
+import { ScreenTimeProvider } from '@/lib/context/ScreenTimeContext';
 import { WatchlistProvider } from '@/lib/context/WatchlistContext';
 import { resolveRouteTitle } from '@/lib/routeTitle';
 import HomePage from './page';
@@ -45,6 +47,7 @@ function App() {
         Đến nội dung chính
       </a>
       <Navbar />
+      <ProfilePickerModal />
       <OfflineBanner />
       <Suspense fallback={<main id="main-content" tabIndex={-1} className="page-shell comic-loading"><span role="status">Đang mở trang…</span></main>}>
         <Routes>
@@ -76,7 +79,11 @@ function App() {
 
 function SessionApp() {
   const { sessionEpoch } = useAuth();
-  return <WatchlistProvider key={sessionEpoch}><App /></WatchlistProvider>;
+  return (
+    <ScreenTimeProvider>
+      <WatchlistProvider key={sessionEpoch}><App /></WatchlistProvider>
+    </ScreenTimeProvider>
+  );
 }
 
 createRoot(document.getElementById('root')!).render(

@@ -31,17 +31,24 @@ public interface WatchProgressRepository extends JpaRepository<WatchProgress, Lo
     ) {
     }
 
-    Optional<WatchProgress> findByUserIdAndEpisodeId(Long userId, String episodeId);
+    Optional<WatchProgress> findByUserIdAndProfileScopeIdAndEpisodeId(Long userId, long profileScopeId, String episodeId);
 
-    @Query("select wp.episodeId from WatchProgress wp where wp.userId = :userId")
-    List<String> findEpisodeIdsByUserId(@Param("userId") Long userId);
+    // bản cũ tra theo hồ sơ chính (profileScopeId = 0) để giữ tương thích test cũ
+    @Query("select wp from WatchProgress wp where wp.userId = :userId and wp.profileScopeId = 0 and wp.episodeId = :episodeId")
+    Optional<WatchProgress> findByUserIdAndEpisodeId(@Param("userId") Long userId, @Param("episodeId") String episodeId);
 
-    void deleteByUserIdAndEpisodeId(Long userId, String episodeId);
+    @Query("select wp.episodeId from WatchProgress wp where wp.userId = :userId and wp.profileScopeId = :profileScopeId")
+    List<String> findEpisodeIdsByUserIdAndProfileScopeId(@Param("userId") Long userId, @Param("profileScopeId") long profileScopeId);
 
-    // gọi lúc xóa sạch lịch sử xem hay xóa tài khoản
+    void deleteByUserIdAndProfileScopeIdAndEpisodeId(Long userId, long profileScopeId, String episodeId);
+
+    // xóa sạch lịch sử xem của đúng hồ sơ đang mở hoặc hồ sơ bé bị xóa
+    void deleteByUserIdAndProfileScopeId(Long userId, long profileScopeId);
+
+    // gọi lúc xóa tài khoản để dọn hết tiến độ của cả hồ sơ chính lẫn hồ sơ bé
     void deleteByUserId(Long userId);
 
-    // kéo lịch sử xem gần nhất kèm đủ metadata để bước sau lọc mấy tập còn phát được
+    // kéo lịch sử xem gần nhất của đúng hồ sơ đang mở kèm đủ metadata để bước sau lọc mấy tập còn phát được
     // kèm wp.id desc làm khóa phụ vì updatedAt cắt xuống giây, lỡ lưu 2 tập cùng giây vẫn xếp tập mới hơn lên đầu
     @Query("""
             select new com.dippie.repository.progress.WatchProgressRepository$ContextRow(wp, ep, s, sea, ca, ma)
@@ -51,12 +58,16 @@ public interface WatchProgressRepository extends JpaRepository<WatchProgress, Lo
             left join CatalogSeason sea on sea.id = ep.seasonId
             left join CatalogMediaAsset ca on ca.id = wp.assetId
             left join MediaAsset ma on ma.id = wp.assetId
-            where wp.userId = :userId
+            where wp.userId = :userId and wp.profileScopeId = :profileScopeId
             order by wp.updatedAt desc, wp.id desc
             """)
-    List<ContextRow> findRecentWithContext(@Param("userId") Long userId, Pageable pageable);
+    List<ContextRow> findRecentWithContext(
+            @Param("userId") Long userId,
+            @Param("profileScopeId") long profileScopeId,
+            Pageable pageable
+    );
 
-    // kéo hết tiến độ trong một bộ kèm ngữ cảnh phát để NextEpisodeService check quyền với nguồn phát y hệt WatchProgressService
+    // kéo hết tiến độ trong một bộ của đúng hồ sơ đang mở để NextEpisodeService check quyền với nguồn phát y hệt WatchProgressService
     @Query("""
             select new com.dippie.repository.progress.WatchProgressRepository$ContextRow(wp, ep, s, sea, ca, ma)
             from WatchProgress wp
@@ -65,10 +76,14 @@ public interface WatchProgressRepository extends JpaRepository<WatchProgress, Lo
             left join CatalogSeason sea on sea.id = ep.seasonId
             left join CatalogMediaAsset ca on ca.id = wp.assetId
             left join MediaAsset ma on ma.id = wp.assetId
-            where wp.userId = :userId and ep.seriesId = :seriesId
+            where wp.userId = :userId and wp.profileScopeId = :profileScopeId and ep.seriesId = :seriesId
             order by wp.updatedAt desc, wp.id desc
             """)
-    List<ContextRow> findForSeriesWithContext(@Param("userId") Long userId, @Param("seriesId") String seriesId);
+    List<ContextRow> findForSeriesWithContext(
+            @Param("userId") Long userId,
+            @Param("profileScopeId") long profileScopeId,
+            @Param("seriesId") String seriesId
+    );
 
     // UPDATE có điều kiện theo optLockVersion, bật clearAutomatically để Hibernate xả cache entity cũ sau bulk UPDATE
     @Modifying(clearAutomatically = true)

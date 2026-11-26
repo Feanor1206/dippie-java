@@ -8,6 +8,7 @@ import com.dippie.exception.InvalidRequestException;
 import com.dippie.exception.TooManyRequestsException;
 import com.dippie.model.user.User;
 import com.dippie.repository.user.UserRepository;
+import com.dippie.security.CurrentViewer;
 import com.dippie.security.JwtService;
 import com.dippie.security.LoginRateLimiter;
 import com.dippie.security.PasswordPolicy;
@@ -32,6 +33,7 @@ public class AccountService {
     public static final String ACTION_ADMIN_PASSWORD_CHANGED = "ADMIN_PASSWORD_CHANGED";
 
     private final AuthService authService;
+    private final CurrentViewer currentViewer;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -41,6 +43,7 @@ public class AccountService {
 
     public AccountService(
             AuthService authService,
+            CurrentViewer currentViewer,
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
@@ -49,6 +52,7 @@ public class AccountService {
             Clock clock
     ) {
         this.authService = authService;
+        this.currentViewer = currentViewer;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
@@ -57,10 +61,11 @@ public class AccountService {
         this.clock = clock;
     }
 
-    // sửa họ tên với email cho user đang đăng nhập
+    // sửa họ tên với email cho user đang đăng nhập, chặn hồ sơ trẻ em
     // vẫn bắt DataIntegrityViolationException sau saveAndFlush phòng 2 request đổi trùng email cùng lúc
     @Transactional
     public UserProfileResponse updateProfile(UpdateProfileRequest request, String clientIp) {
+        currentViewer.requireMainProfile("Hồ sơ trẻ em không thể thay đổi cài đặt tài khoản.");
         User user = authService.requireCurrentUser();
         enforceRateLimit(clientIp, "profile:" + user.getId());
 
@@ -84,6 +89,7 @@ public class AccountService {
     // check mật khẩu cũ, áp luật mật khẩu mới, tăng tokenVersion để đá hết phiên cũ rồi cấp JWT mới
     @Transactional
     public AuthResponse changePassword(ChangePasswordRequest request, String clientIp) {
+        currentViewer.requireMainProfile("Hồ sơ trẻ em không thể đổi mật khẩu.");
         User user = authService.requireCurrentUser();
         enforceRateLimit(clientIp, "password:" + user.getId());
 

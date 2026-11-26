@@ -13,6 +13,7 @@ import {
   User,
 } from 'lucide-react';
 import { MovieCard } from '@/features/movies/components/MovieCard';
+import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
 import { useWatchlist } from '@/lib/context/WatchlistContext';
 import { useAuth } from '@/lib/context/AuthContext';
 import { genreLabel, getUserInitials, normalizeGenreLabels } from '@/lib/labels';
@@ -203,7 +204,7 @@ export function ProfileOverview() {
     showToast,
   } = useWatchlist();
 
-  const { user, status, openAuthModal, retryVerify } = useAuth();
+  const { user, status, isKidMode, activeProfile, openAuthModal, retryVerify } = useAuth();
 
   const allItemIds = useMemo(
     () => Array.from(new Set([...watchlist, ...favorites, ...Object.keys(ratings)])),
@@ -311,21 +312,29 @@ export function ProfileOverview() {
       <div className="rounded-xl border border-surface-border bg-surface p-6 sm:p-8">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <div className="grid h-12 w-12 place-items-center rounded-md bg-brand text-base font-bold text-zinc-950 shadow-brand-sm">
-              {isGuestMode ? <User size={22} /> : getUserInitials(user?.fullName || user?.username, 'K')}
-            </div>
+            {!isGuestMode && isKidMode && activeProfile ? (
+              <ChildAvatarBadge avatarKey={activeProfile.avatarKey} size="md" />
+            ) : (
+              <div className="grid h-12 w-12 place-items-center rounded-md bg-brand text-base font-bold text-zinc-950 shadow-brand-sm">
+                {isGuestMode ? <User size={22} /> : getUserInitials(user?.fullName || user?.username, 'K')}
+              </div>
+            )}
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-brand-dark">
-                  {isGuestMode ? 'Chế độ khách' : 'Tài khoản Dippie'}
+                  {isGuestMode ? 'Chế độ khách' : isKidMode ? 'Hồ sơ trẻ em' : 'Tài khoản Dippie'}
                 </span>
                 <span className="text-muted">•</span>
                 <span className="text-xs text-muted">
-                  {isGuestMode ? 'Lưu trên máy này' : user?.email || 'Đã đồng bộ theo tài khoản'}
+                  {isGuestMode
+                    ? 'Lưu trên máy này'
+                    : isKidMode
+                    ? 'Thư viện riêng của bé'
+                    : user?.email || 'Đã đồng bộ theo tài khoản'}
                 </span>
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-ink mt-0.5">
-                {isGuestMode ? 'Khách' : user?.fullName || user?.username}
+                {isGuestMode ? 'Khách' : isKidMode && activeProfile ? activeProfile.name : user?.fullName || user?.username}
               </h1>
             </div>
           </div>
@@ -341,13 +350,15 @@ export function ProfileOverview() {
               </button>
             ) : (
               <>
-                <Link
-                  to="/account"
-                  data-testid="profile-account-link"
-                  className="btn-secondary min-h-[44px] text-xs w-full sm:w-auto"
-                >
-                  Cài đặt tài khoản
-                </Link>
+                {!isKidMode && (
+                  <Link
+                    to="/account"
+                    data-testid="profile-account-link"
+                    className="btn-secondary min-h-[44px] text-xs w-full sm:w-auto"
+                  >
+                    Cài đặt tài khoản
+                  </Link>
+                )}
                 <Link to="/lich-su" className="btn-secondary min-h-[44px] text-xs w-full sm:w-auto">
                   Lịch sử xem
                 </Link>
