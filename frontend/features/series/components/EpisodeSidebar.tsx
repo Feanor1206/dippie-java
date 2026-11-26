@@ -100,7 +100,7 @@ export function EpisodeSidebar({
             >
               {previousEpisodeLabel}
             </button>
-            <span className="font-mono text-[11px] font-semibold text-muted tabular-nums">
+            <span className="font-mono text-[0.6875rem] font-semibold text-muted tabular-nums">
               {seasonEpisodes.findIndex((episode) => episode.id === selectedEpisode.id) + 1} / {seasonEpisodes.length}
             </span>
             <button
@@ -133,7 +133,7 @@ export function EpisodeSidebar({
               {seasonEpisodes.length ? 'Không tìm thấy tập phù hợp.' : 'Mùa này chưa có tập nào.'}
             </p>
           ) : (
-            filteredEpisodes.map((episode) => {
+            filteredEpisodes.map((episode, index) => {
               const isSelected = selectedEpisode?.id === episode.id;
               const displayTitle = cleanMediaTitle(episode.title);
               const isExternalOnly = Boolean(knownExternalEpisodeIds[episode.id] || isEpisodeExternalOnly(episode));
@@ -141,7 +141,8 @@ export function EpisodeSidebar({
               return (
                 <div
                   key={episode.id}
-                  className={`rounded-lg border p-2 transition-colors ${
+                  style={index < 12 ? ({ '--ep-idx': index } as React.CSSProperties) : undefined}
+                  className={`${index < 12 ? 'motion-episode-item ' : ''}rounded-lg border p-2 transition-colors ${
                     isSelected
                       ? 'border-ink border-l-4 border-l-ink bg-mint/45 text-ink'
                       : 'border-surface-border bg-surface-elevated text-muted hover:bg-surface-hover hover:text-ink'
@@ -157,7 +158,7 @@ export function EpisodeSidebar({
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className={`grid h-5 min-w-[20px] shrink-0 place-items-center rounded px-1 text-[10px] font-bold border ${
+                          <span className={`grid h-5 min-w-[20px] shrink-0 place-items-center rounded px-1 text-[0.625rem] font-bold border ${
                             isSelected
                               ? 'border-ink bg-ink text-[#fffdf6]'
                               : 'border-surface-border bg-surface text-brand-dark'
@@ -172,7 +173,7 @@ export function EpisodeSidebar({
                             />
                           )}
                           {isSelected && (
-                            <span className="rounded bg-[#f2d18c] border border-ink/30 px-1.5 py-0.5 text-[10px] font-bold text-ink">
+                            <span className="rounded bg-[#f2d18c] border border-ink/30 px-1.5 py-0.5 text-[0.625rem] font-bold text-ink">
                               Đang xem
                             </span>
                           )}
@@ -180,18 +181,18 @@ export function EpisodeSidebar({
                         {isExternalOnly && !isKidMode && (
                           <span
                             data-testid="episode-external-badge"
-                            className="mt-1 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"
+                            className="mt-1 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[0.625rem] font-semibold text-amber-900"
                           >
                             Chỉ mở trên YouTube
                           </span>
                         )}
                         {episode.synopsis && (
-                          <p className="mt-1 line-clamp-2 text-[11px] text-muted">{episode.synopsis}</p>
+                          <p className="mt-1 line-clamp-2 text-[0.6875rem] text-muted">{episode.synopsis}</p>
                         )}
                       </div>
 
                       {episode.durationMs && (
-                        <span className="font-mono text-[10px] text-muted shrink-0">
+                        <span className="font-mono text-[0.625rem] text-muted shrink-0">
                           {formatDurationMs(episode.durationMs)}
                         </span>
                       )}

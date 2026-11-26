@@ -52,12 +52,13 @@ export function WeekendVaultBanner({
   return (
     <div
       data-testid="weekend-vault-banner"
+      data-reveal-item=""
       className="rounded-2xl border-2 border-ink bg-paper-white p-4 shadow-[3px_3px_0_#203328] sm:p-5"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <div
-            className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl border-2 border-ink ${
+            className={`motion-icon-drop grid h-11 w-11 shrink-0 place-items-center rounded-xl border-2 border-ink ${
               status.locked ? 'bg-[#f2d18c] text-ink' : 'bg-mint text-ink'
             }`}
           >
@@ -66,11 +67,11 @@ export function WeekendVaultBanner({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="font-display text-base font-bold text-ink sm:text-lg">
-                Két sắt phim cuối tuần · Vé xem phim
+                Cuối tuần này bé xem được phim lẻ chưa?
               </h2>
               <span
                 data-testid="weekend-vault-lock-badge"
-                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${
+                className={`motion-chip-pop inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[0.6875rem] font-bold ${
                   status.locked
                     ? 'border-amber-700/40 bg-[#f2d18c]/70 text-ink'
                     : 'border-ink bg-mint text-ink'
@@ -78,18 +79,18 @@ export function WeekendVaultBanner({
               >
                 <Ticket size={12} aria-hidden="true" />
                 {status.manualUnlocked
-                  ? 'Ba mẹ đã mở tuần này'
+                  ? 'Xem được rồi (ba mẹ đã mở)'
                   : status.locked
-                  ? 'Phim lẻ đang khóa'
-                  : 'Phim lẻ đã mở!'}
+                  ? 'Chưa mở phim lẻ'
+                  : 'Xem được rồi!'}
               </span>
             </div>
             <p className="mt-1 text-xs text-muted">
               {status.locked
                 ? status.weekend
-                  ? 'Nạp đủ 100% Vé xem phim hoặc nhờ ba mẹ mở khóa để xem phim lẻ cuối tuần nhé!'
-                  : 'Nghỉ đúng giờ và giải toán mỗi ngày để nạp đầy 100% Vé xem phim cuối tuần nhé!'
-                : 'Vé xem phim đã mở rồi! Bé chọn phim lẻ mình thích nhé.'}
+                  ? 'Bước tiếp theo: tích đủ 100% Vé xem phim hoặc nhờ ba mẹ mở khóa để xem phim lẻ ngay nhé!'
+                  : 'Bước tiếp theo: nghỉ đúng giờ và trả lời câu hỏi mỗi ngày để nạp đầy 100% Vé xem phim cho thứ Bảy & Chủ Nhật nhé!'
+                : 'Phim lẻ cuối tuần đã sẵn sàng! Bé chọn bộ phim lẻ mình thích nhé.'}
             </p>
           </div>
         </div>
@@ -124,7 +125,7 @@ export function WeekendVaultBanner({
           className="mt-1.5 h-3.5 w-full overflow-hidden rounded-full border-2 border-ink bg-surface-muted"
         >
           <div
-            className="h-full bg-brand transition-all duration-300"
+            className="motion-progress-fill h-full bg-brand transition-all duration-300"
             style={{ width: `${status.progressPercent}%` }}
           />
         </div>
@@ -134,7 +135,7 @@ export function WeekendVaultBanner({
             {status.days.map((day) => (
               <div
                 key={day.day || day.dayOfWeek}
-                className={`rounded-lg border px-2 py-1.5 text-[11px] font-bold ${
+                className={`rounded-lg border px-2 py-1.5 text-[0.6875rem] font-bold ${
                   day.earnedPercent >= 40
                     ? 'border-ink bg-mint text-ink'
                     : day.earnedPercent >= 20
@@ -143,7 +144,7 @@ export function WeekendVaultBanner({
                 }`}
               >
                 <div>{getWeekdayLabel(day.dayOfWeek)}</div>
-                <div className="text-[10px]">+{day.earnedPercent}%</div>
+                <div className="text-[0.625rem]">+{day.earnedPercent}%</div>
               </div>
             ))}
           </div>
@@ -160,7 +161,7 @@ export function WeekendVaultBanner({
         >
           <form onSubmit={handleUnlock} className="space-y-4">
             <p className="text-xs leading-relaxed text-muted">
-              Nhập mã PIN phụ huynh để mở khóa phim lẻ trong két sắt cuối tuần cho bé ngay bây giờ.
+              Nhập mã PIN phụ huynh để mở khóa phim lẻ cuối tuần cho bé ngay bây giờ.
             </p>
             <div>
               <label htmlFor="kid-vault-pin" className="mb-1.5 block text-xs font-semibold text-ink">

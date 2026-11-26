@@ -93,7 +93,7 @@ function LegalLayout({
                     href={`#${item.id}`}
                     className="flex min-h-[44px] items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-muted transition-colors hover:bg-surface-hover hover:text-ink"
                   >
-                    <span className="font-mono text-[11px] font-bold text-brand-dark">
+                    <span className="font-mono text-[0.6875rem] font-bold text-brand-dark">
                       {idx + 1}.
                     </span>
                     <span>{item.label}</span>

@@ -364,7 +364,7 @@ test('mediaService distinguishes X-Dippie-Lock-Reason 423 from screen-time 423',
   assert.equal(dispatched[1].type, 'dippie:screen-time-locked');
 });
 
-test('WatchPetWidget draws SVG without images, supports rest countdown and medicine math heal', async () => {
+test('WatchPetWidget draws SVG without images, supports rest countdown and medicine multiple-choice quiz heal', async () => {
   let updatedPet = null;
   let restCalled = 0;
 
@@ -377,19 +377,32 @@ test('WatchPetWidget draws SVG without images, supports rest countdown and medic
         fetchWatchPetMedicineChallenge: async () => ({
           token: 'med-tok-1',
           question: '3 + 4 = ?',
-          mathLevel: 1,
+          options: [
+            { key: 'A', text: '6' },
+            { key: 'B', text: '7' },
+            { key: 'C', text: '8' },
+            { key: 'D', text: '9' },
+          ],
+          subject: 'TOAN',
+          subjectLabel: 'Toán',
+          grade: 'MAU_GIAO',
+          gradeLabel: 'Mẫu giáo',
+          setName: 'Toán học',
           expiresAt: '2026-11-26T10:02:00',
           expiresInSeconds: 120,
         }),
-        submitWatchPetMedicineAnswer: async (_tok, _ctok, answer) => ({
-          correct: answer === 7,
-          message: answer === 7 ? 'Dieppie đã khỏe lại rồi!' : 'Chưa đúng rồi!',
-          watchPet: answer === 7 ? { ...SAMPLE_WATCH_PET, stage: 'HAPPY', continuousWatchSeconds: 0 } : { ...SAMPLE_WATCH_PET, stage: 'FAINTED', fainted: true },
+        submitWatchPetMedicineAnswer: async (_tok, _ctok, option) => ({
+          correct: option === 'B',
+          correctOption: 'B',
+          correctText: '7',
+          explanation: '3 + 4 = 7',
+          message: option === 'B' ? 'Dieppie đã khỏe lại rồi!' : 'Gần đúng rồi! Đáp án là B: 7 nè',
+          watchPet: option === 'B' ? { ...SAMPLE_WATCH_PET, stage: 'HAPPY', continuousWatchSeconds: 0 } : { ...SAMPLE_WATCH_PET, stage: 'FAINTED', fainted: true },
         }),
       },
     },
     {},
-    new Set(['WatchPetArt'])
+    new Set(['WatchPetArt', 'QuizQuestionCard'])
   );
 
   const faintedPet = { ...SAMPLE_WATCH_PET, stage: 'FAINTED', fainted: true, continuousWatchSeconds: 1200 };
@@ -413,13 +426,13 @@ test('WatchPetWidget draws SVG without images, supports rest countdown and medic
 
   const restBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'watch-pet-rest-button')[0];
   assert.ok(restBtn);
-  assert.match(collectText(restBtn).replace(/\s+/g, ' '), /Cho Dieppie ngủ 5 phút/);
+  assert.match(collectText(restBtn).replace(/\s+/g, ' '), /Nghỉ cùng Dieppie 5 phút/);
   restBtn.props.onClick();
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(restCalled, 1);
 
   const medBtn = collectNodes(tree, (n) => n.props?.['data-testid'] === 'watch-pet-medicine-button')[0];
-  assert.match(collectText(medBtn).replace(/\s+/g, ' '), /Mua thuốc hồi sức cho Dieppie/);
+  assert.match(collectText(medBtn).replace(/\s+/g, ' '), /Trả lời 1 câu hỏi để xem tiếp ngay/);
   medBtn.props.onClick();
   await new Promise((r) => setTimeout(r, 0));
   tree = harness.render({
@@ -433,9 +446,9 @@ test('WatchPetWidget draws SVG without images, supports rest countdown and medic
   });
   const qNode = collectNodes(tree, (n) => n.props?.['data-testid'] === 'watch-pet-medicine-question')[0];
   assert.equal(collectText(qNode), '3 + 4 = ?');
+  assert.equal(collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-read-aloud-button').length, 1);
 
-  const input = collectNodes(tree, (n) => n.props?.['data-testid'] === 'watch-pet-medicine-input')[0];
-  input.props.onChange({ target: { value: '7' } });
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-option-B')[0].props.onClick();
   tree = harness.render({
     watchPet: faintedPet,
     token: 'kid-jwt',
@@ -445,8 +458,8 @@ test('WatchPetWidget draws SVG without images, supports rest countdown and medic
       updatedPet = next;
     },
   });
-  const form = collectNodes(tree, (n) => n.type === 'form')[0];
-  await form.props.onSubmit({ preventDefault() {} });
+  collectNodes(tree, (n) => n.props?.['data-testid'] === 'quiz-confirm-answer-button')[0].props.onClick();
+  await new Promise((r) => setTimeout(r, 0));
   assert.equal(updatedPet?.stage, 'HAPPY');
 
   const restingTree = harness.render({
@@ -461,11 +474,17 @@ test('WatchPetWidget draws SVG without images, supports rest countdown and medic
   harness.cleanup();
 });
 
-test('LootDropOverlay shows floating chest, quick 10s math quiz with combo bonus, and submits answer', async () => {
+test('LootDropOverlay shows floating chest, quick 10s multiple-choice quiz with combo bonus, and submits option', async () => {
   let opened = 0;
-  let submittedAnswer = null;
+  let submittedOption = null;
 
-  const harness = createComponentHarness('../features/profiles/components/LootDropOverlay.tsx', 'LootDropOverlay');
+  const harness = createComponentHarness(
+    '../features/profiles/components/LootDropOverlay.tsx',
+    'LootDropOverlay',
+    {},
+    {},
+    new Set(['QuizQuestionCard'])
+  );
 
   const chestTree = harness.render({
     activeDrop: { dropToken: 'd1', visibleSeconds: 15, expiresAt: '', combo: 2 },
@@ -492,7 +511,17 @@ test('LootDropOverlay shows floating chest, quick 10s math quiz with combo bonus
     activeQuiz: {
       token: 'a1',
       question: '5 + 6 = ?',
-      mathLevel: 2,
+      options: [
+        { key: 'A', text: '10' },
+        { key: 'B', text: '11' },
+        { key: 'C', text: '12' },
+        { key: 'D', text: '13' },
+      ],
+      subject: 'TOAN',
+      subjectLabel: 'Toán',
+      grade: 'LOP_1',
+      gradeLabel: 'Lớp 1',
+      setName: 'Toán học',
       timerSeconds: 10,
       expiresAt: '',
       combo: 2,
@@ -504,21 +533,21 @@ test('LootDropOverlay shows floating chest, quick 10s math quiz with combo bonus
     opening: false,
     submitting: false,
     onOpenChest: async () => {},
-    onSubmitAnswer: async (val) => {
-      submittedAnswer = val;
+    onSubmitAnswer: async (opt) => {
+      submittedOption = opt;
       return null;
     },
   };
   let quizTree = harness.render(quizProps);
   assert.match(collectText(quizTree).replace(/\s+/g, ' '), /\+\s*4 phút/);
   assert.match(collectText(quizTree).replace(/\s+/g, ' '), /Combo hiện tại: 2/);
+  assert.equal(collectNodes(quizTree, (n) => n.props?.['data-testid'] === 'quiz-read-aloud-button').length, 1);
 
-  const input = collectNodes(quizTree, (n) => n.props?.['data-testid'] === 'loot-quiz-input')[0];
-  input.props.onChange({ target: { value: '11' } });
+  collectNodes(quizTree, (n) => n.props?.['data-testid'] === 'quiz-option-B')[0].props.onClick();
   quizTree = harness.render(quizProps);
-  const form = collectNodes(quizTree, (n) => n.type === 'form')[0];
-  await form.props.onSubmit({ preventDefault() {} });
-  assert.equal(submittedAnswer, 11);
+  collectNodes(quizTree, (n) => n.props?.['data-testid'] === 'quiz-confirm-answer-button')[0].props.onClick();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(submittedOption, 'B');
   harness.cleanup();
 });
 
@@ -704,11 +733,18 @@ test('ChildProfilesSection links PlayFeaturesSettings per child profile and Epis
       },
       '@/lib/services/screenTimeService': {
         DAILY_MINUTE_PRESETS: [30, 60, 90, 120],
-        MATH_LEVEL_OPTIONS: [{ level: 1, shortLabel: '10', label: 'Mức 1' }],
         fetchParentScreenTimeOverview: async () => [],
         formatDailyLimitLabel: () => '60 phút',
         formatRemainingTime: () => '',
         formatUsageDuration: () => '',
+      },
+      '@/features/quiz/quizService': {
+        QUIZ_GRADES: [{ code: 'LOP_1', label: 'Lớp 1', description: '' }],
+        fetchQuizSetsOverview: async () => ({ sets: [], ownSetCount: 0, maxSetsPerAccount: 20, maxQuestionsPerSet: 500, maxCsvBytes: 1048576, grades: [], subjects: [] }),
+        fetchChildQuizConfigs: async () => [],
+        fetchQuizSampleQuestions: async () => [],
+        formatChildQuizSummaryLine: (g, names) => `Câu hỏi: ${g} · ${names.join(', ') || 'Toán học'}`,
+        getQuizGradeLabel: () => 'Lớp 1',
       },
     }
   );

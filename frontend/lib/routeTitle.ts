@@ -3,6 +3,7 @@ const EXACT_ROUTE_TITLES: Record<string, string> = {
   '/series': 'Phim bộ · Dippie',
   '/search': 'Kho phim · Dippie',
   '/profile': 'Thư viện · Dippie',
+  '/gia-dinh': 'Gia đình · Dippie',
   '/dieu-khoan': 'Điều khoản sử dụng · Dippie',
   '/quyen-rieng-tu': 'Chính sách quyền riêng tư · Dippie',
   '/dat-lai-mat-khau': 'Đặt lại mật khẩu · Dippie',

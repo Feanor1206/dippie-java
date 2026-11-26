@@ -235,3 +235,65 @@ export function resolveRatingSummary(item?: {
 
   return EMPTY_RATING_SUMMARY;
 }
+
+export function toCompactCardArtworkUrl(rawUrl?: string | null): string | null {
+  const trimmed = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+  if (!trimmed) return null;
+  if (!/^https?:\/\/(?:i\.ytimg\.com|img\.youtube\.com)\/vi(?:_webp)?\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return trimmed
+    .replace(/\/vi_webp\/([^/?#]+)\/(?:maxresdefault|sddefault)\.webp/i, '/vi/$1/hqdefault.jpg')
+    .replace(/\/vi\/([^/?#]+)\/(?:maxresdefault|sddefault)\.(?:jpg|jpeg)/i, '/vi/$1/hqdefault.jpg');
+}
+
+export function resolveAgeBadge(genres?: ReadonlyArray<GenreInput> | null, title?: string | null): '3+' | '6+' | '9+' {
+  const labelsList = normalizeGenreLabels(genres).map((item) => item.toLocaleLowerCase('vi'));
+  const rawIds = Array.isArray(genres)
+    ? genres
+        .map((g) => (typeof g === 'string' ? g : g && typeof g === 'object' ? g.id || '' : ''))
+        .map((s) => s.trim().toLowerCase())
+    : [];
+  const tokens = new Set([...labelsList, ...rawIds]);
+
+  if (
+    tokens.has('kinh dị') ||
+    tokens.has('horror') ||
+    tokens.has('giật gân') ||
+    tokens.has('thriller') ||
+    tokens.has('tội phạm') ||
+    tokens.has('crime') ||
+    tokens.has('bí ẩn') ||
+    tokens.has('mystery')
+  ) {
+    return '9+';
+  }
+
+  if (
+    tokens.has('hành động') ||
+    tokens.has('action') ||
+    tokens.has('khoa học viễn tưởng') ||
+    tokens.has('sci-fi') ||
+    tokens.has('sci_fi') ||
+    tokens.has('science_fiction') ||
+    tokens.has('chính kịch') ||
+    tokens.has('drama') ||
+    tokens.has('lãng mạn') ||
+    tokens.has('romance') ||
+    tokens.has('phiêu lưu') ||
+    tokens.has('adventure') ||
+    tokens.has('giả tưởng') ||
+    tokens.has('fantasy') ||
+    tokens.has('học đường') ||
+    tokens.has('school')
+  ) {
+    return '6+';
+  }
+
+  const cleanTitle = (title || '').toLocaleLowerCase('vi');
+  if (cleanTitle.includes('thám tử') || cleanTitle.includes('siêu nhân') || cleanTitle.includes('chiến binh')) {
+    return '6+';
+  }
+
+  return '3+';
+}

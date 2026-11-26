@@ -67,6 +67,8 @@ type AuthContextType = {
   refreshProfiles: () => Promise<ProfilesState | null>;
   selectChildProfile: (profileId: number) => Promise<{ success: boolean; message?: string }>;
   exitKidMode: (pin: string) => Promise<{ success: boolean; message?: string }>;
+  showPostSignupFamilyOffer: boolean;
+  dismissPostSignupFamilyOffer: () => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -124,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [childProfiles, setChildProfiles] = useState<ChildProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
   const [showProfilePicker, setShowProfilePicker] = useState(false);
+  const [showPostSignupFamilyOffer, setShowPostSignupFamilyOffer] = useState(false);
   const activeToken = useRef<string | null>(null);
   const activeUserId = useRef<number | null>(null);
   const logoutRequest = useRef<Promise<void> | null>(null);
@@ -169,6 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setChildProfiles([]);
     setActiveProfile(null);
     setShowProfilePicker(false);
+    setShowPostSignupFamilyOffer(false);
     setStatus('guest');
     setIsAuthModalOpen(false);
     setErrorMessage(null);
@@ -497,7 +501,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ? new TextEncoder().encode(rawPassword).length
         : unescape(encodeURIComponent(rawPassword)).length;
     if (passwordByteLength > 72) {
-      return { success: false, message: 'Mật khẩu dài quá. Bạn rút ngắn lại nhé, chữ có dấu chiếm chỗ nhiều hơn chữ không dấu.' };
+      return { success: false, message: 'Mật khẩu quá dài. Bạn đặt ngắn gọn hơn (dưới 50 ký tự) nhé.' };
     }
 
     abortActiveRequest();
@@ -552,6 +556,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         applyVerifiedSession(validated.token, validated.user, true);
         setNotice({ text: 'Đã tạo tài khoản.', kind: 'success' });
         closeAuthModal();
+        setShowPostSignupFamilyOffer(true);
         return { success: true };
       } else {
         const retryHeader = res.headers?.get?.('Retry-After');
@@ -648,6 +653,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setShowProfilePicker(false);
   }, []);
 
+  const dismissPostSignupFamilyOffer = useCallback(() => {
+    setShowPostSignupFamilyOffer(false);
+  }, []);
+
   const refreshProfiles = useCallback(async (): Promise<ProfilesState | null> => {
     const currentToken = activeToken.current;
     if (!currentToken || logoutRequest.current) return null;
@@ -679,6 +688,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(nextToken);
     setActiveProfile(nextProfile);
     setShowProfilePicker(false);
+    setShowPostSignupFamilyOffer(false);
     setStatus('authenticated');
     setErrorMessage(null);
   }, [abortActiveRequest]);
@@ -757,6 +767,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshProfiles,
         selectChildProfile,
         exitKidMode,
+        showPostSignupFamilyOffer,
+        dismissPostSignupFamilyOffer,
       }}
     >
       {children}

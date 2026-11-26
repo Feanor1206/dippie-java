@@ -629,7 +629,7 @@ test('5. Proactive fallback shows calm source note for unmounted Drive files and
   const notice = find(tree, (n) => n.props?.['data-testid'] === 'playback-fallback-notice');
   assert.ok(notice, 'Fallback inline notice must render for non-drive unavailable asset');
   assert.equal(notice.props.role, 'status');
-  assert.match(textContent(notice), /Bản video trên máy chủ chưa sẵn sàng, đang phát từ YouTube\./);
+  assert.match(textContent(notice), /Đang phát bản dự phòng trên YouTube\./);
 
   const retryBtn = find(notice, (n) => n.props?.['data-testid'] === 'retry-original-file');
   assert.ok(retryBtn, 'Retry original file button must exist');
@@ -685,7 +685,7 @@ test('6. Runtime <video> error carries currentTime to YouTube fallback and retry
 
   const notice = find(tree, (n) => n.props?.['data-testid'] === 'playback-fallback-notice');
   assert.ok(notice, 'Inline fallback notice must appear');
-  assert.match(textContent(notice), /Bản video trên máy chủ chưa sẵn sàng, đang phát từ YouTube\./);
+  assert.match(textContent(notice), /Đang phát bản dự phòng trên YouTube\./);
 
   const retryBtn = find(notice, (n) => n.props?.['data-testid'] === 'retry-original-file');
   retryBtn.props.onClick();

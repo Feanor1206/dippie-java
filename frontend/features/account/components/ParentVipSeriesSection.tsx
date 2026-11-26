@@ -12,12 +12,18 @@ import {
 export function ParentVipSeriesSection({
   token,
   childProfiles,
+  activeProfileId = null,
+  hideChildTabs = false,
+  onSelectProfile,
   sessionPin = '',
   onPinVerified,
   onPinRejected,
 }: {
   token: string;
   childProfiles: ChildProfile[];
+  activeProfileId?: number | null;
+  hideChildTabs?: boolean;
+  onSelectProfile?: (profileId: number) => void;
   sessionPin?: string;
   onPinVerified?: (pin: string) => void;
   onPinRejected?: () => void;
@@ -26,13 +32,19 @@ export function ParentVipSeriesSection({
   const [seriesList, setSeriesList] = useState<SeriesCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
-  const [draftSeriesIds, setDraftSeriesIds] = useState<string[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(activeProfileId);
+  const [draftByProfileId, setDraftByProfileId] = useState<Record<number, string[]>>({});
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (activeProfileId) {
+      setSelectedProfileId(activeProfileId);
+    }
+  }, [activeProfileId]);
 
   const loadData = useCallback(async () => {
     if (!token) return;
@@ -45,35 +57,48 @@ export function ParentVipSeriesSection({
       ]);
       setOverview(vipItems);
       setSeriesList(cards);
+      setDraftByProfileId((prev) => {
+        const next: Record<number, string[]> = { ...prev };
+        for (const item of vipItems) {
+          if (next[item.profileId] === undefined) {
+            next[item.profileId] = [...item.seriesIds];
+          }
+        }
+        return next;
+      });
       setSelectedProfileId((prev) => {
+        if (activeProfileId && vipItems.some((item: ChildProfileVipSeries) => item.profileId === activeProfileId)) {
+          return activeProfileId;
+        }
         if (prev && vipItems.some((item: ChildProfileVipSeries) => item.profileId === prev)) return prev;
         return vipItems[0]?.profileId ?? null;
       });
     } catch (err: unknown) {
-      setLoadError(err instanceof Error ? err.message : 'Chưa tải được danh sách phim VIP.');
+      setLoadError(err instanceof Error ? err.message : 'Chưa tải được danh sách phim cần trả lời câu hỏi.');
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, activeProfileId]);
+
+  const profileGradesKey = childProfiles.map((item) => `${item.id}:${item.quizGrade || ''}`).join(',');
 
   useEffect(() => {
     void loadData();
-  }, [loadData, childProfiles.length]);
+  }, [loadData, profileGradesKey]);
 
   const activeItem = overview.find((item) => item.profileId === selectedProfileId) ?? overview[0] ?? null;
-
-  useEffect(() => {
-    if (activeItem) {
-      setDraftSeriesIds(activeItem.seriesIds);
-    } else {
-      setDraftSeriesIds([]);
-    }
-  }, [activeItem?.profileId, activeItem?.seriesIds.join(',')]);
+  const draftSeriesIds = activeItem ? draftByProfileId[activeItem.profileId] ?? activeItem.seriesIds : [];
 
   const toggleSeries = (seriesId: string) => {
-    setDraftSeriesIds((prev) =>
-      prev.includes(seriesId) ? prev.filter((id) => id !== seriesId) : [...prev, seriesId]
-    );
+    if (!activeItem) return;
+    const targetId = activeItem.profileId;
+    setDraftByProfileId((prev) => {
+      const current = prev[targetId] ?? activeItem.seriesIds;
+      const nextIds = current.includes(seriesId)
+        ? current.filter((id) => id !== seriesId)
+        : [...current, seriesId];
+      return { ...prev, [targetId]: nextIds };
+    });
   };
 
   const resetDialog = () => {
@@ -101,13 +126,14 @@ export function ParentVipSeriesSection({
       const updated = await updateChildVipSeries(token, activeItem.profileId, pin, draftSeriesIds);
       onPinVerified?.(pin);
       setOverview((prev) => prev.map((item) => (item.profileId === updated.profileId ? updated : item)));
+      setDraftByProfileId((prev) => ({ ...prev, [updated.profileId]: [...updated.seriesIds] }));
       const childName = updated.name;
       resetDialog();
-      setFeedback({ type: 'success', text: `Đã lưu danh sách phim VIP cho ${childName}.` });
+      setFeedback({ type: 'success', text: `Đã lưu danh sách phim cần trả lời câu hỏi cho ${childName}.` });
     } catch (err: unknown) {
       onPinRejected?.();
       setPin('');
-      setDialogError(err instanceof Error ? err.message : 'Chưa lưu được danh sách phim VIP.');
+      setDialogError(err instanceof Error ? err.message : 'Chưa lưu được danh sách phim cần trả lời câu hỏi.');
     } finally {
       setBusy(false);
     }
@@ -122,10 +148,10 @@ export function ParentVipSeriesSection({
     >
       <div className="border-b border-surface-border pb-4">
         <h3 id="parent-vip-heading" className="text-base font-bold text-ink">
-          Phim VIP theo độ khó
+          Phim cần trả lời câu hỏi
         </h3>
-        <p className="mt-1 text-xs text-muted">
-          Chọn các bộ phim VIP cho từng bé. Để mở khóa mỗi tập VIP trong ngày, bé cần giải đúng 1 bài toán khó hơn 1 bậc so với mức toán hiện tại (tối đa mức 4).
+        <p className="mt-1 text-base leading-relaxed text-muted">
+          Chọn các bộ phim cần trả lời câu hỏi cho từng bé. Để mở khóa mỗi tập trong ngày, bé cần trả lời đúng 1 câu hỏi khó hơn 1 lớp so với lớp hiện tại (hoặc lớp cao nhất hiện có).
         </p>
       </div>
 
@@ -133,7 +159,7 @@ export function ParentVipSeriesSection({
         <div
           role={feedback.type === 'error' ? 'alert' : 'status'}
           data-testid="parent-vip-feedback"
-          className={`mt-4 rounded-xl border p-3 text-xs ${
+          className={`motion-toast-enter mt-4 rounded-xl border p-3 text-xs ${
             feedback.type === 'error'
               ? 'border-red-500/40 bg-red-500/10 text-red-900'
               : 'border-brand/50 bg-brand/15 text-ink'
@@ -160,50 +186,54 @@ export function ParentVipSeriesSection({
         </div>
       ) : loading && overview.length === 0 ? (
         <p role="status" className="mt-4 rounded-xl border border-surface-border bg-surface-muted p-4 text-center text-xs text-muted">
-          Đang tải danh sách phim VIP…
+          Đang tải danh sách phim cần trả lời câu hỏi…
         </p>
       ) : overview.length > 0 && activeItem && (
         <div className="mt-4 space-y-4">
-          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Chọn hồ sơ bé">
-            {overview.map((item) => {
-              const selected = item.profileId === activeItem.profileId;
-              return (
-                <button
-                  key={item.profileId}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  data-testid={`vip-child-tab-${item.profileId}`}
-                  onClick={() => {
-                    setSelectedProfileId(item.profileId);
-                    setFeedback(null);
-                  }}
-                  className={`inline-flex min-h-[44px] items-center gap-2 rounded-xl border-2 px-3 py-1.5 text-xs font-bold cursor-pointer ${
-                    selected
-                      ? 'border-ink bg-mint/70 text-ink shadow-[2px_2px_0_#203328]'
-                      : 'border-surface-border bg-surface text-muted hover:border-ink/50'
-                  }`}
-                >
-                  <ChildAvatarBadge avatarKey={item.avatarKey} size="sm" />
-                  <span>{item.name}</span>
-                  <span className="rounded bg-paper-white px-1.5 py-0.5 text-[10px] text-ink">
-                    {item.seriesIds.length} VIP
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {!hideChildTabs && (
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Chọn hồ sơ bé">
+              {overview.map((item) => {
+                const selected = item.profileId === activeItem.profileId;
+                const itemDraftIds = draftByProfileId[item.profileId] ?? item.seriesIds;
+                return (
+                  <button
+                    key={item.profileId}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    data-testid={`vip-child-tab-${item.profileId}`}
+                    onClick={() => {
+                      setSelectedProfileId(item.profileId);
+                      onSelectProfile?.(item.profileId);
+                      setFeedback(null);
+                    }}
+                    className={`inline-flex min-h-[44px] items-center gap-2 rounded-xl border-2 px-3 py-1.5 text-xs font-bold cursor-pointer ${
+                      selected
+                        ? 'border-ink bg-mint/70 text-ink shadow-[2px_2px_0_#203328]'
+                        : 'border-surface-border bg-surface text-muted hover:border-ink/50'
+                    }`}
+                  >
+                    <ChildAvatarBadge avatarKey={item.avatarKey} size="sm" />
+                    <span>{item.name}</span>
+                    <span className="rounded bg-paper-white px-1.5 py-0.5 text-[0.625rem] text-ink">
+                      {itemDraftIds.length} phim
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-          <div className="rounded-lg border border-surface-border bg-surface-muted px-3.5 py-2.5 text-xs text-ink">
-            Mức toán hiện tại của <strong>{activeItem.name}</strong>: <strong>Mức {activeItem.mathLevel}</strong> · Thử thách mở khóa phim VIP: <strong className="text-brand-dark">Mức {activeItem.vipMathLevel}</strong>
+          <div className="rounded-lg border border-surface-border bg-surface-muted px-3.5 py-2.5 text-sm text-ink">
+            Khối lớp hiện tại của <strong>{activeItem.name}</strong>: <strong>{activeItem.quizGradeLabel}</strong> · Câu hỏi mở khóa phim: <strong className="text-brand-dark">{activeItem.vipQuizGradeLabel}</strong>
           </div>
 
           {seriesList.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-surface-border bg-surface-muted p-4 text-center text-xs text-muted">
-              Chưa có phim bộ nào trong kho để đánh dấu VIP.
+            <p className="rounded-xl border border-dashed border-surface-border bg-surface-muted p-4 text-center text-sm text-muted">
+              Chưa có phim bộ nào trong kho để chọn làm phim cần trả lời câu hỏi.
             </p>
           ) : (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               {seriesList.map((series) => {
                 const checked = draftSeriesIds.includes(series.id);
                 return (
@@ -226,8 +256,8 @@ export function ParentVipSeriesSection({
                       <span className="truncate">{series.title}</span>
                     </span>
                     {checked && (
-                      <span className="shrink-0 rounded-full border border-ink bg-[#f2d18c] px-2 py-0.5 text-[10px] font-extrabold text-ink">
-                        VIP
+                      <span className="motion-chip-pop shrink-0 rounded-full border border-ink bg-[#f2d18c] px-2 py-0.5 text-[0.625rem] font-extrabold text-ink">
+                        Phim cần trả lời câu hỏi
                       </span>
                     )}
                   </label>
@@ -248,7 +278,7 @@ export function ParentVipSeriesSection({
               }}
               className="btn-primary min-h-[44px] text-xs font-bold"
             >
-              Lưu phim VIP cho {activeItem.name}
+              Lưu phim cần trả lời câu hỏi cho {activeItem.name}
             </button>
           </div>
         </div>
@@ -256,13 +286,13 @@ export function ParentVipSeriesSection({
 
       {pinDialogOpen && activeItem && (
         <SiteDialog
-          title={`Lưu phim VIP · ${activeItem.name}`}
+          title={`Lưu phim cần trả lời câu hỏi · ${activeItem.name}`}
           onClose={closeDialog}
           busy={busy}
         >
           <form onSubmit={handleSaveSubmit} className="space-y-4">
             <p className="text-xs leading-relaxed text-muted">
-              Xác nhận lưu <strong>{draftSeriesIds.length}</strong> phim bộ VIP cho <strong>{activeItem.name}</strong>?
+              Xác nhận lưu <strong>{draftSeriesIds.length}</strong> phim cần trả lời câu hỏi cho <strong>{activeItem.name}</strong>?
             </p>
             <div>
               <label htmlFor="vip-dialog-pin" className="mb-1.5 block text-xs font-semibold text-ink">
@@ -286,7 +316,7 @@ export function ParentVipSeriesSection({
                 className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
               {sessionPin && pin === sessionPin && (
-                <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-brand-dark">
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[0.6875rem] text-brand-dark">
                   <span>Đã tự điền mã PIN vừa xác nhận trong phiên này.</span>
                   <button
                     type="button"
@@ -311,7 +341,7 @@ export function ParentVipSeriesSection({
                 Hủy
               </button>
               <button type="submit" disabled={busy} className="btn-primary w-full sm:w-auto text-xs">
-                {busy ? 'Đang lưu…' : 'Lưu danh sách VIP'}
+                {busy ? 'Đang lưu…' : 'Lưu danh sách phim'}
               </button>
             </div>
           </form>

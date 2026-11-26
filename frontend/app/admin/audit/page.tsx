@@ -188,7 +188,7 @@ export default function AdminAuditPage() {
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[760px] border-collapse text-left text-xs">
                 <thead>
-                  <tr className="border-b border-surface-border bg-surface-elevated/70 text-[11px] font-bold text-muted">
+                  <tr className="border-b border-surface-border bg-surface-elevated/70 text-[0.6875rem] font-bold text-muted">
                     <th scope="col" className="px-3 py-3">Thời gian</th>
                     <th scope="col" className="px-3 py-3">Người thực hiện</th>
                     <th scope="col" className="px-3 py-3">Hành động</th>
@@ -201,7 +201,7 @@ export default function AdminAuditPage() {
                     const detailEntries = formatAuditDetails(event.details);
                     return (
                       <tr key={event.id} className="align-top transition-colors hover:bg-surface-hover/50">
-                        <td className="whitespace-nowrap px-3 py-3.5 font-mono text-[11px] text-muted">
+                        <td className="whitespace-nowrap px-3 py-3.5 font-mono text-[0.6875rem] text-muted">
                           {formatViDateTime(event.createdAt, { includeSeconds: true })}
                         </td>
                         <td className="px-3 py-3.5 font-mono font-semibold text-ink">
@@ -209,12 +209,12 @@ export default function AdminAuditPage() {
                         </td>
                         <td className="px-3 py-3.5">
                           <span
-                            className={`inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-bold ${actionBadgeClass(event.action)}`}
+                            className={`inline-flex items-center rounded border px-2 py-0.5 text-[0.6875rem] font-bold ${actionBadgeClass(event.action)}`}
                           >
                             {getAuditActionLabel(event.action)}
                           </span>
                         </td>
-                        <td className="px-3 py-3.5 font-mono text-[11px] text-ink">
+                        <td className="px-3 py-3.5 font-mono text-[0.6875rem] text-ink">
                           {formatAuditTarget(event.targetType, event.targetId)}
                         </td>
                         <td className="px-3 py-3.5">
@@ -225,7 +225,7 @@ export default function AdminAuditPage() {
                               {detailEntries.map(({ key, value }) => (
                                 <span
                                   key={key}
-                                  className="inline-flex items-center gap-1 rounded border border-surface-border/40 bg-surface-elevated px-2 py-0.5 font-mono text-[11px] text-ink"
+                                  className="inline-flex items-center gap-1 rounded border border-surface-border/40 bg-surface-elevated px-2 py-0.5 font-mono text-[0.6875rem] text-ink"
                                 >
                                   <span className="text-muted">{key}:</span>
                                   <span className="break-all font-semibold">{value}</span>

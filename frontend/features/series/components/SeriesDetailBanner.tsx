@@ -68,6 +68,7 @@ export function SeriesDetailBanner({
   return (
     <header
       data-testid="series-detail-banner"
+      data-reveal-section=""
       className={`series-detail-banner mb-6 ${hasBackdrop ? 'series-detail-banner--art' : 'series-detail-banner--plain'}`}
     >
       {activeBackdrop && (
@@ -193,7 +194,7 @@ export function SeriesDetailBanner({
               Giới thiệu phim bộ
             </summary>
             <div
-              className={`mt-2.5 space-y-2 rounded-lg p-3.5 text-sm leading-relaxed ${
+              className={`motion-details-body mt-2.5 space-y-2 rounded-lg p-3.5 text-sm leading-relaxed ${
                 hasBackdrop ? 'bg-[#18241e]/75 text-[#f7f3e9]' : 'border border-surface-border/30 bg-paper-white/90 text-ink'
               }`}
             >

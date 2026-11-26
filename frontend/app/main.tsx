@@ -1,13 +1,16 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router';
 import { Footer } from '@/components/layout/Footer';
 import { OfflineBanner } from '@/components/layout/OfflineBanner';
 import { Navbar } from '@/components/layout/Navbar';
+import { PostSignupFamilyModal } from '@/features/account/components/PostSignupFamilyModal';
 import { ProfilePickerModal } from '@/features/profiles/components/ProfilePickerModal';
 import { AuthProvider, useAuth } from '@/lib/context/AuthContext';
 import { ScreenTimeProvider } from '@/lib/context/ScreenTimeContext';
 import { WatchlistProvider } from '@/lib/context/WatchlistContext';
+import { initMotionPreference, isMotionReduced } from '@/lib/motion';
 import { resolveRouteTitle } from '@/lib/routeTitle';
 import HomePage from './page';
 import NotFound from './not-found';
@@ -23,6 +26,7 @@ const AdminUsersPage = lazy(() => import('./admin/users/page'));
 const AdminStatsPage = lazy(() => import('./admin/stats/page'));
 const AdminAuditPage = lazy(() => import('./admin/audit/page'));
 const AccountPage = lazy(() => import('./account/page'));
+const FamilyPage = lazy(() => import('./gia-dinh/page'));
 const WatchHistoryPage = lazy(() => import('./lich-su/page'));
 const AdminReportsPage = lazy(() => import('./admin/reports/page'));
 const TermsPage = lazy(() => import('./legal/page').then(({ TermsPage }) => ({ default: TermsPage })));
@@ -33,7 +37,43 @@ const ForgotPasswordPage = lazy(() =>
 );
 
 function App() {
-  const { pathname, hash } = useLocation();
+  const location = useLocation();
+  const { pathname, hash } = location;
+  const [renderedLocation, setRenderedLocation] = useState(location);
+  const prevPathnameRef = useRef(location.pathname);
+
+  useEffect(() => initMotionPreference(), []);
+
+  useLayoutEffect(() => {
+    if (prevPathnameRef.current === location.pathname) {
+      if (renderedLocation !== location) {
+        setRenderedLocation(location);
+      }
+      return;
+    }
+    prevPathnameRef.current = location.pathname;
+    const doc =
+      typeof document !== 'undefined'
+        ? (document as Document & {
+            startViewTransition?: (cb: () => void) => { finished?: Promise<unknown> };
+          })
+        : null;
+    if (!doc || typeof doc.startViewTransition !== 'function' || isMotionReduced()) {
+      setRenderedLocation(location);
+      return;
+    }
+    try {
+      const transition = doc.startViewTransition(() => {
+        flushSync(() => {
+          setRenderedLocation(location);
+        });
+      });
+      transition?.finished?.catch(() => {});
+    } catch {
+      setRenderedLocation(location);
+    }
+  }, [location, renderedLocation]);
+
   useEffect(() => {
     if (typeof document !== 'undefined') {
       document.title = resolveRouteTitle(pathname);
@@ -43,7 +83,7 @@ function App() {
       const scrollToHash = () => {
         const target = document.getElementById(targetId);
         if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          target.scrollIntoView({ behavior: isMotionReduced() ? 'auto' : 'smooth', block: 'start' });
           return true;
         }
         return false;
@@ -59,6 +99,8 @@ function App() {
     window.scrollTo(0, 0);
   }, [pathname, hash]);
 
+  const effectiveLocation = location.pathname === renderedLocation.pathname ? location : renderedLocation;
+
   return (
     <>
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-[80] focus:rounded-lg focus:bg-surface focus:px-4 focus:py-3 focus:font-bold focus:text-ink">
@@ -66,9 +108,10 @@ function App() {
       </a>
       <Navbar />
       <ProfilePickerModal />
+      <PostSignupFamilyModal />
       <OfflineBanner />
       <Suspense fallback={<main id="main-content" tabIndex={-1} className="page-shell comic-loading"><span role="status">Đang mở trang…</span></main>}>
-        <Routes>
+        <Routes location={effectiveLocation}>
           <Route path="/" element={<HomePage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/profile" element={<ProfilePage />} />
@@ -81,6 +124,7 @@ function App() {
           <Route path="/admin/stats" element={<AdminStatsPage />} />
           <Route path="/admin/audit" element={<AdminAuditPage />} />
           <Route path="/account" element={<AccountPage />} />
+          <Route path="/gia-dinh" element={<FamilyPage />} />
           <Route path="/lich-su" element={<WatchHistoryPage />} />
           <Route path="/admin/reports" element={<AdminReportsPage />} />
           <Route path="/dieu-khoan" element={<TermsPage />} />

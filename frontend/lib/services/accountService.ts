@@ -90,7 +90,7 @@ export function validatePasswordChangeInput(input: {
     return 'Mật khẩu mới cần có ít nhất 6 ký tự.';
   }
   if (utf8ByteLength(input.newPassword) > MAX_PASSWORD_UTF8_BYTES) {
-    return 'Mật khẩu dài quá. Bạn rút ngắn lại nhé, chữ có dấu chiếm chỗ nhiều hơn chữ không dấu.';
+    return 'Mật khẩu quá dài. Bạn đặt ngắn gọn hơn (dưới 50 ký tự) nhé.';
   }
   if (input.newPassword !== input.confirmPassword) {
     return 'Mật khẩu nhập lại chưa khớp.';

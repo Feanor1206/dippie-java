@@ -7,8 +7,10 @@ public record ChildProfileVipSeriesView(
         Long profileId,
         String name,
         String avatarKey,
-        int mathLevel,
-        int vipMathLevel,
+        String quizGrade,
+        String quizGradeLabel,
+        String vipQuizGrade,
+        String vipQuizGradeLabel,
         List<String> seriesIds
 ) {
 }

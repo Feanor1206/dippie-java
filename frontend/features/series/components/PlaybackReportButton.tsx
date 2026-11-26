@@ -139,7 +139,7 @@ export function PlaybackReportButton({
                   onChange={(event) => setNote(event.target.value)}
                   className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-base sm:text-sm text-ink placeholder:text-muted focus:border-ink focus:bg-paper-white focus:outline-none disabled:opacity-60"
                 />
-                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[0.6875rem] text-muted">
                   <span>Đừng ghi thông tin cá nhân của gia đình hay của bé.</span>
                   <span className="tabular-nums font-medium">{note.length}/500</span>
                 </div>

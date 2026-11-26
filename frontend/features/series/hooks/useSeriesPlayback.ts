@@ -265,6 +265,8 @@ export function useSeriesPlayback(
   const [dismissedResume, setDismissedResume] = useState('');
   const [autoNext, setAutoNext] = useState(false);
   const [nextCountdown, setNextCountdown] = useState<number | null>(null);
+  const [playerScrollNonce, setPlayerScrollNonce] = useState(0);
+  const requestPlayerScroll = () => setPlayerScrollNonce((value) => value + 1);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const youtubeSeekCountRef = useRef(0);
@@ -303,7 +305,7 @@ export function useSeriesPlayback(
   const isSelectedEpisodeVipLocked = Boolean(
     isVipSeries && selectedEpisode?.id && !unlockedVipEpisodeIds.includes(selectedEpisode.id)
   );
-  const vipMathLevel = vipStatus?.vipMathLevel || 2;
+  const vipQuizGradeLabel = vipStatus?.vipQuizGradeLabel || 'khó hơn';
   const [isMediaPlaying, setIsMediaPlaying] = useState(false);
   const [activeRecapEpisodeId, setActiveRecapEpisodeId] = useState<string | null>(null);
   const playFeatures = usePlayFeatures({
@@ -316,9 +318,17 @@ export function useSeriesPlayback(
     onScreenTimeUpdated: (next) => screenTime?.applyScreenTimeStatus(next),
   });
   const isPetLocked = Boolean(isKidMode && playFeatures.isPetLocked);
+  const isLootQuizBlocking = Boolean(isKidMode && playFeatures.activeLootQuiz);
   const isPlaybackBlocked =
-    isScreenTimeLocked || isPetLocked || activeRecapEpisodeId !== null || isSelectedEpisodeVipLocked;
+    isScreenTimeLocked ||
+    isPetLocked ||
+    activeRecapEpisodeId !== null ||
+    isSelectedEpisodeVipLocked ||
+    isLootQuizBlocking;
   const wasPlaybackBlockedRef = useRef(isPlaybackBlocked);
+  const wasPlayingBeforeBlockRef = useRef(false);
+  const isMediaPlayingRef = useRef(false);
+  isMediaPlayingRef.current = isMediaPlaying;
 
   useEffect(() => {
     if (auth?.isAuthenticated && runtimeFailure?.reason === 'forbidden') {
@@ -365,13 +375,27 @@ export function useSeriesPlayback(
 
   useEffect(() => {
     if (isPlaybackBlocked) {
+      if (!wasPlaybackBlockedRef.current) {
+        wasPlayingBeforeBlockRef.current =
+          isMediaPlayingRef.current ||
+          Boolean(videoRef.current && !videoRef.current.paused && !videoRef.current.ended);
+      }
       setIsMediaPlaying(false);
       setNextCountdown(null);
       try {
         videoRef.current?.pause();
       } catch {}
-    } else if (wasPlaybackBlockedRef.current && selectedAsset?.id && !streamUrl) {
-      setFileRetryCount((value) => value + 1);
+    } else if (wasPlaybackBlockedRef.current) {
+      const shouldResume = wasPlayingBeforeBlockRef.current;
+      wasPlayingBeforeBlockRef.current = false;
+      if (selectedAsset?.id && !streamUrl) {
+        if (shouldResume && selectedEpisode?.id) {
+          autoPlayEpisodeRef.current = selectedEpisode.id;
+        }
+        setFileRetryCount((value) => value + 1);
+      } else if (shouldResume && videoRef.current && typeof videoRef.current.play === 'function') {
+        void videoRef.current.play().catch(() => {});
+      }
     }
     wasPlaybackBlockedRef.current = isPlaybackBlocked;
   }, [isPlaybackBlocked]);
@@ -746,6 +770,7 @@ export function useSeriesPlayback(
   };
 
   const handleSelectEpisode = (episode: CatalogEpisode) => {
+    requestPlayerScroll();
     const blockingRecapSource = findPendingRecapSource(episode.id);
     if (blockingRecapSource) {
       setNextCountdown(null);
@@ -767,6 +792,7 @@ export function useSeriesPlayback(
   const handlePlayNextEpisode = (recommendation: NextEpisodeRecommendation) => {
     const targetEpisode = seriesData?.episodes?.find((episode) => episode.id === recommendation.episodeId);
     if (!targetEpisode) return;
+    requestPlayerScroll();
     const blockingRecapSource = findPendingRecapSource(targetEpisode.id);
     if (blockingRecapSource) {
       setNextCountdown(null);
@@ -828,6 +854,7 @@ export function useSeriesPlayback(
 
   const handleSelectSeason = (seasonId: string) => {
     if (seasonId === selectedSeasonId) return;
+    requestPlayerScroll();
     saveCurrentProgress('episode-change');
     pendingResumeRef.current = null;
     setNextCountdown(null);
@@ -1074,6 +1101,9 @@ export function useSeriesPlayback(
     if (!isUrlEpisode || deepLinkHandledKeyRef.current === currentUrlDeepLinkKey) return;
     const isInitialLoadForEpisode = deepLinkHandledKeyRef.current === null;
     deepLinkHandledKeyRef.current = currentUrlDeepLinkKey;
+    if (isInitialLoadForEpisode && (targetEpisodeId || targetTimeMs || targetSceneId || targetSegmentId)) {
+      requestPlayerScroll();
+    }
 
     const scene = targetSceneId ? episodeDetail.scenes?.find((entry) => entry.id === targetSceneId) : undefined;
     const segment = targetSegmentId ? episodeDetail.segments?.find((entry) => entry.id === targetSegmentId) : undefined;
@@ -1178,7 +1208,7 @@ export function useSeriesPlayback(
           if (result.lockReason === 'VIP_EPISODE') {
             setVipRefreshNonce((value) => value + 1);
           } else if (result.lockReason === 'WEEKEND_VAULT') {
-            setPlaybackWarning(result.message || 'Két sắt phim cuối tuần đang khóa.');
+            setPlaybackWarning(result.message || 'Phim lẻ cuối tuần đang tạm khóa.');
           } else if (result.lockReason === 'RECAP_REQUIRED') {
             const sourceId = findPendingRecapSource(selectedEpisode?.id) ?? previousEpisode?.id ?? null;
             if (sourceId) setActiveRecapEpisodeId(sourceId);
@@ -1536,10 +1566,12 @@ export function useSeriesPlayback(
     progressError: progress.error,
     seriesProgressRevision,
     isUnmountedDriveFallback: isUnmountedDriveFallbackSource,
+    isKidMode,
+    playerScrollNonce,
     isVipSeries,
     unlockedVipEpisodeIds,
     isSelectedEpisodeVipLocked,
-    vipMathLevel,
+    vipQuizGradeLabel,
     markVipEpisodeUnlocked,
     retrySeries: () => setSeriesRetry((v) => v + 1),
     retryEpisode: () => setEpisodeRetry((v) => v + 1),

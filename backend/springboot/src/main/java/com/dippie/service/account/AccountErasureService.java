@@ -26,6 +26,7 @@ import com.dippie.security.PasswordPolicy;
 import com.dippie.security.Viewer;
 import com.dippie.service.admin.AuditTrailWriter;
 import com.dippie.service.play.PlaySettingsService;
+import com.dippie.service.quiz.QuizBankService;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -64,6 +65,7 @@ public class AccountErasureService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PlaybackReportRepository playbackReportRepository;
     private final PlaySettingsService playSettingsService;
+    private final QuizBankService quizBankService;
     private final AuditTrailWriter auditTrailWriter;
 
     public AccountErasureService(
@@ -85,6 +87,7 @@ public class AccountErasureService {
             PasswordResetTokenRepository passwordResetTokenRepository,
             PlaybackReportRepository playbackReportRepository,
             PlaySettingsService playSettingsService,
+            QuizBankService quizBankService,
             AuditTrailWriter auditTrailWriter
     ) {
         this.currentViewer = currentViewer;
@@ -105,6 +108,7 @@ public class AccountErasureService {
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.playbackReportRepository = playbackReportRepository;
         this.playSettingsService = playSettingsService;
+        this.quizBankService = quizBankService;
         this.auditTrailWriter = auditTrailWriter;
     }
 
@@ -149,6 +153,7 @@ public class AccountErasureService {
         childVipSeriesRepository.deleteByUserId(userId);
         screenTimeLedgerRepository.deleteByUserId(userId);
         playSettingsService.deleteForUser(userId);
+        quizBankService.deleteForUser(userId);
         childProfileRepository.deleteByUserId(userId);
         passwordResetTokenRepository.deleteByUserId(userId);
         playbackReportRepository.clearReporterUser(userId);

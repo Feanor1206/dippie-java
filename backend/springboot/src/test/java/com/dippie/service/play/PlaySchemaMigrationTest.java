@@ -8,8 +8,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // test Flyway V9, bản migration đồng bộ và script H2 demo chạy lặp lại không làm mất dữ liệu cũ
 class PlaySchemaMigrationTest {
@@ -96,6 +98,47 @@ class PlaySchemaMigrationTest {
                 assertThat(settingsRows.getInt(3)).isEqualTo(5);
                 assertThat(settingsRows.getBoolean(4)).isTrue();
                 assertThat(settingsRows.getBoolean(5)).isTrue();
+            }
+        }
+    }
+
+    @Test
+    void reconcilesLegacyH2EnumAndAutoCheckConstraintSoLootLedgerInsertDoesNotFailWith500() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:h2:mem:legacy-loot-ledger;MODE=MySQL", "sa", "");
+                var statement = connection.createStatement()) {
+            statement.execute("""
+                    create table child_profiles (
+                        id bigint auto_increment primary key,
+                        name varchar(50) not null
+                    )
+                    """);
+            statement.execute("insert into child_profiles (name) values ('Bé Bi')");
+            // tái hiện bảng screen_time_ledger cũ do hibernate tạo trước khi có hằng số loot
+            statement.execute("""
+                    create table screen_time_ledger (
+                        id bigint auto_increment primary key,
+                        profile_id bigint not null,
+                        usage_day date not null,
+                        kind enum('WATCH', 'REWARD', 'PARENT_GRANT', 'BOUNTY') not null,
+                        seconds int not null,
+                        created_at timestamp not null default current_timestamp,
+                        constraint constraint_legacy_kind check (kind in ('WATCH', 'REWARD', 'PARENT_GRANT', 'BOUNTY'))
+                    )
+                    """);
+
+            assertThatThrownBy(() -> statement.execute(
+                    "insert into screen_time_ledger (profile_id, usage_day, kind, seconds) values (1, date '2026-11-26', 'LOOT', 180)"
+            )).isInstanceOf(SQLException.class);
+
+            ScreenTimeLedgerSchemaReconciler.reconcileH2Connection(connection);
+
+            statement.execute(
+                    "insert into screen_time_ledger (profile_id, usage_day, kind, seconds) values (1, date '2026-11-26', 'LOOT', 180)"
+            );
+            try (var rows = statement.executeQuery("select kind, seconds from screen_time_ledger where kind = 'LOOT'")) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getString(1)).isEqualTo("LOOT");
+                assertThat(rows.getInt(2)).isEqualTo(180);
             }
         }
     }

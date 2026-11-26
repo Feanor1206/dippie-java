@@ -30,6 +30,7 @@ type BountyDialog =
 export function ParentBountySection({
   token,
   childProfiles,
+  activeProfileId = null,
   sessionPin = '',
   onPinVerified,
   onPinRejected,
@@ -37,6 +38,7 @@ export function ParentBountySection({
 }: {
   token: string;
   childProfiles: ChildProfile[];
+  activeProfileId?: number | null;
   sessionPin?: string;
   onPinVerified?: (pin: string) => void;
   onPinRejected?: () => void;
@@ -101,7 +103,11 @@ export function ParentBountySection({
       setIcon('toys');
       setActive(true);
       setRepeatableDaily(true);
-      setSelectedProfileIds(childProfiles.map((profile) => profile.id));
+      setSelectedProfileIds(
+        activeProfileId && childProfiles.some((profile) => profile.id === activeProfileId)
+          ? [activeProfileId]
+          : childProfiles.map((profile) => profile.id)
+      );
     } else if (next?.kind === 'edit') {
       setTitle(next.task.title);
       setRewardMinutes(String(next.task.rewardMinutes));
@@ -243,13 +249,13 @@ export function ParentBountySection({
             {pendingSubmissions.length > 0 && (
               <span
                 data-testid="parent-bounty-pending-count"
-                className="rounded-full border border-ink bg-[#f2d18c] px-2.5 py-0.5 text-[11px] font-bold text-ink"
+                className="rounded-full border border-ink bg-[#f2d18c] px-2.5 py-0.5 text-[0.6875rem] font-bold text-ink"
               >
                 {pendingSubmissions.length} lượt chờ duyệt
               </span>
             )}
           </div>
-          <p className="mt-1 text-xs text-muted">
+          <p className="mt-1 text-base leading-relaxed text-muted">
             Giao việc nhà hoặc thói quen tốt để bé hoàn thành, nộp nhiệm vụ và nhận thêm phút xem phim khi ba mẹ duyệt bằng mã PIN.
           </p>
         </div>
@@ -296,7 +302,7 @@ export function ParentBountySection({
                         <span aria-hidden="true">{iconMeta.emoji} </span>
                         {submission.taskTitle}
                       </p>
-                      <p className="text-[11px] text-muted">
+                      <p className="text-[0.6875rem] text-muted">
                         {submission.profileName} vừa nộp · Thưởng <strong className="text-ink">+{submission.rewardMinutes} phút</strong>
                       </p>
                     </div>
@@ -351,7 +357,7 @@ export function ParentBountySection({
             Chưa có nhiệm vụ nào. Nhấn &ldquo;Thêm nhiệm vụ&rdquo; để tạo bảng nhiệm vụ cho bé nhé.
           </p>
         ) : (
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {tasks.map((task) => {
               const iconMeta = getBountyIconMeta(task.icon);
               const assignedNames = task.profileIds
@@ -369,11 +375,11 @@ export function ParentBountySection({
                         <span aria-hidden="true">{iconMeta.emoji} </span>
                         {task.title}
                       </p>
-                      <span className="shrink-0 rounded-full border border-ink/30 bg-mint px-2 py-0.5 text-[11px] font-bold text-ink">
+                      <span className="shrink-0 rounded-full border border-ink/30 bg-mint px-2 py-0.5 text-[0.6875rem] font-bold text-ink">
                         +{task.rewardMinutes} phút
                       </span>
                     </div>
-                    <div className="flex flex-wrap gap-1.5 text-[11px]">
+                    <div className="flex flex-wrap gap-1.5 text-[0.6875rem]">
                       <span className="rounded bg-surface-elevated px-2 py-0.5 font-medium text-ink">
                         {task.repeatableDaily ? 'Lặp mỗi ngày' : 'Làm một lần'}
                       </span>
@@ -386,7 +392,7 @@ export function ParentBountySection({
                       </span>
                     </div>
                     {assignedNames.length > 0 && (
-                      <p className="text-[11px] text-muted">Áp dụng cho: {assignedNames.join(', ')}</p>
+                      <p className="text-[0.6875rem] text-muted">Áp dụng cho: {assignedNames.join(', ')}</p>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -428,6 +434,7 @@ export function ParentBountySection({
               : 'Từ chối lượt nộp'
           }
           tone={dialog.kind === 'delete' || dialog.kind === 'reject' ? 'danger' : 'default'}
+          size={dialog.kind === 'create' || dialog.kind === 'edit' ? 'lg' : 'md'}
           onClose={closeDialog}
           busy={busy}
         >
@@ -497,8 +504,16 @@ export function ParentBountySection({
                         type="button"
                         disabled={busy}
                         aria-pressed={icon === option.key}
-                        onClick={() => setIcon(option.key)}
-                        className={`flex min-h-[54px] flex-col items-center justify-center rounded-lg border-2 p-1.5 text-[11px] font-semibold cursor-pointer ${
+                        onClick={() => {
+                          setIcon(option.key);
+                          if (
+                            dialog.kind === 'create' &&
+                            (!title.trim() || BOUNTY_ICON_OPTIONS.some((item) => item.label === title.trim()))
+                          ) {
+                            setTitle(option.label);
+                          }
+                        }}
+                        className={`flex min-h-[54px] flex-col items-center justify-center rounded-lg border-2 p-1.5 text-[0.6875rem] font-semibold cursor-pointer ${
                           icon === option.key
                             ? 'border-ink bg-mint/60 text-ink'
                             : 'border-surface-border bg-paper-white text-muted'
@@ -630,7 +645,7 @@ export function ParentBountySection({
                 className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
               {dialog.kind !== 'delete' && sessionPin && pin === sessionPin && (
-                <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-brand-dark">
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[0.6875rem] text-brand-dark">
                   <span>Đã tự điền mã PIN vừa xác nhận trong phiên này.</span>
                   <button
                     type="button"
@@ -652,7 +667,7 @@ export function ParentBountySection({
               </div>
             )}
 
-            <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+            <div className="dialog-sticky-footer flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button type="button" disabled={busy} onClick={closeDialog} className="btn-secondary w-full sm:w-auto text-xs">
                 Hủy
               </button>

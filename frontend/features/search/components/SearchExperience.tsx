@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
+import { SiteDialog } from '@/components/ui/SiteDialog';
 import { genreLabel, resolveGenreLabel } from '@/lib/labels';
+import * as motion from '@/lib/motion';
+import { useWatchlist } from '@/lib/context/WatchlistContext';
 import {
   browseCatalog,
   deriveGenresFromMovies,
@@ -13,6 +16,7 @@ import type { Movie } from '@/types/movie';
 type SortField = 'rating' | 'year' | 'title';
 type SortDirection = 'asc' | 'desc';
 type SortOptionValue = '' | 'year:desc' | 'year:asc' | 'rating:desc' | 'title:asc';
+type ContentTypeFilter = 'all' | 'series' | 'episode';
 
 const PAGE_SIZE_DEFAULT = 12;
 const MAX_PAGE_SIZE = 48;
@@ -90,6 +94,7 @@ export function SearchExperience() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const watchlist = typeof useWatchlist === 'function' ? useWatchlist() : null;
 
   const urlQuery = (searchParams.get('q') || searchParams.get('query') || '').trim();
   const genre = (searchParams.get('genre') || '').trim();
@@ -114,6 +119,8 @@ export function SearchExperience() {
   const [inputValue, setInputValue] = useState(urlQuery);
   const [yearMinInput, setYearMinInput] = useState(yearMin !== undefined ? String(yearMin) : '');
   const [yearMaxInput, setYearMaxInput] = useState(yearMax !== undefined ? String(yearMax) : '');
+  const [contentTypeFilter, setContentTypeFilter] = useState<ContentTypeFilter>('all');
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [serverGenres, setServerGenres] = useState<CatalogGenreOption[] | null>(null);
   const [fallbackGenres, setFallbackGenres] = useState<CatalogGenreOption[]>([]);
   const [snapshot, setSnapshot] = useState<SearchSnapshot | null>(null);
@@ -122,6 +129,7 @@ export function SearchExperience() {
   const [retryCount, setRetryCount] = useState(0);
   const lastPushedQueryRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
+  const pageRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (lastPushedQueryRef.current !== null && urlQuery === lastPushedQueryRef.current) {
@@ -259,16 +267,28 @@ export function SearchExperience() {
 
   const availableGenres = useMemo(() => {
     const source = serverGenres && serverGenres.length > 0 ? serverGenres : fallbackGenres;
-    return source.filter((genreOption) => genreOption.count > 0);
-  }, [serverGenres, fallbackGenres]);
+    return source.filter((genreOption) => {
+      if (genreOption.count <= 0) return false;
+      const lowerId = genreOption.id.toLocaleLowerCase('vi');
+      const isActive = genre.toLocaleLowerCase('vi') === lowerId;
+      if ((lowerId === 'animation' || lowerId === 'hoạt hình') && !isActive) return false;
+      return true;
+    });
+  }, [serverGenres, fallbackGenres, genre]);
 
-  const hasActiveFilters = Boolean(urlQuery || genre || yearMin !== undefined || yearMax !== undefined || sortState.value);
+  const activeFilterCount =
+    (genre ? 1 : 0) +
+    (yearMin !== undefined || yearMax !== undefined ? 1 : 0) +
+    (sortState.value ? 1 : 0) +
+    (contentTypeFilter !== 'all' ? 1 : 0);
 
-  const clearAllFilters = () => {
-    setInputValue('');
+  const hasNonQueryFilters = activeFilterCount > 0;
+
+  const clearNonQueryFilters = () => {
     setYearMinInput('');
     setYearMaxInput('');
-    updateUrl({ q: '', genre: '', yearMin: null, yearMax: null, sort: null, direction: null, page: 0 });
+    setContentTypeFilter('all');
+    updateUrl({ genre: '', yearMin: null, yearMax: null, sort: null, direction: null, page: 0 });
   };
 
   const handleToggleGenre = (genreId: string) => {
@@ -306,10 +326,35 @@ export function SearchExperience() {
     return matched?.label || genreLabel(genre);
   }, [genre, availableGenres]);
 
+  const displayedResults = useMemo(() => {
+    if (contentTypeFilter === 'series') {
+      return currentResults.filter((item) => item.item_type === 'series');
+    }
+    if (contentTypeFilter === 'episode') {
+      return currentResults.filter((item) => item.item_type !== 'series');
+    }
+    return currentResults;
+  }, [currentResults, contentTypeFilter]);
+
+  const seriesItems = useMemo(
+    () => displayedResults.filter((item) => item.item_type === 'series'),
+    [displayedResults]
+  );
+  const nonSeriesItems = useMemo(
+    () => displayedResults.filter((item) => item.item_type !== 'series'),
+    [displayedResults]
+  );
+  const shouldSeparateGroups =
+    contentTypeFilter === 'all' && seriesItems.length > 0 && nonSeriesItems.length > 0;
+
+  motion.useScrollReveal?.(pageRef, [displayedResults.length, safePage, genre, sortState.value]);
+
+  const effectiveQueryText = urlQuery || inputValue.trim();
+
   return (
-    <main id="main-content" tabIndex={-1} className="page-shell min-h-[75vh] py-6 sm:py-8">
-      <header className="catalog-cover">
-        <h1 className="comic-heading text-3xl font-bold sm:text-4xl">Kho phim</h1>
+    <main ref={pageRef} id="main-content" tabIndex={-1} className="page-shell min-h-[75vh] py-4 sm:py-8">
+      <header data-reveal-section="" className="catalog-cover">
+        <h1 className="comic-heading text-2xl font-bold sm:text-4xl">Kho phim</h1>
         <div className="catalog-cover-art" aria-hidden="true" />
       </header>
 
@@ -345,109 +390,167 @@ export function SearchExperience() {
         )}
       </form>
 
-      <section aria-label="Bộ lọc tìm kiếm" className="mt-4 space-y-3">
-        {availableGenres.length > 0 && (
+      <section aria-label="Bộ lọc tìm kiếm" className="mt-3 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div
             role="group"
-            aria-label="Lọc theo thể loại"
-            data-testid="search-genre-chips"
-            className="flex flex-wrap items-center gap-2"
+            aria-label="Loại nội dung"
+            data-testid="search-type-filter"
+            className="flex flex-wrap items-center gap-1.5"
           >
-            <button
-              type="button"
-              data-testid="search-genre-all"
-              aria-pressed={!genre}
-              onClick={() => updateUrl({ genre: '', page: 0 })}
-              className={`series-filter-chip min-h-[44px] ${!genre ? 'series-filter-chip--active' : ''}`}
-            >
-              Tất cả
-            </button>
-            {availableGenres.map((item) => {
-              const active = genre.toLocaleLowerCase('vi') === item.id.toLocaleLowerCase('vi');
+            {(
+              [
+                ['all', 'Tất cả'],
+                ['series', 'Phim bộ'],
+                ['episode', 'Tập phim'],
+              ] as const
+            ).map(([key, label]) => {
+              const active = contentTypeFilter === key;
               return (
                 <button
-                  key={item.id}
+                  key={key}
                   type="button"
-                  data-testid="search-genre-chip"
-                  data-genre-id={item.id}
+                  data-testid={`search-type-${key}`}
                   aria-pressed={active}
-                  onClick={() => handleToggleGenre(item.id)}
+                  onClick={() => setContentTypeFilter(key)}
                   className={`series-filter-chip min-h-[44px] ${active ? 'series-filter-chip--active' : ''}`}
                 >
-                  {item.label}
+                  {label}
                 </button>
               );
             })}
           </div>
-        )}
 
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex items-center gap-2">
-            <label htmlFor="search-year-min" className="text-xs font-semibold text-ink whitespace-nowrap">
-              Từ năm
-            </label>
-            <input
-              id="search-year-min"
-              data-testid="search-year-min"
-              type="number"
-              inputMode="numeric"
-              min={MIN_FILTER_YEAR}
-              max={MAX_FILTER_YEAR}
-              placeholder="2000"
-              value={yearMinInput}
-              onChange={(event) => handleYearChange('yearMin', event.target.value)}
-              className={YEAR_INPUT_CLASS}
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <label htmlFor="search-year-max" className="text-xs font-semibold text-ink whitespace-nowrap">
-              Đến năm
-            </label>
-            <input
-              id="search-year-max"
-              data-testid="search-year-max"
-              type="number"
-              inputMode="numeric"
-              min={MIN_FILTER_YEAR}
-              max={MAX_FILTER_YEAR}
-              placeholder="2026"
-              value={yearMaxInput}
-              onChange={(event) => handleYearChange('yearMax', event.target.value)}
-              className={YEAR_INPUT_CLASS}
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <label htmlFor="search-sort-select" className="text-xs font-semibold text-ink whitespace-nowrap">
-              Sắp xếp
-            </label>
-            <select
-              id="search-sort-select"
-              data-testid="search-sort-select"
-              value={sortState.value}
-              onChange={(event) => handleSortChange(event.target.value as SortOptionValue)}
-              className="min-h-[44px] rounded-lg border border-[#a6b4a4] bg-paper-white px-3 py-2 text-base sm:text-sm font-medium text-ink focus:border-ink focus:outline-none cursor-pointer"
-            >
-              {SORT_OPTIONS.map((option) => (
-                <option key={option.value || 'default'} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {hasActiveFilters && (
+          <div className="flex items-center gap-2 md:hidden">
             <button
               type="button"
-              data-testid="search-clear-filters"
-              onClick={clearAllFilters}
-              className="min-h-[44px] rounded-lg border border-surface-border bg-surface px-3.5 text-xs font-semibold text-ink hover:bg-surface-hover cursor-pointer"
+              data-testid="search-filter-sheet-toggle"
+              onClick={() => setFilterSheetOpen(true)}
+              className="btn-secondary min-h-[44px] px-3.5 text-xs font-bold"
             >
-              Xóa bộ lọc
+              Bộ lọc{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
             </button>
-          )}
+          </div>
         </div>
+
+        <div className="hidden md:block space-y-3">
+          {availableGenres.length > 0 && (
+            <div
+              role="group"
+              aria-label="Lọc theo thể loại"
+              data-testid="search-genre-chips"
+              className="flex flex-wrap items-center gap-2"
+            >
+              <button
+                type="button"
+                data-testid="search-genre-all"
+                aria-pressed={!genre}
+                onClick={() => updateUrl({ genre: '', page: 0 })}
+                style={{ '--stagger-idx': 0 } as React.CSSProperties}
+                className={`series-filter-chip motion-chip-pop min-h-[44px] ${!genre ? 'series-filter-chip--active' : ''}`}
+              >
+                Tất cả thể loại
+              </button>
+              {availableGenres.map((item, index) => {
+                const active = genre.toLocaleLowerCase('vi') === item.id.toLocaleLowerCase('vi');
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    data-testid="search-genre-chip"
+                    data-genre-id={item.id}
+                    aria-pressed={active}
+                    onClick={() => handleToggleGenre(item.id)}
+                    style={{ '--stagger-idx': Math.min(index + 1, 10) } as React.CSSProperties}
+                    className={`series-filter-chip motion-chip-pop min-h-[44px] ${active ? 'series-filter-chip--active' : ''}`}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex items-center gap-2">
+              <label htmlFor="search-year-min" className="text-xs font-semibold text-ink whitespace-nowrap">
+                Từ năm
+              </label>
+              <input
+                id="search-year-min"
+                data-testid="search-year-min"
+                type="number"
+                inputMode="numeric"
+                min={MIN_FILTER_YEAR}
+                max={MAX_FILTER_YEAR}
+                placeholder="2000"
+                value={yearMinInput}
+                onChange={(event) => handleYearChange('yearMin', event.target.value)}
+                className={YEAR_INPUT_CLASS}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="search-year-max" className="text-xs font-semibold text-ink whitespace-nowrap">
+                Đến năm
+              </label>
+              <input
+                id="search-year-max"
+                data-testid="search-year-max"
+                type="number"
+                inputMode="numeric"
+                min={MIN_FILTER_YEAR}
+                max={MAX_FILTER_YEAR}
+                placeholder="2026"
+                value={yearMaxInput}
+                onChange={(event) => handleYearChange('yearMax', event.target.value)}
+                className={YEAR_INPUT_CLASS}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="search-sort-select" className="text-xs font-semibold text-ink whitespace-nowrap">
+                Sắp xếp
+              </label>
+              <select
+                id="search-sort-select"
+                data-testid="search-sort-select"
+                value={sortState.value}
+                onChange={(event) => handleSortChange(event.target.value as SortOptionValue)}
+                className="min-h-[44px] rounded-lg border border-[#a6b4a4] bg-paper-white px-3 py-2 text-base sm:text-sm font-medium text-ink focus:border-ink focus:outline-none cursor-pointer"
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value || 'default'} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {hasNonQueryFilters && (
+              <button
+                type="button"
+                data-testid="search-clear-filters"
+                onClick={clearNonQueryFilters}
+                className="min-h-[44px] rounded-lg border border-surface-border bg-surface px-3.5 text-xs font-semibold text-ink hover:bg-surface-hover cursor-pointer"
+              >
+                Xóa bộ lọc
+              </button>
+            )}
+          </div>
+        </div>
+
+        {hasNonQueryFilters && (
+          <div className="flex flex-wrap items-center gap-2 md:hidden">
+            <button
+              type="button"
+              onClick={clearNonQueryFilters}
+              className="min-h-[44px] rounded-lg border border-surface-border bg-surface px-3 text-xs font-semibold text-ink hover:bg-surface-hover cursor-pointer"
+            >
+              Xóa bộ lọc (giữ từ khóa)
+            </button>
+          </div>
+        )}
       </section>
 
       <div className="catalog-status" role="status">
@@ -497,8 +600,8 @@ export function SearchExperience() {
               </div>
             ))}
           </div>
-        ) : currentResults.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-surface-border bg-surface px-6 py-16 text-center">
+        ) : displayedResults.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-surface-border bg-surface px-6 py-14 text-center">
             <h2 className="mt-2 font-bold text-ink text-base">Không tìm thấy phim phù hợp</h2>
             <p className="mt-1 text-sm text-muted max-w-md mx-auto">
               {urlQuery
@@ -507,15 +610,51 @@ export function SearchExperience() {
                 ? `Chưa có phim thuộc thể loại ${activeGenreDisplay}.`
                 : 'Kho hiện chưa có phim nào.'}
             </p>
-            {hasActiveFilters && (
-              <button type="button" onClick={clearAllFilters} className="btn-secondary mt-5 text-xs">
-                Xóa bộ lọc
-              </button>
-            )}
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+              {effectiveQueryText && (
+                <button
+                  type="button"
+                  data-testid="search-ask-cinebot-button"
+                  onClick={() => watchlist?.openChat?.(effectiveQueryText)}
+                  className="btn-primary min-h-[44px] text-xs sm:text-sm font-bold"
+                >
+                  Hỏi CineBot về câu này
+                </button>
+              )}
+              {hasNonQueryFilters && (
+                <button
+                  type="button"
+                  data-testid="search-empty-clear-filters"
+                  onClick={clearNonQueryFilters}
+                  className="btn-secondary min-h-[44px] text-xs"
+                >
+                  Xóa bộ lọc
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <>
-            <FilmGrid movies={currentResults} search loading={loading} />
+            {shouldSeparateGroups ? (
+              <div data-testid="catalog-results" className="space-y-8">
+                <div data-testid="search-series-section" className="space-y-3">
+                  <div className="flex items-center justify-between border-b border-surface-border pb-2">
+                    <h2 className="font-display text-xl font-bold text-ink">Phim bộ ({seriesItems.length})</h2>
+                  </div>
+                  <FilmGrid movies={seriesItems} search loading={loading} includeTestId={false} headingLevel="h3" />
+                </div>
+
+                <div data-testid="search-episodes-section" className="space-y-3">
+                  <div className="flex items-center justify-between border-b border-surface-border pb-2">
+                    <h2 className="font-display text-xl font-bold text-ink">Tập phim &amp; Phim lẻ ({nonSeriesItems.length})</h2>
+                  </div>
+                  <FilmGrid movies={nonSeriesItems} search loading={loading} includeTestId={false} headingLevel="h3" />
+                </div>
+              </div>
+            ) : (
+              <FilmGrid movies={displayedResults} search loading={loading} />
+            )}
+
             {totalPages > 1 && (
               <nav
                 aria-label="Phân trang kho phim"
@@ -547,6 +686,118 @@ export function SearchExperience() {
           </>
         )}
       </section>
+
+      {filterSheetOpen && (
+        <SiteDialog
+          title="Bộ lọc kho phim"
+          size="lg"
+          onClose={() => setFilterSheetOpen(false)}
+          footer={
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                disabled={!hasNonQueryFilters}
+                onClick={clearNonQueryFilters}
+                className="btn-secondary min-h-[44px] text-xs disabled:opacity-40"
+              >
+                Xóa bộ lọc
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterSheetOpen(false)}
+                className="btn-primary min-h-[44px] px-5 text-xs font-bold"
+              >
+                Xem kết quả
+              </button>
+            </div>
+          }
+        >
+          <div data-testid="search-filter-sheet" className="space-y-5">
+            {availableGenres.length > 0 && (
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-bold text-ink">Thể loại</legend>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    aria-pressed={!genre}
+                    onClick={() => updateUrl({ genre: '', page: 0 })}
+                    className={`series-filter-chip min-h-[44px] ${!genre ? 'series-filter-chip--active' : ''}`}
+                  >
+                    Tất cả
+                  </button>
+                  {availableGenres.map((item) => {
+                    const active = genre.toLocaleLowerCase('vi') === item.id.toLocaleLowerCase('vi');
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => handleToggleGenre(item.id)}
+                        className={`series-filter-chip min-h-[44px] ${active ? 'series-filter-chip--active' : ''}`}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="sheet-year-min" className="mb-1.5 block text-xs font-semibold text-ink">
+                  Từ năm
+                </label>
+                <input
+                  id="sheet-year-min"
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_FILTER_YEAR}
+                  max={MAX_FILTER_YEAR}
+                  placeholder="2000"
+                  value={yearMinInput}
+                  onChange={(event) => handleYearChange('yearMin', event.target.value)}
+                  className="min-h-[44px] w-full rounded-lg border border-[#a6b4a4] bg-paper-white px-3 py-2 text-base text-ink focus:border-ink focus:outline-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="sheet-year-max" className="mb-1.5 block text-xs font-semibold text-ink">
+                  Đến năm
+                </label>
+                <input
+                  id="sheet-year-max"
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_FILTER_YEAR}
+                  max={MAX_FILTER_YEAR}
+                  placeholder="2026"
+                  value={yearMaxInput}
+                  onChange={(event) => handleYearChange('yearMax', event.target.value)}
+                  className="min-h-[44px] w-full rounded-lg border border-[#a6b4a4] bg-paper-white px-3 py-2 text-base text-ink focus:border-ink focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="sheet-sort-select" className="mb-1.5 block text-xs font-semibold text-ink">
+                Sắp xếp theo
+              </label>
+              <select
+                id="sheet-sort-select"
+                value={sortState.value}
+                onChange={(event) => handleSortChange(event.target.value as SortOptionValue)}
+                className="min-h-[44px] w-full rounded-lg border border-[#a6b4a4] bg-paper-white px-3 py-2 text-base font-medium text-ink focus:border-ink focus:outline-none"
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value || 'default'} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </SiteDialog>
+      )}
     </main>
   );
 }

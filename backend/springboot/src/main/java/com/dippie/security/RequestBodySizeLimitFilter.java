@@ -86,10 +86,18 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         if (CATALOG_IMPORT_PATHS.contains(path)) {
             return properties.catalogImportMaxBytes();
         }
+        if (isQuizCsvPath(path)) {
+            return properties.quizImportMaxBytes();
+        }
         if ("/api/chat".equals(path)) {
             return properties.chatMaxBytes();
         }
         return properties.defaultMaxBytes();
+    }
+
+    private static boolean isQuizCsvPath(String path) {
+        return path.startsWith("/api/users/quiz/sets/")
+                && (path.endsWith("/csv/preview") || path.endsWith("/csv/import"));
     }
 
     // trả 413 JSON đúng format từng nhóm route, /v1 dùng field detail còn lại dùng ApiResponse

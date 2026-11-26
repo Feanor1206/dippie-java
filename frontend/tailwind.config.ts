@@ -54,9 +54,20 @@ const config: Config = {
         'red-lg': '5px 5px 0 #18241e',
         'card-hover': '4px 4px 0 #18241e',
       },
+      transitionTimingFunction: {
+        'in-out-smooth': 'cubic-bezier(0.65, 0, 0.35, 1)',
+        overshoot: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+        'out-smooth': 'cubic-bezier(0.22, 1, 0.36, 1)',
+      },
+      transitionDuration: {
+        fast: '180ms',
+        smooth: '320ms',
+        reveal: '750ms',
+        progress: '900ms',
+      },
       animation: {
-        'fade-in': 'fadeIn 0.2s ease-out forwards',
-        'slide-up': 'slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'fade-in': 'fadeIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards',
+        'slide-up': 'slideUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards',
       },
       keyframes: {
         fadeIn: {

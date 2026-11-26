@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { FilmShelf } from '@/features/movies/components/FilmShelf';
 import { ContinueWatching } from '@/features/movies/components/ContinueWatching';
 import { SeriesRow } from '@/features/series/components/SeriesRow';
 import { KidModeDashboard } from '@/features/profiles/components/KidModeDashboard';
+import { KidHomeExperience } from '@/features/profiles/components/KidHomeExperience';
 import { useAuth } from '@/lib/context/AuthContext';
+import * as motion from '@/lib/motion';
 import { listMovieProgress } from '@/lib/services/movieProgress';
 import { getGuestWatchProgress, WATCH_HISTORY_CHANGED_EVENT } from '@/lib/services/watchProgressService';
 import {
@@ -34,6 +36,7 @@ const DEFAULT_GENRE_TOPICS: CatalogGenreOption[] = [
 
 export default function HomePage() {
   const { status, token, user } = useAuth();
+  const pageRef = useRef<HTMLElement>(null);
   const userId = status === 'authenticated' ? user?.id ?? null : null;
   const [historyVersion, setHistoryVersion] = useState(0);
 
@@ -112,6 +115,9 @@ export default function HomePage() {
     ? MOOD_PRESETS.find((preset) => preset.id === selectedMood)?.label || ''
     : '';
 
+  motion.useHeroEntrance?.(pageRef);
+  motion.useScrollReveal?.(pageRef, [films.length, result?.movies?.length ?? 0]);
+
   const moodChipBar = (
     <div
       role="group"
@@ -124,11 +130,12 @@ export default function HomePage() {
         data-testid="mood-preset-all"
         aria-pressed={selectedMood === null}
         onClick={() => setSelectedMood(null)}
-        className={`series-filter-chip min-h-[44px] ${selectedMood === null ? 'series-filter-chip--active' : ''}`}
+        style={{ '--stagger-idx': 0 } as React.CSSProperties}
+        className={`series-filter-chip motion-chip-pop min-h-[44px] ${selectedMood === null ? 'series-filter-chip--active' : ''}`}
       >
         Tất cả
       </button>
-      {MOOD_PRESETS.map((preset) => {
+      {MOOD_PRESETS.map((preset, index) => {
         const active = selectedMood === preset.id;
         return (
           <button
@@ -138,7 +145,8 @@ export default function HomePage() {
             data-mood-id={preset.id}
             aria-pressed={active}
             onClick={() => setSelectedMood(active ? null : preset.id)}
-            className={`series-filter-chip min-h-[44px] ${active ? 'series-filter-chip--active' : ''}`}
+            style={{ '--stagger-idx': index + 1 } as React.CSSProperties}
+            className={`series-filter-chip motion-chip-pop min-h-[44px] ${active ? 'series-filter-chip--active' : ''}`}
           >
             {preset.label}
           </button>
@@ -147,31 +155,44 @@ export default function HomePage() {
     </div>
   );
 
+  if (useAuth()?.isKidMode) return <KidHomeExperience films={films} recommendedMovies={result?.movies || []} recommendationsLoading={result === undefined} moodControls={moodChipBar} emptyRecommendationMessage={activeMoodLabel ? `Chưa có phim phù hợp cho mục "${activeMoodLabel}".` : 'Chưa có phim nào ở mục này.'} onResetMood={selectedMood ? () => setSelectedMood(null) : undefined} onRetryRecommendations={result === null ? () => { setState(null); setRetry((n) => n + 1); } : undefined} />;
+
   return (
-    <main id="main-content" tabIndex={-1} className="page-shell home-page">
+    <main ref={pageRef} id="main-content" tabIndex={-1} className="page-shell home-page">
       <section className="cover-grid" aria-labelledby="cover-title">
         <div className="cover-copy">
-          <h1 id="cover-title">Hoạt hình cho cả nhà</h1>
-          <p className="cover-intro">Tìm theo tên phim, tên tập hoặc nội dung bé thích.</p>
-          <Link to="/search" className="cover-cta">
+          <h1 id="cover-title">
+            <span data-hero-word="" className="inline-block">Hoạt</span>{' '}
+            <span data-hero-word="" className="inline-block">hình</span>{' '}
+            <span data-hero-word="" className="inline-block">cho</span>{' '}
+            <span data-hero-word="" className="motion-underline-sweep">cả nhà</span>
+          </h1>
+          <p data-hero-fade="" className="cover-intro">Tìm nhanh theo tên phim, tập phim hoặc câu chuyện yêu thích.</p>
+          <Link to="/search" data-hero-fade="" className="cover-cta motion-sheen">
             Tìm phim
           </Link>
 
           <nav className="topics-list" aria-label="Gợi ý tìm phim">
-            {quickTopics.map((topic) => (
-              <Link key={topic.label} to={topic.href} className="topic-chip">
+            {quickTopics.map((topic, index) => (
+              <Link
+                key={topic.label}
+                to={topic.href}
+                style={{ '--stagger-idx': index } as React.CSSProperties}
+                className="topic-chip motion-chip-pop"
+              >
                 {topic.label}
               </Link>
             ))}
           </nav>
         </div>
 
-        <div className="cover-art-panel">
+        <div data-hero-fade="" className="cover-art-panel">
           <img
             src={coverArt}
             alt="Bạn nhỏ và thỏ đi đến rạp chiếu phim trong rừng"
             width="760"
             height="580"
+            decoding="async"
           />
         </div>
       </section>

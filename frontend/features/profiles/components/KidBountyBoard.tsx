@@ -114,6 +114,7 @@ export function KidBountyBoard({ token }: { token: string }) {
   return (
     <div
       data-testid="kid-bounty-board"
+      data-reveal-item=""
       className="rounded-2xl border-2 border-ink bg-paper-white p-4 shadow-[3px_3px_0_#203328] sm:p-5"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -129,7 +130,7 @@ export function KidBountyBoard({ token }: { token: string }) {
         <div
           role={feedback.type === 'error' ? 'alert' : 'status'}
           data-testid="kid-bounty-feedback"
-          className={`mt-3 rounded-xl border px-3.5 py-2.5 text-xs font-semibold ${
+          className={`motion-toast-enter mt-3 rounded-xl border px-3.5 py-2.5 text-xs font-semibold ${
             feedback.type === 'error'
               ? 'border-red-800/35 bg-red-50 text-red-900'
               : 'border-ink/40 bg-mint/70 text-ink'
@@ -146,7 +147,7 @@ export function KidBountyBoard({ token }: { token: string }) {
             <li
               key={task.id}
               data-testid={`kid-bounty-card-${task.id}`}
-              className="flex flex-col justify-between gap-3 rounded-xl border-2 border-ink/30 bg-surface p-3.5"
+              className="flex flex-col justify-between gap-3 rounded-xl border-2 border-ink/30 bg-surface p-3.5 transition-transform duration-smooth ease-out-smooth hover:-translate-y-0.5"
             >
               <div className="space-y-1.5">
                 <div className="flex items-start justify-between gap-2">
@@ -154,11 +155,11 @@ export function KidBountyBoard({ token }: { token: string }) {
                     <span aria-hidden="true">{iconMeta.emoji} </span>
                     {task.title}
                   </p>
-                  <span className="shrink-0 rounded-full border border-ink bg-[#f2d18c] px-2 py-0.5 text-[11px] font-extrabold text-ink">
+                  <span className="shrink-0 rounded-full border border-ink bg-[#f2d18c] px-2 py-0.5 text-[0.6875rem] font-extrabold text-ink">
                     +{task.rewardMinutes} phút
                   </span>
                 </div>
-                <p className="text-[11px] text-muted">
+                <p className="text-[0.6875rem] text-muted">
                   {task.repeatableDaily ? 'Nhiệm vụ mỗi ngày' : 'Nhiệm vụ đặc biệt'}
                 </p>
               </div>
@@ -223,7 +224,7 @@ export function KidBountyBoard({ token }: { token: string }) {
               ) : (
                 <span
                   data-testid={`kid-bounty-completed-badge-${task.id}`}
-                  className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-ink/40 bg-mint/70 px-3 text-xs font-bold text-ink"
+                  className="motion-correct-pop inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-ink/40 bg-mint/70 px-3 text-xs font-bold text-ink"
                 >
                   Đã hoàn thành hôm nay ✓
                 </span>

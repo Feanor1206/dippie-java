@@ -294,11 +294,11 @@ function PlaybackReports({ token }: { token: string }) {
                     </h2>
 
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                      <span className="rounded border border-surface-border/40 bg-surface-elevated px-2 py-0.5 font-mono text-[11px] text-ink">
+                      <span className="rounded border border-surface-border/40 bg-surface-elevated px-2 py-0.5 font-mono text-[0.6875rem] text-ink">
                         {report.episodeId}
                       </span>
                       {report.assetId && (
-                        <span className="break-all rounded border border-surface-border/40 bg-surface-muted px-2 py-0.5 font-mono text-[11px] text-muted">
+                        <span className="break-all rounded border border-surface-border/40 bg-surface-muted px-2 py-0.5 font-mono text-[0.6875rem] text-muted">
                           Nguồn: {report.assetId}
                         </span>
                       )}

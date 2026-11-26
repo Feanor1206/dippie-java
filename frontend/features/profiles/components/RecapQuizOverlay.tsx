@@ -1,4 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Check, Home, Sparkles, Volume2 } from 'lucide-react';
+import { useBlockingOverlayFocus } from '@/features/profiles/hooks/useBlockingOverlayFocus';
+import { speakVietnamesePrompt } from '@/features/quiz/quizService';
 import {
   fetchRecapQuiz,
   submitRecapQuizAnswer,
@@ -6,19 +9,26 @@ import {
   type RecapQuizItem,
 } from '@/lib/services/playFeaturesService';
 
+const CHOICE_BADGES = ['▲', '◆', '●', '■'] as const;
+
 export function RecapQuizOverlay({
   token,
   episodeId,
   nextEpisodeLabel,
   onUnlocked,
   onRewatchEpisode,
+  onFinishSession,
 }: {
   token: string;
   episodeId: string;
   nextEpisodeLabel: string;
   onUnlocked: (targetEpisodeId: string | null) => void;
   onRewatchEpisode: () => void;
+  onFinishSession?: () => void;
 }) {
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  useBlockingOverlayFocus(overlayRef, true);
+
   const [quiz, setQuiz] = useState<RecapQuiz | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -58,6 +68,19 @@ export function RecapQuizOverlay({
 
   const itemById = new Map<string, RecapQuizItem>((quiz?.items ?? []).map((item) => [item.id, item]));
   const remainingItems = (quiz?.items ?? []).filter((item) => !orderedIds.includes(item.id));
+
+  const handleReadFullRecap = () => {
+    if (!quiz) {
+      speakVietnamesePrompt('Cùng nhớ lại tập vừa xem nhé!');
+      return;
+    }
+    const intro =
+      quiz.quizType === 'ORDER_SCENES'
+        ? `${quiz.prompt}. Chạm chọn cảnh xảy ra trước rồi tới cảnh tiếp theo nhé.`
+        : quiz.prompt;
+    const itemLines = quiz.items.map((item, idx) => `Lựa chọn ${idx + 1}: ${item.text}`);
+    speakVietnamesePrompt([intro, ...itemLines].join(' '));
+  };
 
   const toggleOrderItem = (id: string) => {
     setFeedback(null);
@@ -113,7 +136,7 @@ export function RecapQuizOverlay({
       } else {
         setFeedback({
           kind: 'error',
-          text: result.message || 'Chưa đúng rồi, bé thử lại nhé!',
+          text: result.message || 'Chưa đúng thứ tự rồi, bé nghe lại hoặc xếp lại nhé!',
         });
       }
     } catch (err: unknown) {
@@ -126,31 +149,47 @@ export function RecapQuizOverlay({
     }
   };
 
+  const orderStepGuide =
+    quiz && quiz.quizType === 'ORDER_SCENES'
+      ? orderedIds.length === 0
+        ? 'Bước 1: Chạm vào cảnh xảy ra đầu tiên nhé!'
+        : orderedIds.length < quiz.items.length
+        ? `Bước ${orderedIds.length + 1}: Chạm vào cảnh xảy ra tiếp theo nhé!`
+        : `Đã xếp đủ ${quiz.items.length} cảnh rồi! Bấm nút bên dưới để mở tập mới nhé.`
+      : '';
+
   return (
     <div
+      ref={overlayRef}
+      tabIndex={-1}
       role="dialog"
-      aria-modal="false"
+      aria-modal="true"
       aria-labelledby="recap-quiz-title"
       data-testid="recap-quiz-overlay"
-      className="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-ink/90 p-3 sm:p-5"
+      className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto overscroll-contain bg-ink/90 p-3 sm:items-center sm:p-5 animate-fade-in"
     >
-      <div className="my-auto w-full max-w-lg rounded-2xl border-2 border-ink bg-paper-white p-4 text-left shadow-brand-lg sm:p-5">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <span className="inline-flex items-center rounded-full border border-ink bg-[#f2d18c] px-2.5 py-0.5 text-[11px] font-bold text-ink">
-              Ôn tập qua tập mới
+      <div className="motion-overlay-overshoot my-auto w-full max-w-lg rounded-2xl border-2 border-ink bg-paper-white p-4 text-left shadow-brand-lg sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <span className="motion-chip-pop inline-flex items-center gap-1 rounded-full border border-ink bg-[#f2d18c] px-2.5 py-0.5 text-[0.6875rem] font-bold text-ink">
+              <Sparkles size={12} aria-hidden="true" />
+              <span>Nhớ lại tập vừa xem</span>
             </span>
             <h3 id="recap-quiz-title" className="mt-1.5 font-display text-base font-bold text-ink sm:text-lg">
               {quiz?.prompt || 'Cùng nhớ lại tập vừa xem nhé!'}
             </h3>
           </div>
+
           <button
             type="button"
-            data-testid="recap-rewatch-button"
-            onClick={onRewatchEpisode}
-            className="btn-secondary min-h-[44px] shrink-0 px-3 py-1.5 text-xs"
+            data-autofocus=""
+            data-testid="recap-read-aloud-button"
+            onClick={handleReadFullRecap}
+            aria-label="Nghe đọc câu hỏi ôn tập và các lựa chọn"
+            className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-lg border-2 border-ink bg-[#fef3c7] px-3 py-1.5 text-xs font-bold text-ink shadow-[2px_2px_0_#203328] hover:bg-[#fde68a] cursor-pointer"
           >
-            Xem lại tập này
+            <Volume2 size={16} aria-hidden="true" />
+            <span>Nghe đọc</span>
           </button>
         </div>
 
@@ -166,7 +205,7 @@ export function RecapQuizOverlay({
               <div
                 role="status"
                 data-testid="recap-feedback"
-                className="rounded-xl border border-ink/40 bg-mint/70 px-4 py-3 text-xs font-bold text-ink sm:text-sm"
+                className="motion-correct-pop rounded-xl border border-ink/40 bg-mint/70 px-4 py-3 text-xs font-bold text-ink sm:text-sm"
               >
                 {feedback.text}
               </div>
@@ -175,7 +214,7 @@ export function RecapQuizOverlay({
               type="button"
               data-testid="recap-continue-next-button"
               onClick={() => onUnlocked(solvedTargetId)}
-              className="btn-primary min-h-[44px] w-full justify-center text-xs font-bold sm:text-sm"
+              className="btn-primary motion-sheen min-h-[48px] w-full justify-center text-xs font-bold sm:text-sm"
             >
               {nextEpisodeLabel ? `Mở ${nextEpisodeLabel}` : 'Xem tập tiếp theo'}
             </button>
@@ -186,9 +225,24 @@ export function RecapQuizOverlay({
           <form onSubmit={handleSubmit} className="mt-3 space-y-3">
             {quiz.quizType === 'ORDER_SCENES' ? (
               <div className="space-y-3">
-                <p className="text-xs text-muted">
-                  Chạm từng cảnh theo đúng thứ tự nhé!
-                </p>
+                <div
+                  data-testid="recap-step-guide"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink/30 bg-mint/35 px-3 py-2 text-xs font-bold text-ink"
+                >
+                  <span>{orderStepGuide}</span>
+                  <div className="flex items-center gap-1" aria-hidden="true">
+                    {quiz.items.map((item, idx) => (
+                      <span
+                        key={item.id}
+                        className={`grid h-6 w-6 place-items-center rounded-full border border-ink text-[0.6875rem] font-extrabold ${
+                          idx < orderedIds.length ? 'bg-ink text-paper-white' : 'bg-paper-white text-muted'
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+                    ))}
+                  </div>
+                </div>
 
                 {orderedIds.length > 0 && (
                   <div className="space-y-1.5" data-testid="recap-ordered-slots">
@@ -203,19 +257,28 @@ export function RecapQuizOverlay({
                           onDragOver={(event) => event.preventDefault()}
                           onDrop={() => handleDropAt(index)}
                           data-testid={`recap-slot-${index + 1}`}
-                          className="flex items-center gap-2 rounded-xl border-2 border-ink bg-mint/55 px-3 py-2 text-xs text-ink"
+                          className="flex items-center gap-2 rounded-xl border-2 border-ink bg-mint/55 px-2.5 py-2 text-xs text-ink"
                         >
-                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-ink bg-ink text-[11px] font-bold text-paper-white">
+                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-ink bg-ink text-xs font-extrabold text-paper-white">
                             {index + 1}
                           </span>
                           <button
                             type="button"
                             onClick={() => toggleOrderItem(id)}
-                            className="min-h-[44px] flex-1 text-left font-semibold text-ink cursor-pointer"
+                            className="min-h-[44px] min-w-0 flex-1 text-left font-semibold text-ink cursor-pointer"
                           >
                             {item.text}
                           </button>
                           <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              data-testid={`recap-speak-slot-${index + 1}`}
+                              aria-label={`Nghe đọc cảnh ${index + 1}: ${item.text}`}
+                              onClick={() => speakVietnamesePrompt(`Cảnh số ${index + 1}: ${item.text}`)}
+                              className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-ink bg-paper-white text-ink hover:bg-[#fef3c7] cursor-pointer"
+                            >
+                              <Volume2 size={15} aria-hidden="true" />
+                            </button>
                             <button
                               type="button"
                               aria-label={`Đưa cảnh ${index + 1} lên trên`}
@@ -244,20 +307,30 @@ export function RecapQuizOverlay({
                 {remainingItems.length > 0 && (
                   <div className="space-y-1.5" data-testid="recap-pool-items">
                     {remainingItems.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        draggable
-                        data-testid={`recap-item-${item.id}`}
-                        onDragStart={() => setDraggingId(item.id)}
-                        onClick={() => toggleOrderItem(item.id)}
-                        className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-surface-border bg-surface-muted px-3 py-2 text-left text-xs font-medium text-ink hover:border-ink hover:bg-paper-white cursor-pointer"
-                      >
-                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-ink/40 bg-paper-white text-[11px] font-bold text-muted">
-                          +
-                        </span>
-                        <span>{item.text}</span>
-                      </button>
+                      <div key={item.id} className="flex items-stretch gap-1.5">
+                        <button
+                          type="button"
+                          draggable
+                          data-testid={`recap-item-${item.id}`}
+                          onDragStart={() => setDraggingId(item.id)}
+                          onClick={() => toggleOrderItem(item.id)}
+                          className="flex min-h-[56px] min-w-0 flex-1 items-center gap-2.5 rounded-xl border-2 border-ink/40 bg-surface-muted px-3 py-2 text-left text-xs font-bold text-ink hover:border-ink hover:bg-paper-white cursor-pointer sm:text-sm"
+                        >
+                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-ink bg-[#f2d18c] text-xs font-extrabold text-ink">
+                            {orderedIds.length + 1}
+                          </span>
+                          <span className="min-w-0 flex-1 break-words leading-snug">{item.text}</span>
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`recap-speak-item-${item.id}`}
+                          aria-label={`Nghe đọc cảnh: ${item.text}`}
+                          onClick={() => speakVietnamesePrompt(item.text)}
+                          className="inline-flex min-h-[56px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border-2 border-ink bg-paper-white px-2.5 text-ink hover:bg-[#fef3c7] cursor-pointer"
+                        >
+                          <Volume2 size={17} aria-hidden="true" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -278,26 +351,45 @@ export function RecapQuizOverlay({
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-2" data-testid="recap-choices">
-                {quiz.items.map((item) => {
+                {quiz.items.map((item, idx) => {
                   const selected = selectedChoiceId === item.id;
+                  const badgeSymbol = CHOICE_BADGES[idx % CHOICE_BADGES.length];
                   return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      data-testid={`recap-choice-${item.id}`}
-                      aria-pressed={selected}
-                      onClick={() => {
-                        setSelectedChoiceId(item.id);
-                        setFeedback(null);
-                      }}
-                      className={`min-h-[44px] w-full rounded-xl border-2 px-3.5 py-2.5 text-left text-xs font-semibold transition-colors cursor-pointer sm:text-sm ${
-                        selected
-                          ? 'border-ink bg-mint text-ink shadow-[2px_2px_0_#203328]'
-                          : 'border-surface-border bg-surface-muted text-ink hover:border-ink/60'
-                      }`}
-                    >
-                      {item.text}
-                    </button>
+                    <div key={item.id} className="flex items-stretch gap-1.5">
+                      <button
+                        type="button"
+                        data-testid={`recap-choice-${item.id}`}
+                        aria-pressed={selected}
+                        onClick={() => {
+                          setSelectedChoiceId(item.id);
+                          setFeedback(null);
+                        }}
+                        className={`flex min-h-[56px] min-w-0 flex-1 items-center gap-2.5 rounded-xl border-2 px-3 py-2.5 text-left text-xs font-bold transition-colors cursor-pointer sm:text-sm ${
+                          selected
+                            ? 'border-ink bg-mint text-ink shadow-[3px_3px_0_#203328]'
+                            : 'border-surface-border bg-surface-muted text-ink hover:border-ink/60'
+                        }`}
+                      >
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-ink bg-paper-white text-xs font-extrabold text-ink">
+                          {selected ? <Check size={15} aria-hidden="true" /> : badgeSymbol}
+                        </span>
+                        <span className="min-w-0 flex-1 break-words leading-snug">{item.text}</span>
+                        {selected && (
+                          <span className="shrink-0 rounded-full border border-ink bg-paper-white px-2 py-0.5 text-[0.6875rem] font-extrabold text-ink">
+                            Đã chọn
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`recap-speak-item-${item.id}`}
+                        aria-label={`Nghe đọc lựa chọn: ${item.text}`}
+                        onClick={() => speakVietnamesePrompt(item.text)}
+                        className="inline-flex min-h-[56px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border-2 border-ink bg-paper-white px-2.5 text-ink hover:bg-[#fef3c7] cursor-pointer"
+                      >
+                        <Volume2 size={17} aria-hidden="true" />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -317,12 +409,38 @@ export function RecapQuizOverlay({
               type="submit"
               data-testid="recap-submit-button"
               disabled={!canSubmit}
-              className="btn-primary min-h-[44px] w-full justify-center text-xs font-bold sm:text-sm disabled:opacity-50"
+              className="btn-primary min-h-[52px] w-full justify-center text-xs font-bold sm:text-sm disabled:opacity-50"
             >
               {submitting ? 'Đang kiểm tra…' : 'Trả lời để mở tập tiếp theo'}
             </button>
           </form>
         )}
+
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-surface-border pt-3">
+          <button
+            type="button"
+            data-testid="recap-rewatch-button"
+            onClick={onRewatchEpisode}
+            className="btn-secondary min-h-[44px] px-3 py-1.5 text-xs font-semibold"
+          >
+            Xem lại tập này
+          </button>
+
+          <a
+            href="/"
+            data-testid="recap-finish-today-button"
+            onClick={(event) => {
+              if (onFinishSession) {
+                event.preventDefault();
+                onFinishSession();
+              }
+            }}
+            className="btn-secondary inline-flex min-h-[44px] items-center gap-1.5 px-3 py-1.5 text-xs font-bold"
+          >
+            <Home size={14} aria-hidden="true" />
+            <span>Xong hôm nay · Về trang chủ</span>
+          </a>
+        </div>
       </div>
     </div>
   );

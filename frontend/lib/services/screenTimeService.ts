@@ -5,6 +5,11 @@ import {
   isLikelyNetworkError,
   withRequestTimeout,
 } from '@/lib/services/apiRequest';
+import {
+  normalizeQuizOptions,
+  type QuizOption,
+  type QuizOptionKey,
+} from '@/features/quiz/quizService';
 
 const API = '/api';
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -15,26 +20,14 @@ export const SCREEN_TIME_UPDATED_STORAGE_KEY = 'dippie:screen-time-updated';
 export const HEARTBEAT_INTERVAL_MS = 15_000;
 export const DAILY_MINUTE_PRESETS = [30, 60, 90, 120] as const;
 
-export type MathLevelOption = {
-  level: 1 | 2 | 3 | 4;
-  shortLabel: string;
-  label: string;
-};
-
-export const MATH_LEVEL_OPTIONS: readonly MathLevelOption[] = [
-  { level: 1, shortLabel: 'Phạm vi 10', label: 'Mức 1 · Cộng trừ trong phạm vi 10' },
-  { level: 2, shortLabel: 'Phạm vi 20', label: 'Mức 2 · Cộng trừ trong phạm vi 20' },
-  { level: 3, shortLabel: 'Phạm vi 100', label: 'Mức 3 · Cộng trừ trong phạm vi 100' },
-  { level: 4, shortLabel: 'Cửu chương × / ÷', label: 'Mức 4 · Bảng cửu chương nhân / chia' },
-];
-
 export type ScreenTimeStatus = {
   limited: boolean;
   unlimited: boolean;
   profileId: number | null;
   day: string;
   dailyMinutes: number | null;
-  mathLevel: number;
+  quizGrade: string | null;
+  quizGradeLabel: string | null;
   rewardMinutes: number;
   maxBonusMinutes: number;
   dailySeconds: number;
@@ -58,18 +51,26 @@ export type ScreenTimeHeartbeatResult = {
   status: ScreenTimeStatus;
 };
 
-export type MathChallenge = {
+export type ScreenTimeChallenge = {
   token: string;
   question: string;
-  mathLevel: number;
+  options: QuizOption[];
+  subject: string;
+  subjectLabel: string;
+  grade: string;
+  gradeLabel: string;
+  setName: string;
   rewardMinutes: number;
   expiresAt: string;
   expiresInSeconds: number;
   bonusRemainingSeconds: number;
 };
 
-export type MathChallengeAnswerResult = {
+export type ScreenTimeChallengeAnswerResult = {
   correct: boolean;
+  correctOption: QuizOptionKey | null;
+  correctText: string | null;
+  explanation: string | null;
   earnedSeconds: number;
   earnedMinutes: number;
   bonusCapReached: boolean;
@@ -88,7 +89,6 @@ export type ScreenTimeSettingsPayload = {
   pin: string;
   dailyMinutes: number | null;
   unlimited?: boolean;
-  mathLevel?: number;
   rewardMinutes?: number;
   maxBonusMinutes?: number;
 };
@@ -109,6 +109,13 @@ export class ScreenTimeApiError extends Error {
     this.status = status;
     this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+function normalizeOptionKey(raw: unknown): QuizOptionKey | null {
+  if (typeof raw !== 'string') return null;
+  const upper = raw.trim().toUpperCase();
+  if (upper === 'A' || upper === 'B' || upper === 'C' || upper === 'D') return upper;
+  return null;
 }
 
 export function notifyScreenTimeLocked(): void {
@@ -137,11 +144,6 @@ export function formatDailyLimitLabel(dailyMinutes: number | null | undefined, u
   }
   const safe = typeof dailyMinutes === 'number' && Number.isFinite(dailyMinutes) ? dailyMinutes : 60;
   return `${safe} phút`;
-}
-
-export function getMathLevelLabel(level: number): string {
-  const found = MATH_LEVEL_OPTIONS.find((item) => item.level === level);
-  return found ? found.label : MATH_LEVEL_OPTIONS[0].label;
 }
 
 export function formatRemainingTime(remainingSeconds: number | null, locked = false): string {
@@ -184,7 +186,6 @@ export function formatUsageDuration(seconds: number): string {
 export function validateScreenTimeSettings(input: {
   dailyMinutes: number | null;
   unlimited?: boolean;
-  mathLevel?: number;
   rewardMinutes?: number;
   maxBonusMinutes?: number;
 }): string | null {
@@ -197,9 +198,6 @@ export function validateScreenTimeSettings(input: {
     ) {
       return 'Giới hạn thời gian mỗi ngày cần từ 0 đến 600 phút.';
     }
-  }
-  if (input.mathLevel !== undefined && (!Number.isInteger(input.mathLevel) || input.mathLevel < 1 || input.mathLevel > 4)) {
-    return 'Cấp độ bài toán cần từ 1 đến 4.';
   }
   if (
     input.rewardMinutes !== undefined &&
@@ -261,7 +259,9 @@ function normalizeStatus(raw: any): ScreenTimeStatus {
     profileId,
     day: typeof raw?.day === 'string' ? raw.day : '',
     dailyMinutes,
-    mathLevel: Math.min(4, Math.max(1, toNonNegativeNumber(raw?.mathLevel, 1))) || 1,
+    quizGrade: typeof raw?.quizGrade === 'string' && raw.quizGrade.trim() ? raw.quizGrade.trim() : null,
+    quizGradeLabel:
+      typeof raw?.quizGradeLabel === 'string' && raw.quizGradeLabel.trim() ? raw.quizGradeLabel.trim() : null,
     rewardMinutes: toNonNegativeNumber(raw?.rewardMinutes, 5),
     maxBonusMinutes: toNonNegativeNumber(raw?.maxBonusMinutes, 30),
     dailySeconds: toNonNegativeNumber(raw?.dailySeconds, 0),
@@ -379,10 +379,10 @@ export async function sendScreenTimeHeartbeat(
   );
 }
 
-export async function fetchMathChallenge(
+export async function fetchScreenTimeChallenge(
   token: string,
   options: ScreenTimeRequestOptions = {}
-): Promise<MathChallenge> {
+): Promise<ScreenTimeChallenge> {
   const url = `${options.baseUrl || API}/users/screen-time/challenge`;
   return runScreenTimeRequest(
     async (signal) => {
@@ -391,16 +391,22 @@ export async function fetchMathChallenge(
         headers: authHeaders(token),
         signal,
       });
-      const { data } = await parseEnvelope(response, 'Chưa lấy được câu hỏi toán.');
+      const { data } = await parseEnvelope(response, 'Chưa lấy được câu hỏi.');
       const challengeToken = typeof data?.token === 'string' ? data.token.trim() : '';
       const question = typeof data?.question === 'string' ? data.question.trim() : '';
-      if (!challengeToken || !question) {
-        throw new ScreenTimeApiError('Dữ liệu câu hỏi toán chưa hợp lệ.', 502);
+      const quizOptions = normalizeQuizOptions(data?.options);
+      if (!challengeToken || !question || quizOptions.length !== 4) {
+        throw new ScreenTimeApiError('Dữ liệu câu hỏi chưa hợp lệ.', 502);
       }
       return {
         token: challengeToken,
         question,
-        mathLevel: Math.min(4, Math.max(1, toNonNegativeNumber(data?.mathLevel, 1))) || 1,
+        options: quizOptions,
+        subject: typeof data?.subject === 'string' ? data.subject : 'TOAN',
+        subjectLabel: typeof data?.subjectLabel === 'string' ? data.subjectLabel : 'Toán',
+        grade: typeof data?.grade === 'string' ? data.grade : 'LOP_1',
+        gradeLabel: typeof data?.gradeLabel === 'string' ? data.gradeLabel : 'Lớp 1',
+        setName: typeof data?.setName === 'string' ? data.setName : '',
         rewardMinutes: toNonNegativeNumber(data?.rewardMinutes, 5),
         expiresAt: typeof data?.expiresAt === 'string' ? data.expiresAt : '',
         expiresInSeconds: toNonNegativeNumber(data?.expiresInSeconds, 120),
@@ -411,25 +417,28 @@ export async function fetchMathChallenge(
   );
 }
 
-export async function submitMathChallengeAnswer(
+export async function submitScreenTimeChallengeAnswer(
   token: string,
   challengeToken: string,
-  answer: number,
+  option: QuizOptionKey,
   options: ScreenTimeRequestOptions = {}
-): Promise<MathChallengeAnswerResult> {
+): Promise<ScreenTimeChallengeAnswerResult> {
   const url = `${options.baseUrl || API}/users/screen-time/challenge/answer`;
   return runScreenTimeRequest(
     async (signal) => {
       const response = await apiFetch(url, {
         method: 'POST',
         headers: authHeaders(token, true),
-        body: JSON.stringify({ token: challengeToken, answer }),
+        body: JSON.stringify({ token: challengeToken, option }),
         signal,
       });
       const { data, message } = await parseEnvelope(response, 'Chưa kiểm tra được đáp án.');
       const status = normalizeStatus(data?.status);
       return {
         correct: Boolean(data?.correct),
+        correctOption: normalizeOptionKey(data?.correctOption),
+        correctText: typeof data?.correctText === 'string' ? data.correctText : null,
+        explanation: typeof data?.explanation === 'string' && data.explanation.trim() ? data.explanation : null,
         earnedSeconds: toNonNegativeNumber(data?.earnedSeconds, 0),
         earnedMinutes: toNonNegativeNumber(data?.earnedMinutes, 0),
         bonusCapReached: Boolean(data?.bonusCapReached) || status.bonusCapReached,
@@ -511,6 +520,33 @@ export async function grantChildExtraMinutes(
         throw new ScreenTimeApiError('Dữ liệu thời gian xem chưa hợp lệ.', 502);
       }
       return normalized;
+    },
+    options
+  );
+}
+
+export async function grantExtraMinutesInKidMode(
+  token: string,
+  pin: string,
+  minutes: number,
+  options: ScreenTimeRequestOptions = {}
+): Promise<{ status: ScreenTimeStatus; message: string }> {
+  const url = `${options.baseUrl || API}/users/screen-time/parent-grant`;
+  return runScreenTimeRequest(
+    async (signal) => {
+      const response = await apiFetch(url, {
+        method: 'POST',
+        headers: authHeaders(token, true),
+        body: JSON.stringify({ pin, minutes }),
+        signal,
+      });
+      const { data, message } = await parseEnvelope(response, 'Chưa cộng thêm phút xem cho bé được.');
+      const status = normalizeStatus(data);
+      broadcastScreenTimeUpdated(status.profileId ?? undefined);
+      return {
+        status,
+        message: message || `Ba mẹ đã cho thêm ${minutes} phút xem phim hôm nay.`,
+      };
     },
     options
   );

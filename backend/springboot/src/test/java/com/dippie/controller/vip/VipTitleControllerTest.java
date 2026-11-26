@@ -11,17 +11,23 @@ import com.dippie.repository.catalog.CatalogMediaAssetRepository;
 import com.dippie.repository.catalog.CatalogSeriesRepository;
 import com.dippie.repository.media.MediaAssetRepository;
 import com.dippie.repository.movie.MovieRepository;
+import com.dippie.model.quiz.QuizChallengeContext;
+import com.dippie.model.quiz.QuizGrade;
+import com.dippie.model.quiz.QuizOptionKey;
 import com.dippie.repository.profile.ChildProfileRepository;
 import com.dippie.repository.profile.ScreenTimeLedgerRepository;
 import com.dippie.repository.progress.WatchProgressRepository;
+import com.dippie.repository.quiz.ChildQuizSetRepository;
+import com.dippie.repository.quiz.QuizAttemptRepository;
 import com.dippie.repository.user.UserRepository;
 import com.dippie.repository.vip.ChildVipEpisodeUnlockRepository;
 import com.dippie.repository.vip.ChildVipSeriesRepository;
 import com.dippie.security.LoginRateLimiter;
 import com.dippie.service.catalog.CatalogReadModelCache;
-import com.dippie.service.profile.MathChallengeRateLimiter;
-import com.dippie.service.profile.MathChallengeService;
 import com.dippie.service.profile.ParentPinRateLimiter;
+import com.dippie.service.quiz.QuizRateLimiter;
+import com.dippie.service.quiz.QuizSelectionService;
+import com.dippie.service.quiz.QuizTokenCodec;
 import com.dippie.service.vip.VipTitleService;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -112,9 +118,11 @@ class VipTitleControllerTest {
     private final CatalogReadModelCache catalogReadModelCache;
     private final LoginRateLimiter loginRateLimiter;
     private final ParentPinRateLimiter parentPinRateLimiter;
-    private final MathChallengeRateLimiter mathChallengeRateLimiter;
-    private final MathChallengeService mathChallengeService;
-    private final VipTitleService vipTitleService;
+    private final QuizRateLimiter quizRateLimiter;
+    private final QuizTokenCodec quizTokenCodec;
+    private final QuizSelectionService quizSelectionService;
+    private final ChildQuizSetRepository childQuizSetRepository;
+    private final QuizAttemptRepository quizAttemptRepository;
 
     VipTitleControllerTest(
             MockMvc mockMvc,
@@ -136,9 +144,11 @@ class VipTitleControllerTest {
             CatalogReadModelCache catalogReadModelCache,
             LoginRateLimiter loginRateLimiter,
             ParentPinRateLimiter parentPinRateLimiter,
-            MathChallengeRateLimiter mathChallengeRateLimiter,
-            MathChallengeService mathChallengeService,
-            VipTitleService vipTitleService
+            QuizRateLimiter quizRateLimiter,
+            QuizTokenCodec quizTokenCodec,
+            QuizSelectionService quizSelectionService,
+            ChildQuizSetRepository childQuizSetRepository,
+            QuizAttemptRepository quizAttemptRepository
     ) {
         this.mockMvc = mockMvc;
         this.objectMapper = objectMapper;
@@ -159,9 +169,11 @@ class VipTitleControllerTest {
         this.catalogReadModelCache = catalogReadModelCache;
         this.loginRateLimiter = loginRateLimiter;
         this.parentPinRateLimiter = parentPinRateLimiter;
-        this.mathChallengeRateLimiter = mathChallengeRateLimiter;
-        this.mathChallengeService = mathChallengeService;
-        this.vipTitleService = vipTitleService;
+        this.quizRateLimiter = quizRateLimiter;
+        this.quizTokenCodec = quizTokenCodec;
+        this.quizSelectionService = quizSelectionService;
+        this.childQuizSetRepository = childQuizSetRepository;
+        this.quizAttemptRepository = quizAttemptRepository;
     }
 
     @BeforeEach
@@ -169,9 +181,11 @@ class VipTitleControllerTest {
         clock.set(Instant.parse("2026-11-26T10:00:00Z"));
         loginRateLimiter.reset();
         parentPinRateLimiter.reset();
-        mathChallengeRateLimiter.reset();
-        mathChallengeService.resetUsedTokens();
-        vipTitleService.resetUsedTokens();
+        quizRateLimiter.reset();
+        quizTokenCodec.resetUsedTokens();
+        quizSelectionService.resetRecentIssued();
+        quizAttemptRepository.deleteAll();
+        childQuizSetRepository.deleteAll();
         vipUnlockRepository.deleteAll();
         vipSeriesRepository.deleteAll();
         ledgerRepository.deleteAll();
@@ -201,11 +215,11 @@ class VipTitleControllerTest {
         String child1Token = switchToChild(mainToken, child1Id);
         String child2Token = switchToChild(mainToken, child2Id);
 
-        // đặt mức toán bé 1 là 2 -> toán VIP phải là mức 3
-        mockMvc.perform(put("/api/users/profiles/" + child1Id + "/screen-time")
+        // đặt lớp bé 1 là LOP_2 -> câu hỏi VIP phải lên LOP_3
+        mockMvc.perform(post("/api/users/quiz/profiles/" + child1Id + "/grade")
                         .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("pin", "3690", "dailyMinutes", 60, "mathLevel", 2))))
+                        .content(json(Map.of("pin", "3690", "grade", "LOP_2"))))
                 .andExpect(status().isOk());
 
         // kid mode không được chỉnh danh sách VIP
@@ -221,8 +235,8 @@ class VipTitleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("pin", "3690", "seriesIds", List.of("ser_vip")))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.mathLevel").value(2))
-                .andExpect(jsonPath("$.data.vipMathLevel").value(3))
+                .andExpect(jsonPath("$.data.quizGrade").value("LOP_2"))
+                .andExpect(jsonPath("$.data.vipQuizGrade").value("LOP_3"))
                 .andExpect(jsonPath("$.data.seriesIds[0]").value("ser_vip"));
 
         // bé 1 bị chặn 423 VIP_EPISODE ở grant, stream và watch-progress với ep_vip_1
@@ -247,40 +261,42 @@ class VipTitleControllerTest {
         mockMvc.perform(post("/api/media/grant/asset_vip_1").header(HttpHeaders.AUTHORIZATION, bearer(mainToken)))
                 .andExpect(status().isOk());
 
-        // lấy đề toán VIP cho ep_vip_1: phải là mức 3 và không lộ đáp án
+        // lấy câu hỏi VIP cho ep_vip_1: phải là LOP_3, đủ 4 đáp án A-D và không lộ đáp án đúng
         MvcResult challengeRes = mockMvc.perform(get("/api/users/vip-series/episodes/ep_vip_1/challenge")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.mathLevel").value(3))
+                .andExpect(jsonPath("$.data.grade").value("LOP_3"))
+                .andExpect(jsonPath("$.data.options.length()").value(4))
                 .andExpect(jsonPath("$.data.episodeId").value("ep_vip_1"))
                 .andExpect(jsonPath("$.data.answer").doesNotExist())
+                .andExpect(jsonPath("$.data.correctOption").doesNotExist())
                 .andReturn();
         JsonNode challenge = objectMapper.readTree(challengeRes.getResponse().getContentAsString()).path("data");
         String vipToken = challenge.path("token").asText();
-        int correctAnswer = solveQuestion(challenge.path("question").asText());
+        QuizOptionKey correctOption = decodeCorrect(vipToken, QuizChallengeContext.VIP_UNLOCK);
 
         // không dùng chéo được: token VIP không nộp sang screen-time, không nộp cho ep_vip_2, không nộp bằng bé 2
         mockMvc.perform(post("/api/users/screen-time/challenge/answer")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", vipToken, "answer", correctAnswer))))
+                        .content(json(Map.of("token", vipToken, "option", correctOption.name()))))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(post("/api/users/vip-series/episodes/ep_vip_2/unlock")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", vipToken, "answer", correctAnswer))))
+                        .content(json(Map.of("token", vipToken, "option", correctOption.name()))))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(post("/api/users/vip-series/episodes/ep_vip_1/unlock")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child2Token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", vipToken, "answer", correctAnswer))))
+                        .content(json(Map.of("token", vipToken, "option", correctOption.name()))))
                 .andExpect(status().isBadRequest());
 
         // trả lời đúng -> mở khóa đúng ep_vip_1 trong hôm nay, ep_vip_2 vẫn bị khóa
         mockMvc.perform(post("/api/users/vip-series/episodes/ep_vip_1/unlock")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", vipToken, "answer", correctAnswer))))
+                        .content(json(Map.of("token", vipToken, "option", correctOption.name()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.correct").value(true))
                 .andExpect(jsonPath("$.data.unlocked").value(true));
@@ -289,7 +305,7 @@ class VipTitleControllerTest {
         mockMvc.perform(post("/api/users/vip-series/episodes/ep_vip_1/unlock")
                         .header(HttpHeaders.AUTHORIZATION, bearer(child1Token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", vipToken, "answer", correctAnswer))))
+                        .content(json(Map.of("token", vipToken, "option", correctOption.name()))))
                 .andExpect(status().isBadRequest());
 
         // ep_vip_1 phát được và lưu tiến độ được, còn ep_vip_2 vẫn khóa 423
@@ -317,93 +333,93 @@ class VipTitleControllerTest {
                 .andExpect(header().string("X-Dippie-Lock-Reason", "VIP_EPISODE"));
     }
 
-    // test trần độ khó mức 4 (khi bé đang ở mức 4), từ chối token thường v1, hết hạn 2 phút và rate limit 10 lần sai
+    // test trần độ khó lớp 5 (khi bé đang ở lớp 5), từ chối token screen-time, hết hạn 2 phút và rate limit 10 lần sai
     @Test
-    void capsVipDifficultyAtLevelFourRejectsV1AndExpiredTokensAndRateLimitsWrongAnswers() throws Exception {
+    void capsVipDifficultyAtGradeFiveRejectsCrossContextAndExpiredTokensAndRateLimitsWrongAnswers() throws Exception {
         String mainToken = registerUser("vipdad", "vipdad@example.com", "secret123", "Bố Huy");
         enableParentMode(mainToken, "8080");
         long childId = createChildProfile(mainToken, "8080", "Bé Bờm", "owl");
         String childToken = switchToChild(mainToken, childId);
 
-        mockMvc.perform(put("/api/users/profiles/" + childId + "/screen-time")
+        mockMvc.perform(post("/api/users/quiz/profiles/" + childId + "/grade")
                         .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("pin", "8080", "dailyMinutes", 60, "mathLevel", 4))))
+                        .content(json(Map.of("pin", "8080", "grade", "LOP_5"))))
                 .andExpect(status().isOk());
         mockMvc.perform(put("/api/users/profiles/" + childId + "/vip-series")
                         .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("pin", "8080", "seriesIds", List.of("ser_vip")))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.vipMathLevel").value(4));
+                .andExpect(jsonPath("$.data.vipQuizGrade").value("LOP_5"));
 
-        // token v1 từ screen-time không mở khóa được tập VIP
-        MvcResult v1Res = mockMvc.perform(get("/api/users/screen-time/challenge")
+        // token screen-time không mở khóa được tập VIP
+        MvcResult stRes = mockMvc.perform(get("/api/users/screen-time/challenge")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isOk())
                 .andReturn();
-        JsonNode v1 = objectMapper.readTree(v1Res.getResponse().getContentAsString()).path("data");
+        String stToken = objectMapper.readTree(stRes.getResponse().getContentAsString()).path("data").path("token").asText();
         mockMvc.perform(post("/api/users/vip-series/episodes/ep_vip_1/unlock")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", v1.path("token").asText(), "answer", solveQuestion(v1.path("question").asText())))))
+                        .content(json(Map.of("token", stToken, "option", decodeCorrect(stToken, QuizChallengeContext.SCREEN_TIME).name()))))
                 .andExpect(status().isBadRequest());
 
-        // lấy đề mức 4 rồi tua quá 2 phút -> hết hạn bị 400
+        // lấy đề lớp 5 rồi tua quá 2 phút -> hết hạn bị 400
         MvcResult expiredRes = mockMvc.perform(get("/api/users/vip-series/episodes/ep_vip_1/challenge")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.mathLevel").value(4))
+                .andExpect(jsonPath("$.data.grade").value("LOP_5"))
                 .andReturn();
-        JsonNode expiredChallenge = objectMapper.readTree(expiredRes.getResponse().getContentAsString()).path("data");
+        String expiredToken = objectMapper.readTree(expiredRes.getResponse().getContentAsString()).path("data").path("token").asText();
         clock.advance(Duration.ofSeconds(121));
         mockMvc.perform(post("/api/users/vip-series/episodes/ep_vip_1/unlock")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of(
-                                "token", expiredChallenge.path("token").asText(),
-                                "answer", solveQuestion(expiredChallenge.path("question").asText())
+                                "token", expiredToken,
+                                "option", decodeCorrect(expiredToken, QuizChallengeContext.VIP_UNLOCK).name()
                         ))))
                 .andExpect(status().isBadRequest());
 
         // trả lời sai 10 lần -> lần 11 bị 429 kèm Retry-After
-        MvcResult freshRes = mockMvc.perform(get("/api/users/vip-series/episodes/ep_vip_1/challenge")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
-                .andExpect(status().isOk())
-                .andReturn();
-        JsonNode fresh = objectMapper.readTree(freshRes.getResponse().getContentAsString()).path("data");
-        int wrongAnswer = solveQuestion(fresh.path("question").asText()) + 5;
         for (int i = 0; i < 10; i++) {
+            MvcResult freshRes = mockMvc.perform(get("/api/users/vip-series/episodes/ep_vip_1/challenge")
+                            .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            String freshToken = objectMapper.readTree(freshRes.getResponse().getContentAsString()).path("data").path("token").asText();
+            QuizOptionKey wrong = pickWrongOption(decodeCorrect(freshToken, QuizChallengeContext.VIP_UNLOCK));
             mockMvc.perform(post("/api/users/vip-series/episodes/ep_vip_1/unlock")
                             .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(json(Map.of("token", fresh.path("token").asText(), "answer", wrongAnswer))))
+                            .content(json(Map.of("token", freshToken, "option", wrong.name()))))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.correct").value(false));
         }
+        MvcResult blockedRes = mockMvc.perform(get("/api/users/vip-series/episodes/ep_vip_1/challenge")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String blockedToken = objectMapper.readTree(blockedRes.getResponse().getContentAsString()).path("data").path("token").asText();
         mockMvc.perform(post("/api/users/vip-series/episodes/ep_vip_1/unlock")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", fresh.path("token").asText(), "answer", wrongAnswer))))
+                        .content(json(Map.of("token", blockedToken, "option", "A"))))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
 
-        assertThat(VipTitleService.requiredVipMathLevel(1)).isEqualTo(2);
-        assertThat(VipTitleService.requiredVipMathLevel(3)).isEqualTo(4);
-        assertThat(VipTitleService.requiredVipMathLevel(4)).isEqualTo(4);
+        assertThat(VipTitleService.requiredVipGrade(QuizGrade.MAU_GIAO)).isEqualTo(QuizGrade.LOP_1);
+        assertThat(VipTitleService.requiredVipGrade(QuizGrade.LOP_3)).isEqualTo(QuizGrade.LOP_4);
+        assertThat(VipTitleService.requiredVipGrade(QuizGrade.LOP_5)).isEqualTo(QuizGrade.LOP_5);
     }
 
-    private static int solveQuestion(String question) {
-        String[] parts = question.replace(" = ?", "").split(" ");
-        int left = Integer.parseInt(parts[0]);
-        int right = Integer.parseInt(parts[2]);
-        return switch (parts[1]) {
-            case "+" -> left + right;
-            case "-" -> left - right;
-            case "×" -> left * right;
-            case "÷" -> left / right;
-            default -> throw new IllegalArgumentException("Phép tính lạ: " + question);
-        };
+    private QuizOptionKey decodeCorrect(String token, QuizChallengeContext context) {
+        return quizTokenCodec.decode(token, context).orElseThrow().correctOption();
+    }
+
+    private static QuizOptionKey pickWrongOption(QuizOptionKey correct) {
+        return correct == QuizOptionKey.A ? QuizOptionKey.B : QuizOptionKey.A;
     }
 
     private void seedCatalog() {

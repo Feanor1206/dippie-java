@@ -184,7 +184,7 @@ export async function fetchParentWeekendVaultOverview(
   return runWeekendVaultRequest(
     async (signal) => {
       const response = await apiFetch(url, { method: 'GET', headers: authHeaders(token), signal });
-      const { data } = await parseEnvelope(response, 'Chưa tải được trạng thái két sắt phim cuối tuần.');
+      const { data } = await parseEnvelope(response, 'Chưa tải được trạng thái phim lẻ cuối tuần.');
       if (!Array.isArray(data)) return [];
       return data
         .map(normalizeChildOverview)
@@ -209,9 +209,9 @@ export async function unlockWeekendVaultManually(
         body: JSON.stringify({ pin }),
         signal,
       });
-      const { data } = await parseEnvelope(response, 'Chưa mở khóa được két sắt phim cuối tuần.');
+      const { data } = await parseEnvelope(response, 'Chưa mở khóa được phim lẻ cuối tuần.');
       const normalized = normalizeChildOverview(data);
-      if (!normalized) throw new WeekendVaultApiError('Dữ liệu két sắt không hợp lệ.', 502);
+      if (!normalized) throw new WeekendVaultApiError('Dữ liệu phim lẻ cuối tuần không hợp lệ.', 502);
       return normalized;
     },
     options
@@ -233,9 +233,9 @@ export async function restoreWeekendVaultLock(
         body: JSON.stringify({ pin }),
         signal,
       });
-      const { data } = await parseEnvelope(response, 'Chưa khóa lại được két sắt phim cuối tuần.');
+      const { data } = await parseEnvelope(response, 'Chưa khóa lại được phim lẻ cuối tuần.');
       const normalized = normalizeChildOverview(data);
-      if (!normalized) throw new WeekendVaultApiError('Dữ liệu két sắt không hợp lệ.', 502);
+      if (!normalized) throw new WeekendVaultApiError('Dữ liệu phim lẻ cuối tuần không hợp lệ.', 502);
       return normalized;
     },
     options

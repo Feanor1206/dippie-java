@@ -355,7 +355,7 @@ export default function AdminUsersPage() {
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[760px] border-collapse text-left text-xs">
                 <thead>
-                  <tr className="border-b border-surface-border bg-surface-elevated/70 text-[11px] font-bold text-muted">
+                  <tr className="border-b border-surface-border bg-surface-elevated/70 text-[0.6875rem] font-bold text-muted">
                     <th scope="col" className="px-3 py-3">Tên đăng nhập</th>
                     <th scope="col" className="px-3 py-3">Email</th>
                     <th scope="col" className="px-3 py-3">Họ và tên</th>
@@ -379,7 +379,7 @@ export default function AdminUsersPage() {
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span>{account.username}</span>
                             {isSelf && (
-                              <span className="rounded border border-brand/30 bg-brand/15 px-1.5 py-0.5 font-sans text-[10px] font-bold text-brand-dark">
+                              <span className="rounded border border-brand/30 bg-brand/15 px-1.5 py-0.5 font-sans text-[0.625rem] font-bold text-brand-dark">
                                 Bạn
                               </span>
                             )}
@@ -389,7 +389,7 @@ export default function AdminUsersPage() {
                         <td className="px-3 py-3.5 text-ink">{account.fullName || 'Chưa có'}</td>
                         <td className="px-3 py-3.5">
                           <span
-                            className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-bold ${
+                            className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[0.6875rem] font-bold ${
                               isTargetAdmin
                                 ? 'border-amber-500/30 bg-amber-500/10 text-amber-900'
                                 : 'border-surface-border/40 bg-surface-elevated text-muted'
@@ -401,7 +401,7 @@ export default function AdminUsersPage() {
                         </td>
                         <td className="px-3 py-3.5">
                           <span
-                            className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-bold ${
+                            className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[0.6875rem] font-bold ${
                               account.enabled
                                 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-900'
                                 : 'border-red-500/30 bg-red-500/10 text-red-900'
@@ -415,7 +415,7 @@ export default function AdminUsersPage() {
                             <span>{getUserStatusLabel(account.enabled)}</span>
                           </span>
                         </td>
-                        <td className="px-3 py-3.5 font-mono text-[11px] text-muted" title={formatViDateTime(account.createdAt)}>
+                        <td className="px-3 py-3.5 font-mono text-[0.6875rem] text-muted" title={formatViDateTime(account.createdAt)}>
                           {formatViDate(account.createdAt)}
                         </td>
                         <td className="px-3 py-3.5 text-right">
@@ -434,7 +434,7 @@ export default function AdminUsersPage() {
                                       : `Cấp quyền quản trị cho ${account.username}`
                                 }
                                 onClick={() => openRoleDialog(account)}
-                                className="btn-secondary min-h-[44px] px-3 py-1.5 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                                className="btn-secondary min-h-[44px] px-3 py-1.5 text-[0.6875rem] font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {isTargetAdmin ? 'Hạ xuống người dùng' : 'Cấp quyền quản trị'}
                               </button>
@@ -453,7 +453,7 @@ export default function AdminUsersPage() {
                                       : `Mở khóa tài khoản ${account.username}`
                                 }
                                 onClick={() => openStatusDialog(account)}
-                                className={`inline-flex min-h-[44px] items-center justify-center rounded border-2 border-ink px-3 py-1.5 text-[11px] font-semibold shadow-brand-sm transition-transform duration-150 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 cursor-pointer ${
+                                className={`inline-flex min-h-[44px] items-center justify-center rounded border-2 border-ink px-3 py-1.5 text-[0.6875rem] font-semibold shadow-brand-sm transition-transform duration-150 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 cursor-pointer ${
                                   account.enabled
                                     ? 'bg-red-500/15 text-red-900'
                                     : 'bg-emerald-500/15 text-emerald-900'

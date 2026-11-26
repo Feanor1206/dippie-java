@@ -1,6 +1,7 @@
-import React from 'react';
-import { Link, useParams, useSearchParams } from 'react-router';
+import React, { useRef } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { cleanMediaTitle, formatDurationMs, resolveRatingSummary } from '@/lib/labels';
+import * as motion from '@/lib/motion';
 import { NextEpisodeAction } from '@/features/series/components/NextEpisodeAction';
 import { SeriesDetailBanner } from '@/features/series/components/SeriesDetailBanner';
 import { ItemLibraryPanel } from '@/features/library/components/LibraryControls';
@@ -80,7 +81,7 @@ function TimelineListCard({
                 )}
               </div>
 
-              <span className="btn-secondary flex items-center gap-1 text-[11px] font-semibold shrink-0 py-1 px-2.5 pointer-events-none">
+              <span className="btn-secondary flex items-center gap-1 text-[0.6875rem] font-semibold shrink-0 py-1 px-2.5 pointer-events-none">
                 <span>Tua tới</span>
               </span>
             </div>
@@ -94,7 +95,10 @@ function TimelineListCard({
 export default function SeriesDetailPage() {
   const { id: seriesId = '' } = useParams<'id'>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = typeof useNavigate === 'function' ? useNavigate() : null;
+  const pageRef = useRef<HTMLElement>(null);
   const playback = useSeriesPlayback(seriesId, searchParams, setSearchParams);
+  motion.useScrollReveal?.(pageRef, [seriesId, Boolean(playback.seriesData)]);
 
   if (playback.isLoadingSeries) {
     return (
@@ -182,192 +186,208 @@ export default function SeriesDetailPage() {
     onSelect: () => playback.handleSeekScene(scene),
   }));
 
+  const visibleMediaAssets = playback.isKidMode
+    ? []
+    : playback.episodeDetail?.mediaAssets && playback.episodeDetail.mediaAssets.length > 1
+    ? playback.episodeDetail.mediaAssets
+    : [];
+
   return (
-    <main id="main-content" tabIndex={-1} className="series-page mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <SeriesDetailBanner
-        series={series}
-        card={playback.seriesCard}
-        seasonCount={seasons.length}
-        episodeCount={episodes.length}
-        isVipSeries={playback.isVipSeries}
-        nextEpisodeAction={
-          <NextEpisodeAction
-            seriesId={seriesId}
-            progressRevision={playback.seriesProgressRevision}
-            onSelectRecommendation={playback.handlePlayNextEpisode}
-          />
-        }
-        seriesActions={
-          <ItemLibraryPanel
-            itemId={series.id}
-            title={series.title}
-            poster={playback.seriesCard?.posterUrl || playback.seriesCard?.backdropUrl || ''}
-            scopeLabel="Phim bộ"
-            testIdPrefix="series"
-            compact
-          />
-        }
-      />
-
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <div className="min-w-0 lg:col-span-2 space-y-4">
-          <EpisodePlayerPanel
-            seriesTitle={series.title}
-            selectedEpisode={selectedEpisode}
-            episodeDetail={playback.episodeDetail}
-            playbackSource={playback.playbackSource}
-            isLoadingEpisode={playback.isLoadingEpisode}
-            isResolvingStream={playback.isResolvingStream}
-            episodeError={playback.episodeError}
-            playbackWarning={playback.playbackWarning}
-            onDismissWarning={() => playback.setPlaybackWarning(null)}
-            isUnmountedDriveFallback={playback.isUnmountedDriveFallback}
-            onRetryOriginalFile={playback.handleRetryOriginalFile}
-            onRetryEpisode={playback.retryEpisode}
-            streamUrl={playback.streamUrl}
-            fileRetryCount={playback.fileRetryCount}
-            videoRef={playback.videoRef}
-            youtubeSeekRequest={playback.youtubeSeekRequest}
-            shouldAutoPlayYoutube={playback.shouldAutoPlayYoutube}
-            youtubeHandlers={playback.youtubeHandlers}
-            videoHandlers={playback.videoHandlers}
-            offerResume={playback.offerResume}
-            savedProgress={playback.savedProgress}
-            onResumePlayback={playback.handleResumePlayback}
-            autoNext={playback.autoNext}
-            onAutoNextToggle={playback.handleAutoNextToggle}
-            nextCountdown={playback.nextCountdown}
-            nextEpisodeLabel={playback.nextEpisodeLabel}
-            hasNextEpisode={Boolean(playback.nextEpisode)}
-            onCancelNextCountdown={() => playback.setNextCountdown(null)}
-            progressError={playback.progressError}
-            isVipLocked={playback.isSelectedEpisodeVipLocked}
-            vipMathLevel={playback.vipMathLevel}
-            onVipUnlocked={playback.markVipEpisodeUnlocked}
-            kidPlayOverlay={{
-              watchPet: playback.playFeatures.watchPet,
-              isPetLocked: playback.isPetLocked,
-              restCountdown: playback.playFeatures.restCountdown,
-              onStartRest: playback.playFeatures.handleStartRest,
-              onWatchPetUpdated: playback.playFeatures.applyWatchPetStatus,
-              activeDrop: playback.playFeatures.activeDrop,
-              dropSecondsLeft: playback.playFeatures.dropSecondsLeft,
-              activeLootQuiz: playback.playFeatures.activeLootQuiz,
-              lootQuizSecondsLeft: playback.playFeatures.lootQuizSecondsLeft,
-              lootFeedback: playback.playFeatures.lootFeedback,
-              lootOpening: playback.playFeatures.lootOpening,
-              lootSubmitting: playback.playFeatures.lootSubmitting,
-              onOpenLootChest: playback.playFeatures.handleOpenLootChest,
-              onSubmitLootAnswer: playback.playFeatures.handleSubmitLootAnswer,
-              activeRecapEpisodeId: playback.activeRecapEpisodeId,
-              onRecapUnlocked: playback.handleRecapUnlocked,
-              onRecapRewatch: playback.handleRecapRewatch,
-            }}
-          />
-
-          {selectedEpisode && (
-            <div className="rounded-xl border border-surface-border bg-surface p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-surface-border pb-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center rounded bg-mint px-2 py-0.5 text-[11px] font-bold text-ink">
-                      Đang phát · Tập {selectedEpisode.number ?? selectedEpisode.episodeNumber}
-                    </span>
-                  </div>
-                  <h2 className="mt-1.5 text-lg font-bold text-ink break-words">{cleanMediaTitle(selectedEpisode.title)}</h2>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    data-testid="episode-header-rating"
-                    className="inline-flex items-center gap-1 rounded bg-surface-elevated px-2 py-1 text-xs font-medium text-muted border border-surface-border"
-                  >
-                    {episodeRatingSummary.hasRating ? `★ ${episodeRatingSummary.label}` : episodeRatingSummary.label}
-                  </span>
-                  {selectedEpisode.durationMs && (
-                    <span className="flex items-center gap-1 rounded bg-surface-elevated px-2 py-1 text-xs text-muted border border-surface-border">
-                      {formatDurationMs(selectedEpisode.durationMs)}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {selectedEpisode.synopsis && (
-                <p className="mt-3 text-xs leading-relaxed text-muted">{selectedEpisode.synopsis}</p>
-              )}
-
-              <ItemLibraryPanel
-                itemId={selectedEpisode.id}
-                title={cleanMediaTitle(selectedEpisode.title)}
-                poster={playback.seriesCard?.posterUrl || ''}
-                scopeLabel="Tập này"
-                testIdPrefix="episode"
+    <main ref={pageRef} id="main-content" tabIndex={-1} className="series-page mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <div className="flex flex-col gap-6">
+        <div data-testid="series-banner-section" className="order-2 md:order-1">
+          <SeriesDetailBanner
+            series={series}
+            card={playback.seriesCard}
+            seasonCount={seasons.length}
+            episodeCount={episodes.length}
+            isVipSeries={playback.isVipSeries}
+            nextEpisodeAction={
+              <NextEpisodeAction
+                seriesId={seriesId}
+                progressRevision={playback.seriesProgressRevision}
+                onSelectRecommendation={playback.handlePlayNextEpisode}
               />
-
-              {playback.episodeDetail?.mediaAssets && playback.episodeDetail.mediaAssets.length > 0 && (
-                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-surface-border pt-3 text-xs">
-                  <span className="text-muted">Nguồn phát:</span>
-                  {playback.episodeDetail.mediaAssets.map((asset) => (
-                    <button
-                      key={asset.id}
-                      data-testid="media-asset-button"
-                      data-asset-id={asset.id}
-                      aria-pressed={playback.selectedAsset?.id === asset.id}
-                      onClick={() => playback.handleSelectAsset(asset)}
-                      className={`min-h-11 max-w-full break-words rounded px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer border ${
-                        playback.selectedAsset?.id === asset.id
-                          ? 'border-brand bg-brand/10 text-brand-dark'
-                          : 'border-surface-border bg-surface-elevated text-muted hover:text-ink'
-                      }`}
-                    >
-                      {asset.editionLabel || (asset.storageProvider === 'drive' ? 'Google Drive' : 'Máy chủ Dippie')}
-                      {asset.available === false ? ' (Chưa sẵn sàng)' : ''}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {segmentItems.length > 0 && (
-            <TimelineListCard
-              heading="Phân đoạn"
-              hint="Bấm để tua tới"
-              kind="segment"
-              activeId={playback.activeSegmentId}
-              items={segmentItems}
-            />
-          )}
-
-          {sceneItems.length > 0 && (
-            <TimelineListCard
-              heading="Phân cảnh"
-              hint="Bấm để tua tới"
-              kind="scene"
-              activeId={playback.activeSceneId}
-              items={sceneItems}
-            />
-          )}
+            }
+            seriesActions={
+              <ItemLibraryPanel
+                itemId={series.id}
+                title={series.title}
+                poster={playback.seriesCard?.posterUrl || playback.seriesCard?.backdropUrl || ''}
+                scopeLabel="Phim bộ"
+                testIdPrefix="series"
+                compact
+              />
+            }
+          />
         </div>
 
-        <EpisodeSidebar
-          orderedSeasons={playback.orderedSeasons}
-          hasSeasons={playback.hasSeasons}
-          selectedSeasonId={playback.selectedSeasonId}
-          seasonEpisodes={playback.seasonEpisodes}
-          selectedEpisode={selectedEpisode}
-          previousEpisode={playback.previousEpisode}
-          nextEpisode={playback.nextEpisode}
-          previousEpisodeLabel={playback.previousEpisodeLabel}
-          nextEpisodeLabel={playback.nextEpisodeLabel}
-          episodeQuery={playback.episodeQuery}
-          onEpisodeQueryChange={playback.setEpisodeQuery}
-          onSelectSeason={playback.handleSelectSeason}
-          onSelectEpisode={playback.handleSelectEpisode}
-          knownExternalEpisodeIds={playback.knownExternalEpisodeIds}
-          posterUrl={playback.seriesCard?.posterUrl || ''}
-          isVipSeries={playback.isVipSeries}
-          unlockedVipEpisodeIds={playback.unlockedVipEpisodeIds}
-        />
+        <div data-testid="series-player-section" className="order-1 grid grid-cols-1 gap-8 md:order-2 lg:grid-cols-3">
+          <div className="min-w-0 lg:col-span-2 space-y-4">
+            <EpisodePlayerPanel
+              seriesTitle={series.title}
+              selectedEpisode={selectedEpisode}
+              episodeDetail={playback.episodeDetail}
+              playbackSource={playback.playbackSource}
+              isLoadingEpisode={playback.isLoadingEpisode}
+              isResolvingStream={playback.isResolvingStream}
+              episodeError={playback.episodeError}
+              playbackWarning={playback.playbackWarning}
+              onDismissWarning={() => playback.setPlaybackWarning(null)}
+              isUnmountedDriveFallback={playback.isUnmountedDriveFallback}
+              onRetryOriginalFile={playback.handleRetryOriginalFile}
+              onRetryEpisode={playback.retryEpisode}
+              streamUrl={playback.streamUrl}
+              fileRetryCount={playback.fileRetryCount}
+              videoRef={playback.videoRef}
+              youtubeSeekRequest={playback.youtubeSeekRequest}
+              shouldAutoPlayYoutube={playback.shouldAutoPlayYoutube}
+              youtubeHandlers={playback.youtubeHandlers}
+              videoHandlers={playback.videoHandlers}
+              offerResume={playback.offerResume}
+              savedProgress={playback.savedProgress}
+              onResumePlayback={playback.handleResumePlayback}
+              autoNext={playback.autoNext}
+              onAutoNextToggle={playback.handleAutoNextToggle}
+              nextCountdown={playback.nextCountdown}
+              nextEpisodeLabel={playback.nextEpisodeLabel}
+              hasNextEpisode={Boolean(playback.nextEpisode)}
+              onCancelNextCountdown={() => playback.setNextCountdown(null)}
+              progressError={playback.progressError}
+              playerScrollNonce={playback.playerScrollNonce}
+              onFinishSession={navigate ? () => navigate('/') : undefined}
+              isVipLocked={playback.isSelectedEpisodeVipLocked}
+              vipQuizGradeLabel={playback.vipQuizGradeLabel}
+              onVipUnlocked={playback.markVipEpisodeUnlocked}
+              kidPlayOverlay={{
+                watchPet: playback.playFeatures.watchPet,
+                isPetLocked: playback.isPetLocked,
+                restCountdown: playback.playFeatures.restCountdown,
+                onStartRest: playback.playFeatures.handleStartRest,
+                onWatchPetUpdated: playback.playFeatures.applyWatchPetStatus,
+                activeDrop: playback.playFeatures.activeDrop,
+                dropSecondsLeft: playback.playFeatures.dropSecondsLeft,
+                activeLootQuiz: playback.playFeatures.activeLootQuiz,
+                lootQuizSecondsLeft: playback.playFeatures.lootQuizSecondsLeft,
+                lootSelectedOption: playback.playFeatures.lootSelectedOption,
+                lootRetryError: playback.playFeatures.lootRetryError,
+                lootFeedback: playback.playFeatures.lootFeedback,
+                lootOpening: playback.playFeatures.lootOpening,
+                lootSubmitting: playback.playFeatures.lootSubmitting,
+                onOpenLootChest: playback.playFeatures.handleOpenLootChest,
+                onSubmitLootAnswer: playback.playFeatures.handleSubmitLootAnswer,
+                onDismissLootQuiz: playback.playFeatures.handleDismissLootQuiz,
+                onSelectLootDraftOption: playback.playFeatures.setLootSelectedOption,
+                activeRecapEpisodeId: playback.activeRecapEpisodeId,
+                onRecapUnlocked: playback.handleRecapUnlocked,
+                onRecapRewatch: playback.handleRecapRewatch,
+              }}
+            />
+
+            {selectedEpisode && (
+              <div className="rounded-xl border border-surface-border bg-surface p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-surface-border pb-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center rounded bg-mint px-2 py-0.5 text-[0.6875rem] font-bold text-ink">
+                        Đang phát · Tập {selectedEpisode.number ?? selectedEpisode.episodeNumber}
+                      </span>
+                    </div>
+                    <h2 className="mt-1.5 text-lg font-bold text-ink break-words">{cleanMediaTitle(selectedEpisode.title)}</h2>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      data-testid="episode-header-rating"
+                      className="inline-flex items-center gap-1 rounded bg-surface-elevated px-2 py-1 text-xs font-medium text-muted border border-surface-border"
+                    >
+                      {episodeRatingSummary.hasRating ? `★ ${episodeRatingSummary.label}` : episodeRatingSummary.label}
+                    </span>
+                    {selectedEpisode.durationMs && (
+                      <span className="flex items-center gap-1 rounded bg-surface-elevated px-2 py-1 text-xs text-muted border border-surface-border">
+                        {formatDurationMs(selectedEpisode.durationMs)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {selectedEpisode.synopsis && (
+                  <p className="mt-3 text-xs leading-relaxed text-muted">{selectedEpisode.synopsis}</p>
+                )}
+
+                <ItemLibraryPanel
+                  itemId={selectedEpisode.id}
+                  title={cleanMediaTitle(selectedEpisode.title)}
+                  poster={playback.seriesCard?.posterUrl || ''}
+                  scopeLabel="Tập này"
+                  testIdPrefix="episode"
+                />
+
+                {visibleMediaAssets.length > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-surface-border pt-3 text-xs">
+                    <span className="text-muted">Phiên bản:</span>
+                    {visibleMediaAssets.map((asset, index) => (
+                      <button
+                        key={asset.id}
+                        data-testid="media-asset-button"
+                        data-asset-id={asset.id}
+                        aria-pressed={playback.selectedAsset?.id === asset.id}
+                        onClick={() => playback.handleSelectAsset(asset)}
+                        className={`min-h-11 max-w-full break-words rounded px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer border ${
+                          playback.selectedAsset?.id === asset.id
+                            ? 'border-brand bg-brand/10 text-brand-dark'
+                            : 'border-surface-border bg-surface-elevated text-muted hover:text-ink'
+                        }`}
+                      >
+                        {asset.editionLabel || `Bản ${index + 1}`}
+                        {asset.available === false ? ' (Tạm bận)' : ''}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {segmentItems.length > 0 && (
+              <TimelineListCard
+                heading="Phân đoạn"
+                hint="Bấm để tua tới"
+                kind="segment"
+                activeId={playback.activeSegmentId}
+                items={segmentItems}
+              />
+            )}
+
+            {sceneItems.length > 0 && (
+              <TimelineListCard
+                heading="Phân cảnh"
+                hint="Bấm để tua tới"
+                kind="scene"
+                activeId={playback.activeSceneId}
+                items={sceneItems}
+              />
+            )}
+          </div>
+
+          <EpisodeSidebar
+            orderedSeasons={playback.orderedSeasons}
+            hasSeasons={playback.hasSeasons}
+            selectedSeasonId={playback.selectedSeasonId}
+            seasonEpisodes={playback.seasonEpisodes}
+            selectedEpisode={selectedEpisode}
+            previousEpisode={playback.previousEpisode}
+            nextEpisode={playback.nextEpisode}
+            previousEpisodeLabel={playback.previousEpisodeLabel}
+            nextEpisodeLabel={playback.nextEpisodeLabel}
+            episodeQuery={playback.episodeQuery}
+            onEpisodeQueryChange={playback.setEpisodeQuery}
+            onSelectSeason={playback.handleSelectSeason}
+            onSelectEpisode={playback.handleSelectEpisode}
+            knownExternalEpisodeIds={playback.knownExternalEpisodeIds}
+            posterUrl={playback.seriesCard?.posterUrl || ''}
+            isVipSeries={playback.isVipSeries}
+            unlockedVipEpisodeIds={playback.unlockedVipEpisodeIds}
+          />
+        </div>
       </div>
     </main>
   );

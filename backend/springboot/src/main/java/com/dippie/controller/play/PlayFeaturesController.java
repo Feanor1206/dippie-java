@@ -1,7 +1,6 @@
 package com.dippie.controller.play;
 
 import com.dippie.common.web.ApiResponse;
-import com.dippie.dto.play.LootDropAnswerRequest;
 import com.dippie.dto.play.LootDropAnswerResponse;
 import com.dippie.dto.play.LootDropMissRequest;
 import com.dippie.dto.play.LootDropOpenRequest;
@@ -12,10 +11,10 @@ import com.dippie.dto.play.PlayFeaturesStatusResponse;
 import com.dippie.dto.play.RecapQuizAnswerRequest;
 import com.dippie.dto.play.RecapQuizAnswerResponse;
 import com.dippie.dto.play.RecapQuizResponse;
-import com.dippie.dto.play.WatchPetMedicineAnswerRequest;
 import com.dippie.dto.play.WatchPetMedicineAnswerResponse;
 import com.dippie.dto.play.WatchPetMedicineChallengeResponse;
 import com.dippie.dto.play.WatchPetStatusView;
+import com.dippie.dto.quiz.QuizAnswerRequest;
 import com.dippie.service.play.LootDropService;
 import com.dippie.service.play.PlayFeaturesQueryService;
 import com.dippie.service.play.RecapQuizService;
@@ -62,7 +61,7 @@ public class PlayFeaturesController {
     public ResponseEntity<ApiResponse<WatchPetStatusView>> startPetRest() {
         return ResponseEntity.ok(ApiResponse.ok(
                 watchPetService.startRest(),
-                "Dieppie đang đi ngủ nghỉ mắt rồi, bé thư giãn mắt nhé!"
+                "Nghỉ cùng Dieppie bắt đầu rồi, bé thư giãn mắt nhé!"
         ));
     }
 
@@ -73,7 +72,7 @@ public class PlayFeaturesController {
 
     @PostMapping("/watch-pet/medicine")
     public ResponseEntity<ApiResponse<WatchPetMedicineAnswerResponse>> answerMedicineChallenge(
-            @RequestBody(required = false) WatchPetMedicineAnswerRequest request
+            @RequestBody(required = false) QuizAnswerRequest request
     ) {
         WatchPetService.MedicineOutcome outcome = watchPetService.submitMedicineAnswer(request);
         return ResponseEntity.ok(ApiResponse.ok(outcome.response(), outcome.message()));
@@ -93,7 +92,7 @@ public class PlayFeaturesController {
 
     @PostMapping("/loot/answer")
     public ResponseEntity<ApiResponse<LootDropAnswerResponse>> answerLootDrop(
-            @RequestBody(required = false) LootDropAnswerRequest request
+            @RequestBody(required = false) QuizAnswerRequest request
     ) {
         LootDropService.LootAnswerOutcome outcome = lootDropService.answerDrop(request);
         return ResponseEntity.ok(ApiResponse.ok(outcome.response(), outcome.message()));

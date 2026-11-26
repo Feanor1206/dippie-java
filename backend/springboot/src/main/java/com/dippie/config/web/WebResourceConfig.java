@@ -50,6 +50,11 @@ public class WebResourceConfig implements WebMvcConfigurer {
         registry.addResourceHandler("/illustrations/**")
                 .addResourceLocations(toDirectoryLocation(webProperties.subDirectory("illustrations")))
                 .setCacheControl(CacheControl.maxAge(Duration.ofDays(1)).cachePublic());
+
+        // mở thêm favicon ở gốc thư mục dist để trình duyệt không bị 404
+        registry.addResourceHandler("/favicon.svg", "/favicon.ico")
+                .addResourceLocations(toDirectoryLocation(webProperties.subDirectory("")))
+                .setCacheControl(CacheControl.maxAge(Duration.ofDays(7)).cachePublic());
     }
 
     private String toDirectoryLocation(Path directory) {

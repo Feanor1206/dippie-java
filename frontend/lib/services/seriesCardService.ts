@@ -50,10 +50,12 @@ const CACHE_TTL_MS = 60_000;
 
 let cacheGeneration = 0;
 const cardsCache = new Map<string, { expiresAt: number; data: SeriesCard[] }>();
+const cardsInFlight = new Map<string, Promise<SeriesCard[]>>();
 
 export function clearSeriesCardsCache(): void {
   cacheGeneration += 1;
   cardsCache.clear();
+  cardsInFlight.clear();
 }
 
 if (typeof window !== 'undefined') window.addEventListener?.(SESSION_RESET_EVENT, clearSeriesCardsCache);
@@ -152,14 +154,22 @@ async function executeWithTimeout<T>(
 }
 
 export async function listSeriesCards(options: SeriesCardFetchOptions = {}): Promise<SeriesCard[]> {
+  if (options.signal?.aborted) {
+    throw new SeriesCardApiError('Yêu cầu đã được hủy.', 499, { isCanceled: true });
+  }
   const baseUrl = options.baseUrl || API;
   const cached = cardsCache.get(baseUrl);
   if (!options.forceRefresh && cached && cached.expiresAt > Date.now()) {
     return cached.data;
   }
 
+  const existingInFlight = !options.forceRefresh ? cardsInFlight.get(baseUrl) : undefined;
+  if (existingInFlight && !options.signal) {
+    return existingInFlight;
+  }
+
   const generation = cacheGeneration;
-  const cards = await executeWithTimeout(async (signal) => {
+  const requestPromise = executeWithTimeout(async (signal) => {
     const res = await apiFetch(`${baseUrl}/catalog/series/cards`, {
       method: 'GET',
       headers: { Accept: 'application/json', ...getAuthHeader() },
@@ -179,12 +189,23 @@ export async function listSeriesCards(options: SeriesCardFetchOptions = {}): Pro
       throw new SeriesCardApiError('Danh sách phim bộ không hợp lệ.', 502);
     }
     return body.map(normalizeSeriesCard);
-  }, options);
+  }, options)
+    .then((cards) => {
+      if (generation === cacheGeneration) {
+        cardsCache.set(baseUrl, { data: cards, expiresAt: Date.now() + CACHE_TTL_MS });
+      }
+      return cards;
+    })
+    .finally(() => {
+      if (cardsInFlight.get(baseUrl) === requestPromise) {
+        cardsInFlight.delete(baseUrl);
+      }
+    });
 
-  if (generation === cacheGeneration) {
-    cardsCache.set(baseUrl, { data: cards, expiresAt: Date.now() + CACHE_TTL_MS });
+  if (!options.forceRefresh && !options.signal) {
+    cardsInFlight.set(baseUrl, requestPromise);
   }
-  return cards;
+  return requestPromise;
 }
 
 export async function getSeriesCardById(

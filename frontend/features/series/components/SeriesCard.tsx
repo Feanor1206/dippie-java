@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router';
 import { Play } from 'lucide-react';
-import { normalizeGenreLabels, resolveRatingSummary } from '@/lib/labels';
+import { normalizeGenreLabels, resolveAgeBadge, resolveRatingSummary, toCompactCardArtworkUrl } from '@/lib/labels';
 import type { SeriesCard as SeriesCardData } from '@/lib/services/seriesCardService';
 import { ArtworkImage } from '@/features/series/components/ArtworkImage';
 import { QuickSaveButtons } from '@/features/library/components/LibraryControls';
@@ -20,16 +20,22 @@ export type SeriesCardProps = {
 export function SeriesCard({ card, headingLevel = 'h3', className = '', isVip = false }: SeriesCardProps) {
   const Heading = headingLevel;
   const artwork = pickSeriesArtwork(card, 'backdrop');
+  const primaryThumb =
+    typeof toCompactCardArtworkUrl === 'function' ? toCompactCardArtworkUrl(artwork.primary) : artwork.primary;
+  const fallbackThumb =
+    typeof toCompactCardArtworkUrl === 'function' ? toCompactCardArtworkUrl(artwork.fallback) : artwork.fallback;
   const years = formatYearRange(card.releaseYearStart, card.releaseYearEnd);
   const counts = formatSeriesCounts(card.seasonCount, card.episodeCount);
   const visibleGenres = normalizeGenreLabels(card.genres || []).slice(0, MAX_CARD_GENRES);
   const excerpt = card.synopsis || card.originalTitle || '';
   const ratingSummary = resolveRatingSummary(card);
+  const ageBadge = typeof resolveAgeBadge === 'function' ? resolveAgeBadge(card.genres, card.title) : '3+';
 
   return (
     <article
       data-testid="series-card"
       data-series-id={card.id}
+      data-reveal-item=""
       className={`series-card group relative overflow-hidden ${className}`}
     >
       {isVip && (
@@ -49,13 +55,21 @@ export function SeriesCard({ card, headingLevel = 'h3', className = '', isVip = 
 
       <Link to={`/series/${encodeURIComponent(card.id)}`} className="flex flex-1 flex-col focus-visible:outline-none">
         <ArtworkImage
-          src={artwork.primary}
-          fallbackSrc={artwork.fallback}
+          src={primaryThumb}
+          fallbackSrc={fallbackThumb}
           alt={card.title}
           title={card.title}
           seed={card.id}
           imgClassName="transition-transform duration-300 group-hover:scale-105 group-focus-visible:scale-105"
-        />
+        >
+          <span
+            data-testid="series-card-age-badge"
+            aria-label={`Độ tuổi khuyến nghị ${ageBadge}`}
+            className="absolute bottom-2.5 left-2.5 z-10 inline-flex items-center rounded border border-ink/40 bg-[#fef3c7]/95 px-2 py-0.5 text-[0.6875rem] font-extrabold text-ink shadow-sm"
+          >
+            {ageBadge}
+          </span>
+        </ArtworkImage>
 
         <div className="series-card-body">
           <Heading className="line-clamp-2 font-display text-lg font-bold leading-snug text-ink">

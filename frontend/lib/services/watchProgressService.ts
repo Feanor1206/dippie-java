@@ -234,7 +234,7 @@ function throwHttpError(res: Response, label: string): never {
       notifyPlayFeaturesLocked(lockReason);
       throw new WatchProgressError(
         lockReason === 'RECAP_REQUIRED'
-          ? 'Bé trả lời nhanh câu hỏi ôn tập để mở khóa tập này nhé.'
+          ? 'Bé trả lời nhanh câu hỏi về tập vừa xem để mở khóa tập này nhé.'
           : 'Dieppie đang cần nghỉ mắt rồi.',
         423,
         { lockReason }
@@ -242,7 +242,7 @@ function throwHttpError(res: Response, label: string): never {
     }
     const message =
       lockReason === 'VIP_EPISODE'
-        ? 'Tập phim VIP đang khóa. Bé giải một bài toán để mở khóa tập này hôm nay nhé.'
+        ? 'Tập phim cần trả lời câu hỏi đang khóa. Bé trả lời câu hỏi để mở khóa tập này hôm nay nhé.'
         : 'Nội dung này đang tạm khóa.';
     throw new WatchProgressError(message, 423, { lockReason });
   }

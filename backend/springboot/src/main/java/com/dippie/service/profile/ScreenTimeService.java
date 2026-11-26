@@ -239,10 +239,10 @@ public class ScreenTimeService {
         ChildProfile profile = childProfileRepository.findByIdAndUserIdForUpdate(profileId, user.getId())
                 .orElseThrow(() -> new NotFoundException(PROFILE_NOT_FOUND));
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
+        // phụ huynh sửa hạn mức ngày (hoặc không giới hạn), phút thưởng mỗi câu và trần thưởng ngày cho 1 bé (cần PIN)
         profile.updateScreenTimeSettings(
                 request == null ? null : request.dailyMinutes(),
                 request == null ? null : request.unlimited(),
-                request == null ? null : request.mathLevel(),
                 request == null ? null : request.rewardMinutes(),
                 request == null ? null : request.maxBonusMinutes(),
                 now
@@ -277,6 +277,37 @@ public class ScreenTimeService {
                 now
         ));
         return ChildProfileScreenTimeView.of(profile, summarize(profile, today));
+    }
+
+    // phụ huynh nhập mã pin cộng thêm phút xem ngay trên màn hình hết giờ ở chế độ trẻ em
+    @Transactional
+    public ScreenTimeStatusView grantExtraMinutesInKidMode(ParentTimeGrantRequest request) {
+        Viewer viewer = currentViewer.require();
+        if (!viewer.isChildProfile()) {
+            throw new InvalidRequestException("Tính năng cộng giờ nhanh này chỉ dùng trong chế độ của bé.");
+        }
+        User user = userRepository.findByIdForUpdate(viewer.userId())
+                .orElseThrow(() -> new UnauthorizedException(LOGIN_REQUIRED));
+        if (!user.isParentModeEnabled()) {
+            throw new InvalidRequestException(PARENT_MODE_REQUIRED);
+        }
+        parentModeService.verifyParentPin(user, request == null ? null : request.pin());
+        Integer minutes = request == null ? null : request.minutes();
+        if (minutes == null || minutes < 1 || minutes > 180) {
+            throw new InvalidRequestException("Số phút cho thêm cần từ 1 đến 180 phút.");
+        }
+        ChildProfile profile = childProfileRepository.findByIdAndUserIdForUpdate(viewer.profileId(), user.getId())
+                .orElseThrow(() -> new NotFoundException(PROFILE_NOT_FOUND));
+        LocalDate today = ScreenTimeSummary.todayVietnam(clock);
+        LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
+        ledgerRepository.saveAndFlush(new ScreenTimeLedgerEntry(
+                profile.getId(),
+                today,
+                ScreenTimeLedgerKind.PARENT_GRANT,
+                minutes * 60,
+                now
+        ));
+        return ScreenTimeStatusView.from(summarize(profile, today));
     }
 
     // gom tổng các dòng sổ cái trong ngày của 1 hồ sơ bé (REWARD và LOOT đều tính vào trần thưởng ngày)

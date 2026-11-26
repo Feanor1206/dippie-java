@@ -199,7 +199,8 @@ const SAMPLE_SCREEN_TIME = {
   profileId: 10,
   day: '2026-11-26',
   dailyMinutes: 60,
-  mathLevel: 1,
+  quizGrade: 'LOP_1',
+  quizGradeLabel: 'Lớp 1',
   rewardMinutes: 5,
   maxBonusMinutes: 30,
   dailySeconds: 3600,
@@ -283,7 +284,7 @@ function makeBasePlayerProps(overrides = {}) {
     onCancelNextCountdown: () => {},
     progressError: null,
     isVipLocked: false,
-    vipMathLevel: 3,
+    vipQuizGradeLabel: 'Lớp 3',
     onVipUnlocked: () => {},
     kidPlayOverlay: {
       watchPet: SAMPLE_WATCH_PET_HAPPY,
@@ -748,7 +749,9 @@ test('ProfilePickerModal traps Tab focus, closes on Escape, and restores opener 
   assert.equal(lastFocused, 1);
 
   keyListeners[0]({ key: 'Escape', preventDefault: () => {} });
-  assert.equal(closed, 1);
+  assert.equal(closed, 0);
+  const afterEscapeTree = harness.render();
+  assert.equal(collectNodes(afterEscapeTree, (n) => n.props?.['data-testid'] === 'picker-parent-pin-form').length, 1);
 
   harness.unmount();
   assert.equal(fakeDocument.body.style.overflow, '');
@@ -788,6 +791,8 @@ test('ChildProfilesSection remembers parent PIN for routine setup dialogs, keeps
           selectChildProfile: async () => ({ success: true }),
         }),
       },
+      '@/features/quiz/components/ParentQuizBankSection': { ParentQuizBankSection: () => null },
+      '@/features/quiz/components/ParentQuizInsightsSection': { ParentQuizInsightsSection: () => null },
       '@/features/account/components/ParentBountySection': { ParentBountySection: () => null },
       '@/features/account/components/ParentWeekendVaultSection': { ParentWeekendVaultSection: () => null },
       '@/features/account/components/ParentVipSeriesSection': { ParentVipSeriesSection: () => null },
@@ -839,13 +844,19 @@ test('Kid controls keep >=44px targets, numeric keyboard hints, gentle Dieppie c
   const watchPetSource = fs.readFileSync(path.join(root, 'features/profiles/components/WatchPetWidget.tsx'), 'utf8');
   assert.equal(watchPetSource.includes('ngất xỉu'), false);
   assert.equal(watchPetSource.includes('mệt xỉu'), false);
-  assert.ok(watchPetSource.includes('Dieppie mỏi mắt lắm rồi!'));
-  assert.ok(watchPetSource.includes('pattern="[0-9]*"'));
+  assert.equal(watchPetSource.includes('mua thuốc'), false);
+  assert.ok(watchPetSource.includes('Đến giờ nghỉ mắt rồi!'));
+  assert.ok(watchPetSource.includes('Nghỉ cùng Dieppie'));
+  assert.ok(watchPetSource.includes('QuizQuestionCard'));
 
   const lockSource = fs.readFileSync(path.join(root, 'features/profiles/components/ScreenTimeLockOverlay.tsx'), 'utf8');
   assert.ok(lockSource.includes('overflow-y-auto'));
-  assert.ok(lockSource.includes('pattern="[0-9]*"'));
-  assert.ok(lockSource.includes('enterKeyHint="done"'));
+  assert.ok(lockSource.includes('QuizQuestionCard'));
+
+  const quizCardSource = fs.readFileSync(path.join(root, 'features/quiz/components/QuizQuestionCard.tsx'), 'utf8');
+  assert.ok(quizCardSource.includes('min-h-[56px]'));
+  assert.ok(quizCardSource.includes('min-h-[44px]'));
+  assert.ok(quizCardSource.includes('Nghe đọc'));
 
   const movieDetailSource = fs.readFileSync(path.join(root, 'features/movies/components/MovieDetail.tsx'), 'utf8');
   assert.ok(movieDetailSource.includes("document.querySelector('dialog[open]')"));

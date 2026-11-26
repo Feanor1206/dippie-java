@@ -15,10 +15,12 @@ import {
   type WatchPetStatus,
 } from '@/lib/services/playFeaturesService';
 import type { ScreenTimeStatus } from '@/lib/services/screenTimeService';
+import type { QuizOptionKey } from '@/features/quiz/quizService';
 
 export type LootFeedbackBanner = {
   kind: 'success' | 'miss';
   text: string;
+  explanation?: string | null;
 };
 
 export function usePlayFeatures({
@@ -44,6 +46,8 @@ export function usePlayFeatures({
   const [dropSecondsLeft, setDropSecondsLeft] = useState(0);
   const [activeLootQuiz, setActiveLootQuiz] = useState<LootDropQuiz | null>(null);
   const [lootQuizSecondsLeft, setLootQuizSecondsLeft] = useState(0);
+  const [lootSelectedOption, setLootSelectedOption] = useState<QuizOptionKey | null>(null);
+  const [lootRetryError, setLootRetryError] = useState<string | null>(null);
   const [lootFeedback, setLootFeedback] = useState<LootFeedbackBanner | null>(null);
   const [lootOpening, setLootOpening] = useState(false);
   const [lootSubmitting, setLootSubmitting] = useState(false);
@@ -85,6 +89,8 @@ export function usePlayFeatures({
       setRestCountdown(0);
       setActiveDrop(null);
       setActiveLootQuiz(null);
+      setLootSelectedOption(null);
+      setLootRetryError(null);
       setLootFeedback(null);
       return;
     }
@@ -118,6 +124,8 @@ export function usePlayFeatures({
     setDropSecondsLeft(0);
     setActiveLootQuiz(null);
     setLootQuizSecondsLeft(0);
+    setLootSelectedOption(null);
+    setLootRetryError(null);
     setLootFeedback(null);
   }, [isLootSuppressed]);
 
@@ -196,13 +204,15 @@ export function usePlayFeatures({
   }, [activeDrop, activeLootQuiz, dropSecondsLeft]);
 
   useEffect(() => {
-    if (!activeLootQuiz || lootQuizSecondsLeft <= 0) return;
+    if (!activeLootQuiz || lootQuizSecondsLeft <= 0 || lootSubmitting || lootRetryError) return;
     const timer = setTimeout(() => {
       if (lootQuizSecondsLeft <= 1) {
         const expiredToken = activeLootQuiz.token;
         setActiveLootQuiz(null);
         setLootQuizSecondsLeft(0);
-        setLootFeedback({ kind: 'miss', text: 'Hết 10 giây rồi! Hẹn bé ở rương báu sau nhé.' });
+        setLootSelectedOption(null);
+        setLootRetryError(null);
+        setLootFeedback({ kind: 'miss', text: 'Hết giờ mở rương rồi! Hẹn bé ở rương báu sau nhé.' });
         if (tokenRef.current) {
           void missLootDrop(tokenRef.current, expiredToken)
             .then((loot) => {
@@ -215,11 +225,11 @@ export function usePlayFeatures({
       }
     }, 1000);
     return () => clearTimeout(timer);
-  }, [activeLootQuiz, lootQuizSecondsLeft]);
+  }, [activeLootQuiz, lootQuizSecondsLeft, lootSubmitting, lootRetryError]);
 
   useEffect(() => {
     if (!lootFeedback) return;
-    const timer = setTimeout(() => setLootFeedback(null), 4000);
+    const timer = setTimeout(() => setLootFeedback(null), 5000);
     return () => clearTimeout(timer);
   }, [lootFeedback]);
 
@@ -243,6 +253,8 @@ export function usePlayFeatures({
       const quiz = await openLootDrop(tokenRef.current, dropToken);
       setActiveDrop(null);
       setDropSecondsLeft(0);
+      setLootSelectedOption(null);
+      setLootRetryError(null);
       setActiveLootQuiz(quiz);
       setLootQuizSecondsLeft(quiz.timerSeconds);
     } catch (err: unknown) {
@@ -257,14 +269,18 @@ export function usePlayFeatures({
     }
   };
 
-  const handleSubmitLootAnswer = async (answer: number): Promise<LootDropAnswerResult | null> => {
+  const handleSubmitLootAnswer = async (option: QuizOptionKey): Promise<LootDropAnswerResult | null> => {
     if (!tokenRef.current || !activeLootQuiz || lootSubmitting) return null;
     const quizToken = activeLootQuiz.token;
+    setLootSelectedOption(option);
+    setLootRetryError(null);
     setLootSubmitting(true);
     try {
-      const result = await submitLootDropAnswer(tokenRef.current, quizToken, answer);
+      const result = await submitLootDropAnswer(tokenRef.current, quizToken, option);
       setActiveLootQuiz(null);
       setLootQuizSecondsLeft(0);
+      setLootSelectedOption(null);
+      setLootRetryError(null);
       setStatus((prev) =>
         prev ? { ...prev, loot: { ...prev.loot, ready: false, combo: result.combo } } : prev
       );
@@ -275,12 +291,27 @@ export function usePlayFeatures({
           result.message ||
           (result.correct
             ? `Đúng rồi! Bé được cộng thêm ${result.earnedMinutes} phút.`
-            : 'Tiếc quá, chưa đúng rồi! Hẹn bé ở rương sau nhé.'),
+            : result.correctOption && result.correctText
+            ? `Gần đúng rồi! Đáp án là ${result.correctOption}: ${result.correctText} nè`
+            : 'Gần đúng rồi! Hẹn bé ở rương sau nhé.'),
+        explanation: !result.correct ? result.explanation : null,
       });
       return result;
     } catch (err: unknown) {
+      const errStatus =
+        typeof (err as { status?: unknown })?.status === 'number'
+          ? (err as { status: number }).status
+          : -1;
+      if (errStatus === 0 || errStatus >= 500) {
+        setLootRetryError(
+          'Mạng hoặc hệ thống đang bận nên chưa gửi được câu trả lời. Đáp án của bé vẫn được giữ nguyên, bé thử gửi lại hoặc đóng rương xem tiếp nhé.'
+        );
+        return null;
+      }
       setActiveLootQuiz(null);
       setLootQuizSecondsLeft(0);
+      setLootSelectedOption(null);
+      setLootRetryError(null);
       setLootFeedback({
         kind: 'miss',
         text: err instanceof Error ? err.message : 'Rương báu đã hết giờ rồi.',
@@ -289,6 +320,13 @@ export function usePlayFeatures({
     } finally {
       setLootSubmitting(false);
     }
+  };
+
+  const handleDismissLootQuiz = () => {
+    setActiveLootQuiz(null);
+    setLootQuizSecondsLeft(0);
+    setLootSelectedOption(null);
+    setLootRetryError(null);
   };
 
   const markRecapUnlocked = (targetEpisodeId: string | null) => {
@@ -334,6 +372,8 @@ export function usePlayFeatures({
     dropSecondsLeft,
     activeLootQuiz,
     lootQuizSecondsLeft,
+    lootSelectedOption,
+    lootRetryError,
     lootFeedback,
     lootOpening,
     lootSubmitting,
@@ -342,6 +382,8 @@ export function usePlayFeatures({
     handleStartRest,
     handleOpenLootChest,
     handleSubmitLootAnswer,
+    handleDismissLootQuiz,
+    setLootSelectedOption,
     markRecapUnlocked,
     markRecapPendingLocally,
   };

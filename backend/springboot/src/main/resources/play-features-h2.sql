@@ -1,3 +1,5 @@
+ALTER TABLE IF EXISTS screen_time_ledger DROP CONSTRAINT IF EXISTS ck_screen_time_ledger_kind;
+ALTER TABLE IF EXISTS screen_time_ledger ALTER COLUMN kind VARCHAR(20) NOT NULL;
 CREATE TABLE IF NOT EXISTS child_play_settings (
     profile_id BIGINT PRIMARY KEY,
     watch_pet_enabled BOOLEAN NOT NULL DEFAULT TRUE,

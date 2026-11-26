@@ -105,7 +105,7 @@ export function EditorialHero({ movie }: { movie: Movie | null }) {
           <div className="mt-6 flex flex-wrap items-center gap-2.5 sm:gap-3">
             <Link
               to={`/movies/${encodeURIComponent(movie.id)}`}
-              className="btn-primary px-5 py-2.5 text-xs sm:text-sm font-bold shadow-brand-sm"
+              className="btn-primary motion-sheen px-5 py-2.5 text-xs sm:text-sm font-bold shadow-brand-sm"
             >
               Xem chi tiết
             </Link>
@@ -113,7 +113,7 @@ export function EditorialHero({ movie }: { movie: Movie | null }) {
             {isUnconfirmed && (
               <span
                 data-testid="hero-unconfirmed-badge"
-                className="inline-flex items-center gap-1 rounded bg-amber-500/90 px-2.5 py-1 text-[11px] font-bold text-zinc-950 shadow-md border border-amber-300"
+                className="inline-flex items-center gap-1 rounded bg-amber-500/90 px-2.5 py-1 text-[0.6875rem] font-bold text-zinc-950 shadow-md border border-amber-300"
               >
                 <RefreshCw size={11} className="stroke-[2.5]" />
                 {unconfirmedIntent === 'add' ? 'Chưa lưu' : 'Chưa bỏ'}

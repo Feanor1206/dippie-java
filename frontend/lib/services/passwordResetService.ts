@@ -7,7 +7,7 @@ const RECOMMENDED_PASSWORD_LENGTH = 10;
 const MAX_PASSWORD_UTF8_BYTES = 72;
 const MAX_EMAIL_LENGTH = 100;
 
-export const PASSWORD_RULES_HINT = 'Mật khẩu dài từ 6 ký tự, tối đa khoảng 70 chữ (chữ có dấu tính nhiều hơn).';
+export const PASSWORD_RULES_HINT = 'Mật khẩu dài từ 6 đến 50 ký tự.';
 export const PASSWORD_STRENGTH_TIP =
   'Nên dài từ 10 ký tự trở lên, có cả chữ và số để bảo vệ tài khoản tốt hơn.';
 export const PASSWORD_RESET_REQUEST_SENT_MESSAGE =
@@ -127,7 +127,7 @@ export function validateNewPassword(newPassword: string, confirmPassword?: strin
     return 'Mật khẩu mới không được chỉ có khoảng trắng.';
   }
   if (utf8Length(newPassword) > MAX_PASSWORD_UTF8_BYTES) {
-    return 'Mật khẩu dài quá. Bạn rút ngắn lại nhé, chữ có dấu chiếm chỗ nhiều hơn chữ không dấu.';
+    return 'Mật khẩu quá dài. Bạn đặt ngắn gọn hơn (dưới 50 ký tự) nhé.';
   }
   if (confirmPassword !== undefined && newPassword !== confirmPassword) {
     return 'Mật khẩu nhập lại chưa khớp.';

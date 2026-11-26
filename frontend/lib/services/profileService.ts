@@ -37,7 +37,8 @@ export type ChildProfile = {
   avatarKey: string;
   dailyMinutes?: number | null;
   unlimited?: boolean;
-  mathLevel?: number;
+  quizGrade?: string;
+  quizGradeLabel?: string;
   rewardMinutes?: number;
   maxBonusMinutes?: number;
   createdAt: string;
@@ -157,7 +158,10 @@ function normalizeChildProfile(raw: any): ChildProfile | null {
     avatarKey,
     ...(dailyMinutes !== undefined ? { dailyMinutes } : {}),
     ...(unlimited || typeof raw.unlimited === 'boolean' ? { unlimited } : {}),
-    ...(typeof raw.mathLevel === 'number' ? { mathLevel: raw.mathLevel } : {}),
+    ...(typeof raw.quizGrade === 'string' && raw.quizGrade.trim() ? { quizGrade: raw.quizGrade.trim() } : {}),
+    ...(typeof raw.quizGradeLabel === 'string' && raw.quizGradeLabel.trim()
+      ? { quizGradeLabel: raw.quizGradeLabel.trim() }
+      : {}),
     ...(typeof raw.rewardMinutes === 'number' ? { rewardMinutes: raw.rewardMinutes } : {}),
     ...(typeof raw.maxBonusMinutes === 'number' ? { maxBonusMinutes: raw.maxBonusMinutes } : {}),
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : '',
@@ -323,7 +327,15 @@ export async function disableParentMode(
 
 export async function createChildProfile(
   token: string,
-  payload: { pin: string; name: string; avatarKey: string; dailyMinutes?: number | null; unlimited?: boolean },
+  payload: {
+    pin: string;
+    name: string;
+    avatarKey: string;
+    dailyMinutes?: number | null;
+    unlimited?: boolean;
+    quizGrade?: string;
+    quizSetIds?: number[];
+  },
   options: ProfileRequestOptions = {}
 ): Promise<ChildProfile> {
   const url = `${options.baseUrl || API}/users/profiles`;
@@ -347,7 +359,15 @@ export async function createChildProfile(
 export async function updateChildProfile(
   token: string,
   profileId: number,
-  payload: { pin: string; name: string; avatarKey: string; dailyMinutes?: number | null; unlimited?: boolean },
+  payload: {
+    pin: string;
+    name: string;
+    avatarKey: string;
+    dailyMinutes?: number | null;
+    unlimited?: boolean;
+    quizGrade?: string;
+    quizSetIds?: number[];
+  },
   options: ProfileRequestOptions = {}
 ): Promise<ChildProfile> {
   const url = `${options.baseUrl || API}/users/profiles/${encodeURIComponent(String(profileId))}`;
