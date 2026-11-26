@@ -33,13 +33,31 @@ const ForgotPasswordPage = lazy(() =>
 );
 
 function App() {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   useEffect(() => {
-    window.scrollTo(0, 0);
     if (typeof document !== 'undefined') {
       document.title = resolveRouteTitle(pathname);
     }
-  }, [pathname]);
+    if (hash && typeof document !== 'undefined') {
+      const targetId = hash.replace(/^#/, '');
+      const scrollToHash = () => {
+        const target = document.getElementById(targetId);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return true;
+        }
+        return false;
+      };
+      if (!scrollToHash()) {
+        const timer = setTimeout(() => {
+          scrollToHash();
+        }, 120);
+        return () => clearTimeout(timer);
+      }
+      return;
+    }
+    window.scrollTo(0, 0);
+  }, [pathname, hash]);
 
   return (
     <>

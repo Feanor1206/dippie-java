@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-// phụ huynh xem và chỉnh cài đặt thú ảo, rương báu, ôn tập cho từng hồ sơ bé (cần PIN phụ huynh)
+// phụ huynh xem và chỉnh cài đặt Dieppie, rương báu, ôn tập cho từng hồ sơ bé (cần PIN phụ huynh)
 @RestController
 @RequestMapping("/api/users/profiles")
 public class ChildPlaySettingsController {

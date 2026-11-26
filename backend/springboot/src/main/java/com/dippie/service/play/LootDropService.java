@@ -105,7 +105,7 @@ public class LootDropService {
         if (!settings.isLootDropEnabled()) {
             throw new InvalidRequestException(LOOT_DISABLED);
         }
-        // hết giờ xem hoặc thú ảo đang khóa thì không phát rương
+        // hết giờ xem hoặc Dieppie đang khóa thì không phát rương
         screenTimeService.requireUnlockedForProfile(viewer.userId(), profile.getId());
 
         ChildPlayState state = stateRepository.findById(profile.getId())

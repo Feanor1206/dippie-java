@@ -12,12 +12,20 @@ import {
 export function ParentVipSeriesSection({
   token,
   childProfiles,
+  sessionPin = '',
+  onPinVerified,
+  onPinRejected,
 }: {
   token: string;
   childProfiles: ChildProfile[];
+  sessionPin?: string;
+  onPinVerified?: (pin: string) => void;
+  onPinRejected?: () => void;
 }) {
   const [overview, setOverview] = useState<ChildProfileVipSeries[]>([]);
   const [seriesList, setSeriesList] = useState<SeriesCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [draftSeriesIds, setDraftSeriesIds] = useState<string[]>([]);
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
@@ -28,6 +36,8 @@ export function ParentVipSeriesSection({
 
   const loadData = useCallback(async () => {
     if (!token) return;
+    setLoading(true);
+    setLoadError('');
     try {
       const [vipItems, cards] = await Promise.all([
         fetchParentVipSeriesOverview(token),
@@ -39,7 +49,11 @@ export function ParentVipSeriesSection({
         if (prev && vipItems.some((item: ChildProfileVipSeries) => item.profileId === prev)) return prev;
         return vipItems[0]?.profileId ?? null;
       });
-    } catch {}
+    } catch (err: unknown) {
+      setLoadError(err instanceof Error ? err.message : 'Chưa tải được danh sách phim VIP.');
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
 
   useEffect(() => {
@@ -85,11 +99,13 @@ export function ParentVipSeriesSection({
     setDialogError('');
     try {
       const updated = await updateChildVipSeries(token, activeItem.profileId, pin, draftSeriesIds);
+      onPinVerified?.(pin);
       setOverview((prev) => prev.map((item) => (item.profileId === updated.profileId ? updated : item)));
       const childName = updated.name;
       resetDialog();
       setFeedback({ type: 'success', text: `Đã lưu danh sách phim VIP cho ${childName}.` });
     } catch (err: unknown) {
+      onPinRejected?.();
       setPin('');
       setDialogError(err instanceof Error ? err.message : 'Chưa lưu được danh sách phim VIP.');
     } finally {
@@ -99,9 +115,10 @@ export function ParentVipSeriesSection({
 
   return (
     <section
+      id="parent-vip-series-section"
       aria-labelledby="parent-vip-heading"
       data-testid="parent-vip-series-section"
-      className="mt-6 rounded-xl border border-surface-border bg-paper-white p-5 sm:p-6"
+      className="mt-6 scroll-mt-20 rounded-xl border border-surface-border bg-paper-white p-5 sm:p-6"
     >
       <div className="border-b border-surface-border pb-4">
         <h3 id="parent-vip-heading" className="text-base font-bold text-ink">
@@ -126,7 +143,26 @@ export function ParentVipSeriesSection({
         </div>
       )}
 
-      {overview.length > 0 && activeItem && (
+      {loadError ? (
+        <div
+          role="alert"
+          data-testid="parent-vip-load-error"
+          className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-800/35 bg-red-50 px-3.5 py-3 text-xs text-red-900"
+        >
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            className="btn-secondary min-h-[44px] px-3 text-xs font-bold"
+          >
+            Thử lại
+          </button>
+        </div>
+      ) : loading && overview.length === 0 ? (
+        <p role="status" className="mt-4 rounded-xl border border-surface-border bg-surface-muted p-4 text-center text-xs text-muted">
+          Đang tải danh sách phim VIP…
+        </p>
+      ) : overview.length > 0 && activeItem && (
         <div className="mt-4 space-y-4">
           <div className="flex flex-wrap gap-2" role="tablist" aria-label="Chọn hồ sơ bé">
             {overview.map((item) => {
@@ -207,7 +243,7 @@ export function ParentVipSeriesSection({
               onClick={() => {
                 setFeedback(null);
                 setDialogError('');
-                setPin('');
+                setPin(sessionPin);
                 setPinDialogOpen(true);
               }}
               className="btn-primary min-h-[44px] text-xs font-bold"
@@ -237,7 +273,10 @@ export function ParentVipSeriesSection({
                 data-testid="vip-pin-input"
                 type="password"
                 inputMode="numeric"
+                pattern="[0-9]*"
+                enterKeyHint="done"
                 autoComplete="off"
+                autoFocus
                 maxLength={6}
                 required
                 disabled={busy}
@@ -246,6 +285,21 @@ export function ParentVipSeriesSection({
                 placeholder="••••"
                 className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
+              {sessionPin && pin === sessionPin && (
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-brand-dark">
+                  <span>Đã tự điền mã PIN vừa xác nhận trong phiên này.</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onPinRejected?.();
+                      setPin('');
+                    }}
+                    className="font-bold underline cursor-pointer"
+                  >
+                    Nhập lại
+                  </button>
+                </div>
+              )}
             </div>
             {dialogError && (
               <div role="alert" className="rounded-lg border border-red-800/35 bg-red-50 px-3.5 py-2.5 text-xs text-red-900">

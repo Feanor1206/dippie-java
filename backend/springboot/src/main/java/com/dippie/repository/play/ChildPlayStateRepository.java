@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-// repo trạng thái thú ảo và rương báu bay ngang của từng hồ sơ bé
+// repo trạng thái Dieppie và rương báu bay ngang của từng hồ sơ bé
 public interface ChildPlayStateRepository extends JpaRepository<ChildPlayState, Long> {
 
     void deleteByProfileId(Long profileId);

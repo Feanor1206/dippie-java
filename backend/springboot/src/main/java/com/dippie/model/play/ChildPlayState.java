@@ -17,7 +17,7 @@ import org.hibernate.annotations.OnDeleteAction;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
-// trạng thái chạy thực tế trên server của thú ảo canh giờ nghỉ mắt và rương báu bay ngang cho từng hồ sơ bé
+// trạng thái chạy thực tế trên server của Dieppie canh giờ nghỉ mắt và rương báu bay ngang cho từng hồ sơ bé
 @Entity
 @Table(name = "child_play_state")
 public class ChildPlayState {
@@ -149,7 +149,7 @@ public class ChildPlayState {
         return Duration.between(lastWatchHeartbeatAt, now).getSeconds() >= 120L;
     }
 
-    // hết giờ nghỉ mắt thì đánh thức thú ảo và đưa bộ đếm liên tục về 0
+    // hết giờ nghỉ mắt thì đánh thức Dieppie và đưa bộ đếm liên tục về 0
     public boolean clearExpiredRestIfNeeded(LocalDateTime now) {
         if (restLockUntil != null && !now.isBefore(restLockUntil)) {
             this.restLockUntil = null;
@@ -161,7 +161,7 @@ public class ChildPlayState {
         return false;
     }
 
-    // cập nhật bộ đếm xem liên tục cho thú ảo và đồng hồ tích lũy cho rương báu mỗi khi heartbeat hợp lệ
+    // cập nhật bộ đếm xem liên tục cho Dieppie và đồng hồ tích lũy cho rương báu mỗi khi heartbeat hợp lệ
     public void recordWatchSeconds(int creditedSeconds, ChildPlaySettings settings, LocalDateTime now) {
         if (creditedSeconds <= 0) {
             return;
@@ -183,14 +183,14 @@ public class ChildPlayState {
         this.updatedAt = now;
     }
 
-    // bé chọn cho thú ngủ nghỉ mắt: đặt mốc khóa đến now + restMinutes
+    // bé chọn cho Dieppie ngủ nghỉ mắt: đặt mốc khóa đến now + restMinutes
     public void startRest(int restMinutes, LocalDateTime now) {
         this.petFainted = true;
         this.restLockUntil = now.plusMinutes(restMinutes);
         this.updatedAt = now;
     }
 
-    // bé giải xong toán mua thuốc hồi máu: xóa ngất và đặt lại đồng hồ xem liên tục về 0
+    // bé giải xong toán mua thuốc hồi sức: xóa ngất và đặt lại đồng hồ xem liên tục về 0
     public void healWithMedicine(LocalDateTime now) {
         this.petFainted = false;
         this.restLockUntil = null;

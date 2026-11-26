@@ -130,7 +130,10 @@ export function VipUnlockDialog({
                 data-testid="vip-answer-input"
                 type="text"
                 inputMode="numeric"
+                pattern="[0-9]*"
+                enterKeyHint="done"
                 autoComplete="off"
+                autoFocus
                 required
                 disabled={submitting}
                 value={answerInput}
@@ -139,7 +142,7 @@ export function VipUnlockDialog({
                   if (feedback?.kind === 'error') setFeedback(null);
                 }}
                 placeholder="Ví dụ: 18"
-                className="w-full rounded-lg border-2 border-ink/40 bg-surface-muted px-3 py-2.5 text-center text-lg font-bold text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+                className="min-h-[48px] w-full rounded-lg border-2 border-ink/40 bg-surface-muted px-3 py-2.5 text-center text-xl font-bold text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
             </div>
 

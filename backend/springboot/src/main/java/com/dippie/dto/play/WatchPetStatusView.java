@@ -5,7 +5,7 @@ import com.dippie.model.play.WatchPetStage;
 
 import java.time.LocalDateTime;
 
-// trạng thái thú ảo canh giờ nghỉ mắt trả về cho trình phát ở chế độ trẻ em
+// trạng thái Dieppie canh giờ nghỉ mắt trả về cho trình phát ở chế độ trẻ em
 public record WatchPetStatusView(
         boolean enabled,
         WatchPetStage stage,

@@ -21,7 +21,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 
-// gom phần kiểm tra khóa phát video của thú ảo và ôn tập qua tập, cùng nhịp cập nhật từ heartbeat
+// gom phần kiểm tra khóa phát video của Dieppie và ôn tập qua tập, cùng nhịp cập nhật từ heartbeat
 @Service
 public class PlayPlaybackGuard {
 
@@ -46,7 +46,7 @@ public class PlayPlaybackGuard {
         this.clock = clock;
     }
 
-    // kiểm tra thú ảo có đang nghỉ mắt hay ngất không để heartbeat khỏi trừ oan phút xem của bé
+    // kiểm tra Dieppie có đang nghỉ mắt hay ngất không để heartbeat khỏi trừ oan phút xem của bé
     @Transactional(readOnly = true)
     public boolean isWatchPetBlocking(Long profileId, LocalDateTime now) {
         ChildPlaySettings settings = settingsRepository.findById(profileId)
@@ -68,7 +68,7 @@ public class PlayPlaybackGuard {
         return state.isPetFainted();
     }
 
-    // cộng giây xem thật vào đồng hồ xem liên tục của thú ảo và đồng hồ chờ rương báu trong cùng transaction heartbeat
+    // cộng giây xem thật vào đồng hồ xem liên tục của Dieppie và đồng hồ chờ rương báu trong cùng transaction heartbeat
     @Transactional
     public void onWatchHeartbeat(Long profileId, int creditedSeconds, LocalDateTime now) {
         if (creditedSeconds <= 0) {
@@ -106,7 +106,7 @@ public class PlayPlaybackGuard {
         stateRepository.saveAndFlush(state);
     }
 
-    // chặn grant/stream/progress bằng 423 nếu thú ảo đang nghỉ mắt hoặc đã ngất mà bé chưa xử lý
+    // chặn grant/stream/progress bằng 423 nếu Dieppie đang nghỉ mắt hoặc đã ngất mà bé chưa xử lý
     @Transactional(readOnly = true)
     public void requireWatchPetUnlocked(Long userId, Long profileId) {
         if (userId == null || profileId == null) {
@@ -129,7 +129,7 @@ public class PlayPlaybackGuard {
             long remaining = state.restRemainingSecondsAt(now);
             throw new PlayFeatureLockedException(
                     "WATCH_PET_REST",
-                    "Thú ảo đang ngủ nghỉ mắt rồi, bé chờ hết giờ nghỉ nhé.",
+                    "Dieppie đang ngủ nghỉ mắt rồi, bé chờ hết giờ nghỉ nhé.",
                     remaining
             );
         }
@@ -139,7 +139,7 @@ public class PlayPlaybackGuard {
         if (state.isPetFainted()) {
             throw new PlayFeatureLockedException(
                     "WATCH_PET_FAINT",
-                    "Thú ảo mệt xỉu rồi! Bé cho thú ngủ hoặc mua thuốc hồi máu để xem tiếp nhé."
+                    "Dieppie mệt xỉu rồi! Bé cho Dieppie ngủ hoặc mua thuốc hồi sức để xem tiếp nhé."
             );
         }
     }

@@ -169,7 +169,7 @@ public class ScreenTimeService {
         }
     }
 
-    // kiểm tra cả khóa hạn mức ngày lẫn thú ảo (dùng cho nơi chỉ cần 1 lệnh chặn chung như phát rương)
+    // kiểm tra cả khóa hạn mức ngày lẫn Dieppie (dùng cho nơi chỉ cần 1 lệnh chặn chung như phát rương)
     @Transactional(readOnly = true)
     public void requireUnlockedForPlayback(Viewer viewer) {
         if (viewer == null || !viewer.isChildProfile()) {

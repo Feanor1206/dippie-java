@@ -31,7 +31,7 @@ const config: Config = {
           foreground: '#18241e',
           hover: '#a9c5a0',
           active: '#718d6b',
-          dark: '#536c50',
+          dark: '#36563c',
           light: '#c9ddbd',
           muted: '#dce8d4',
           subtle: 'rgba(141, 173, 134, 0.18)',

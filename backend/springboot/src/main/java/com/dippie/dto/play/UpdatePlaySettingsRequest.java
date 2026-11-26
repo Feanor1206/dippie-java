@@ -1,6 +1,6 @@
 package com.dippie.dto.play;
 
-// request phụ huynh cập nhật cấu hình thú ảo, rương báu và ôn tập cho một hồ sơ bé kèm mã PIN
+// request phụ huynh cập nhật cấu hình Dieppie, rương báu và ôn tập cho một hồ sơ bé kèm mã PIN
 public record UpdatePlaySettingsRequest(
         String pin,
         Boolean watchPetEnabled,

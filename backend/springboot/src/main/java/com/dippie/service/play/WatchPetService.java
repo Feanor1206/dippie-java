@@ -29,13 +29,13 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 
-// xử lý toàn bộ nghiệp vụ thú ảo canh giờ nghỉ mắt: trạng thái, cho thú ngủ 5 phút và giải toán mua thuốc hồi máu
+// xử lý toàn bộ nghiệp vụ Dieppie canh giờ nghỉ mắt: trạng thái, cho Dieppie ngủ 5 phút và giải toán mua thuốc hồi sức
 @Service
 public class WatchPetService {
 
     private static final String LOGIN_REQUIRED = "Bạn cần đăng nhập để tiếp tục.";
-    private static final String PET_DISABLED = "Tính năng thú ảo canh giờ nghỉ mắt đang tắt.";
-    private static final String NOT_FAINTED = "Thú ảo vẫn đang khỏe, chưa cần nghỉ hay uống thuốc đâu.";
+    private static final String PET_DISABLED = "Tính năng Dieppie canh giờ nghỉ mắt đang tắt.";
+    private static final String NOT_FAINTED = "Dieppie vẫn đang khỏe, chưa cần nghỉ hay uống thuốc đâu.";
     private static final Duration MEDICINE_TTL = Duration.ofMinutes(2);
 
     private final CurrentViewer currentViewer;
@@ -68,7 +68,7 @@ public class WatchPetService {
         this.clock = clock;
     }
 
-    // tổng hợp trạng thái thú ảo hiện tại, tự tính nghỉ 2 phút reset bộ đếm hoặc hết giờ ngủ là khỏe lại
+    // tổng hợp trạng thái Dieppie hiện tại, tự tính nghỉ 2 phút reset bộ đếm hoặc hết giờ ngủ là khỏe lại
     @Transactional(readOnly = true)
     public WatchPetStatusView buildStatus(Long profileId, ChildPlaySettings settings, LocalDateTime now) {
         if (!settings.isWatchPetEnabled()) {
@@ -78,7 +78,7 @@ public class WatchPetService {
         return toView(settings, state, now);
     }
 
-    // bé chọn cho thú ngủ X phút -> server khóa phát video/tiến độ cho tới khi hết giờ ngủ
+    // bé chọn cho Dieppie ngủ X phút -> server khóa phát video/tiến độ cho tới khi hết giờ ngủ
     @Transactional
     public WatchPetStatusView startRest() {
         Viewer viewer = requireChildViewer();
@@ -104,7 +104,7 @@ public class WatchPetService {
         return toView(settings, saved, now);
     }
 
-    // phát câu hỏi toán ký HMAC theo cấp độ bé để mua thuốc hồi máu (chặn nếu bé đã chọn cho thú ngủ)
+    // phát câu hỏi toán ký HMAC theo cấp độ bé để mua thuốc hồi sức (chặn nếu bé đã chọn cho Dieppie ngủ)
     @Transactional(readOnly = true)
     public WatchPetMedicineChallengeResponse issueMedicineChallenge() {
         Viewer viewer = requireChildViewer();
@@ -118,7 +118,7 @@ public class WatchPetService {
         }
         ChildPlayState state = stateRepository.findById(profile.getId()).orElse(null);
         if (state != null && state.isRestingAt(now)) {
-            throw new ConflictException("Thú ảo đang ngủ nghỉ mắt rồi, bé chờ hết giờ nghỉ nhé.");
+            throw new ConflictException("Dieppie đang ngủ nghỉ mắt rồi, bé chờ hết giờ nghỉ nhé.");
         }
         boolean stillFainted = state != null
                 && state.isPetFainted()
@@ -145,7 +145,7 @@ public class WatchPetService {
         );
     }
 
-    // chấm bài toán mua thuốc hồi máu: đúng thì reset đồng hồ liên tục và thú khỏe lại ngay, sai thì ghi nhận vào bộ giới hạn đoán sai
+    // chấm bài toán mua thuốc hồi sức: đúng thì reset đồng hồ liên tục và Dieppie khỏe lại ngay, sai thì ghi nhận vào bộ giới hạn đoán sai
     @Transactional
     public MedicineOutcome submitMedicineAnswer(WatchPetMedicineAnswerRequest request) {
         Viewer viewer = requireChildViewer();
@@ -181,7 +181,7 @@ public class WatchPetService {
                 .orElseGet(() -> new ChildPlayState(profile.getId(), playbackGuard.randomLootThreshold(), now));
         state.clearExpiredRestIfNeeded(now);
         if (state.isRestingAt(now)) {
-            throw new ConflictException("Thú ảo đang ngủ nghỉ mắt rồi, bé chờ hết giờ nghỉ nhé.");
+            throw new ConflictException("Dieppie đang ngủ nghỉ mắt rồi, bé chờ hết giờ nghỉ nhé.");
         }
 
         int expectedAnswer = parseExpectedAnswer(decoded.payload());
@@ -189,7 +189,7 @@ public class WatchPetService {
             rateLimiter.recordFailure(profileId);
             return new MedicineOutcome(
                     new WatchPetMedicineAnswerResponse(false, toView(settings, state, now)),
-                    "Chưa đúng rồi, bé thử tính lại để mua thuốc cho thú nhé."
+                    "Chưa đúng rồi, bé thử tính lại để mua thuốc cho Dieppie nhé."
             );
         }
 
@@ -201,14 +201,14 @@ public class WatchPetService {
         ChildPlayState saved = stateRepository.saveAndFlush(state);
         return new MedicineOutcome(
                 new WatchPetMedicineAnswerResponse(true, toView(settings, saved, now)),
-                "Giỏi quá! Thú ảo uống thuốc xong đã khỏe lại rồi."
+                "Giỏi quá! Dieppie uống thuốc xong đã khỏe lại rồi."
         );
     }
 
     private Viewer requireChildViewer() {
         Viewer viewer = currentViewer.require();
         if (!viewer.isChildProfile()) {
-            throw new InvalidRequestException("Thú ảo canh giờ nghỉ mắt chỉ áp dụng cho hồ sơ trẻ em.");
+            throw new InvalidRequestException("Dieppie canh giờ nghỉ mắt chỉ áp dụng cho hồ sơ trẻ em.");
         }
         return viewer;
     }

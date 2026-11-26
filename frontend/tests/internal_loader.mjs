@@ -92,6 +92,7 @@ const SHARED_MODULES = {
   '@/lib/context/ScreenTimeContext': 'lib/context/ScreenTimeContext.tsx',
   '@/features/profiles/hooks/useScreenTimeHeartbeat': 'features/profiles/hooks/useScreenTimeHeartbeat.ts',
   '@/features/profiles/hooks/usePlayFeatures': 'features/profiles/hooks/usePlayFeatures.ts',
+  '@/features/profiles/overlayPriority': 'features/profiles/overlayPriority.ts',
   '@/features/profiles/components/ScreenTimeChip': 'features/profiles/components/ScreenTimeChip.tsx',
   '@/features/profiles/components/ScreenTimeLockOverlay': 'features/profiles/components/ScreenTimeLockOverlay.tsx',
   '@/features/profiles/components/KidBountyBoard': 'features/profiles/components/KidBountyBoard.tsx',

@@ -120,7 +120,7 @@ export function KidBountyBoard({ token }: { token: string }) {
         <div>
           <h2 className="font-display text-lg font-bold text-ink">Bảng nhiệm vụ đổi giờ xem</h2>
           <p className="text-xs text-muted">
-            Làm xong việc ngoan rồi bấm &ldquo;Nộp nhiệm vụ&rdquo; để ba mẹ thưởng thêm phút xem phim nhé!
+            Làm xong việc ngoan rồi bấm &ldquo;Nộp nhiệm vụ&rdquo; để nhận thêm phút xem phim nhé!
           </p>
         </div>
       </div>
@@ -196,7 +196,7 @@ export function KidBountyBoard({ token }: { token: string }) {
                             action: 'approve',
                           });
                         }}
-                        className="btn-secondary min-h-[40px] flex-1 justify-center text-[11px] font-bold text-brand-dark"
+                        className="btn-secondary min-h-[44px] flex-1 justify-center text-xs font-bold text-brand-dark"
                       >
                         Ba mẹ duyệt (PIN)
                       </button>
@@ -213,7 +213,7 @@ export function KidBountyBoard({ token }: { token: string }) {
                             action: 'reject',
                           });
                         }}
-                        className="btn-secondary min-h-[40px] px-2.5 text-[11px] text-red-900"
+                        className="btn-secondary min-h-[44px] px-3 text-xs text-red-900"
                       >
                         Từ chối
                       </button>
@@ -223,7 +223,7 @@ export function KidBountyBoard({ token }: { token: string }) {
               ) : (
                 <span
                   data-testid={`kid-bounty-completed-badge-${task.id}`}
-                  className="inline-flex min-h-[40px] w-full items-center justify-center rounded-lg border border-ink/40 bg-mint/70 px-3 text-xs font-bold text-ink"
+                  className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-ink/40 bg-mint/70 px-3 text-xs font-bold text-ink"
                 >
                   Đã hoàn thành hôm nay ✓
                 </span>
@@ -268,14 +268,17 @@ export function KidBountyBoard({ token }: { token: string }) {
                 data-testid="kid-bounty-review-pin-input"
                 type="password"
                 inputMode="numeric"
+                pattern="[0-9]*"
+                enterKeyHint="done"
                 autoComplete="off"
+                autoFocus
                 maxLength={6}
                 required
                 disabled={reviewBusy}
                 value={pin}
                 onChange={(event) => setPin(event.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
                 placeholder="••••"
-                className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
+                className="min-h-[44px] w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-base sm:text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
             </div>
             {reviewError && (

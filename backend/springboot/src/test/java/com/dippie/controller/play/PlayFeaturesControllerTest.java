@@ -74,7 +74,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// test trọn luồng 3 tính năng xem phim cho hồ sơ trẻ em: thú ảo nghỉ mắt, rương báu bay ngang, ôn tập qua tập và cài đặt phụ huynh
+// test trọn luồng 3 tính năng xem phim cho hồ sơ trẻ em: Dieppie nghỉ mắt, rương báu bay ngang, ôn tập qua tập và cài đặt phụ huynh
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -211,7 +211,7 @@ class PlayFeaturesControllerTest {
         Files.write(mediaRoot.resolve("play-ep3.mp4"), new byte[]{0, 1, 2, 3, 4, 5, 6, 7});
     }
 
-    // test thú ảo: tăng theo heartbeat, nghỉ 2 phút tự reset, ngất khóa 423, ngủ 3 phút khóa grant/stream/progress và thuốc hồi máu giải toán
+    // test Dieppie: tăng theo heartbeat, nghỉ 2 phút tự reset, ngất khóa 423, ngủ 3 phút khóa grant/stream/progress và thuốc hồi sức giải toán
     @Test
     void enforcesWatchPetStagesPauseResetRestLockAndMedicineMathHeal() throws Exception {
         seedThreeEpisodeSeries();
@@ -251,17 +251,18 @@ class PlayFeaturesControllerTest {
                 .andReturn();
         String grantToken = objectMapper.readTree(preGrant.getResponse().getContentAsString()).path("grant").asText();
 
-        // thêm 5 nhịp * 20s = đủ 600s -> thú ảo ngất (FAINTED)
+        // thêm 5 nhịp * 20s = đủ 600s -> Dieppie ngất (FAINTED)
         sendHeartbeats(childToken, 5, 20, 15);
         mockMvc.perform(get("/api/users/play-features/status").header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.watchPet.stage").value("FAINTED"))
                 .andExpect(jsonPath("$.data.watchPet.fainted").value(true));
 
-        // khi thú ngất: grant, stream và progress đều trả 423 kèm X-Dippie-Lock-Reason = WATCH_PET_FAINT
+        // khi Dieppie ngất: grant, stream và progress đều trả 423 kèm X-Dippie-Lock-Reason = WATCH_PET_FAINT
         mockMvc.perform(post("/api/media/grant/asset_play_1").header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isLocked())
-                .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_FAINT"));
+                .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_FAINT"))
+                .andExpect(jsonPath("$.message").value("Dieppie mệt xỉu rồi! Bé cho Dieppie ngủ hoặc mua thuốc hồi sức để xem tiếp nhé."));
         mockMvc.perform(get("/api/media/stream/asset_play_1").param("grant", grantToken))
                 .andExpect(status().isLocked())
                 .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_FAINT"));
@@ -272,22 +273,25 @@ class PlayFeaturesControllerTest {
                 .andExpect(status().isLocked())
                 .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_FAINT"));
 
-        // bé chọn "Cho thú ngủ 3 phút" -> server khóa cứng 3 phút, không cho lách qua mua thuốc
+        // bé chọn "Cho Dieppie ngủ 3 phút" -> server khóa cứng 3 phút, không cho lách qua mua thuốc
         mockMvc.perform(post("/api/users/play-features/watch-pet/rest")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Dieppie đang đi ngủ nghỉ mắt rồi, bé thư giãn mắt nhé!"))
                 .andExpect(jsonPath("$.data.stage").value("RESTING"))
                 .andExpect(jsonPath("$.data.resting").value(true))
                 .andExpect(jsonPath("$.data.restRemainingSeconds").value(180));
 
         mockMvc.perform(get("/api/users/play-features/watch-pet/medicine")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Dieppie đang ngủ nghỉ mắt rồi, bé chờ hết giờ nghỉ nhé."));
 
         mockMvc.perform(post("/api/media/grant/asset_play_1").header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isLocked())
                 .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_REST"))
-                .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
+                .andExpect(header().exists(HttpHeaders.RETRY_AFTER))
+                .andExpect(jsonPath("$.message").value("Dieppie đang ngủ nghỉ mắt rồi, bé chờ hết giờ nghỉ nhé."));
         mockMvc.perform(get("/api/media/stream/asset_play_1").param("grant", grantToken))
                 .andExpect(status().isLocked())
                 .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_REST"));
@@ -298,7 +302,7 @@ class PlayFeaturesControllerTest {
                 .andExpect(status().isLocked())
                 .andExpect(header().string("X-Dippie-Lock-Reason", "WATCH_PET_REST"));
 
-        // tua đồng hồ đúng 3 phút -> hết giờ ngủ, thú khỏe lại HAPPY và mở khóa grant/progress
+        // tua đồng hồ đúng 3 phút -> hết giờ ngủ, Dieppie khỏe lại HAPPY và mở khóa grant/progress
         clock.advance(Duration.ofMinutes(3));
         mockMvc.perform(get("/api/users/play-features/status").header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isOk())
@@ -308,7 +312,7 @@ class PlayFeaturesControllerTest {
         mockMvc.perform(post("/api/media/grant/asset_play_1").header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
                 .andExpect(status().isOk());
 
-        // xem tiếp 600s để thú ngất lại, lần này chọn "Mua thuốc hồi máu" bằng bài toán ký HMAC
+        // xem tiếp 600s để Dieppie ngất lại, lần này chọn "Mua thuốc hồi sức cho Dieppie" bằng bài toán ký HMAC
         sendHeartbeats(childToken, 30, 20, 15);
         MvcResult challengeRes = mockMvc.perform(get("/api/users/play-features/watch-pet/medicine")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken)))
@@ -326,20 +330,22 @@ class PlayFeaturesControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("token", medToken, "answer", correct + 5))))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Chưa đúng rồi, bé thử tính lại để mua thuốc cho Dieppie nhé."))
                 .andExpect(jsonPath("$.data.correct").value(false))
                 .andExpect(jsonPath("$.data.watchPet.fainted").value(true));
 
-        // trả lời đúng -> thú hồi máu về HAPPY và mở khóa phát phim ngay
+        // trả lời đúng -> Dieppie hồi sức về HAPPY và mở khóa phát phim ngay
         mockMvc.perform(post("/api/users/play-features/watch-pet/medicine")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("token", medToken, "answer", correct))))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Giỏi quá! Dieppie uống thuốc xong đã khỏe lại rồi."))
                 .andExpect(jsonPath("$.data.correct").value(true))
                 .andExpect(jsonPath("$.data.watchPet.stage").value("HAPPY"))
                 .andExpect(jsonPath("$.data.watchPet.continuousWatchSeconds").value(0));
 
-        // không cho dùng lại token đã hồi máu
+        // không cho dùng lại token đã hồi sức
         mockMvc.perform(post("/api/users/play-features/watch-pet/medicine")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -357,7 +363,7 @@ class PlayFeaturesControllerTest {
         String mainToken = registerUser("lootparent", "lootparent@example.com", "secret123", "Ba Mẹ");
         enableParentMode(mainToken, "1234");
         long childId = createChildProfile(mainToken, "1234", "Bé Na", "cat");
-        // đặt trần thưởng ngày 11 phút và tắt thú ảo để tập trung test đủ 4 rương liên tiếp
+        // đặt trần thưởng ngày 11 phút và tắt Dieppie để tập trung test đủ 4 rương liên tiếp
         mockMvc.perform(put("/api/users/profiles/" + childId + "/screen-time")
                         .header(HttpHeaders.AUTHORIZATION, bearer(mainToken))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -704,7 +710,7 @@ class PlayFeaturesControllerTest {
                         ))))
                 .andExpect(status().isBadRequest());
 
-        // khóa tập 2 bằng recap trước rồi phụ huynh tắt recap + thú ảo + rương báu -> lập tức mở lại bình thường
+        // khóa tập 2 bằng recap trước rồi phụ huynh tắt recap + Dieppie + rương báu -> lập tức mở lại bình thường
         mockMvc.perform(put("/api/users/watch-progress/ep_play_1")
                         .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -729,7 +735,7 @@ class PlayFeaturesControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
-    // test hồ sơ không giới hạn phút ngày bỏ qua khóa hạn mức nhưng vẫn chạy thú ảo và cổng ôn tập
+    // test hồ sơ không giới hạn phút ngày bỏ qua khóa hạn mức nhưng vẫn chạy Dieppie và cổng ôn tập
     @Test
     void enforcesWatchPetAndRecapLocksForUnlimitedChildProfileWithoutBudgetLock() throws Exception {
         seedThreeEpisodeSeries();
@@ -756,7 +762,7 @@ class PlayFeaturesControllerTest {
                 .andExpect(status().isLocked())
                 .andExpect(header().string("X-Dippie-Lock-Reason", "RECAP_REQUIRED"));
 
-        // gửi đủ 30 nhịp * 20s = 600s -> không ghi WATCH vào sổ cái, không khóa hạn mức, nhưng thú ảo ngất và khóa 423
+        // gửi đủ 30 nhịp * 20s = 600s -> không ghi WATCH vào sổ cái, không khóa hạn mức, nhưng Dieppie ngất và khóa 423
         sendHeartbeats(childToken, 30, 20, 15);
         assertThat(ledgerRepository.count()).isZero();
         mockMvc.perform(get("/api/users/screen-time").header(HttpHeaders.AUTHORIZATION, bearer(childToken)))

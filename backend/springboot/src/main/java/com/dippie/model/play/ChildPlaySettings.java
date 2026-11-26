@@ -17,7 +17,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
-// cài đặt phụ huynh cho 3 tính năng xem phim của từng hồ sơ bé: thú ảo, rương báu và ôn tập qua tập
+// cài đặt phụ huynh cho 3 tính năng xem phim của từng hồ sơ bé: Dieppie, rương báu và ôn tập qua tập
 @Entity
 @Table(name = "child_play_settings")
 public class ChildPlaySettings {
@@ -103,7 +103,7 @@ public class ChildPlaySettings {
         return updatedAt;
     }
 
-    // lưu cấu hình mới từ phụ huynh sau khi kiểm tra đủ giới hạn phút cho thú ảo
+    // lưu cấu hình mới từ phụ huynh sau khi kiểm tra đủ giới hạn phút cho Dieppie
     public void update(
             Boolean newWatchPetEnabled,
             Integer newWatchPetFaintMinutes,
@@ -125,14 +125,14 @@ public class ChildPlaySettings {
 
     public static int validateFaintMinutes(Integer value) {
         if (value == null || value < 10 || value > 60) {
-            throw new InvalidRequestException("Ngưỡng thú ảo mệt xỉu cần từ 10 đến 60 phút.");
+            throw new InvalidRequestException("Ngưỡng Dieppie mệt xỉu cần từ 10 đến 60 phút.");
         }
         return value;
     }
 
     public static int validateRestMinutes(Integer value) {
         if (value == null || value < 3 || value > 15) {
-            throw new InvalidRequestException("Thời gian cho thú nghỉ mắt cần từ 3 đến 15 phút.");
+            throw new InvalidRequestException("Thời gian cho Dieppie nghỉ mắt cần từ 3 đến 15 phút.");
         }
         return value;
     }

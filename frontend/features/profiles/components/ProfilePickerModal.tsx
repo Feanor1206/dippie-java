@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { getUserInitials } from '@/lib/labels';
 import { useAuth } from '@/lib/context/AuthContext';
 import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function ProfilePickerModal() {
   const {
@@ -19,8 +22,87 @@ export function ProfilePickerModal() {
   const { pathname } = useLocation();
   const [busyProfileId, setBusyProfileId] = useState<number | null>(null);
   const [error, setError] = useState('');
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const busyRef = useRef(false);
+  busyRef.current = busyProfileId !== null;
+  const closeRef = useRef(closeProfilePicker);
+  closeRef.current = closeProfilePicker;
 
-  if (!showProfilePicker || !isAuthenticated || !user || !parentModeEnabled || activeProfile) {
+  const isVisible = Boolean(
+    showProfilePicker && isAuthenticated && user && parentModeEnabled && !activeProfile
+  );
+
+  useEffect(() => {
+    if (!isVisible) return;
+    if (
+      typeof document !== 'undefined' &&
+      document.activeElement instanceof HTMLElement &&
+      !modalRef.current?.contains?.(document.activeElement)
+    ) {
+      openerRef.current = document.activeElement;
+    }
+
+    const originalOverflow = typeof document !== 'undefined' ? document.body?.style?.overflow : undefined;
+    if (typeof document !== 'undefined' && document.body?.style) {
+      document.body.style.overflow = 'hidden';
+    }
+
+    const focusTimer = setTimeout(() => {
+      const firstTarget =
+        modalRef.current?.querySelector<HTMLElement>('[data-testid="picker-main-profile"]') ||
+        modalRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+      firstTarget?.focus();
+    }, 30);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!busyRef.current) {
+          event.preventDefault();
+          closeRef.current();
+        }
+        return;
+      }
+      if (event.key === 'Tab' && modalRef.current) {
+        const focusable = modalRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+        if (!focusable.length) return;
+        const firstElement = focusable[0];
+        const lastElement = focusable[focusable.length - 1];
+        if (!modalRef.current.contains(document.activeElement)) {
+          event.preventDefault();
+          firstElement.focus();
+          return;
+        }
+        if (event.shiftKey) {
+          if (document.activeElement === firstElement) {
+            event.preventDefault();
+            lastElement.focus();
+          }
+        } else if (document.activeElement === lastElement) {
+          event.preventDefault();
+          firstElement.focus();
+        }
+      }
+    };
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+
+    return () => {
+      clearTimeout(focusTimer);
+      if (typeof document !== 'undefined' && document.body?.style && originalOverflow !== undefined) {
+        document.body.style.overflow = originalOverflow;
+      }
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('keydown', handleKeyDown);
+      }
+      openerRef.current?.focus?.();
+      openerRef.current = null;
+    };
+  }, [isVisible]);
+
+  if (!isVisible || !user) {
     return null;
   }
 
@@ -46,10 +128,16 @@ export function ProfilePickerModal() {
 
   return (
     <div
+      ref={modalRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="profile-picker-title"
       data-testid="profile-picker-modal"
+      onClick={(event) => {
+        if (event.target === event.currentTarget && busyProfileId === null) {
+          closeProfilePicker();
+        }
+      }}
       className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/75 p-4 backdrop-blur-sm animate-fade-in"
     >
       <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border-2 border-ink bg-paper-white p-6 shadow-brand-lg sm:p-8">

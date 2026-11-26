@@ -28,7 +28,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-// phụ huynh đọc và chỉnh cài đặt thú ảo, rương báu và ôn tập qua tập cho từng bé (cần PIN), kiêm dọn dữ liệu khi xóa hồ sơ
+// phụ huynh đọc và chỉnh cài đặt Dieppie, rương báu và ôn tập qua tập cho từng bé (cần PIN), kiêm dọn dữ liệu khi xóa hồ sơ
 @Service
 public class PlaySettingsService {
 

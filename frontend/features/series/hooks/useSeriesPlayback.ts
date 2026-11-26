@@ -312,12 +312,20 @@ export function useSeriesPlayback(
     seriesId,
     isPlaying: isMediaPlaying,
     isScreenTimeLocked,
+    isBlockedByHigherOverlay: activeRecapEpisodeId !== null || isSelectedEpisodeVipLocked,
     onScreenTimeUpdated: (next) => screenTime?.applyScreenTimeStatus(next),
   });
   const isPetLocked = Boolean(isKidMode && playFeatures.isPetLocked);
   const isPlaybackBlocked =
-    isScreenTimeLocked || isSelectedEpisodeVipLocked || isPetLocked || activeRecapEpisodeId !== null;
+    isScreenTimeLocked || isPetLocked || activeRecapEpisodeId !== null || isSelectedEpisodeVipLocked;
   const wasPlaybackBlockedRef = useRef(isPlaybackBlocked);
+
+  useEffect(() => {
+    if (auth?.isAuthenticated && runtimeFailure?.reason === 'forbidden') {
+      setRuntimeFailure(null);
+      setFileRetryCount((value) => value + 1);
+    }
+  }, [auth?.isAuthenticated, runtimeFailure?.reason]);
 
   useEffect(() => {
     if (!isKidMode || !auth?.token) {

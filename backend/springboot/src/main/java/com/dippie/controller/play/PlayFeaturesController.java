@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-// /api/users/play-features phục vụ thú ảo nghỉ mắt, rương báu bay ngang và câu hỏi ôn tập qua tập cho chế độ trẻ em
+// /api/users/play-features phục vụ Dieppie nghỉ mắt, rương báu bay ngang và câu hỏi ôn tập qua tập cho chế độ trẻ em
 @RestController
 @RequestMapping("/api/users/play-features")
 public class PlayFeaturesController {
@@ -62,7 +62,7 @@ public class PlayFeaturesController {
     public ResponseEntity<ApiResponse<WatchPetStatusView>> startPetRest() {
         return ResponseEntity.ok(ApiResponse.ok(
                 watchPetService.startRest(),
-                "Thú ảo đang đi ngủ nghỉ mắt rồi, bé thư giãn mắt nhé!"
+                "Dieppie đang đi ngủ nghỉ mắt rồi, bé thư giãn mắt nhé!"
         ));
     }
 

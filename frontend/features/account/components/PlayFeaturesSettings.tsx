@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { SiteDialog } from '@/components/ui/SiteDialog';
 import { validateParentPin, type ChildProfile } from '@/lib/services/profileService';
 import {
@@ -11,11 +11,17 @@ import {
 export function PlayFeaturesSettings({
   token,
   profile,
+  sessionPin = '',
+  onPinVerified,
+  onPinRejected,
   onClose,
   onSaved,
 }: {
   token: string;
   profile: ChildProfile;
+  sessionPin?: string;
+  onPinVerified?: (pin: string) => void;
+  onPinRejected?: () => void;
   onClose: () => void;
   onSaved?: (saved: ChildProfilePlaySettings) => void;
 }) {
@@ -24,38 +30,36 @@ export function PlayFeaturesSettings({
   const [watchPetRestMinutes, setWatchPetRestMinutes] = useState('5');
   const [lootDropEnabled, setLootDropEnabled] = useState(true);
   const [recapToNextEnabled, setRecapToNextEnabled] = useState(true);
-  const [pin, setPin] = useState('');
+  const [pin, setPin] = useState(sessionPin);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    let active = true;
+  const loadSettings = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     setError('');
-    void fetchParentPlaySettings(token)
-      .then((list) => {
-        if (!active) return;
-        const found = list.find((item) => item.profileId === profile.id);
-        if (found) {
-          setWatchPetEnabled(found.watchPetEnabled);
-          setWatchPetFaintMinutes(String(found.watchPetFaintMinutes));
-          setWatchPetRestMinutes(String(found.watchPetRestMinutes));
-          setLootDropEnabled(found.lootDropEnabled);
-          setRecapToNextEnabled(found.recapToNextEnabled);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : 'Chưa tải được cài đặt tính năng xem phim.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+    try {
+      const list = await fetchParentPlaySettings(token);
+      const found = list.find((item) => item.profileId === profile.id);
+      if (found) {
+        setWatchPetEnabled(found.watchPetEnabled);
+        setWatchPetFaintMinutes(String(found.watchPetFaintMinutes));
+        setWatchPetRestMinutes(String(found.watchPetRestMinutes));
+        setLootDropEnabled(found.lootDropEnabled);
+        setRecapToNextEnabled(found.recapToNextEnabled);
+      }
+    } catch (err: unknown) {
+      setLoadError(err instanceof Error ? err.message : 'Chưa tải được cài đặt tính năng xem phim.');
+    } finally {
+      setLoading(false);
+    }
   }, [token, profile.id]);
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -91,9 +95,11 @@ export function PlayFeaturesSettings({
         lootDropEnabled,
         recapToNextEnabled,
       });
+      onPinVerified?.(pin);
       onSaved?.(saved);
       onClose();
     } catch (err: unknown) {
+      onPinRejected?.();
       setPin('');
       setError(err instanceof Error ? err.message : 'Chưa lưu được cài đặt tính năng xem phim.');
     } finally {
@@ -112,6 +118,13 @@ export function PlayFeaturesSettings({
           <p role="status" className="py-4 text-center text-xs text-muted">
             Đang tải cài đặt của bé…
           </p>
+        ) : loadError ? (
+          <div role="alert" className="space-y-3 rounded-xl border border-red-800/35 bg-red-50 p-4 text-center text-xs text-red-900">
+            <p>{loadError}</p>
+            <button type="button" onClick={() => void loadSettings()} className="btn-secondary min-h-[44px] text-xs font-bold">
+              Thử lại
+            </button>
+          </div>
         ) : (
           <>
             <div className="rounded-xl border border-surface-border bg-surface-muted p-3.5 space-y-3">
@@ -125,9 +138,9 @@ export function PlayFeaturesSettings({
                   className="mt-1 h-4 w-4 accent-brand"
                 />
                 <span>
-                  <span className="block text-xs font-bold text-ink">Thú ảo canh giờ nghỉ mắt</span>
+                  <span className="block text-xs font-bold text-ink">Dieppie canh giờ nghỉ mắt</span>
                   <span className="block text-[11px] text-muted">
-                    Nhắc bé nghỉ mắt khi xem liên tục quá lâu, ngất ở ngưỡng chọn để bé cho thú ngủ hoặc giải toán hồi máu.
+                    Dieppie nhắc bé nghỉ mắt khi xem liên tục quá lâu. Bé có thể cho Dieppie ngủ hoặc giải toán để Dieppie khỏe lại.
                   </span>
                 </span>
               </label>
@@ -135,7 +148,7 @@ export function PlayFeaturesSettings({
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label htmlFor="play-pet-faint-minutes" className="mb-1 block text-xs font-semibold text-ink">
-                    Ngưỡng thú mệt xỉu (10–60 phút)
+                    Dieppie nhắc nghỉ mắt sau (10–60 phút)
                   </label>
                   <input
                     id="play-pet-faint-minutes"
@@ -152,7 +165,7 @@ export function PlayFeaturesSettings({
                 </div>
                 <div>
                   <label htmlFor="play-pet-rest-minutes" className="mb-1 block text-xs font-semibold text-ink">
-                    Thời gian cho thú ngủ (3–15 phút)
+                    Thời gian cho Dieppie ngủ (3–15 phút)
                   </label>
                   <input
                     id="play-pet-rest-minutes"
@@ -213,6 +226,8 @@ export function PlayFeaturesSettings({
                 data-testid="play-setting-pin-input"
                 type="password"
                 inputMode="numeric"
+                pattern="[0-9]*"
+                enterKeyHint="done"
                 autoComplete="off"
                 maxLength={6}
                 required
@@ -222,6 +237,21 @@ export function PlayFeaturesSettings({
                 placeholder="••••"
                 className="w-full rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5 text-sm text-ink focus:border-ink focus:bg-paper-white focus:outline-none"
               />
+              {sessionPin && pin === sessionPin && (
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-brand-dark">
+                  <span>Đã tự điền mã PIN vừa xác nhận trong phiên này.</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onPinRejected?.();
+                      setPin('');
+                    }}
+                    className="font-bold underline cursor-pointer"
+                  >
+                    Nhập lại
+                  </button>
+                </div>
+              )}
             </div>
 
             {error && (
