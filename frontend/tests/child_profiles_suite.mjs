@@ -1014,3 +1014,28 @@ test('External YouTube links and badges are hidden across player, sidebar, cards
   assert.match(iframeTree.props.src, /playsinline=1/);
   ytPlayerHarness.unmount();
 });
+
+test('YouTubePlayer limits related videos and outbound YouTube links for parent profiles too', () => {
+  const harness = createComponentHarness(
+    '../features/series/components/YouTubePlayer.tsx',
+    'YouTubePlayer',
+    { '@/lib/context/AuthContext': { useOptionalAuth: () => ({ isKidMode: false }) } },
+    { window: { location: { origin: 'http://localhost:3000' } } }
+  );
+  const tree = harness.render({
+    videoId: 'SSubOeKMP2c',
+    src: 'https://www.youtube-nocookie.com/embed/SSubOeKMP2c',
+    title: 'Larva tập 1',
+    kidMode: false,
+    onProgress() {},
+    onEnded() {},
+    onPlayingChange() {},
+    onTimeTick() {},
+  });
+  assert.equal(tree.type, 'iframe');
+  assert.equal(tree.props.sandbox.includes('allow-popups'), false);
+  assert.equal(tree.props.sandbox.includes('allow-top-navigation'), false);
+  assert.match(tree.props.src, /rel=0/);
+  assert.match(tree.props.src, /iv_load_policy=3/);
+  harness.unmount();
+});

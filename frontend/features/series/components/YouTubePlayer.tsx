@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef } from 'react';
 import { useOptionalAuth } from '@/lib/context/AuthContext';
 
 const YOUTUBE_IFRAME_API_SRC = 'https://www.youtube.com/iframe_api';
-const KID_MODE_SANDBOX = 'allow-scripts allow-same-origin allow-presentation';
+const PLAYER_SANDBOX = 'allow-scripts allow-same-origin allow-presentation';
 const PROGRESS_REPORT_INTERVAL_MS = 15_000;
 const TICK_INTERVAL_MS = 1000;
 const MIN_REPORT_SECONDS = 1;
@@ -100,19 +100,17 @@ export function loadYouTubeIframeApi(): Promise<YouTubeNamespace | null> {
   return apiLoadPromise;
 }
 
-function withEmbedParams(embedUrl: string, kidMode: boolean): string {
+function withEmbedParams(embedUrl: string): string {
   try {
     const parsed = new URL(embedUrl);
     if (!parsed.searchParams.has('enablejsapi')) parsed.searchParams.set('enablejsapi', '1');
     if (typeof window !== 'undefined' && window.location?.origin && /^https?:\/\//i.test(window.location.origin)) {
       if (!parsed.searchParams.has('origin')) parsed.searchParams.set('origin', window.location.origin);
     }
-    if (kidMode) {
-      parsed.searchParams.set('rel', '0');
-      parsed.searchParams.set('modestbranding', '1');
-      parsed.searchParams.set('iv_load_policy', '3');
-      parsed.searchParams.set('playsinline', '1');
-    }
+    parsed.searchParams.set('rel', '0');
+    parsed.searchParams.set('modestbranding', '1');
+    parsed.searchParams.set('iv_load_policy', '3');
+    parsed.searchParams.set('playsinline', '1');
     return parsed.toString();
   } catch {
     return embedUrl;
@@ -153,7 +151,13 @@ export type YouTubePlayerProps = {
   onEnded?: () => void;
   onPlayingChange?: (playing: boolean) => void;
   onTimeTick?: (snapshot: YouTubeProgressSnapshot) => void;
+  controlsRef?: React.MutableRefObject<YouTubePlayerControls | null>;
   'data-testid'?: string;
+};
+
+export type YouTubePlayerControls = {
+  resume: () => void;
+  restart: () => void;
 };
 
 export function YouTubePlayer({
@@ -168,6 +172,7 @@ export function YouTubePlayer({
   onEnded,
   onPlayingChange,
   onTimeTick,
+  controlsRef,
   'data-testid': testId = 'series-youtube-player',
 }: YouTubePlayerProps) {
   const auth = typeof useOptionalAuth === 'function' ? useOptionalAuth() : null;
@@ -179,16 +184,25 @@ export function YouTubePlayer({
   const readyRef = useRef(false);
   const playingRef = useRef(false);
   const hasStartedPlaybackRef = useRef(false);
+  if (controlsRef) {
+    controlsRef.current = {
+      resume: () => playerRef.current?.playVideo?.(),
+      restart: () => {
+        const player = playerRef.current;
+        if (player) applySeekAndPlay(player, 0, true);
+      },
+    };
+  }
   const initialSrcRef = useRef<{ videoId: string; kidMode: boolean; url: string }>({
     videoId,
     kidMode: effectiveKidMode,
-    url: withEmbedParams(src, effectiveKidMode),
+    url: withEmbedParams(src),
   });
   if (initialSrcRef.current.videoId !== videoId || initialSrcRef.current.kidMode !== effectiveKidMode) {
     initialSrcRef.current = {
       videoId,
       kidMode: effectiveKidMode,
-      url: withEmbedParams(src, effectiveKidMode),
+      url: withEmbedParams(src),
     };
   }
 
@@ -306,16 +320,12 @@ export function YouTubePlayer({
 
       try {
         playerRef.current = new YT.Player(iframeRef.current, {
-          ...(effectiveKidMode
-            ? {
-                playerVars: {
-                  rel: 0,
-                  modestbranding: 1,
-                  iv_load_policy: 3,
-                  playsinline: 1,
-                },
-              }
-            : {}),
+          playerVars: {
+            rel: 0,
+            modestbranding: 1,
+            iv_load_policy: 3,
+            playsinline: 1,
+          },
           events: {
             onReady: (event) => {
               if (!active) return;
@@ -424,7 +434,7 @@ export function YouTubePlayer({
       src={initialSrcRef.current.url}
       allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share"
       referrerPolicy="strict-origin-when-cross-origin"
-      sandbox={effectiveKidMode ? KID_MODE_SANDBOX : undefined}
+      sandbox={PLAYER_SANDBOX}
       allowFullScreen
     />
   );

@@ -23,7 +23,7 @@ import type {
   WatchPetStatus,
 } from '@/lib/services/playFeaturesService';
 import React, { useEffect, useRef, useState } from 'react';
-import { Eye } from 'lucide-react';
+import { Eye, Play, RotateCcw } from 'lucide-react';
 import { cleanMediaTitle, formatDurationMs } from '@/lib/labels';
 import {
   getUnavailableReasonMessage,
@@ -33,6 +33,7 @@ import type { CatalogEpisode, CatalogEpisodeResponse } from '@/lib/services/cata
 import type { WatchProgressRecord } from '@/lib/services/watchProgressService';
 import {
   YouTubePlayer,
+  type YouTubePlayerControls,
   type YouTubeProgressReason,
   type YouTubeProgressSnapshot,
   type YouTubeSeekRequest,
@@ -172,6 +173,14 @@ export function EpisodePlayerPanel({
   const [vipDialogOpen, setVipDialogOpen] = useState(false);
   const playerFrameRef = useRef<HTMLDivElement | null>(null);
   const vipLockRef = useRef<HTMLDivElement | null>(null);
+  const youtubeControlsRef = useRef<YouTubePlayerControls | null>(null);
+  const [youtubeState, setYoutubeState] = useState<'idle' | 'playing' | 'paused' | 'ended'>('idle');
+  const youtubeVideoKey =
+    playbackSource.kind === 'youtube' ? `${selectedEpisode?.id || ''}:${playbackSource.youtube.videoId}` : '';
+
+  useEffect(() => {
+    setYoutubeState('idle');
+  }, [youtubeVideoKey]);
 
   const hasTimeUpLock = Boolean(
     isKidMode && (isScreenTimeLocked || holdSolvedOverlay) && screenTime?.screenTime && auth?.token
@@ -278,12 +287,6 @@ export function EpisodePlayerPanel({
   }, [activeOverlay]);
 
   const youtubeEmbed = playbackSource.kind === 'youtube';
-  const youtubeUrl =
-    playbackSource.kind === 'youtube'
-      ? playbackSource.watchUrl
-      : playbackSource.kind === 'unavailable'
-      ? playbackSource.youtubeWatchUrl
-      : null;
   const requiresGuestLogin = Boolean(
     !auth?.isAuthenticated &&
       playbackSource.kind === 'unavailable' &&
@@ -453,18 +456,56 @@ export function EpisodePlayerPanel({
                 </button>
               </div>
             ) : playbackSource.kind === 'youtube' ? (
-              <YouTubePlayer
-                key={`${selectedEpisode?.id || ''}:${playbackSource.youtube.videoId}`}
-                data-testid="series-youtube-player"
-                videoId={playbackSource.youtube.videoId}
-                src={playbackSource.embedUrl}
-                title={cleanMediaTitle(selectedEpisode?.title) || 'Tập trên YouTube'}
-                seekRequest={youtubeSeekRequest}
-                autoPlay={shouldAutoPlayYoutube && !isPlaybackPaused}
-                kidMode={isKidMode}
-                paused={isPlaybackPaused}
-                {...youtubeHandlers}
-              />
+              <>
+                <YouTubePlayer
+                  key={`${selectedEpisode?.id || ''}:${playbackSource.youtube.videoId}`}
+                  data-testid="series-youtube-player"
+                  videoId={playbackSource.youtube.videoId}
+                  src={playbackSource.embedUrl}
+                  title={cleanMediaTitle(selectedEpisode?.title) || 'Tập trên YouTube'}
+                  seekRequest={youtubeSeekRequest}
+                  autoPlay={shouldAutoPlayYoutube && !isPlaybackPaused}
+                  kidMode={isKidMode}
+                  paused={isPlaybackPaused}
+                  {...youtubeHandlers}
+                  controlsRef={youtubeControlsRef}
+                  onPlayingChange={(playing) => {
+                    setYoutubeState((current) => (playing ? 'playing' : current === 'ended' ? 'ended' : 'paused'));
+                    youtubeHandlers.onPlayingChange?.(playing);
+                  }}
+                  onEnded={() => {
+                    setYoutubeState('ended');
+                    youtubeHandlers.onEnded?.();
+                  }}
+                />
+                <div aria-hidden="true" data-testid="youtube-top-shield" className="absolute inset-x-0 top-0 z-[5] h-16" />
+                {(youtubeState === 'paused' || youtubeState === 'ended') && (
+                  <div
+                    data-testid="youtube-pause-cover"
+                    className="absolute inset-0 z-[6] flex flex-col items-center justify-center gap-3 bg-ink p-4 text-center text-paper-white"
+                  >
+                    <p className="font-display text-base font-bold sm:text-lg">
+                      {youtubeState === 'ended' ? 'Hết tập rồi!' : 'Đang tạm dừng'}
+                    </p>
+                    <button
+                      type="button"
+                      data-testid={youtubeState === 'ended' ? 'youtube-cover-restart' : 'youtube-cover-resume'}
+                      onClick={() => {
+                        if (youtubeState === 'ended') youtubeControlsRef.current?.restart();
+                        else youtubeControlsRef.current?.resume();
+                      }}
+                      className="btn-primary inline-flex min-h-[48px] items-center gap-2 px-5 text-sm font-bold"
+                    >
+                      {youtubeState === 'ended' ? (
+                        <RotateCcw size={18} aria-hidden="true" />
+                      ) : (
+                        <Play size={18} aria-hidden="true" />
+                      )}
+                      <span>{youtubeState === 'ended' ? 'Xem lại từ đầu' : 'Xem tiếp'}</span>
+                    </button>
+                  </div>
+                )}
+              </>
             ) : playbackSource.kind === 'file' && streamUrl ? (
               <video
                 ref={videoRef}
@@ -616,16 +657,6 @@ export function EpisodePlayerPanel({
           />
         )}
       </div>
-
-      {!isKidMode && youtubeEmbed && youtubeUrl && (
-        <YouTubeLink
-          url={youtubeUrl}
-          testId="youtube-external-link"
-          className="inline-flex min-h-[44px] items-center py-2 text-sm font-medium text-brand-dark underline underline-offset-4"
-        >
-          Mở trên YouTube
-        </YouTubeLink>
-      )}
 
       {offerResume && savedProgress && (
         <div

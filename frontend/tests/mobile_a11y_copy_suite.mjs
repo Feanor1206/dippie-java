@@ -1106,8 +1106,8 @@ test('10. Finding 7: Remaining secondary links/buttons meet 44px touch targets a
   assert.equal(cinebotSource.includes('min-h-10'), false);
 
   const playerPanelSource = fs.readFileSync(path.resolve(root, 'features/series/components/EpisodePlayerPanel.tsx'), 'utf8');
-  assert.ok(playerPanelSource.includes('testId="youtube-external-link"'));
-  assert.match(playerPanelSource, /testId="youtube-external-link"[\s\S]*?min-h-\[44px\]/);
+  assert.ok(!playerPanelSource.includes('testId="youtube-external-link"'));
+  assert.match(playerPanelSource, /data-testid="youtube-pause-cover"[\s\S]*?min-h-\[48px\]/);
 
   const bannerSource = fs.readFileSync(path.resolve(root, 'features/series/components/SeriesDetailBanner.tsx'), 'utf8');
   assert.match(bannerSource, /data-testid="series-breadcrumb-link"[\s\S]*?min-h-\[44px\] min-w-\[44px\]/);
