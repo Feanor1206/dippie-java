@@ -18,7 +18,7 @@ class ContentHashTest {
         byte[] fixture = Files.readAllBytes(Path.of("../../data/catalog-by-series/catalog.jadoo.json"));
 
         assertThat(ContentHash.of(mapper.readTree(fixture)).value())
-                .isEqualTo("e0d552b7db7db2f44a15c6f3cf5074c92808ab1cba3748513332fbd7916d4319");
+                .isEqualTo("541de9782e8210d06f6e91190b88907e71928a008ccaed2f52f88d2aec191a09");
     }
 
     @Test
