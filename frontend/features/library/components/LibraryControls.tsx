@@ -241,7 +241,7 @@ export function ItemLibraryPanel({
       data-testid={`${testIdPrefix}-library-controls`}
       className={
         compact
-          ? 'mt-4 rounded-lg border border-ink/25 bg-paper-white/95 p-3 text-ink shadow-sm'
+          ? 'mt-4 w-fit max-w-full rounded-lg border border-ink/25 bg-paper-white/95 p-2.5 text-ink shadow-sm'
           : 'mt-4 border-t border-surface-border pt-4'
       }
     >
