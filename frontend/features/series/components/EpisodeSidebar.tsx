@@ -143,7 +143,7 @@ export function EpisodeSidebar({
               {previousEpisodeLabel}
             </button>
             <span className="font-mono text-[0.6875rem] font-semibold text-muted tabular-nums">
-              {seasonEpisodes.findIndex((episode) => episode.id === selectedEpisode.id) + 1} / {seasonEpisodes.length}
+              {seasonEpisodes.findIndex((episode) => episode.id === selectedEpisode.id) + 1}/{seasonEpisodes.length} trong mùa
             </span>
             <button
               type="button"
@@ -201,7 +201,7 @@ export function EpisodeSidebar({
                       className="flex min-h-[44px] min-w-0 flex-1 items-start justify-between gap-3 p-1 text-left cursor-pointer"
                     >
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="flex items-start gap-1.5">
                           <span className={`grid h-5 min-w-[20px] shrink-0 place-items-center rounded px-1 text-[0.625rem] font-bold border ${
                             isSelected
                               ? 'border-ink bg-ink text-[#fffdf6]'
@@ -209,19 +209,23 @@ export function EpisodeSidebar({
                           }`}>
                             {episode.number ?? episode.episodeNumber}
                           </span>
-                          <strong className="text-xs font-semibold break-words text-ink">{displayTitle}</strong>
-                          {isKidMode && isVipSeries && (
-                            <VipBadge
-                              unlocked={unlockedVipEpisodeIds.includes(episode.id)}
-                              data-testid={`episode-vip-badge-${episode.id}`}
-                            />
-                          )}
-                          {isSelected && (
-                            <span className="rounded bg-[#f2d18c] border border-ink/30 px-1.5 py-0.5 text-[0.625rem] font-bold text-ink">
-                              Đang xem
-                            </span>
-                          )}
+                          <strong className="min-w-0 flex-1 break-words text-xs font-semibold leading-5 text-ink">{displayTitle}</strong>
                         </div>
+                        {((isKidMode && isVipSeries) || isSelected) && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {isKidMode && isVipSeries && (
+                              <VipBadge
+                                unlocked={unlockedVipEpisodeIds.includes(episode.id)}
+                                data-testid={`episode-vip-badge-${episode.id}`}
+                              />
+                            )}
+                            {isSelected && (
+                              <span className="rounded bg-[#f2d18c] border border-ink/30 px-1.5 py-0.5 text-[0.625rem] font-bold text-ink">
+                                Đang xem
+                              </span>
+                            )}
+                          </div>
+                        )}
                         {isExternalOnly && !isKidMode && (
                           <span
                             data-testid="episode-external-badge"

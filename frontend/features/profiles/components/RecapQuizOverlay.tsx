@@ -241,7 +241,7 @@ export function RecapQuizOverlay({
                 <span>Nghe đọc</span>
               </button>
             </div>
-            <h3 id="recap-quiz-title" className="mt-1.5 font-display text-base font-bold text-ink sm:text-lg">
+            <h3 id="recap-quiz-title" className="mt-2 break-words font-display text-lg font-bold leading-snug text-ink sm:text-xl">
               {quiz?.prompt || 'Cùng nhớ lại tập vừa xem nhé!'}
             </h3>
           </div>

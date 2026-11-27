@@ -164,7 +164,7 @@ class DeepSeekAnswerGeneratorTest {
             assertThat(callCount.get()).isEqualTo(1);
             assertThat(stage.get()).isEqualTo("cloud");
             assertThat(tokens).containsExactly(
-                    "Có vẻ bạn đang tìm Tập 22, khoảng 08:40. ",
+                    "Có vẻ bạn đang tìm \"Tập 22\", đoạn quanh phút 08:40. ",
                     "Trong cảnh phim này, Chi làm vỡ bình hoa rất thú vị."
             );
             assertThat(lastAuthHeader.get()).isEqualTo("Bearer secret-key-123");
@@ -196,7 +196,7 @@ class DeepSeekAnswerGeneratorTest {
 
             assertThat(stage.get()).isEqualTo("template");
             assertThat(answer).isEqualTo(
-                    "Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Phần trả lời AI đang tạm bận, gửi bạn đoạn trích gốc nhé. Chi làm vỡ bình hoa."
+                    "Có vẻ bạn đang tìm \"Tập 22\", đoạn quanh phút 08:40. Phần trả lời AI đang tạm bận, gửi bạn đoạn trích gốc nhé. Chi làm vỡ bình hoa."
             );
 
             try (DeepSeekAnswerGenerator noKey = new DeepSeekAnswerGenerator(
@@ -219,7 +219,7 @@ class DeepSeekAnswerGeneratorTest {
                 objectMapper
         )) {
             ChatIntent intent = intentParser.parse("cảnh Chi làm vỡ bình hoa");
-            String expectedFallback = "Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Chi làm vỡ bình hoa.";
+            String expectedFallback = "Có vẻ bạn đang tìm \"Tập 22\", đoạn quanh phút 08:40. Chi làm vỡ bình hoa.";
 
             List<HandlerMode> protocolModes = List.of(
                     HandlerMode.WRONG_CONTENT_TYPE,
@@ -259,7 +259,7 @@ class DeepSeekAnswerGeneratorTest {
             ChatIntent noEvidence = intentParser.parse("tìm tập 22");
             SearchHit emptyEvidenceHit = SearchHitFixture.builder().title("Tập 22").build();
             assertThat(String.join("", generator.answer(noEvidence, List.of(emptyEvidenceHit)).toList()))
-                    .isEqualTo("Có vẻ bạn đang tìm Tập 22.");
+                    .isEqualTo("Có vẻ bạn đang tìm \"Tập 22\".");
 
             assertThat(callCount.get()).isZero();
         }
@@ -284,7 +284,7 @@ class DeepSeekAnswerGeneratorTest {
             AtomicReference<String> secondStage = new AtomicReference<>();
             String fallbackText = String.join("", budgeted.answer(intent, List.of(sampleHit()), secondStage::set).toList());
             assertThat(secondStage.get()).isEqualTo("template");
-            assertThat(fallbackText).isEqualTo("Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Chi làm vỡ bình hoa.");
+            assertThat(fallbackText).isEqualTo("Có vẻ bạn đang tìm \"Tập 22\", đoạn quanh phút 08:40. Chi làm vỡ bình hoa.");
             assertThat(callCount.get()).isEqualTo(1);
         }
 

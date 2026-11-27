@@ -47,11 +47,12 @@ public final class CatalogReplies {
     public static String sourceIntro(String title, Long startMs, String mode) {
         String cleaned = cleanTitle(title);
         String intro = "recommend".equals(mode) ? "Bạn có thể xem" : "Có vẻ bạn đang tìm";
+        // để tên tập trong ngoặc kép, tên kiểu "Tuyệt vời!! Mimi~" ghép thẳng vào câu đọc rất rối
         if (startMs == null) {
-            return intro + " " + cleaned + ".";
+            return intro + " \"" + cleaned + "\".";
         }
         long seconds = Math.max(0L, startMs) / 1000L;
-        return String.format("%s %s, khoảng %02d:%02d.", intro, cleaned, seconds / 60L, seconds % 60L);
+        return String.format("%s \"%s\", đoạn quanh phút %02d:%02d.", intro, cleaned, seconds / 60L, seconds % 60L);
     }
 
     // báo không khớp phim nào rồi liệt kê mấy bộ đang có cho người xem biết

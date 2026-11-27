@@ -19,13 +19,13 @@ class CatalogRepliesTest {
 
     static Stream<Arguments> sourceIntroParityCases() {
         return Stream.of(
-                Arguments.of("Tập 22 [abcDEF12345].mp4", null, "find_moment", "Có vẻ bạn đang tìm Tập 22."),
+                Arguments.of("Tập 22 [abcDEF12345].mp4", null, "find_moment", "Có vẻ bạn đang tìm \"Tập 22\"."),
                 Arguments.of("Bình Minh Trên Sao Hỏa...", 70000L, "find_moment",
-                        "Có vẻ bạn đang tìm Bình Minh Trên Sao Hỏa, khoảng 01:10."),
+                        "Có vẻ bạn đang tìm \"Bình Minh Trên Sao Hỏa\", đoạn quanh phút 01:10."),
                 Arguments.of("Học tập trải nghiệm thú vị.MKV", 0L, "recommend",
-                        "Bạn có thể xem Học tập trải nghiệm thú vị, khoảng 00:00."),
-                Arguments.of("Lò xo", -5000L, "recommend", "Bạn có thể xem Lò xo, khoảng 00:00."),
-                Arguments.of("Tập 1.webm", 3665999L, "find_moment", "Có vẻ bạn đang tìm Tập 1, khoảng 61:05.")
+                        "Bạn có thể xem \"Học tập trải nghiệm thú vị\", đoạn quanh phút 00:00."),
+                Arguments.of("Lò xo", -5000L, "recommend", "Bạn có thể xem \"Lò xo\", đoạn quanh phút 00:00."),
+                Arguments.of("Tập 1.webm", 3665999L, "find_moment", "Có vẻ bạn đang tìm \"Tập 1\", đoạn quanh phút 61:05.")
         );
     }
 
@@ -48,7 +48,7 @@ class CatalogRepliesTest {
                 .evidence(List.of(new SearchEvidence("sc-1", "Chi làm vỡ bình hoa.", 520000L, null, "scene")))
                 .build();
         assertThat(CatalogReplies.catalogReply(List.of(normal), "find_moment"))
-                .isEqualTo("Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Chi làm vỡ bình hoa.");
+                .isEqualTo("Có vẻ bạn đang tìm \"Tập 22\", đoạn quanh phút 08:40. Chi làm vỡ bình hoa.");
 
         SearchHit fallbackEpisodeTitle = SearchHitFixture.builder()
                 .title("")
@@ -57,18 +57,18 @@ class CatalogRepliesTest {
                 .evidence(List.of(new SearchEvidence("ep-1", "Những hình giấy bay lên.", 12000L, null, "episode")))
                 .build();
         assertThat(CatalogReplies.catalogReply(List.of(fallbackEpisodeTitle), "recommend"))
-                .isEqualTo("Bạn có thể xem Ngôi Sao Biến Mất, khoảng 00:12. Những hình giấy bay lên.");
+                .isEqualTo("Bạn có thể xem \"Ngôi Sao Biến Mất\", đoạn quanh phút 00:12. Những hình giấy bay lên.");
 
         SearchHit defaultTitle = SearchHitFixture.builder().title(null).build();
         assertThat(CatalogReplies.catalogReply(List.of(defaultTitle), "find_moment"))
-                .isEqualTo("Có vẻ bạn đang tìm Tập phim.");
+                .isEqualTo("Có vẻ bạn đang tìm \"Tập phim\".");
 
         SearchHit boilerplateVi = SearchHitFixture.builder()
                 .title("Lò xo")
                 .evidence(List.of(new SearchEvidence("ep-1", "Tập phim Lò xo của bộ hoạt hình Larva.", null, null, "episode")))
                 .build();
         assertThat(CatalogReplies.catalogReply(List.of(boilerplateVi), "find_moment"))
-                .isEqualTo("Có vẻ bạn đang tìm Lò xo.");
+                .isEqualTo("Có vẻ bạn đang tìm \"Lò xo\".");
 
         SearchHit boilerplateEn = SearchHitFixture.builder()
                 .title("Lò xo")
@@ -76,7 +76,7 @@ class CatalogRepliesTest {
                 .evidence(List.of(new SearchEvidence("ep-1", "Tập 46: Lò xo", null, null, "episode")))
                 .build();
         assertThat(CatalogReplies.catalogReply(List.of(boilerplateEn), "find_moment"))
-                .isEqualTo("Có vẻ bạn đang tìm Lò xo.");
+                .isEqualTo("Có vẻ bạn đang tìm \"Lò xo\".");
     }
 
     @Test

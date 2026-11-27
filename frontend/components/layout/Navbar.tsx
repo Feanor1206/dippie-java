@@ -641,7 +641,7 @@ export function Navbar() {
       {isAuthenticated && kidMode && (
         <div
           data-testid="kid-mode-banner"
-          className="border-b border-ink/20 bg-[#f2d18c]/45 sm:sticky sm:top-[68px] sm:z-30"
+          className="border-b border-ink/20 bg-[#f5e4bf] sm:sticky sm:top-[68px] sm:z-[35]"
         >
           <div className="page-shell flex flex-wrap items-center justify-between gap-2 py-1.5 sm:py-2">
             <div className="flex min-w-0 items-center gap-2">

@@ -129,7 +129,7 @@ class LocalChatControllerTest {
         JsonNode done = events.get(events.size() - 1).data();
         assertThat(done.get("text").asText())
                 .isEqualTo(concatenated.toString())
-                .isEqualTo("Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Chi làm vỡ bình hoa.");
+                .isEqualTo("Có vẻ bạn đang tìm \"Tập 22\", đoạn quanh phút 08:40. Chi làm vỡ bình hoa.");
     }
 
     @Test

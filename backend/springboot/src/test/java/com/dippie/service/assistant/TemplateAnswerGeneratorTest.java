@@ -33,7 +33,7 @@ class TemplateAnswerGeneratorTest {
         assertThat(tokens).isNotEmpty();
         assertThat(tokens).allSatisfy(token -> assertThat(token).matches("\\S+\\s*"));
         assertThat(String.join("", tokens))
-                .isEqualTo("Có vẻ bạn đang tìm Tập 22, khoảng 08:40. Chi làm vỡ bình hoa.");
+                .isEqualTo("Có vẻ bạn đang tìm \"Tập 22\", đoạn quanh phút 08:40. Chi làm vỡ bình hoa.");
     }
 
     @Test

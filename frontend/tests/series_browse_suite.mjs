@@ -1003,3 +1003,30 @@ test('ContinueWatching keeps only the most recent unfinished episode per series,
   assert.equal(findNodes(cards[0], (n) => n.props?.['data-testid'] === 'continue-progress-bar').length, 0);
   assert.equal(findNodes(cards[1], (n) => n.props?.['data-testid'] === 'continue-progress-bar').length, 1);
 });
+
+test('ArtworkImage keeps a caller width instead of forcing w-full, so thumbnails beside text do not squeeze it', () => {
+  const h = makeReactHarness();
+  const mod = loadTsModule('../features/series/components/ArtworkImage.tsx', {
+    require: (name) => {
+      if (name === 'react') return { __esModule: true, default: h.react, ...h.react };
+      if (name.includes('seriesBrowseUtils')) return utils;
+      return {};
+    },
+  });
+  const classOf = (props) => {
+    h.resetCursor();
+    const tree = mod.ArtworkImage({ src: 'https://a.jpg', alt: 'a', title: 'a', ...props });
+    return tree.props.className.split(/\s+/);
+  };
+
+  const thumb = classOf({ aspectClassName: 'h-16 w-20', className: 'h-16 w-20 shrink-0' });
+  assert.ok(thumb.includes('w-20'));
+  assert.ok(!thumb.includes('w-full'));
+
+  const card = classOf({});
+  assert.ok(card.includes('w-full'));
+  assert.ok(card.includes('aspect-video'));
+
+  const responsive = classOf({ className: 'sm:w-40 max-w-xs' });
+  assert.ok(responsive.includes('w-full'));
+});

@@ -57,8 +57,11 @@ export function ArtworkImage({
   const initials = getTitleInitials(title);
   const toneClass = FALLBACK_TONES[getFallbackToneIndex(seed || title, FALLBACK_TONES.length)];
 
+  const sizeClasses = `${aspectClassName} ${className}`;
+  const widthClass = /(^|\s)w-/.test(sizeClasses) ? '' : 'w-full';
+
   return (
-    <div className={`relative w-full overflow-hidden bg-surface-elevated ${aspectClassName} ${className}`}>
+    <div className={`relative ${widthClass} overflow-hidden bg-surface-elevated ${sizeClasses}`}>
       {activeSrc ? (
         <img
           src={activeSrc}
