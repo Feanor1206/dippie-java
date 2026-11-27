@@ -7,6 +7,7 @@ import com.dippie.dto.profile.ChildProfileView;
 import com.dippie.dto.profile.ParentTimeGrantRequest;
 import com.dippie.dto.profile.PinRequest;
 import com.dippie.dto.profile.ProfileSwitchResponse;
+import com.dippie.dto.profile.ResetParentPinRequest;
 import com.dippie.dto.profile.ProfilesStateResponse;
 import com.dippie.dto.profile.UpdateScreenTimeSettingsRequest;
 import com.dippie.service.profile.ChildProfileService;
@@ -85,6 +86,16 @@ public class ChildProfileController {
         return ResponseEntity.ok(ApiResponse.ok(
                 childProfileService.exitChildProfile(request),
                 "Đã quay lại tài khoản chính."
+        ));
+    }
+
+    @PostMapping("/exit/reset-pin")
+    public ResponseEntity<ApiResponse<ProfileSwitchResponse>> resetPinAndExit(
+            @RequestBody(required = false) ResetParentPinRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                childProfileService.resetPinAndExit(request),
+                "Đã đặt lại mã PIN và quay lại tài khoản chính."
         ));
     }
 

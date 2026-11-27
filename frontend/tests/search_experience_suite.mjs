@@ -865,7 +865,7 @@ test('Phim bộ filter queries full series catalog, Dưới 10 phút filters sho
   const seriesCardsRendered = findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-result-card');
   assert.equal(seriesCardsRendered.length, 6, 'Phim bộ pill must show all 6 matching series from listSeriesCards');
   const statusBar = findNodes(h.tree, (n) => n.props?.className === 'catalog-status')[0];
-  assert.match(getText(statusBar), /6 phim/);
+  assert.match(getText(statusBar), /6 kết quả/);
 
   const sheetToggle = findNodes(h.tree, (n) => n.props?.['data-testid'] === 'search-filter-sheet-toggle')[0];
   assert.equal(getText(sheetToggle), 'Bộ lọc', 'Outer content-type pills must not inflate Bộ lọc (N) modal counter');

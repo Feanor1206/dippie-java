@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { getUserInitials } from '@/lib/labels';
 import { useAuth } from '@/lib/context/AuthContext';
 import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
+import { ForgotParentPinForm } from '@/features/profiles/components/ForgotParentPinForm';
 import { validateParentPin } from '@/lib/services/profileService';
 
 const FOCUSABLE_SELECTOR =
@@ -28,12 +29,14 @@ export function ProfilePickerModal() {
   const [pin, setPin] = useState('');
   const [pinBusy, setPinBusy] = useState(false);
   const [pinError, setPinError] = useState('');
+  const [forgotPinOpen, setForgotPinOpen] = useState(false);
+  const [forgotBusy, setForgotBusy] = useState(false);
 
   const modalRef = useRef<HTMLDivElement | null>(null);
   const pinInputRef = useRef<HTMLInputElement | null>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const busyRef = useRef(false);
-  busyRef.current = busyProfileId !== null || pinBusy;
+  busyRef.current = busyProfileId !== null || pinBusy || forgotBusy;
   const closeRef = useRef(closeProfilePicker);
   closeRef.current = closeProfilePicker;
   const pinPromptOpenRef = useRef(pinPromptOpen);
@@ -48,6 +51,7 @@ export function ProfilePickerModal() {
   useEffect(() => {
     if (!isVisible) {
       setPinPromptOpen(false);
+      setForgotPinOpen(false);
       setPin('');
       setPinError('');
       setError('');
@@ -81,6 +85,7 @@ export function ProfilePickerModal() {
           event.preventDefault();
           if (pinPromptOpenRef.current) {
             setPinPromptOpen(false);
+            setForgotPinOpen(false);
             setPin('');
             setPinError('');
           } else if (parentModeRef.current) {
@@ -241,7 +246,23 @@ export function ProfilePickerModal() {
           </div>
         )}
 
-        {pinPromptOpen ? (
+        {pinPromptOpen && forgotPinOpen ? (
+          <div className="mt-6 rounded-xl border-2 border-ink bg-surface p-5">
+            <ForgotParentPinForm
+              onBusyChange={setForgotBusy}
+              onBack={() => {
+                setForgotPinOpen(false);
+                setPinError('');
+              }}
+              onDone={() => {
+                setForgotPinOpen(false);
+                setPinPromptOpen(false);
+                setPin('');
+                closeProfilePicker();
+              }}
+            />
+          </div>
+        ) : pinPromptOpen ? (
           <form
             onSubmit={handlePinSubmit}
             data-testid="picker-parent-pin-form"
@@ -278,6 +299,19 @@ export function ProfilePickerModal() {
                 placeholder="••••"
                 className="w-full rounded-lg border border-surface-border bg-paper-white px-3.5 py-2.5 text-base tracking-[0.25em] text-ink focus:border-ink focus:outline-none disabled:opacity-50"
               />
+              <button
+                type="button"
+                data-testid="picker-forgot-pin"
+                disabled={pinBusy}
+                onClick={() => {
+                  setForgotPinOpen(true);
+                  setPin('');
+                  setPinError('');
+                }}
+                className="mt-1 min-h-[44px] text-xs font-semibold text-ink underline underline-offset-2 cursor-pointer disabled:opacity-50"
+              >
+                Quên mã PIN?
+              </button>
             </div>
 
             {pinError && (

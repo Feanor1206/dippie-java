@@ -19,6 +19,7 @@ import {
   decodeJwtProfileId,
   exitChildProfile,
   fetchProfilesState,
+  resetParentPinAndExit,
   switchToChildProfile,
   type ChildProfile,
   type ProfilesState,
@@ -67,6 +68,7 @@ type AuthContextType = {
   refreshProfiles: () => Promise<ProfilesState | null>;
   selectChildProfile: (profileId: number) => Promise<{ success: boolean; message?: string }>;
   exitKidMode: (pin: string) => Promise<{ success: boolean; message?: string }>;
+  resetPinAndExitKidMode: (password: string, newPin: string) => Promise<{ success: boolean; message?: string }>;
   showPostSignupFamilyOffer: boolean;
   dismissPostSignupFamilyOffer: () => void;
 };
@@ -768,6 +770,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [applyProfileSwitch, loadProfilesSilently]);
 
+  const resetPinAndExitKidMode = useCallback(
+    async (password: string, newPin: string): Promise<{ success: boolean; message?: string }> => {
+      const currentToken = activeToken.current;
+      if (!currentToken || logoutRequest.current) {
+        return { success: false, message: 'Bạn cần đăng nhập trước.' };
+      }
+      try {
+        const result = await resetParentPinAndExit(currentToken, password, newPin);
+        applyProfileSwitch(result.token, result.user, null);
+        setNotice({ text: result.message || 'Đã đặt lại mã PIN và quay lại tài khoản chính.', kind: 'success' });
+        void loadProfilesSilently(result.token, generationRef.current, false);
+        return { success: true };
+      } catch (err: unknown) {
+        return {
+          success: false,
+          message: err instanceof Error ? err.message : 'Chưa đặt lại được mã PIN.',
+        };
+      }
+    },
+    [applyProfileSwitch, loadProfilesSilently]
+  );
+
   const isKidMode = status === 'authenticated' && (activeProfile !== null || decodeJwtProfileId(token) !== null);
 
   return (
@@ -802,6 +826,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshProfiles,
         selectChildProfile,
         exitKidMode,
+        resetPinAndExitKidMode,
         showPostSignupFamilyOffer,
         dismissPostSignupFamilyOffer,
       }}

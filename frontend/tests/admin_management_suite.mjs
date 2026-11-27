@@ -393,12 +393,15 @@ test('6. Admin format helpers: percentage, rating, vi-VN date/datetime, details,
   assert.equal(pagingEmpty.canPrevious, false);
   assert.equal(pagingEmpty.canNext, false);
 
-  assert.equal(fmt.formatAuditTarget('USER', '42'), 'USER: 42');
+  assert.equal(fmt.formatAuditTarget('USER', '42'), 'Tài khoản: 42');
+  assert.equal(fmt.formatAuditTarget('SOMETHING_NEW', '7'), 'SOMETHING_NEW: 7');
+  assert.equal(fmt.getAuditActionLabel('PLAYBACK_REPORT_UPDATED'), 'Xử lý báo lỗi video');
+  assert.equal(fmt.getAuditActionLabel('ACCOUNT_DELETED'), 'Xóa tài khoản');
   assert.deepEqual(
     JSON.parse(JSON.stringify(fmt.formatAuditDetails({ username: 'alice', enabled: false, count: 3 }))),
     [
       { key: 'username', value: 'alice' },
-      { key: 'enabled', value: 'false' },
+      { key: 'enabled', value: 'Không' },
       { key: 'count', value: '3' },
     ]
   );

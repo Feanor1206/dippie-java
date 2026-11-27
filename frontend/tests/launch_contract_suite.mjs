@@ -17,7 +17,7 @@ test('S4 sends catalog episodeId string and supports guest and authenticated req
   const requests = [];
   const api = load('lib/services/playbackReportService.ts', async (url, init) => {
     requests.push({ url, init });
-    return { status: 201, json: async () => ({ id: 17 }) };
+    return { status: 201, json: async () => ({ success: true, message: 'Đã gửi báo lỗi.', data: { id: 17 } }) };
   });
   assert.equal(
     await api.submitPlaybackReport({ episodeId: 'ep_doraemon_s05_e001', assetId: null, reason: 'khong_phat' }),
@@ -73,7 +73,7 @@ test('S4 admin uses open status, Bearer auth, catalog string episodeId, and PATC
   };
   const api = load('lib/services/playbackReportService.ts', async (url, init) => {
     requests.push({ url, init });
-    return { status: 200, json: async () => [report] };
+    return { status: 200, json: async () => ({ success: true, message: 'Thành công', data: [report] }) };
   });
   const list = await api.listOpenPlaybackReports('admin');
   assert.equal(list[0].episodeId, 'ep_ori_s01_e001');
@@ -122,7 +122,7 @@ test('S4 PlaybackReportButton allows reporting any catalog episode string ID wit
     clearTimeout,
     fetch: async (url, init) => {
       requests.push({ url, body: JSON.parse(init.body) });
-      return { status: 201, json: async () => ({ id: 21 }) };
+      return { status: 201, json: async () => ({ success: true, data: { id: 21 } }) };
     },
     require(name) {
       if (name === 'react') return { __esModule: true, default: react, ...react };

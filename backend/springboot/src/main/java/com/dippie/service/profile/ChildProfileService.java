@@ -5,6 +5,7 @@ import com.dippie.dto.profile.ChildProfileView;
 import com.dippie.dto.profile.PinRequest;
 import com.dippie.dto.profile.ProfileSwitchResponse;
 import com.dippie.dto.profile.ProfilesStateResponse;
+import com.dippie.dto.profile.ResetParentPinRequest;
 import com.dippie.exception.InvalidRequestException;
 import com.dippie.exception.NotFoundException;
 import com.dippie.exception.UnauthorizedException;
@@ -257,6 +258,20 @@ public class ChildProfileService {
             throw new InvalidRequestException(PARENT_MODE_REQUIRED);
         }
         parentModeService.verifyParentPin(user, request == null ? null : request.pin());
+        String token = jwtService.issueLoginToken(user.getUsername(), user.getTokenVersion());
+        return ProfileSwitchResponse.of(user, token, null);
+    }
+
+    // quên PIN lúc đang ở hồ sơ bé hay màn chọn hồ sơ, nhập đúng mật khẩu thì đặt PIN mới và về tài khoản chính
+    @Transactional
+    public ProfileSwitchResponse resetPinAndExit(ResetParentPinRequest request) {
+        Viewer viewer = currentViewer.require();
+        User user = userRepository.findByIdForUpdate(viewer.userId())
+                .orElseThrow(() -> new UnauthorizedException(LOGIN_REQUIRED));
+        if (!user.isParentModeEnabled()) {
+            throw new InvalidRequestException(PARENT_MODE_REQUIRED);
+        }
+        parentModeService.resetPinWithPassword(user, request);
         String token = jwtService.issueLoginToken(user.getUsername(), user.getTokenVersion());
         return ProfileSwitchResponse.of(user, token, null);
     }

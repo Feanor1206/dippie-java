@@ -3,6 +3,7 @@ package com.dippie.service.profile;
 import com.dippie.dto.profile.ChangeParentPinRequest;
 import com.dippie.dto.profile.ParentModeResponse;
 import com.dippie.dto.profile.PinRequest;
+import com.dippie.dto.profile.ResetParentPinRequest;
 import com.dippie.exception.ConflictException;
 import com.dippie.exception.InvalidRequestException;
 import com.dippie.exception.UnauthorizedException;
@@ -114,6 +115,26 @@ public class ParentModeService {
         user.disableParentMode(now);
         userRepository.saveAndFlush(user);
         return new ParentModeResponse(false, childProfileRepository.countByUserId(user.getId()));
+    }
+
+    // quên PIN thì xác minh bằng mật khẩu tài khoản rồi đặt PIN mới, sai mật khẩu vẫn tính vào bộ đếm khóa như PIN
+    public void resetPinWithPassword(User user, ResetParentPinRequest request) {
+        pinRateLimiter.ensureNotLocked(user.getId());
+        String password = request == null ? null : request.password();
+        if (password == null || password.isEmpty()) {
+            throw new InvalidRequestException("Hãy nhập mật khẩu tài khoản.");
+        }
+        boolean matched = !PasswordPolicy.DEFAULT.exceedsMaxBytes(password)
+                && passwordEncoder.matches(password, user.getPassword());
+        if (!matched) {
+            pinRateLimiter.recordFailure(user.getId());
+            throw new InvalidRequestException("Mật khẩu tài khoản chưa đúng.");
+        }
+        String newPin = User.validateParentPin(request.newPin());
+        LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
+        user.changeParentPin(passwordEncoder.encode(newPin), now);
+        userRepository.saveAndFlush(user);
+        pinRateLimiter.clear(user.getId());
     }
 
     // check khóa rate limit trước rồi mới so BCrypt, sai thì cộng bộ đếm còn đúng thì xóa bộ đếm sai

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { SiteDialog } from '@/components/ui/SiteDialog';
 import { useAuth } from '@/lib/context/AuthContext';
 import { ChildAvatarBadge } from '@/features/profiles/components/ChildAvatarBadge';
+import { ForgotParentPinForm } from '@/features/profiles/components/ForgotParentPinForm';
 import { validateParentPin } from '@/lib/services/profileService';
 
 export function ExitKidModeDialog({
@@ -22,6 +23,8 @@ export function ExitKidModeDialog({
   const [targetDestination, setTargetDestination] = useState<'main' | number>('main');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [forgotPinOpen, setForgotPinOpen] = useState(false);
+  const [forgotBusy, setForgotBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -35,9 +38,10 @@ export function ExitKidModeDialog({
   if (!open) return null;
 
   const handleClose = () => {
-    if (busy) return;
+    if (busy || forgotBusy) return;
     setPin('');
     setError('');
+    setForgotPinOpen(false);
     setTargetDestination('main');
     onClose();
   };
@@ -89,123 +93,154 @@ export function ExitKidModeDialog({
       title={preferSiblingSwitch && siblings.length > 0 ? 'Đổi hồ sơ xem phim' : 'Thoát hồ sơ trẻ em'}
       tone="warning"
       onClose={handleClose}
-      busy={busy}
+      busy={busy || forgotBusy}
     >
-      <p className="mb-4 text-sm leading-relaxed text-muted">
-        {activeProfile
-          ? `Nhập mã PIN phụ huynh để rời hồ sơ ${activeProfile.name}, quay về tài khoản chính hoặc chuyển thẳng sang bé khác.`
-          : 'Nhập mã PIN phụ huynh để quay lại tài khoản chính.'}
-      </p>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-1.5">
-          <label htmlFor="exit-kid-pin-input" className="block text-xs font-semibold text-ink">
-            Mã PIN phụ huynh (4 đến 6 chữ số)
-          </label>
-          <div className="input-shell flex items-center rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5">
-            <input
-              id="exit-kid-pin-input"
-              data-testid="exit-kid-pin-input"
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              enterKeyHint="done"
-              autoComplete="off"
-              autoFocus
-              maxLength={6}
-              required
-              disabled={busy}
-              value={pin}
-              onChange={(event) => {
-                setPin(event.target.value.replace(/[^0-9]/g, '').slice(0, 6));
-                if (error) setError('');
-              }}
-              placeholder="••••"
-              className="w-full bg-transparent text-base sm:text-sm tracking-[0.25em] text-ink placeholder:text-muted focus:outline-none disabled:opacity-50"
-            />
-          </div>
-        </div>
-
-        {siblings.length > 0 && (
-          <fieldset className="space-y-2">
-            <legend className="text-xs font-semibold text-ink">Chuyển tới sau khi xác nhận mã PIN</legend>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {forgotPinOpen ? (
+        <ForgotParentPinForm
+          onBusyChange={setForgotBusy}
+          onBack={() => setForgotPinOpen(false)}
+          onDone={() => {
+            setForgotPinOpen(false);
+            setPin('');
+            setError('');
+            setTargetDestination('main');
+            onClose();
+          }}
+        />
+      ) : (
+        <>
+          <p className="mb-4 text-sm leading-relaxed text-muted">
+            {activeProfile
+              ? siblings.length > 0
+                ? `Nhập mã PIN phụ huynh để rời hồ sơ ${activeProfile.name}, quay về tài khoản chính hoặc chuyển thẳng sang bé khác.`
+                : `Nhập mã PIN phụ huynh để rời hồ sơ ${activeProfile.name} và quay về tài khoản chính.`
+              : 'Nhập mã PIN phụ huynh để quay lại tài khoản chính.'}
+          </p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <label htmlFor="exit-kid-pin-input" className="block text-xs font-semibold text-ink">
+                Mã PIN phụ huynh (4 đến 6 chữ số)
+              </label>
+              <div className="input-shell flex items-center rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5">
+                <input
+                  id="exit-kid-pin-input"
+                  data-testid="exit-kid-pin-input"
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  enterKeyHint="done"
+                  autoComplete="off"
+                  autoFocus
+                  maxLength={6}
+                  required
+                  disabled={busy}
+                  value={pin}
+                  onChange={(event) => {
+                    setPin(event.target.value.replace(/[^0-9]/g, '').slice(0, 6));
+                    if (error) setError('');
+                  }}
+                  placeholder="••••"
+                  className="w-full bg-transparent text-base sm:text-sm tracking-[0.25em] text-ink placeholder:text-muted focus:outline-none disabled:opacity-50"
+                />
+              </div>
               <button
                 type="button"
-                data-testid="exit-kid-target-main"
-                aria-pressed={targetDestination === 'main'}
+                data-testid="exit-kid-forgot-pin"
                 disabled={busy}
-                onClick={() => setTargetDestination('main')}
-                className={`flex min-h-[48px] items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-xs font-bold cursor-pointer ${
-                  targetDestination === 'main'
-                    ? 'border-2 border-ink bg-mint text-ink shadow-[2px_2px_0_#203328]'
-                    : 'border-surface-border bg-paper-white text-muted hover:border-ink/50 hover:text-ink'
-                }`}
+                onClick={() => {
+                  setForgotPinOpen(true);
+                  setPin('');
+                  setError('');
+                }}
+                className="min-h-[44px] text-xs font-semibold text-ink underline underline-offset-2 cursor-pointer disabled:opacity-50"
               >
-                <span>Tài khoản chính (Ba mẹ)</span>
+                Quên mã PIN?
               </button>
-              {siblings.map((sibling) => {
-                const selected = targetDestination === sibling.id;
-                return (
+            </div>
+
+            {siblings.length > 0 && (
+              <fieldset className="space-y-2">
+                <legend className="text-xs font-semibold text-ink">Chuyển tới sau khi xác nhận mã PIN</legend>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
-                    key={sibling.id}
                     type="button"
-                    data-testid={`exit-kid-switch-sibling-${sibling.id}`}
-                    aria-pressed={selected}
+                    data-testid="exit-kid-target-main"
+                    aria-pressed={targetDestination === 'main'}
                     disabled={busy}
-                    onClick={() => {
-                      setTargetDestination(sibling.id);
-                      if (pin.length >= 4) {
-                        void runPinVerification(sibling.id);
-                      }
-                    }}
+                    onClick={() => setTargetDestination('main')}
                     className={`flex min-h-[48px] items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-xs font-bold cursor-pointer ${
-                      selected
+                      targetDestination === 'main'
                         ? 'border-2 border-ink bg-mint text-ink shadow-[2px_2px_0_#203328]'
-                        : 'border-surface-border bg-paper-white text-ink hover:border-ink/50'
+                        : 'border-surface-border bg-paper-white text-muted hover:border-ink/50 hover:text-ink'
                     }`}
                   >
-                    <ChildAvatarBadge avatarKey={sibling.avatarKey} size="sm" />
-                    <span className="truncate">Chuyển sang {sibling.name}</span>
+                    <span>Tài khoản chính (Ba mẹ)</span>
                   </button>
-                );
-              })}
+                  {siblings.map((sibling) => {
+                    const selected = targetDestination === sibling.id;
+                    return (
+                      <button
+                        key={sibling.id}
+                        type="button"
+                        data-testid={`exit-kid-switch-sibling-${sibling.id}`}
+                        aria-pressed={selected}
+                        disabled={busy}
+                        onClick={() => {
+                          setTargetDestination(sibling.id);
+                          if (pin.length >= 4) {
+                            void runPinVerification(sibling.id);
+                          }
+                        }}
+                        className={`flex min-h-[48px] items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-xs font-bold cursor-pointer ${
+                          selected
+                            ? 'border-2 border-ink bg-mint text-ink shadow-[2px_2px_0_#203328]'
+                            : 'border-surface-border bg-paper-white text-ink hover:border-ink/50'
+                        }`}
+                      >
+                        <ChildAvatarBadge avatarKey={sibling.avatarKey} size="sm" />
+                        <span className="truncate">Chuyển sang {sibling.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            )}
+
+            {error && (
+              <div
+                role="alert"
+                data-testid="exit-kid-pin-error"
+                className="rounded-lg border border-red-800/35 bg-red-50 px-3.5 py-2.5 text-xs leading-relaxed text-red-900"
+              >
+                {error}
+              </div>
+            )}
+
+            <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleClose}
+                className="btn-secondary w-full sm:w-auto text-xs"
+              >
+                Ở lại hồ sơ {activeProfile?.name || 'trẻ em'}
+              </button>
+              <button
+                type="submit"
+                data-testid="exit-kid-pin-submit"
+                disabled={busy || pin.length < 4}
+                className="btn-primary w-full sm:w-auto text-xs disabled:opacity-50"
+              >
+                {busy
+                  ? 'Đang kiểm tra…'
+                  : selectedSibling
+                  ? `Chuyển sang ${selectedSibling.name}`
+                  : 'Thoát hồ sơ trẻ em'}
+              </button>
             </div>
-          </fieldset>
-        )}
-
-        {error && (
-          <div
-            role="alert"
-            data-testid="exit-kid-pin-error"
-            className="rounded-lg border border-red-800/35 bg-red-50 px-3.5 py-2.5 text-xs leading-relaxed text-red-900"
-          >
-            {error}
-          </div>
-        )}
-
-        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleClose}
-            className="btn-secondary w-full sm:w-auto text-xs"
-          >
-            Ở lại hồ sơ {activeProfile?.name || 'trẻ em'}
-          </button>
-          <button
-            type="submit"
-            data-testid="exit-kid-pin-submit"
-            disabled={busy || pin.length < 4}
-            className="btn-primary w-full sm:w-auto text-xs disabled:opacity-50"
-          >
-            {busy
-              ? 'Đang kiểm tra…'
-              : selectedSibling
-              ? `Chuyển sang ${selectedSibling.name}`
-              : 'Thoát hồ sơ trẻ em'}
-          </button>
-        </div>
-      </form>
+          </form>
+        </>
+      )}
     </SiteDialog>
   );
 }

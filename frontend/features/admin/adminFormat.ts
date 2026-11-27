@@ -24,6 +24,20 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   USER_DISABLED: 'Khóa tài khoản',
   USER_ENABLED: 'Mở khóa tài khoản',
   CATALOG_IMPORTED: 'Nhập dữ liệu',
+  CATALOG_SNAPSHOT_RETRIED: 'Thử lại bản dữ liệu',
+  CATALOG_EXPORTED: 'Xuất dữ liệu',
+  ADMIN_PASSWORD_CHANGED: 'Quản trị viên đổi mật khẩu',
+  ADMIN_BOOTSTRAP_UPDATED: 'Cập nhật tài khoản quản trị gốc',
+  ACCOUNT_DELETED: 'Xóa tài khoản',
+  PASSWORD_RESET_COMPLETED: 'Đặt lại mật khẩu',
+  PLAYBACK_REPORT_UPDATED: 'Xử lý báo lỗi video',
+};
+
+export const AUDIT_TARGET_LABELS: Record<string, string> = {
+  USER: 'Tài khoản',
+  CATALOG_PACKAGE: 'Gói dữ liệu',
+  CATALOG_SNAPSHOT: 'Bản dữ liệu',
+  PLAYBACK_REPORT: 'Báo lỗi video',
 };
 
 export function getAuditActionLabel(action: string | null | undefined): string {
@@ -99,7 +113,8 @@ export function formatAuditTarget(
   targetType: string | null | undefined,
   targetId: string | null | undefined
 ): string {
-  const cleanType = typeof targetType === 'string' ? targetType.trim() : '';
+  const rawType = typeof targetType === 'string' ? targetType.trim() : '';
+  const cleanType = AUDIT_TARGET_LABELS[rawType] ?? rawType;
   const cleanId = typeof targetId === 'string' ? targetId.trim() : '';
   if (cleanType && cleanId) return `${cleanType}: ${cleanId}`;
   return cleanType || cleanId || 'Không có';
@@ -107,7 +122,7 @@ export function formatAuditTarget(
 
 function formatDetailValue(value: unknown): string {
   if (value === null || value === undefined) return 'Không có';
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'boolean') return value ? 'Có' : 'Không';
   if (typeof value === 'number' || typeof value === 'string') return String(value);
   try {
     return JSON.stringify(value);

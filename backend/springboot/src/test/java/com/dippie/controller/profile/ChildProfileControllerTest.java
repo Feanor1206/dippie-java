@@ -371,6 +371,49 @@ class ChildProfileControllerTest {
         assertThat(watchlistItemRepository.count()).isZero();
     }
 
+    // quên PIN thì nhập mật khẩu tài khoản để đặt PIN mới, sai mật khẩu bị chặn, PIN cũ hết dùng được
+    @Test
+    void resetsForgottenPinWithAccountPasswordAndReturnsToMainProfile() throws Exception {
+        String mainToken = registerUser("quenpin", "quenpin@example.com", "secret123", "Quên PIN");
+        enableParentMode(mainToken, "4321");
+        long childId = createChildProfile(mainToken, "4321", "Bé Bi", "cat");
+        String childToken = switchToChild(mainToken, childId);
+
+        mockMvc.perform(post("/api/users/profiles/exit/reset-pin")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("password", "wrong-pass", "newPin", "5678"))))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/users/profiles/exit/reset-pin")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("password", "secret123", "newPin", "12"))))
+                .andExpect(status().isBadRequest());
+
+        MvcResult reset = mockMvc.perform(post("/api/users/profiles/exit/reset-pin")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(childToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("password", "secret123", "newPin", "5678"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.activeProfileId").isEmpty())
+                .andReturn();
+        String backToMainToken = extractToken(reset);
+        assertThat(jwtService.parseLoginToken(backToMainToken).orElseThrow().profileId()).isNull();
+
+        String secondChildToken = switchToChild(backToMainToken, childId);
+        mockMvc.perform(post("/api/users/profiles/exit")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(secondChildToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("pin", "4321"))))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/users/profiles/exit")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(secondChildToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("pin", "5678"))))
+                .andExpect(status().isOk());
+    }
+
     // test chuyển hồ sơ qua lại bằng JWT, thu hồi qua tokenVersion khi logout và xóa tài khoản thì bay hết hồ sơ bé
     @Test
     void switchesProfilesWithJwtRespectsTokenVersionAndDeletesProfilesWithAccount() throws Exception {

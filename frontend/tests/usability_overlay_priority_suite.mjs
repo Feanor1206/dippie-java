@@ -862,3 +862,41 @@ test('Kid controls keep >=44px targets, numeric keyboard hints, gentle Dieppie c
   assert.ok(movieDetailSource.includes("document.querySelector('dialog[open]')"));
   assert.ok(movieDetailSource.includes('resolveActivePlayerOverlay'));
 });
+
+test('resetParentPinAndExit posts password and new PIN and returns a main-profile session', async () => {
+  const calls = [];
+  const service = createHarness(
+    '../lib/services/profileService.ts',
+    'resetParentPinAndExit',
+    {},
+    {
+      fetch: async (url, init) => {
+        calls.push({ url, init });
+        return jsonResponse({
+          success: true,
+          message: 'Đã đặt lại mã PIN và quay lại tài khoản chính.',
+          data: { token: 'main-jwt', id: 7, username: 'family', role: 'ROLE_USER', activeProfileId: null },
+        });
+      },
+    }
+  ).exports;
+
+  const result = await service.resetParentPinAndExit('child-jwt', 'secret123', '5678');
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /\/users\/profiles\/exit\/reset-pin$/);
+  assert.equal(calls[0].init.method, 'POST');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { password: 'secret123', newPin: '5678' });
+  assert.equal(result.token, 'main-jwt');
+  assert.equal(result.activeProfileId, null);
+
+  const wrongPassword = createHarness(
+    '../lib/services/profileService.ts',
+    'resetParentPinAndExit',
+    {},
+    { fetch: async () => jsonResponse({ success: false, message: 'Mật khẩu tài khoản chưa đúng.' }, 400) }
+  ).exports;
+  await assert.rejects(
+    wrongPassword.resetParentPinAndExit('child-jwt', 'nope', '5678'),
+    (err) => err.status === 400 && /Mật khẩu tài khoản chưa đúng/.test(err.message)
+  );
+});

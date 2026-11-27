@@ -840,7 +840,7 @@ export function SearchExperience() {
             </span>
           )}
         </div>
-        {loading && snapshot ? <span>Đang cập nhật…</span> : isCurrentSnapshot && <span>{totalElements} phim</span>}
+        {loading && snapshot ? <span>Đang cập nhật…</span> : isCurrentSnapshot && <span>{totalElements} kết quả</span>}
       </div>
 
       <section aria-label="Kết quả tìm phim">

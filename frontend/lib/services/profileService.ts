@@ -467,3 +467,33 @@ export async function exitChildProfile(
     options
   );
 }
+
+export async function resetParentPinAndExit(
+  token: string,
+  password: string,
+  newPin: string,
+  options: ProfileRequestOptions = {}
+): Promise<ProfileSwitchResult> {
+  const url = `${options.baseUrl || API}/users/profiles/exit/reset-pin`;
+  return runProfileRequest(
+    async (signal) => {
+      const response = await apiFetch(url, {
+        method: 'POST',
+        headers: authHeaders(token, true),
+        body: JSON.stringify({ password, newPin }),
+        signal,
+      });
+      const { data, message } = await parseEnvelope(response, 'Chưa đặt lại được mã PIN.');
+      const nextToken = typeof data?.token === 'string' ? data.token.trim() : '';
+      if (!nextToken) throw new ProfileApiError('Phản hồi đặt lại mã PIN thiếu phiên đăng nhập.', 502);
+      return {
+        token: nextToken,
+        user: normalizeAuthUser(data),
+        activeProfileId: null,
+        activeProfile: null,
+        message: message || 'Đã đặt lại mã PIN và quay lại tài khoản chính.',
+      };
+    },
+    options
+  );
+}

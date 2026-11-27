@@ -71,10 +71,17 @@ export async function submitPlaybackReport(draft: PlaybackReportDraft, token?: s
     await requireResponse(response, 201, response.status === 429
       ? 'Bạn vừa gửi khá nhiều báo lỗi. Chờ một chút rồi thử lại nhé.'
       : 'Chưa gửi được báo lỗi. Bạn thử lại nhé.');
-    const result = await response.json();
+    const result = unwrapEnvelope(await response.json().catch(() => null)) as { id?: unknown } | null;
     if (!isId(result?.id)) throw new Error('Máy chủ trả về mã báo lỗi không hợp lệ.');
     return result.id;
   }, { signal });
+}
+
+function unwrapEnvelope(body: unknown): unknown {
+  if (body && typeof body === 'object' && !Array.isArray(body) && 'data' in body) {
+    return (body as { data: unknown }).data;
+  }
+  return body;
 }
 
 function isReport(value: unknown): value is PlaybackReport {
@@ -90,7 +97,7 @@ export async function listOpenPlaybackReports(token: string, signal?: AbortSigna
   return withRequestTimeout(async (requestSignal) => {
     const response = await apiFetch('/api/admin/reports?status=open', { headers: headers(token), signal: requestSignal });
     await requireResponse(response, 200, 'Chưa tải được danh sách báo lỗi.');
-    const list: unknown = await response.json();
+    const list = unwrapEnvelope(await response.json().catch(() => null));
     if (!Array.isArray(list) || !list.every(isReport)) throw new Error('Danh sách báo lỗi không hợp lệ.');
     return list;
   }, { signal });

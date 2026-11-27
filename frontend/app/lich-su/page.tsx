@@ -236,9 +236,11 @@ function WatchHistory({ token, userId }: { token: string; userId: number | null 
         <p className="text-sm text-muted">
           {loading
             ? 'Đang tải lịch sử xem…'
+            : error
+            ? 'Lịch sử xem tạm chưa tải được'
             : visibleRecords.length > 0
             ? `${visibleRecords.length} tập đã xem gần đây`
-            : 'Chưa có tập nào trong lịch sử'}
+            : 'Lịch sử đang trống'}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Link to="/profile" className="btn-secondary text-xs">
