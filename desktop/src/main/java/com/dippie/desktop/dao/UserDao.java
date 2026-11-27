@@ -1,6 +1,7 @@
 package com.dippie.desktop.dao;
 
 import com.dippie.desktop.db.JdbcDatabase;
+import com.dippie.desktop.db.UtcTime;
 import com.dippie.desktop.model.Role;
 import com.dippie.desktop.model.UserAccount;
 
@@ -43,9 +44,9 @@ public final class UserDao extends AbstractJdbcDao<UserAccount, Long> {
     public int updateAccess(Connection connection, long id, Role role, boolean enabled) throws SQLException {
         return update(connection, """
                 UPDATE users SET role = ?, enabled = ?, token_version = token_version + 1,
-                                 updated_at = CURRENT_TIMESTAMP
+                                 updated_at = ?
                 WHERE id = ?
-                """, role.name(), enabled, id);
+                """, role.name(), enabled, UtcTime.now(), id);
     }
 
     private static UserAccount mapAccount(ResultSet row) throws SQLException {

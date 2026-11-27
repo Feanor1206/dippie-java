@@ -2,6 +2,7 @@ package com.dippie.desktop.view;
 
 import com.dippie.desktop.controller.AdminController;
 import com.dippie.desktop.controller.UiTasks;
+import com.dippie.desktop.db.UtcTime;
 import com.dippie.desktop.export.CsvStrategy;
 import com.dippie.desktop.model.RatingRow;
 import com.dippie.desktop.model.SearchText;
@@ -75,7 +76,7 @@ public final class RatingsPane extends DataPane {
             @Override
             protected void updateItem(LocalDateTime time, boolean empty) {
                 super.updateItem(time, empty);
-                setText(empty || time == null ? null : TIME_FORMAT.format(time));
+                setText(empty || time == null ? null : TIME_FORMAT.format(UtcTime.toLocal(time)));
             }
         });
         table.getColumns().add(updatedColumn);
@@ -120,7 +121,7 @@ public final class RatingsPane extends DataPane {
         var strategy = new CsvStrategy<RatingRow>(
                 List.of("Mã", "Người dùng", "Nội dung", "Bộ phim", "Điểm", "Cập nhật"),
                 row -> List.of(row.id(), row.username(), row.title(), row.seriesTitle(), row.rating().score(),
-                        row.rating().updatedAt() == null ? "" : row.rating().updatedAt()));
+                        row.rating().updatedAt() == null ? "" : TIME_FORMAT.format(UtcTime.toLocal(row.rating().updatedAt()))));
         setTop(toolbar(search, seriesLabel, series, scoreLabel, score, clearFilter, resultCount,
                 refreshButton(), exportButton(table, strategy, "danh-gia.csv"), deleteButton()));
         setContent(table);

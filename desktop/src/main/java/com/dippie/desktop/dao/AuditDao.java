@@ -1,6 +1,7 @@
 package com.dippie.desktop.dao;
 
 import com.dippie.desktop.db.JdbcDatabase;
+import com.dippie.desktop.db.UtcTime;
 import com.dippie.desktop.model.AuditEvent;
 
 import java.sql.Connection;
@@ -24,8 +25,8 @@ public final class AuditDao extends AbstractJdbcDao<AuditEvent, Long> {
         int inserted = update(connection, """
                 INSERT INTO admin_audit_events
                     (actor_user_id, actor_username, action, target_type, target_id, details_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, actorId, actorUsername, action, targetType, targetId, detailsJson);
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, actorId, actorUsername, action, targetType, targetId, detailsJson, UtcTime.now());
         if (inserted != 1) {
             throw new SQLException("Không lưu được dòng nhật ký quản trị.");
         }
