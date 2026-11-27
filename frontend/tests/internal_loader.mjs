@@ -80,6 +80,7 @@ const SHARED_MODULES = {
   '@/lib/services/apiRequest': 'lib/services/apiRequest.ts',
   '@/lib/services/sessionStorage': 'lib/services/sessionStorage.ts',
   '@/lib/safeUrl': 'lib/safeUrl.ts',
+  '@/lib/hashScroll': 'lib/hashScroll.ts',
   '@/lib/timestamps': 'lib/timestamps.ts',
   '@/lib/services/playbackReportService': 'lib/services/playbackReportService.ts',
   '@/lib/services/passwordResetService': 'lib/services/passwordResetService.ts',

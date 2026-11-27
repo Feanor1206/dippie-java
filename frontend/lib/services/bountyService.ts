@@ -62,7 +62,7 @@ export type ParentBountyBoard = {
   submissions: BountySubmission[];
 };
 
-export type KidBountyTaskState = 'AVAILABLE' | 'PENDING' | 'COMPLETED';
+export type KidBountyTaskState = 'AVAILABLE' | 'PENDING' | 'COMPLETED' | 'COMPLETED_TODAY';
 
 export type KidBountyTask = {
   id: number;
@@ -240,7 +240,7 @@ function normalizeKidTask(raw: any): KidBountyTask | null {
   if (!Number.isSafeInteger(id) || id <= 0) return null;
   const rawState = typeof raw.state === 'string' ? raw.state.toUpperCase() : 'AVAILABLE';
   const state: KidBountyTaskState =
-    rawState === 'PENDING' || rawState === 'COMPLETED' ? rawState : 'AVAILABLE';
+    rawState === 'PENDING' || rawState === 'COMPLETED' || rawState === 'COMPLETED_TODAY' ? rawState : 'AVAILABLE';
   const pendingSubmissionId =
     typeof raw.pendingSubmissionId === 'number' && Number.isSafeInteger(raw.pendingSubmissionId)
       ? raw.pendingSubmissionId

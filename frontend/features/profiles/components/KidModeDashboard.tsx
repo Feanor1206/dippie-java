@@ -127,7 +127,7 @@ export function KidModeDashboard({
       aria-label="Góc nhiệm vụ và vé xem phim của bé"
       data-testid="kid-mode-dashboard"
       data-reveal-group=""
-      className="my-6 space-y-4"
+      className="my-6 scroll-mt-36 space-y-4"
     >
       {showWeekendVault && vaultStatus && (
         <WeekendVaultBanner

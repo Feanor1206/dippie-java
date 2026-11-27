@@ -1095,8 +1095,8 @@ test('KidHomeExperience places avatar, giant resume tile, and series covers abov
   ).map((n) => n.props['data-testid']);
   assert.deepEqual(orderedTestIds, [
     'kid-home-resume-tile',
-    'kid-home-series-section',
     'kid-mode-dashboard',
+    'kid-home-series-section',
     'kid-home-explore-card',
   ]);
 

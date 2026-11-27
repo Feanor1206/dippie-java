@@ -304,6 +304,8 @@ export function KidHomeExperience({
         </section>
       )}
 
+      <KidModeDashboard standaloneFilmCount={effectiveStandaloneCount} />
+
       <section aria-labelledby="kid-series-heading" data-testid="kid-home-series-section" className="space-y-3.5">
         <div className="flex items-center justify-between gap-3">
           <h2 id="kid-series-heading" className="section-title">
@@ -365,8 +367,6 @@ export function KidHomeExperience({
           onRetry={onRetryRecommendations}
         />
       )}
-
-      <KidModeDashboard standaloneFilmCount={effectiveStandaloneCount} />
 
       <section
         aria-label="Khám phá thêm kho phim"

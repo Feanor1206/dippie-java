@@ -9,8 +9,36 @@ import {
   getBountyIconMeta,
   rejectBountySubmission,
   submitKidBountyTask,
+  type BountySubmission,
   type KidBountyTask,
 } from '@/lib/services/bountyService';
+
+const TASK_STATE_ORDER: Record<KidBountyTask['state'], number> = {
+  AVAILABLE: 0,
+  PENDING: 1,
+  COMPLETED_TODAY: 2,
+  COMPLETED: 3,
+};
+
+function sortKidTasks(tasks: KidBountyTask[]): KidBountyTask[] {
+  return tasks
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => TASK_STATE_ORDER[a.task.state] - TASK_STATE_ORDER[b.task.state] || a.index - b.index)
+    .map((entry) => entry.task);
+}
+
+function latestRejectionByTask(submissions: BountySubmission[] | undefined): Map<number, BountySubmission> {
+  const seen = new Set<number>();
+  const rejected = new Map<number, BountySubmission>();
+  for (const submission of submissions ?? []) {
+    if (seen.has(submission.taskId)) continue;
+    seen.add(submission.taskId);
+    if (submission.status === 'REJECTED') {
+      rejected.set(submission.taskId, submission);
+    }
+  }
+  return rejected;
+}
 
 type ParentReviewDialog = {
   submissionId: number;
@@ -23,6 +51,8 @@ export function KidBountyBoard({ token }: { token: string }) {
   const screenTime = typeof useOptionalScreenTime === 'function' ? useOptionalScreenTime() : null;
   const [tasks, setTasks] = useState<KidBountyTask[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [rejections, setRejections] = useState<Map<number, BountySubmission>>(() => new Map());
   const [submittingTaskId, setSubmittingTaskId] = useState<number | null>(null);
   const [reviewDialog, setReviewDialog] = useState<ParentReviewDialog>(null);
   const [pin, setPin] = useState('');
@@ -34,9 +64,11 @@ export function KidBountyBoard({ token }: { token: string }) {
     if (!token) return;
     try {
       const board = await fetchKidBountyBoard(token);
-      setTasks(board.tasks);
-    } catch {
-      setTasks([]);
+      setTasks(sortKidTasks(board.tasks ?? []));
+      setRejections(latestRejectionByTask(board.submissions));
+      setLoadError('');
+    } catch (err: unknown) {
+      setLoadError(err instanceof Error && err.message ? err.message : 'Chưa tải được bảng nhiệm vụ của bé.');
     } finally {
       setLoaded(true);
     }
@@ -107,24 +139,72 @@ export function KidBountyBoard({ token }: { token: string }) {
     }
   };
 
-  if (!loaded || tasks.length === 0) {
-    return null;
+  const header = (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h2 className="font-display text-lg font-bold text-ink">Bảng nhiệm vụ đổi giờ xem</h2>
+        <p className="text-xs text-muted">
+          Làm xong việc ngoan rồi bấm &ldquo;Nộp nhiệm vụ&rdquo; để nhận thêm phút xem phim nhé!
+        </p>
+      </div>
+    </div>
+  );
+  const boardClassName = 'rounded-2xl border-2 border-ink bg-paper-white p-4 shadow-[3px_3px_0_#203328] sm:p-5';
+
+  if (!loaded) {
+    return (
+      <div data-testid="kid-bounty-board-loading" className={boardClassName}>
+        {header}
+        <p role="status" className="mt-3 text-xs text-muted">Đang tải nhiệm vụ…</p>
+      </div>
+    );
+  }
+
+  if (tasks.length === 0) {
+    return (
+      <div data-testid={loadError ? 'kid-bounty-board-error' : 'kid-bounty-board-empty'} className={boardClassName}>
+        {header}
+        {loadError ? (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <p role="alert" className="text-xs font-semibold text-red-900">{loadError}</p>
+            <button
+              type="button"
+              data-testid="kid-bounty-retry"
+              onClick={() => void loadBoard()}
+              className="btn-secondary min-h-[44px] px-3 text-xs font-bold"
+            >
+              Thử lại
+            </button>
+          </div>
+        ) : (
+          <p className="mt-3 rounded-xl border border-dashed border-ink/30 bg-surface px-3.5 py-3 text-sm text-ink">
+            Bé chưa có nhiệm vụ nào. Nhờ ba mẹ giao nhiệm vụ trong phần Gia đình nhé!
+          </p>
+        )}
+      </div>
+    );
   }
 
   return (
     <div
       data-testid="kid-bounty-board"
       data-reveal-item=""
-      className="rounded-2xl border-2 border-ink bg-paper-white p-4 shadow-[3px_3px_0_#203328] sm:p-5"
+      className={boardClassName}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="font-display text-lg font-bold text-ink">Bảng nhiệm vụ đổi giờ xem</h2>
-          <p className="text-xs text-muted">
-            Làm xong việc ngoan rồi bấm &ldquo;Nộp nhiệm vụ&rdquo; để nhận thêm phút xem phim nhé!
-          </p>
+      {header}
+
+      {loadError && (
+        <div role="alert" className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-red-800/35 bg-red-50 px-3.5 py-2.5 text-xs text-red-900">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => void loadBoard()}
+            className="btn-secondary min-h-[44px] px-3 text-xs font-bold"
+          >
+            Thử lại
+          </button>
         </div>
-      </div>
+      )}
 
       {feedback && (
         <div
@@ -143,6 +223,7 @@ export function KidBountyBoard({ token }: { token: string }) {
       <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {tasks.map((task) => {
           const iconMeta = getBountyIconMeta(task.icon);
+          const rejection = task.state === 'AVAILABLE' ? rejections.get(task.id) : undefined;
           return (
             <li
               key={task.id}
@@ -163,6 +244,15 @@ export function KidBountyBoard({ token }: { token: string }) {
                   {task.repeatableDaily ? 'Nhiệm vụ mỗi ngày' : 'Nhiệm vụ đặc biệt'}
                 </p>
               </div>
+
+              {rejection && (
+                <p
+                  data-testid={`kid-bounty-rejected-note-${task.id}`}
+                  className="rounded-lg border border-red-800/30 bg-red-50 px-2.5 py-1.5 text-[0.6875rem] font-semibold text-red-900"
+                >
+                  Lần trước ba mẹ chưa duyệt{rejection.rejectNote ? `: ${rejection.rejectNote}` : ''}. Bé làm lại rồi nộp nhé!
+                </p>
+              )}
 
               {task.state === 'AVAILABLE' ? (
                 <button
@@ -226,7 +316,7 @@ export function KidBountyBoard({ token }: { token: string }) {
                   data-testid={`kid-bounty-completed-badge-${task.id}`}
                   className="motion-correct-pop inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-ink/40 bg-mint/70 px-3 text-xs font-bold text-ink"
                 >
-                  Đã hoàn thành hôm nay ✓
+                  {task.state === 'COMPLETED_TODAY' ? 'Xong hôm nay ✓ Mai làm tiếp nhé!' : 'Đã hoàn thành ✓'}
                 </span>
               )}
             </li>

@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from '@/lib/context/AuthContext';
 import { ScreenTimeProvider } from '@/lib/context/ScreenTimeContext';
 import { WatchlistProvider } from '@/lib/context/WatchlistContext';
 import { initLargeTextPreference, initMotionPreference, isMotionReduced } from '@/lib/motion';
+import { scrollToHashTarget } from '@/lib/hashScroll';
 import { resolveRouteTitle } from '@/lib/routeTitle';
 import HomePage from './page';
 import NotFound from './not-found';
@@ -86,22 +87,7 @@ function App() {
       document.title = resolveRouteTitle(pathname);
     }
     if (hash && typeof document !== 'undefined') {
-      const targetId = hash.replace(/^#/, '');
-      const scrollToHash = () => {
-        const target = document.getElementById(targetId);
-        if (target) {
-          target.scrollIntoView({ behavior: isMotionReduced() ? 'auto' : 'smooth', block: 'start' });
-          return true;
-        }
-        return false;
-      };
-      if (!scrollToHash()) {
-        const timer = setTimeout(() => {
-          scrollToHash();
-        }, 120);
-        return () => clearTimeout(timer);
-      }
-      return;
+      return scrollToHashTarget(hash.replace(/^#/, ''));
     }
     window.scrollTo(0, 0);
   }, [pathname, hash]);

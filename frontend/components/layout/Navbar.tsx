@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router';
+import { scrollToHashTarget } from '@/lib/hashScroll';
 import { getUserInitials } from '@/lib/labels';
 import * as motion from '@/lib/motion';
 import { useWatchlist } from '@/lib/context/WatchlistContext';
@@ -23,7 +24,7 @@ export function Navbar() {
   const menuRef = useRef<HTMLDivElement>(null);
   const openAtEnd = useRef(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const { watchlist, openChat } = useWatchlist();
   const {
     user,
@@ -666,6 +667,12 @@ export function Navbar() {
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <Link
                 to="/#goc-cua-be"
+                onClick={(event) => {
+                  if (pathname === '/' && hash === '#goc-cua-be') {
+                    event.preventDefault();
+                    scrollToHashTarget('goc-cua-be');
+                  }
+                }}
                 data-testid="kid-mode-dashboard-link"
                 className="btn-secondary min-h-[44px] px-2.5 sm:px-3 py-1.5 text-xs font-bold"
               >
